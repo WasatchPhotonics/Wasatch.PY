@@ -10,3 +10,7 @@ accessible to customer applications.
 - [ ] provide build and test instructions for Windows
 - [ ] provide build and test instructions for Linux
 - [ ] provide build and test instructions for MacOS
+
+# Version History
+
+2018-01-05 0.1.0 - initial import from ENLIGHTEN
