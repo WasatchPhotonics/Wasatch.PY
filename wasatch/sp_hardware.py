@@ -426,15 +426,10 @@ class StrokerProtocolDevice(object):
         result = self.get_code(0xE2)
         return result[0]
 
-    def set_laser_enable(self, value="enable"):
-        """ Write one for enable, zero for disable of laser on the device. """
+    def set_laser_enable(self, flag=0):
+        value = 1 if flag else 0
         log.debug("Send laser enable: %s", value)
-
-        converted = 0
-        if value == "enable":
-            converted = 1
-        result = self.send_code(0xBE, converted)
-        return result
+        return self.send_code(0xBE, value)
 
     def set_detector_tec_enable(self, value=0):
         """ Write one for enable, zero for disable of the ccd tec cooler. """
@@ -538,7 +533,7 @@ class StrokerProtocolDevice(object):
         """ Perform the specified setting such as physically writing the laser 
             on, changing the integration time, turning the cooler on etc. """
 
-        if record.setting == "laser":
+        if record.setting == "laser_enable":
             self.set_laser_enable(record.value)
             self.laser_status = record.value
 

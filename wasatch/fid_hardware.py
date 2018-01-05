@@ -158,7 +158,6 @@ class FeatureIdentificationDevice(object):
                                                FID_data_or_wLength)
         except Exception as exc:
             log.critical("Hardware Failure FID Send Code Problem with ctrl transfer", exc_info=1)
-            #raise
 
         log.debug("Send Raw result: [%s]", result)
         log.debug("send_code: request 0x%02x value 0x%04x index 0x%04x data/len %s: result %s", 
@@ -579,13 +578,31 @@ class FeatureIdentificationDevice(object):
         result = self.send_code(0xd6, flag)
 
     def set_high_gain_mode_enable(self, flag=0):
+        # CF_SELECT is configured using bit 2 of the FPGA configuration register 
+        # 0x12.  This bit can be set using vendor commands 0xEB to SET and 0xEC 
+        # to GET.  Note that the set command is expecting a 5-byte unsigned 
+        # value, the highest byte of which we pass as part of an 8-byte buffer.
+        # Not sure why.
         log.debug("Set high gain mode: %s", flag)
-        result = self.send_code(0xeb, flag)
 
-    def set_laser_enable(self, label="enable"):
-        """ "enable" to activate (default), anything else to deactivate """
-        log.debug("Send laser enable: %s", label)
-        result = self.send_code(0xbe, label == "enable")
+        msb = 0
+        lsb = 1 if flag else 0
+        buf = 8 * [0]
+        bytes_written = self.send_code(0xeb, msb, lsb, buf)
+
+        if bytes_written != len(buf):
+            log.error("failed to set high gain mode %s", flag)
+            return
+        else:
+            # verify the value was set correctly
+            read_value = get_code(0xec, 1)
+            if read_value != set_value:
+                log.error("failed to verify high gain mode (read %d != set %d)", read_value, set_value)
+
+    def set_laser_enable(self, flag=0):
+        value = 1 if flag else 0
+        log.debug("Send laser enable: %d", value)
+        result = self.send_code(0xbe, value)
         return result
 
     def set_laser_power_perc(self, value=100):
@@ -731,7 +748,7 @@ class FeatureIdentificationDevice(object):
 
         log.debug("fid.write_setting: %s -> %s", record.setting, record.value)
 
-        if record.setting == "laser":
+        if record.setting == "laser_enable":
             self.set_laser_enable(record.value)
             self.laser_status = record.value
 
@@ -759,7 +776,7 @@ class FeatureIdentificationDevice(object):
             self.ccd_gain = float(record.value)
             self.set_ccd_gain(self.ccd_gain)
 
-        elif record.setting == "high_gain_mode_enabled":
+        elif record.setting == "high_gain_mode_enable":
             self.high_gain_mode_enable = float(record.value)
             self.set_high_gain_mode_enable(self.high_gain_mode_enable)
 
