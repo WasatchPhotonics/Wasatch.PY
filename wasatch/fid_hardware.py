@@ -69,7 +69,7 @@ class FeatureIdentificationDevice(object):
 
         self.integration = self.min_integration
 
-        self.laser_status = "disable"
+        self.laser_status = 0
         self.laser_power_perc = 100
         self.detector_tec_setpoint_degC = 15.0 # MZ: hardcode
         self.detector_tec_enable = 0
@@ -573,9 +573,9 @@ class FeatureIdentificationDevice(object):
         return True
 
     def set_detector_tec_enable(self, flag=0):
-        """ 1 for enable, 0 for disable (default) """
-        log.debug("Send CCD TEC enable: %s", flag)
-        result = self.send_code(0xd6, flag)
+        value = 1 if flag else 0
+        log.debug("Send CCD TEC enable: %s", value)
+        result = self.send_code(0xd6, value)
 
     def set_high_gain_mode_enable(self, flag=0):
         # CF_SELECT is configured using bit 2 of the FPGA configuration register 

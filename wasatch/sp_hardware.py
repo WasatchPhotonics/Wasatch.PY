@@ -73,7 +73,7 @@ class StrokerProtocolDevice(object):
         self.min_integration = 1     # ms
 
         self.integration = self.min_integration
-        self.laser_status = "disable"
+        self.laser_status = 0
         self.detector_tec_setpoint_degC = 15.0
         self.detector_tec_enable = 0
         self.ccd_adc_setpoint = 2047 # Midway of a 12bit ADC # MZ: used ever?
