@@ -590,14 +590,14 @@ class FeatureIdentificationDevice(object):
         buf = 8 * [0]
         bytes_written = self.send_code(0xeb, msb, lsb, buf)
 
-        if bytes_written != len(buf):
-            log.error("failed to set high gain mode %s", flag)
-            return
-        else:
-            # verify the value was set correctly
-            read_value = get_code(0xec, 1)
-            if read_value != set_value:
-                log.error("failed to verify high gain mode (read %d != set %d)", read_value, set_value)
+        # if bytes_written != len(buf):
+        #     log.error("failed to set high gain mode %s", flag)
+        #     return
+        # else:
+        #     # verify the value was set correctly
+        #     read_value = self.get_code(0xec, 1)
+        #     if read_value != set_value:
+        #         log.error("failed to verify high gain mode (read %d != set %d)", read_value, set_value)
 
     def set_laser_enable(self, flag=0):
         value = 1 if flag else 0
@@ -777,7 +777,7 @@ class FeatureIdentificationDevice(object):
             self.set_ccd_gain(self.ccd_gain)
 
         elif record.setting == "high_gain_mode_enable":
-            self.high_gain_mode_enable = float(record.value)
+            self.high_gain_mode_enable = int(record.value)
             self.set_high_gain_mode_enable(self.high_gain_mode_enable)
 
         elif record.setting == "ccd_trigger":
