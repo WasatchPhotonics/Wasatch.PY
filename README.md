@@ -5,7 +5,7 @@ accessible to customer applications.
 
 # Backlog
 
-- [ ] update ENLIGHTEN build to use this module
+- [x] update ENLIGHTEN build to use this module
 - [ ] add small (probably cmd-line) Python demo to this package
 - [ ] provide build and test instructions for Windows
 - [ ] provide build and test instructions for Linux
