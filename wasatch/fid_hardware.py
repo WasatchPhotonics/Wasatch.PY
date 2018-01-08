@@ -588,7 +588,7 @@ class FeatureIdentificationDevice(object):
         msb = 0
         lsb = 1 if flag else 0
         buf = 8 * [0]
-        bytes_written = self.send_code(0xeb, msb, lsb, buf)
+        bytes_written = self.send_code(0xeb, lsb, msb, buf)
 
         # if bytes_written != len(buf):
         #     log.error("failed to set high gain mode %s", flag)

@@ -15,6 +15,7 @@ accessible to customer applications.
 
 # Version History
 
+2018-01-08 0.1.2 - swapped LSB/MSB on high-gain mode
 2018-01-05 0.1.1 - fixed laser\_enable
                  - updated NIR high-gain mode (untested)
 2018-01-05 0.1.0 - initial import from ENLIGHTEN
