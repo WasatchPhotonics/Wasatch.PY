@@ -1,6 +1,6 @@
 """ Long-polling multiprocessing wrappers. 
 
-    Here's what's going on:
+    From ENLIGHTEN's standpoint (one Wasatch.PY user), here's what's going on:
 
     1. MainProcess creates a Controller.bus_timer which on timeout (tick) calls
         Controller.update_connections()
@@ -33,8 +33,6 @@ import multiprocessing
 
 from . import applog, devices, utils
 
-#import pprint
-
 log = logging.getLogger(__name__)
 
 class HardwareDetails(object):
@@ -48,7 +46,8 @@ class WasatchDeviceWrapper(object):
 
     """ Wrap WasatchDevice in a non-blocking interface run in a separate
         process. Use a summary queue to pass meta information about the
-        device for multiprocessing safe settings acquisition on ms windows. """
+        device for multiprocessing-safe spectrometer settings and spectral 
+        acquisition on Windows. """
 
     ############################################################################
     #                                                                          #
@@ -246,7 +245,7 @@ class WasatchDeviceWrapper(object):
         """
 
         applog.process_log_configure(log_queue, self.log_level)
-        log.info("WasatchDeviceWrapper.continuous_poll: start")
+        log.info("WasatchDeviceWrapper.continuous_poll: start (uid %s, bus_order %d)", uid, bus_order)
 
         hardware = devices.WasatchDevice(uid, bus_order)
         ok = hardware.connect()

@@ -364,7 +364,8 @@ class WasatchDevice(object):
         return True
 
     def connect_feature_identification(self):
-        """ Given a specified universal identifier, attempt to connect to the device using feature identification firmware. """
+        """ Given a specified universal identifier, attempt to connect to the 
+            device using feature identification firmware. """
         FID_list = ["0x1000", "0x2000", "0x3000", "0x4000"]
 
         if self.uid == None:
@@ -383,7 +384,7 @@ class WasatchDevice(object):
         dev = None
         try:
             bus_pid = self.uid[7:]
-            log.warn("Attempt connection to: %s", bus_pid)
+            log.warn("Attempt connection to bus_pid %s (bus_order %d)", bus_pid, self.bus_order)
 
             deep_fid = fid_hardware.FeatureIdentificationDevice
             dev = deep_fid(pid=bus_pid, bus_order=self.bus_order)
@@ -392,6 +393,8 @@ class WasatchDevice(object):
             try:
                 result = dev.connect()
             except Exception as exc:
+
+                # MZ: what is this? we retry with bus_order 0, PID 0x2000?
                 log.critical("Connect level exception: %s", exc)
                 deep_fid = fid_hardware.FeatureIdentificationDevice
                 dev = deep_fid(pid="0x2000", bus_order=0)
