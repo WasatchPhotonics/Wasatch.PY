@@ -143,7 +143,7 @@ class WasatchDeviceWrapper(object):
 
         return True
 
-    def acquire_data(self, mode=common.acquisition_mode_latest):
+    def acquire_data(self, mode=common.acquisition_mode_keep_complete):
         """ Don't use if queue.empty() for flow control on python 2.7 on
             windows, as it will hang. Use the catch of the queue empty exception as
             shown below instead.
@@ -159,7 +159,7 @@ class WasatchDeviceWrapper(object):
         if mode == common.acquisition_mode_latest:
             return self.get_final_item()
         elif mode == common.acquisition_mode_keep_complete:
-            return self.get_final_item(True)
+            return self.get_final_item(keep_averaged=True)
 
         # presumably mode == common.acquisition_mode_keep_all:
 

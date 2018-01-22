@@ -64,7 +64,9 @@ class WasatchBus(object):
         self.device_2 = None
         self.device_3 = None
 
-        self.simulation_bus = SimulationBus()
+        if use_sim:
+            self.simulation_bus = SimulationBus()
+
         self.hardware_bus = HardwareBus()
 
         self.update_bus()
@@ -72,7 +74,8 @@ class WasatchBus(object):
     def update_bus(self):
         """ Return a list of actual devices found on system libusb bus. """
 
-        self.simulation_bus.update_bus()
+        if self.use_sim:
+            self.simulation_bus.update_bus()
         self.hardware_bus.update_bus()
 
         # Set to hardware bus list by default
@@ -168,7 +171,7 @@ class SimulationBus(object):
         self.device_3 = None
 
         if self.status == "all_connected":
-            log.warn("Set all devices connected")
+            log.info("Set all devices connected")
             self.set_all_connected()
 
         elif self.status == "all_disconnected":
@@ -192,11 +195,17 @@ class SimulationBus(object):
 
     def update_bus(self):
         """ Open the ini file, update the class attributes with the status of each device. """
+        if not os.path.isfile(self.filename):
+            log.error("SimulationBus.update_bus: %s not found", self.filename)
+            return
+
         # Read from the file
         config = ConfigParser()
         config.read(self.filename)
+        log.debug("update_bus: loaded %s", self.filename)
 
         # look at the returned dict
+        # MZ: consider if config.has_section("LIBUSB_BUS"):
         self.device_1 = config.get('LIBUSB_BUS', 'device_001')
         self.device_2 = config.get('LIBUSB_BUS', 'device_002')
         self.device_3 = config.get('LIBUSB_BUS', 'device_003')
@@ -359,7 +368,7 @@ class WasatchDevice(object):
             log.critical("Problem connecting to: %s", self.uid, exc_info=1)
             return False
 
-        log.info("INFO     Connected to %s", self.uid)
+        log.info("Connected to %s", self.uid)
 
         return True
 
@@ -384,7 +393,7 @@ class WasatchDevice(object):
         dev = None
         try:
             bus_pid = self.uid[7:]
-            log.warn("Attempt connection to bus_pid %s (bus_order %d)", bus_pid, self.bus_order)
+            log.debug("Attempt connection to bus_pid %s (bus_order %d)", bus_pid, self.bus_order)
 
             deep_fid = fid_hardware.FeatureIdentificationDevice
             dev = deep_fid(pid=bus_pid, bus_order=self.bus_order)
@@ -413,7 +422,7 @@ class WasatchDevice(object):
             log.critical("Problem connecting to: %s", self.uid, exc_info=1)
             return False
 
-        log.info("INFO     Connected to %s", self.uid)
+        log.info("Connected to %s", self.uid)
 
         return True
 
@@ -439,8 +448,8 @@ class WasatchDevice(object):
 
             # compare vs EEPROM
             sensor_pixels = dev.get_sensor_line_length()
-            if (sensor_pixels != self.pixels):
-                log.warning("Pixel count mismatch: EEPROM %d overidden by sensor_line_length %d",
+            if sensor_pixels != self.pixels:
+                log.warn("Pixel count mismatch: EEPROM %d overidden by sensor_line_length %d",
                     self.pixels, sensor_pixels)
                 self.pixels = sensor_pixels
 
@@ -462,10 +471,17 @@ class WasatchDevice(object):
             self.summary += "FPGA:     %s\n" % self.fpga_rev
             self.summary += "Gain:     %s\n" % self.ccd_gain
             self.summary += "Model:    %s\n" % self.model
+
+            log.info("Serial:   %s" % self.serial_number)
+            log.info("Firmware: %s" % self.sw_code)
+            log.info("Int Time: %s" % self.int_time)
+            log.info("FPGA:     %s" % self.fpga_rev)
+            log.info("Gain:     %s" % self.ccd_gain)
+            log.info("Model:    %s" % self.model)
         except Exception as exc:
             log.critical("Problem populating summary", exc_info=1)
 
-        log.info("Device Summary:\n%s" % self.summary)
+        log.debug("Device Summary:\n%s" % self.summary)
 
     def load_eeprom_settings(self):
         self.wavelength_coeff_0  = self.hardware.wavelength_coeff_0
@@ -562,7 +578,10 @@ class WasatchDevice(object):
             # advance to next bad pixel
             i += 1
 
-    # MZ: getSpectrum (called by subprocess)
+    # MZ: This is akin to getSpectrum() in other drivers.  Can be called directly
+    #     in a blocking interface, or from subprocess in non-blocking queued architecture.
+    #     Note that subprocess.acquire_data() takes a common.acquisition_mode argument,
+    #     where this does not.
     def acquire_data(self):
         """ Process all enqueued settings, then read actual data from the device.
 
@@ -593,10 +612,6 @@ class WasatchDevice(object):
         try:
             reading.spectrum = self.hardware.get_line()
 
-            # MZ: we may have caused a slowdown by forcing everything to float
-
-            # convert to float immediately
-            # reading.spectrum = [float(i) for i in reading.spectrum]
             log.debug("device.acquire_data: got %s ...", reading.spectrum[0:9])
 
             # bad pixel correction
@@ -689,7 +704,7 @@ class WasatchDevice(object):
         if self.excitation > 0:
             self.wavenumbers = utils.generate_wavenumbers(self.excitation, self.wavelengths)
         else:
-            log.warning("No excitation defined")
+            log.debug("No excitation defined")
             self.wavenumbers = None
 
     # called by subprocess.continuous_poll

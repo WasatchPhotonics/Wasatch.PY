@@ -1,0 +1,65 @@
+name: conda_wasatch
+channels:
+- !!python/unicode
+  'defaults'
+dependencies:
+- !!python/unicode
+  'bzip2=1.0.6=vc9_3'
+- !!python/unicode
+  'colorama=0.3.7=py27_0'
+- !!python/unicode
+  'coverage=4.2=py27_0'
+- !!python/unicode
+  'distribute=0.6.45=py27_1'
+- !!python/unicode
+  'freetype=2.5.5=vc9_2'
+- !!python/unicode
+  'jpeg=9b=vc9_0'
+- !!python/unicode
+  'libpng=1.6.27=vc9_0'
+- !!python/unicode
+  'libtiff=4.0.6=vc9_3'
+- !!python/unicode
+  'mkl=2017.0.1=0'
+- !!python/unicode
+  'numpy=1.11.3=py27_0'
+- !!python/unicode
+  'pillow=4.0.0=py27_0'
+- !!python/unicode
+  'pip=9.0.1=py27_1'
+- !!python/unicode
+  'py=1.4.32=py27_0'
+- !!python/unicode
+  'pyqt=4.10.4=py27_1'
+- !!python/unicode
+  'pyqtgraph=0.9.10=py27_1'
+- !!python/unicode
+  'pytest=3.0.5=py27_0'
+- !!python/unicode
+  'pytest-cov=2.3.1=py27_0'
+- !!python/unicode
+  'python=2.7.13=0'
+- !!python/unicode
+  'pywin32=220=py27_2'
+- !!python/unicode
+  'setuptools=27.2.0=py27_1'
+- !!python/unicode
+  'six=1.10.0=py27_0'
+- !!python/unicode
+  'vs2008_runtime=9.00.30729.5054=0'
+- !!python/unicode
+  'wheel=0.29.0=py27_0'
+- !!python/unicode
+  'xlwt=1.2.0=py27_0'
+- !!python/unicode
+  'zlib=1.2.8=vc9_3'
+- pip:
+  - future==0.16.0
+  - pefile==2016.3.28
+  - pygtail==0.7.0
+  - pyside==1.2.4
+  - pytest-capturelog==0.7
+  - pytest-qt==2.1.0
+  - pyusb==1.0.0
+  - requests==2.13.0
+prefix: !!python/unicode 'C:\Miniconda\envs\conda_wasatch'

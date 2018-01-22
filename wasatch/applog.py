@@ -16,6 +16,12 @@ import logging
 import platform
 import multiprocessing
 
+################################################################################
+#                                                                              #
+#                    Semi-static, module-level functions                       #
+#                                                                              #
+################################################################################
+
 def get_location():
     """ Determine the location to store the log file. Current directory
         on Linux, or %PROGRAMDATA% on windows - usually c:\ProgramData """
@@ -101,6 +107,12 @@ def explicit_log_close():
         handler.close()
         root_log.removeHandler(handler)
 
+################################################################################
+#                                                                              #
+#                                QueueHandler                                  #
+#                                                                              #
+################################################################################
+
 class QueueHandler(logging.Handler):
     """ Copied verbatim from PlumberJack (see above).  This is a logging handler 
         which sends events to a multiprocessing queue.  
@@ -126,12 +138,22 @@ class QueueHandler(logging.Handler):
         except:
             self.handleError(record)
 
+################################################################################
+#                                                                              #
+#                                MainLogger                                    #
+#                                                                              #
+################################################################################
+
 class MainLogger(object):
+    FORMAT = '%(asctime)s %(processName)-10s %(name)s %(levelname)-8s %(message)s'
+
     def __init__(self, log_level=logging.DEBUG):
         self.log_queue = multiprocessing.Queue(-1)
         self.log_level = log_level
+
+        # kick-off a listener in a separate process
         self.listener = multiprocessing.Process(target=self.listener_process,
-            args=(self.log_queue, self.listener_configurer))
+                                                args=(self.log_queue, self.listener_configurer))
         self.listener.start()
 
         # Remember you have to add a local log configurator for each
@@ -142,6 +164,14 @@ class MainLogger(object):
         root_log.setLevel(self.log_level)
         root_log.debug("Top level log configuration")
 
+    def add_handler(self, fh):
+        """ see https://stackoverflow.com/a/14058475 """
+        channel = logging.StreamHandler(fh)
+        channel.setLevel(self.log_level)
+        formatter = logging.Formatter(self.FORMAT)
+        channel.setFormatter(formatter)
+        self.root.addHandler(channel)
+
     def listener_configurer(self):
         """ Setup file handler and command window stream handlers. Every log
             message received on the queue handler will use these log configurers. """
@@ -150,7 +180,7 @@ class MainLogger(object):
 
         root = logging.getLogger()
         h = logging.FileHandler(log_dir, 'w') # Overwrite previous run
-        frmt = logging.Formatter('%(asctime)s %(processName)-10s %(name)s %(levelname)-8s %(message)s')
+        frmt = logging.Formatter(self.FORMAT)
         h.setFormatter(frmt)
         root.addHandler(h)
 
@@ -160,6 +190,8 @@ class MainLogger(object):
         strm = logging.StreamHandler(sys.stdout)
         strm.setFormatter(frmt)
         root.addHandler(strm)
+
+        self.root = root
 
     # This is the listener process top-level loop: wait for logging events
     # (LogRecords)on the queue and handle them, quit when you get a None for a
@@ -174,7 +206,7 @@ class MainLogger(object):
                 logger = logging.getLogger(record.name)
                 logger.handle(record) # No level or filter logic applied - just do it!
             except (KeyboardInterrupt, SystemExit):
-                raise
+                break
             except:
                 print >> sys.stderr, 'Whoops! Problem:'
                 traceback.print_exc(file=sys.stderr)
