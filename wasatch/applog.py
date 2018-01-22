@@ -34,6 +34,11 @@ def get_location():
     if "Linux" in platform.platform():
         return filename
 
+    if "Darwin" in platform.platform():
+        return filename
+
+    #print("platform.platform() = %s", platform.platform())
+
     log_dir = ""
     try:
         import ctypes
@@ -49,7 +54,7 @@ def get_location():
         result = _SHGetFolderPath(0, CSIDL_COMMON_APPDATA, 0, 0, path_buf)
         log_dir = path_buf.value
     except:
-        log.exception("Problem assigning log directory")
+        print("Problem assigning log directory")
 
     pathname = "%s/%s" % (log_dir, filename)
     return pathname

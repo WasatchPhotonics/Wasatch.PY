@@ -1,4 +1,4 @@
-name: conda_wasatch
+name: wasatch
 channels:
 - !!python/unicode
   'defaults'
@@ -62,4 +62,4 @@ dependencies:
   - pytest-qt==2.1.0
   - pyusb==1.0.0
   - requests==2.13.0
-prefix: !!python/unicode 'C:\Miniconda\envs\conda_wasatch'
+prefix: !!python/unicode 'C:\Miniconda\envs\wasatch'

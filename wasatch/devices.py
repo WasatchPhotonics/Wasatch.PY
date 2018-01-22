@@ -679,7 +679,7 @@ class WasatchDevice(object):
             device. Failures when writing settings are collected by this
             exception handler. """
 
-        log.debug("process_settings: start (queue size %d)", self.settings.qsize())
+        log.debug("process_settings: start")
         control_object = "throwaway"
         while control_object != None:
             try:
@@ -693,7 +693,7 @@ class WasatchDevice(object):
                 log.critical("process_settings: error dequeuing or writing control object", exc_info=1)
                 raise
 
-        log.debug("process_settings: done (queue size %d)", self.settings.qsize())
+        log.debug("process_settings: done")
 
     def update_wavelengths(self):
         self.wavelengths = utils.generate_wavelengths(self.pixels,
