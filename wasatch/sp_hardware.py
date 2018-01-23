@@ -14,6 +14,12 @@ log = logging.getLogger(__name__)
 
 USB_TIMEOUT=60000
 
+################################################################################
+#                                                                              #
+#                                  ListDevices                                 #
+#                                                                              #
+################################################################################
+
 class ListDevices(object):
     """ Create a list of vendor id, product id pairs of any device on the bus 
         with the 0x24AA VID. Explicitly reject the newer feature identification 
@@ -53,6 +59,12 @@ class ListDevices(object):
         single = (hex(device.idVendor), format_pid)
         return single
 
+################################################################################
+#                                                                              #
+#                            StrokerProtocolDevice                             #
+#                                                                              #
+################################################################################
+
 class StrokerProtocolDevice(object):
     """ Provide function wrappers for all of the common tasks associated with 
         stroker control. This includes control messages to pass settings back 
@@ -76,6 +88,7 @@ class StrokerProtocolDevice(object):
         self.laser_status = 0
         self.detector_tec_setpoint_degC = 15.0
         self.detector_tec_enable = 0
+        self.detector_tec_setpoint_has_been_set = False
         self.ccd_adc_setpoint = 2047 # Midway of a 12bit ADC # MZ: used ever?
 
         # Defaults from Original (stroker-era) settings. These are known
@@ -433,6 +446,10 @@ class StrokerProtocolDevice(object):
 
     def set_detector_tec_enable(self, value=0):
         """ Write one for enable, zero for disable of the ccd tec cooler. """
+        if not self.detector_tec_setpoint_has_been_set:
+            log.debug("defaulting TEC setpoint to min", self.tmin)
+            self.set_detector_tec_setpoint_degC(self.tmin)
+
         log.debug("Send CCD TEC enable: %s", value)
         result = self.send_code(0xD6, value)
 
@@ -491,6 +508,7 @@ class StrokerProtocolDevice(object):
 
         log.debug("Setting TEC setpoint to: %s (deg C) (%d raw)", degC, raw)
         result = self.send_code(0xd8, raw)
+        self.detector_tec_setpoint_has_been_set = True
         return True
 
     def set_laser_power_perc(self, value=100):

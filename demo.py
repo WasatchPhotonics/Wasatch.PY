@@ -1,17 +1,19 @@
+import os
 import re
 import sys
 import time
 import numpy
+import signal
 import logging
 import datetime
 import argparse
 import multiprocessing
 
-from wasatch import utils
-from wasatch import common 
+import wasatch
 from wasatch import applog
 from wasatch import devices
 from wasatch import subprocess
+from wasatch import utils
 
 log = logging.getLogger(__name__)
 
@@ -23,21 +25,16 @@ class WasatchDemo(object):
     #                                                                          #
     ############################################################################
 
-    def __init__(self, log_queue=None, log_level=logging.DEBUG, bus_order=0, blocking=True):
-        # constructor arguments
-        self.blocking   = blocking
-        self.bus_order  = bus_order
-        self.log_queue  = log_queue
-        self.log_level  = log_level
-        
-        # initial settings
+    def __init__(self, argv=None):
         self.bus     = None
         self.device  = None
+        self.logger  = None
         self.outfile = None
         self.exiting = False
 
-        # configure supported command-line args
-        self.create_arg_parser()
+        self.args = self.parse_args(argv)
+
+        self.logger = applog.MainLogger(self.args.log_level)
 
     ############################################################################
     #                                                                          #
@@ -45,9 +42,8 @@ class WasatchDemo(object):
     #                                                                          #
     ############################################################################
 
-    def create_arg_parser(self):
+    def parse_args(self, argv):
         parser = argparse.ArgumentParser(description="Simple demo to acquire spectra from command-line interface")
-        parser.add_argument("-b", "--blocking",            action="store_true",      help="blocking USB interface")
         parser.add_argument("-l", "--log-level",           type=str, default="INFO", help="logging level [DEBUG,INFO,WARNING,ERROR,CRITICAL]")
         parser.add_argument("-o", "--bus-order",           type=int, default=0,      help="usb device ordinal to connect")
         parser.add_argument("-i", "--integration-time-ms", type=int, default=10,     help="integration time (ms, default 10)")
@@ -55,27 +51,20 @@ class WasatchDemo(object):
         parser.add_argument("-w", "--boxcar-half-width",   type=int, default=0,      help="boxcar half-width (default 0)")
         parser.add_argument("-d", "--delay-ms",            type=int, default=1000,   help="delay between integrations (ms, default 1000)")
         parser.add_argument("-f", "--outfile",             type=str, default=None,   help="output filename (e.g. path/to/spectra.csv)")
-        
-        self.arg_parser = parser
+        parser.add_argument("-m", "--max",                 type=int, default=0,      help="max spectra to acquire (default 0, unlimited)")
+        parser.add_argument("-b", "--non-blocking",        action="store_true",      help="non-blocking USB interface")
 
-    def parse_args(self, argv):
-        argv = argv[1:] # strip off 0th arg
-
-        # convert argv to dict
-        args = self.arg_parser.parse_args(argv)
+        # parse argv into dict
+        args = parser.parse_args(argv[1:])
 
         # normalize log level
         args.log_level = args.log_level.upper()
         if not re.match("^(DEBUG|INFO|ERROR|WARNING|CRITICAL)$", args.log_level):
             print "Invalid log level: %s (defaulting to INFO)" % args.log_level
             args.log_level = "INFO"
+
+        return args
         
-        self.args = args
-
-        # initialize logger
-        self.main_logger = applog.MainLogger(self.args.log_level)
-        self.log_queue = self.main_logger.log_queue
-
     ############################################################################
     #                                                                          #
     #                              USB Devices                                 #
@@ -96,21 +85,23 @@ class WasatchDemo(object):
             self.bus = devices.WasatchBus(use_sim = False)
 
         if self.bus.device_1 == "disconnected":
-            log.debug("connect: No device on bus 1")
+            print("No Wasatch USB spectrometers found.")
             return 
 
         log.debug("connect: trying to connect to new device on bus 1")
         uid = self.bus.device_1
 
-        if self.blocking:
-            device = devices.WasatchDevice(uid)
-        else:
-            # Use the wrapper for sub-processing and a responsive interface
+        if self.args.non_blocking:
+            # this is still buggy on MacOS
+            log.debug("instantiating WasatchDeviceWrapper (non-blocking)")
             device = subprocess.WasatchDeviceWrapper(
                 uid=uid,
-                bus_order=self.bus_order,
-                log_queue=self.log_queue,
-                log_level=self.log_level)
+                bus_order=self.args.bus_order,
+                log_queue=self.logger.log_queue,
+                log_level=self.args.log_level)
+        else:
+            log.debug("instantiating WasatchDevice (blocking)")
+            device = devices.WasatchDevice(uid, bus_order=self.args.bus_order)
 
         ok = device.connect()
         if not ok:
@@ -121,6 +112,7 @@ class WasatchDemo(object):
 
         self.device = device
         self.reading_count = 0
+
         return device
 
     ############################################################################
@@ -130,9 +122,12 @@ class WasatchDemo(object):
     ############################################################################
 
     def run(self):
+        log.info("Wasatch.PY %s Demo", wasatch.version)
+
         # apply initial settings
         self.device.change_setting("integration", self.args.integration_time_ms)
         self.device.change_setting("scans_to_average", self.args.scans_to_average)
+        self.device.change_setting("detector_tec_enable", "1")
 
         # initialize outfile if one was specified
         if self.args.outfile:
@@ -145,16 +140,20 @@ class WasatchDemo(object):
             self.attempt_reading()
             end_time = datetime.datetime.now()
 
-            # compute how much longer we should wait before the next reading
-            reading_time_ms = int((end_time - start_time).microseconds / 1000)
-            sleep_ms = self.args.delay_ms - reading_time_ms
-            if sleep_ms > 0:
-                log.debug("sleeping %d ms (%d ms already passed)", sleep_ms, reading_time_ms)
-                try:
-                    time.sleep(float(sleep_ms) / 1000)
-                except:
-                    log.critical("WasatchDemo.run sleep() caught an exception", exc_info=1)
-                    self.exiting = True
+            if self.args.max > 0 and self.reading_count >= self.args.max:
+                log.info("max spectra reached, exiting")
+                self.exiting = True
+            else:
+                # compute how much longer we should wait before the next reading
+                reading_time_ms = int((end_time - start_time).microseconds / 1000)
+                sleep_ms = self.args.delay_ms - reading_time_ms
+                if sleep_ms > 0:
+                    log.debug("sleeping %d ms (%d ms already passed)", sleep_ms, reading_time_ms)
+                    try:
+                        time.sleep(float(sleep_ms) / 1000)
+                    except:
+                        log.critical("WasatchDemo.run sleep() caught an exception", exc_info=1)
+                        self.exiting = True
 
         log.info("WasatchDemo.run exiting")
 
@@ -219,14 +218,31 @@ class WasatchDemo(object):
 # main()
 ################################################################################
 
-def main(argv):
-    demo = WasatchDemo()
-    demo.parse_args(argv)
+def signal_handler(signal, frame):
+    log.critical('Interrupted by Ctrl-C')
+    clean_shutdown()
+
+def clean_shutdown():
+    if demo:
+        if demo.args and demo.args.non_blocking and demo.device:
+            log.debug("closing background thread")
+            demo.device.disconnect()
+
+        if demo.logger:
+            log.debug("closing logger")
+            demo.logger.close()
+    log.info("Exiting")
+    sys.exit(0)
+
+demo = None
+if __name__ == "__main__":
+    signal.signal(signal.SIGINT, signal_handler)
+
+    demo = WasatchDemo(sys.argv)
     if demo.connect():
         # Note that on Windows, Control-Break (SIGBREAK) differs from 
         # Control-C (SIGINT); see https://stackoverflow.com/a/1364199
         log.info("Press Control-Break to interrupt...")
         demo.run()
 
-if __name__ == "__main__":
-    sys.exit(main(sys.argv))
+    clean_shutdown()

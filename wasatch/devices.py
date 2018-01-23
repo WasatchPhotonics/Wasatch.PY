@@ -22,6 +22,12 @@ from . import utils
 
 log = logging.getLogger(__name__)
 
+################################################################################
+#                                                                              #
+#                                 ControlObject                                #
+#                                                                              #
+################################################################################
+
 class ControlObject(object):
     """ A simple abstraction containing a setting to control and the value to set. """
     def __init__(self, setting=None, value=None):
@@ -29,6 +35,12 @@ class ControlObject(object):
         log.debug("%s ctor(%s, %s)", self.__class__.__name__, setting, value)
         self.setting = setting
         self.value = value
+
+################################################################################
+#                                                                              #
+#                                    Reading                                   #
+#                                                                              #
+################################################################################
 
 class Reading(object):
     """ A single set of data read from a device. This includes spectrum,
@@ -50,6 +62,12 @@ class Reading(object):
         self.laser_status              = None
         self.failure                   = None
         self.averaged                  = False
+
+################################################################################
+#                                                                              #
+#                                 WasatchBus                                   #
+#                                                                              #
+################################################################################
 
 class WasatchBus(object):
     """ Use Simulation and real hardware bus to populate a device list. """
@@ -73,7 +91,6 @@ class WasatchBus(object):
 
     def update_bus(self):
         """ Return a list of actual devices found on system libusb bus. """
-
         if self.use_sim:
             self.simulation_bus.update_bus()
         self.hardware_bus.update_bus()
@@ -95,6 +112,12 @@ class WasatchBus(object):
             self.device_1,
             self.device_2,
             self.device_3)
+
+################################################################################
+#                                                                              #
+#                                 HardwareBus                                  #
+#                                                                              #
+################################################################################
 
 class HardwareBus(object):
     """ Use libusb to list available devices on the system wide libusb bus. """
@@ -131,6 +154,7 @@ class HardwareBus(object):
             if self.backend_error == 1:
                 log.warn("No libusb backend", exc_info=1)
                 # MZ: this seems to happen when I run from Git Bash shell
+                #     (resolved on MacOS with 'brew install libusb')
 
         except Exception as exc:
             log.critical("LIBUSB error: %s", exc)
@@ -153,6 +177,12 @@ class HardwareBus(object):
         for item in list_fid:
             self.device_1 = "%s:%s" % (item[0], item[1])
             log.debug("Assign FID %s", self.device_1)
+
+################################################################################
+#                                                                              #
+#                                 SimulationBus                                #
+#                                                                              #
+################################################################################
 
 # MZ: consider how to make non-default
 class SimulationBus(object):
@@ -239,6 +269,12 @@ class SimulationBus(object):
 
         self.update_bus()
 
+################################################################################
+#                                                                              #
+#                                WasatchDevice                                 #
+#                                                                              #
+################################################################################
+
 class WasatchDevice(object):
     """ Provide an interface to the actual libusb bus.  The summary object is
         used in order to pass just a simple python object on the multiprocessing
@@ -306,7 +342,6 @@ class WasatchDevice(object):
 
     def connect(self):
         """ Attempt low level connection to the device specified in init.  """
-
         # MZ: hardcode
         if self.uid == "0x24aa:0x0512":
             log.info("Connected to simulation device")
@@ -395,8 +430,7 @@ class WasatchDevice(object):
             bus_pid = self.uid[7:]
             log.debug("Attempt connection to bus_pid %s (bus_order %d)", bus_pid, self.bus_order)
 
-            deep_fid = fid_hardware.FeatureIdentificationDevice
-            dev = deep_fid(pid=bus_pid, bus_order=self.bus_order)
+            dev = fid_hardware.FeatureIdentificationDevice(pid=bus_pid, bus_order=self.bus_order)
             result = False
 
             try:
@@ -405,9 +439,7 @@ class WasatchDevice(object):
 
                 # MZ: what is this? we retry with bus_order 0, PID 0x2000?
                 log.critical("Connect level exception: %s", exc)
-                deep_fid = fid_hardware.FeatureIdentificationDevice
-                dev = deep_fid(pid="0x2000", bus_order=0)
-
+                dev = fid_hardware.FeatureIdentificationDevice(pid="0x2000", bus_order=0)
                 try:
                     result = dev.connect()
                 except Exception as exc:
@@ -429,8 +461,6 @@ class WasatchDevice(object):
     def populate_summary(self):
         """ generate name-value ASCII summary, populate wavelengths/numbers """
         # MZ: why wasn't this a dict?
-
-        log.debug("populate_summary: start")
 
         if self.connected == False:
             log.critical("Can't print summary, no connection")

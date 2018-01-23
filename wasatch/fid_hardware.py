@@ -18,6 +18,12 @@ log = logging.getLogger(__name__)
 
 USB_TIMEOUT=60000
 
+################################################################################
+#                                                                              #
+#                                 ListDevices                                  #
+#                                                                              #
+################################################################################
+
 class ListDevices(object):
     def __init__(self):
         log.debug("init")
@@ -46,6 +52,12 @@ class ListDevices(object):
         single = (hex(device.idVendor), hex(device.idProduct))
         return single
 
+################################################################################
+#                                                                              #
+#                           FeatureIdentificationDevice                        #
+#                                                                              #
+################################################################################
+
 class FeatureIdentificationDevice(object):
 
     ############################################################################
@@ -73,6 +85,7 @@ class FeatureIdentificationDevice(object):
         self.laser_power_perc = 100
         self.detector_tec_setpoint_degC = 15.0 # MZ: hardcode
         self.detector_tec_enable = 0
+        self.detector_tec_setpoint_has_been_set = False
         self.ccd_gain = 1.9 # See notes in control.py # MZ: hardcode
 
         # Defaults from Original (stroker-era) settings. These are known
@@ -97,6 +110,7 @@ class FeatureIdentificationDevice(object):
             you try and connect to them in order, iterating on a failure, it
             will cause them to drop from the other Enlighten instance. """
 
+        # MZ: this causes a problem in non-blocking mode (WasatchDeviceWrapper) on MacOS
         devices = usb.core.find(find_all=True, idVendor=self.vid, idProduct=self.pid) 
 
         dev_list = list(devices)
@@ -110,7 +124,6 @@ class FeatureIdentificationDevice(object):
             log.critical("Can't find: %s, %s", self.vid, self.pid)
             return False
 
-        log.debug("Attempt to set configuration")
         try:
             result = device.set_configuration(1)
         except Exception as exc:
@@ -570,10 +583,16 @@ class FeatureIdentificationDevice(object):
 
         log.info("Set CCD TEC Setpoint: %.2f deg C (raw ADC 0x%04x)", degC, raw)
         result = self.send_code(0xD8, raw)
+        self.detector_tec_setpoint_has_been_set = True
         return True
 
     def set_detector_tec_enable(self, flag=0):
         value = 1 if flag else 0
+
+        if not self.detector_tec_setpoint_has_been_set:
+            log.debug("defaulting TEC setpoint to min", self.tmin)
+            self.set_detector_tec_setpoint_degC(self.tmin)
+
         log.debug("Send CCD TEC enable: %s", value)
         result = self.send_code(0xd6, value)
 

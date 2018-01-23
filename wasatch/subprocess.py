@@ -312,7 +312,6 @@ class WasatchDeviceWrapper(object):
         """ Build a simple object that lists the second generation of
             hardware details as pulled from the device object (which is in
             turn pulled from EEPROM where available). """
-
         hw_details = HardwareDetails()
 
         hw_details.summary               = hardware.summary

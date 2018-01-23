@@ -3,7 +3,29 @@
 Extracting the device communication layer from ENLIGHTEN to make it more readily
 accessible to customer applications.
 
-# Running
+# API
+
+Until we draft proper API documentation, these are the standard settings which 
+can be passed to device.change\_setting().  Booleans should be passed with an
+argument of 1 (enable) or 0 (disable).
+
+- "laser\_enable" (bool)
+- "integration" (int (milliseconds))
+- "detector\_tec\_setpoint\_degC" (int)
+- "detector\_tec\_enable" (bool)
+- "degC\_to\_dac\_coeffs" (string of 3 space-delimited floats, e.g. "1.1 2.2 3.3")
+- "laser\_power\_perc" (int, 0 to 100 inclusive)
+- "ccd\_gain" (float)
+- "high\_gain\_mode\_enable" (bool)
+- "ccd\_trigger" (bool)
+- "scans\_to\_average" (int, 0 or 1 to disable)
+- "bad\_pixel\_mode" (wasatch.common.bad\_pixel\_mode\_none or \_average))
+- "log\_level" (int, see [Python logging levels](https://docs.python.org/2/library/logging.html#levels))
+
+Note that there are many more functions available in fid\_hardware.py and 
+sp\_hardware.py (via devices.hardware) but these are not yet fully documented.
+
+# Running the Demo
 
 Following are the general usage instructions for the included command-line demo
 scripts.  After find specific Anaconda setup instructions for Windows, MacOS and 
@@ -213,6 +235,24 @@ The following was tested under MacOS 10.13.2 ("High Sierra"):
     2018-01-22 16:45:12,635 MainProcess __main__ INFO     Reading:    3  Detector: 66.00 degC  Min:   829.00  Max:  3909.00  Avg:   941.80
     2018-01-22 16:45:13,637 MainProcess __main__ INFO     Reading:    4  Detector: 66.00 degC  Min:   829.00  Max:  3878.00  Avg:   940.21
 
+# Known Issues
+
+## Non-Blocking doesn't work on MacOS
+
+MacOS doesn't allow usb.core.find() to be called from a forked background process.
+This is the error message you get:
+
+    "The process has forked and you cannot use this CoreFoundation functionality 
+     safely. You MUST exec()."
+
+It probably traces back to this:
+
+https://discussions.apple.com/message/5829688#message5829688
+
+Will investigate workarounds pending prioritization, but since the default
+blocking mode works, this shouldn't be a major problem until we port ENLIGHTEN 
+to MacOS.
+
 # Common Errors
 
 ## LIBUSB error: No backend available (MacOS)
@@ -228,15 +268,26 @@ Using [Homebrew](https://brew.sh/), type:
 - [x] provide build and test instructions for Windows
 - [x] provide build and test instructions for MacOS
 - [x] provide build and test instructions for Linux
-- [ ] add independent API documentation
-- [ ] add API to obtain Wasatch.PY version (independent of ENLIGHTEN version)
+- [x] add API to obtain Wasatch.PY version (independent of ENLIGHTEN version)
+- [ ] provide simplified blocking API
+- [ ] provide API documentation
+- [ ] provide queriable non-blocking interface?
 
 # Version History
 
-2018-01-22 0.2.2 - tested and documented for Linux
-2018-01-22 0.2.1 - tested and documented for MacOS
-2018-01-22 0.2.0 - added demo.py, Windows run instructions
-2018-01-08 0.1.2 - swapped LSB/MSB on high-gain mode
-2018-01-05 0.1.1 - fixed laser\_enable
-                 - updated NIR high-gain mode
-2018-01-05 0.1.0 - initial import from ENLIGHTEN
+- 2018-01-22 0.5.0
+    - analyzed non-blocking issue on MacOS
+    - default TEC to min 
+- 2018-01-22 0.2.2 
+    - tested and documented for Linux
+- 2018-01-22 0.2.1 
+    - tested and documented for MacOS
+- 2018-01-22 0.2.0 
+    - added demo.py, Windows run instructions
+- 2018-01-08 0.1.2 
+    - swapped LSB/MSB on high-gain mode
+- 2018-01-05 0.1.1 
+    - fixed laser\_enable
+    - updated NIR high-gain mode
+- 2018-01-05 0.1.0 
+    - initial import from ENLIGHTEN
