@@ -31,30 +31,30 @@ Following are the general usage instructions for the included command-line demo
 scripts.  After find specific Anaconda setup instructions for Windows, MacOS and 
 other tested platforms.
 
-    C:\Users\mzieg\work\code\Wasatch.PY>python demo.py --help
-    usage: demo.py [-h] [-b] [-l LOG_LEVEL] [-o BUS_ORDER]
-                   [-i INTEGRATION_TIME_MS] [-s SCANS_TO_AVERAGE]
-                   [-w BOXCAR_HALF_WIDTH] [-d DELAY_MS] [-f OUTFILE]
+	usage: demo.py [-h] [-l LOG_LEVEL] [-o BUS_ORDER] [-i INTEGRATION_TIME_MS]
+				   [-s SCANS_TO_AVERAGE] [-w BOXCAR_HALF_WIDTH] [-d DELAY_MS]
+				   [-f OUTFILE] [-m MAX] [-b]
 
-    Simple demo to acquire spectra from command-line interface
+	Simple demo to acquire spectra from command-line interface
 
-    optional arguments:
-      -h, --help            show this help message and exit
-      -b, --blocking        blocking USB interface
-      -l LOG_LEVEL, --log-level LOG_LEVEL
-                            logging level [DEBUG,INFO,WARNING,ERROR,CRITICAL]
-      -o BUS_ORDER, --bus-order BUS_ORDER
-                            usb device ordinal to connect
-      -i INTEGRATION_TIME_MS, --integration-time-ms INTEGRATION_TIME_MS
-                            integration time (ms, default 10)
-      -s SCANS_TO_AVERAGE, --scans-to-average SCANS_TO_AVERAGE
-                            scans to average (default 1)
-      -w BOXCAR_HALF_WIDTH, --boxcar-half-width BOXCAR_HALF_WIDTH
-                            boxcar half-width (default 0)
-      -d DELAY_MS, --delay-ms DELAY_MS
-                            delay between integrations (ms, default 1000)
-      -f OUTFILE, --outfile OUTFILE
-                            output filename (e.g. path/to/spectra.csv)
+	optional arguments:
+	  -h, --help            show this help message and exit
+	  -l LOG_LEVEL, --log-level LOG_LEVEL
+							logging level [DEBUG,INFO,WARNING,ERROR,CRITICAL]
+	  -o BUS_ORDER, --bus-order BUS_ORDER
+							usb device ordinal to connect
+	  -i INTEGRATION_TIME_MS, --integration-time-ms INTEGRATION_TIME_MS
+							integration time (ms, default 10)
+	  -s SCANS_TO_AVERAGE, --scans-to-average SCANS_TO_AVERAGE
+							scans to average (default 1)
+	  -w BOXCAR_HALF_WIDTH, --boxcar-half-width BOXCAR_HALF_WIDTH
+							boxcar half-width (default 0)
+	  -d DELAY_MS, --delay-ms DELAY_MS
+							delay between integrations (ms, default 1000)
+	  -f OUTFILE, --outfile OUTFILE
+							output filename (e.g. path/to/spectra.csv)
+	  -m MAX, --max MAX     max spectra to acquire (default 0, unlimited)
+	  -b, --non-blocking    non-blocking USB interface
 
 ## Microsoft Windows 
 
