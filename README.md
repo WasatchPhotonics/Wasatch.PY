@@ -29,6 +29,11 @@ argument of 1 (enable) or 0 (disable).
 Note that there are many more functions available in fid\_hardware.py and 
 sp\_hardware.py (via devices.hardware) but these are not yet fully documented.
 
+# Dependencies
+
+Wasatch.PY uses the Python 2.7 build of [Miniconda](https://conda.io/miniconda.html)
+for dependencies and package management.
+
 # Running the Demo
 
 Following are the general usage instructions for the included command-line demo
