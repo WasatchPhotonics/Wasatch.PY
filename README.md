@@ -1,7 +1,11 @@
+![Sample Console Views](https://github.com/WasatchPhotonics/Wasatch.PY/raw/master/screenshots/multiplatform.png)
+
 # Overview
 
-Extracting the device communication layer from ENLIGHTEN to make it more readily
-accessible to customer applications.
+Wasatch.PY is a Python application-level driver for Wasatch Photonics spectrometers.
+It has been tested on Windows, Linux and MacOS platforms, and is directly used by
+Wasatch's own [ENLIGHTEN&trade;](https://wasatchphotonics.com/product-category/software/)
+spectroscopy desktop GUI.
 
 # API
 
