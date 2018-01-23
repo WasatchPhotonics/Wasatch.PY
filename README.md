@@ -227,7 +227,7 @@ Using [Homebrew](https://brew.sh/), type:
 - [x] add small (probably cmd-line) Python demo to this package
 - [x] provide build and test instructions for Windows
 - [x] provide build and test instructions for MacOS
-- [ ] provide build and test instructions for Linux
+- [x] provide build and test instructions for Linux
 - [ ] add independent API documentation
 - [ ] add API to obtain Wasatch.PY version (independent of ENLIGHTEN version)
 
