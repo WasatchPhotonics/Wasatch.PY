@@ -1,0 +1,38 @@
+name: wasatch
+channels:
+- 'defaults'
+dependencies:
+- 'mkl=2017.0.1=0'
+- 'numpy=1.11.3=py27_0'
+- 'py=1.4.32=py27_0'
+- 'python=2.7.13=0'
+- 'six=1.10.0=py27_0'
+# - 'bzip2=1.0.6'
+# - 'zlib=1.2.8'
+# - 'distribute=0.6.45=py27_1'
+# - 'pillow=4.0.0=py27_0'
+# - 'pip=9.0.1=py27_1'
+# - 'wheel=0.29.0=py27_0'
+# - 'xlwt=1.2.0=py27_0'
+# - 'colorama=0.3.7=py27_0'
+# - 'coverage=4.2=py27_0'
+# - 'freetype=2.5.5=vc9_2'
+# - 'jpeg=9b=vc9_0'
+# - 'libpng=1.6.27=vc9_0'
+# - 'libtiff=4.0.6=vc9_3'
+# - 'pyqt=4.10.4=py27_1'
+# - 'pyqtgraph=0.9.10=py27_1'
+# - 'pytest=3.0.5=py27_0'
+# - 'pytest-cov=2.3.1=py27_0'
+# - 'pywin32=220=py27_2'
+# - 'setuptools=27.2.0=py27_1'
+# - 'vs2008_runtime=9.00.30729.5054=0'
+- pip:
+  - future==0.16.0
+  - pygtail==0.7.0
+  - pyusb==1.0.0
+  - requests==2.13.0
+#  - pefile==2016.3.28
+#  - pyside==1.2.4
+#  - pytest-capturelog==0.7
+#  - pytest-qt==2.1.0

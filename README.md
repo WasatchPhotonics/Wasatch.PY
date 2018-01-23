@@ -122,6 +122,70 @@ and [Miniconda](https://conda.io/miniconda.html) (Python 2.7):
     2018-01-22 15:20:14.146000,66.00,916.00,924.00,956
     2018-01-22 15:20:14.661000,66.00,913.00,941.00,951
 
+## Linux
+
+**IMPORTANT:** For Linux, you must copy the file udev/10-wasatch.rules from the
+Wasatch.PY distribution to /etc/udev/rules.d, then HUP udev or reboot.  This will
+require root (sudo) privs, and is required to give userland applications access
+to USB devices matching Wasatch VID/PID.
+
+The following was tested under Ubuntu 16.04 LTS:
+
+    $ uname -a
+    Linux ubuntu 4.4.0-59-generic #80-Ubuntu SMP Fri Jan 6 17:47:47 UTC 2017 x86_64 x86_64 x86_64 GNU/Linux
+    
+    $ conda update -q conda
+    $ ln -s environments/conda-linux.yml environment.yml
+    $ conda env create -n wasatch
+	$ source activate wasatch
+
+    (wasatch) ubuntu [~/work/code/Wasatch.PY] parallels 07:17 PM $ python demo.py
+    2018-01-22 19:17:12,041 MainProcess wasatch.fid_hardware INFO     reading EEPROM page 1
+    2018-01-22 19:17:12,052 MainProcess wasatch.fid_hardware INFO     reading EEPROM page 0
+    2018-01-22 19:17:12,061 MainProcess wasatch.fid_hardware INFO     reading EEPROM page 2
+    2018-01-22 19:17:12,071 MainProcess wasatch.fid_hardware INFO     reading EEPROM page 5
+    2018-01-22 19:17:12,081 MainProcess wasatch.fid_hardware INFO     EEPROM settings:
+    2018-01-22 19:17:12,081 MainProcess wasatch.fid_hardware INFO       Wavecal coeff0:   399.24130249
+    2018-01-22 19:17:12,082 MainProcess wasatch.fid_hardware INFO       Wavecal coeff1:   0.43601000309
+    2018-01-22 19:17:12,082 MainProcess wasatch.fid_hardware INFO       Wavecal coeff2:   -7.33139968361e-05
+    2018-01-22 19:17:12,082 MainProcess wasatch.fid_hardware INFO       Wavecal coeff3:   2.80489995674e-08
+    2018-01-22 19:17:12,082 MainProcess wasatch.fid_hardware INFO       Calibration date: 6/2
+    2018-01-22 19:17:12,083 MainProcess wasatch.fid_hardware INFO       Calibrated by:    NH
+    2018-01-22 19:17:12,083 MainProcess wasatch.fid_hardware INFO       Excitation (nm):  0
+    2018-01-22 19:17:12,083 MainProcess wasatch.fid_hardware INFO       Slit size (um):   50
+    2018-01-22 19:17:12,083 MainProcess wasatch.fid_hardware INFO       degCToDAC coeff0: 6.30511975963e-10
+    2018-01-22 19:17:12,083 MainProcess wasatch.fid_hardware INFO       degCToDAC coeff1: 1.68748300666e-07
+    2018-01-22 19:17:12,083 MainProcess wasatch.fid_hardware INFO       degCToDAC coeff2: 0.10000000149
+    2018-01-22 19:17:12,083 MainProcess wasatch.fid_hardware INFO       adcToDegC coeff0: 66.0
+    2018-01-22 19:17:12,084 MainProcess wasatch.fid_hardware INFO       adcToDegC coeff1: -0.00999999977648
+    2018-01-22 19:17:12,084 MainProcess wasatch.fid_hardware INFO       adcToDegC coeff2: -9.99999974738e-05
+    2018-01-22 19:17:12,084 MainProcess wasatch.fid_hardware INFO       Det temp min:     20
+    2018-01-22 19:17:12,084 MainProcess wasatch.fid_hardware INFO       Det temp max:     10
+    2018-01-22 19:17:12,084 MainProcess wasatch.fid_hardware INFO       TEC R298:         0
+    2018-01-22 19:17:12,084 MainProcess wasatch.fid_hardware INFO       TEC beta:         0
+    2018-01-22 19:17:12,084 MainProcess wasatch.fid_hardware INFO       Detector name:    S10141
+    2018-01-22 19:17:12,084 MainProcess wasatch.fid_hardware INFO       Pixels:           1024
+    2018-01-22 19:17:12,085 MainProcess wasatch.fid_hardware INFO       Pixel height:     1
+    2018-01-22 19:17:12,085 MainProcess wasatch.fid_hardware INFO       Min integration:  1
+    2018-01-22 19:17:12,085 MainProcess wasatch.fid_hardware INFO       Max integration:  60000
+    2018-01-22 19:17:12,085 MainProcess wasatch.fid_hardware INFO       Bad Pixels:       []
+    2018-01-22 19:17:12,085 MainProcess wasatch.devices INFO     Connected to 0x24aa:0x1000
+    2018-01-22 19:17:12,085 MainProcess wasatch.devices INFO     Connected to feature identification device
+    2018-01-22 19:17:12,112 MainProcess wasatch.devices INFO     Serial:   WP-00154
+    2018-01-22 19:17:12,112 MainProcess wasatch.devices INFO     Firmware: 10.0.0.6
+    2018-01-22 19:17:12,112 MainProcess wasatch.devices INFO     Int Time: 0
+    2018-01-22 19:17:12,112 MainProcess wasatch.devices INFO     FPGA:     026-007
+    2018-01-22 19:17:12,113 MainProcess wasatch.devices INFO     Gain:     1.90234375
+    2018-01-22 19:17:12,113 MainProcess wasatch.devices INFO     Model:    VIS
+    2018-01-22 19:17:12,113 MainProcess __main__ INFO     connect: device connected
+    2018-01-22 19:17:12,113 MainProcess __main__ INFO     Press Control-Break to interrupt...
+    2018-01-22 19:17:12,129 MainProcess __main__ INFO     Reading:    1  Detector: 66.00 degC  Min:   812.00  Max:  1333.00  Avg:   846.03
+    2018-01-22 19:17:13,136 MainProcess __main__ INFO     Reading:    2  Detector: 66.00 degC  Min:   819.00  Max:  3068.00  Avg:   900.29
+    2018-01-22 19:17:14,136 MainProcess __main__ INFO     Reading:    3  Detector: 66.00 degC  Min:   825.00  Max:  3043.00  Avg:   900.32
+    2018-01-22 19:17:15,138 MainProcess __main__ INFO     Reading:    4  Detector: 66.00 degC  Min:   821.00  Max:  3119.00  Avg:   901.80
+    2018-01-22 19:17:16,140 MainProcess __main__ INFO     Reading:    5  Detector: 66.00 degC  Min:   819.00  Max:   981.00  Avg:   844.84
+    ^C
+
 ## MacOS 
 
 The following was tested under MacOS 10.13.2 ("High Sierra"):
@@ -169,9 +233,10 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
-2018-01-22 0.2.1 - added instructions for MacOS
+2018-01-22 0.2.2 - tested and documented for Linux
+2018-01-22 0.2.1 - tested and documented for MacOS
 2018-01-22 0.2.0 - added demo.py, Windows run instructions
 2018-01-08 0.1.2 - swapped LSB/MSB on high-gain mode
 2018-01-05 0.1.1 - fixed laser\_enable
-                 - updated NIR high-gain mode (untested)
+                 - updated NIR high-gain mode
 2018-01-05 0.1.0 - initial import from ENLIGHTEN

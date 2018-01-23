@@ -1,0 +1,18 @@
+# udev rules file for Wasatch Photonics USB spectrometers
+# copy to /etc/udev/rules.d, then HUP udevd
+
+SUBSYSTEM!="usb_device", ACTION!="add", GOTO="wasatch_rules_end"
+
+# Stroker USB Board FX2 Code
+ATTRS{idVendor}=="24aa", ATTRS{idProduct}=="1000", SYMLINK+="stroker-fx2-%n", MODE:="0666"
+
+# Hamamatsu InGaAs USB Board FX2 Code
+ATTRS{idVendor}=="24aa", ATTRS{idProduct}=="2000", SYMLINK+="stroker-ingaas-%n", MODE:="0666"
+
+# Dragster USB Board FX3 Code
+ATTRS{idVendor}=="24aa", ATTRS{idProduct}=="3000", SYMLINK+="dragster-%n", MODE:="0666"
+
+# Stroker ARM USB Board
+ATTRS{idVendor}=="24aa", ATTRS{idProduct}=="4000", SYMLINK+="stroker-arm-%n", MODE:="0666"
+
+LABEL="wasatch_rules_end"
