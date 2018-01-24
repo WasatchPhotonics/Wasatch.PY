@@ -19,6 +19,7 @@ argument of 1 (enable) or 0 (disable).
 - "detector\_tec\_enable" (bool)
 - "degC\_to\_dac\_coeffs" (string of 3 space-delimited floats, e.g. "1.1 2.2 3.3")
 - "laser\_power\_perc" (int, 0 to 100 inclusive)
+- "laser\_temperature\_setpoint\_raw" (int, 0 to 127 inclusive)
 - "ccd\_gain" (float)
 - "high\_gain\_mode\_enable" (bool)
 - "ccd\_trigger" (bool)
@@ -272,19 +273,16 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Backlog
 
-- [x] update ENLIGHTEN build to use this module
-- [x] add small (probably cmd-line) Python demo to this package
-- [x] provide build and test instructions for Windows
-- [x] provide build and test instructions for MacOS
-- [x] provide build and test instructions for Linux
-- [x] add API to obtain Wasatch.PY version (independent of ENLIGHTEN version)
 - [ ] provide simplified blocking API
 - [ ] provide API documentation
 - [ ] provide queriable non-blocking interface?
 
 # Version History
 
+- 2018-01-24 0.5.1
+    - added get/set\_laser\_temperature\_setpoint\_raw() 
 - 2018-01-22 0.5.0
+    - initial customer release
     - analyzed non-blocking issue on MacOS
     - default TEC to min 
 - 2018-01-22 0.2.2 

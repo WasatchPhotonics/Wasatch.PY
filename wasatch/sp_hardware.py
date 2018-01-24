@@ -86,6 +86,7 @@ class StrokerProtocolDevice(object):
 
         self.integration = self.min_integration
         self.laser_status = 0
+        self.laser_temperature_setpoint_raw = 0
         self.detector_tec_setpoint_degC = 15.0
         self.detector_tec_enable = 0
         self.detector_tec_setpoint_has_been_set = False
@@ -511,6 +512,14 @@ class StrokerProtocolDevice(object):
         self.detector_tec_setpoint_has_been_set = True
         return True
 
+    def get_laser_temperature_setpoint_raw(self):
+        result = self.get_code(0xe8, value)
+        return result[0]
+
+    def set_laser_temperature_setpoint_raw(self, value):
+        log.debug("Send laser temperature setpoint raw: %d", value)
+        return self.send_code(0xe7, value)
+
     def set_laser_power_perc(self, value=100):
         """ Laser power is determined by a combination of the pulse width, 
             period and modulation being enabled. There are many combinations of 
@@ -575,6 +584,10 @@ class StrokerProtocolDevice(object):
         elif record.setting == "laser_power_perc":
             self.laser_power_perc = int(record.value)
             self.set_laser_power_perc(self.laser_power_perc)
+
+        elif record.setting == "laser_temperature_setpoint_raw":
+            self.laser_temperature_setpoint_raw = int(record.value)
+            self.set_laser_temperature_setpoint_raw(self.laser_temperature_setpoint_raw)
 
         elif record.setting == "scans_to_average":
             self.scans_to_average = int(record.value)

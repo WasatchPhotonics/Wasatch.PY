@@ -342,4 +342,6 @@ class WasatchDeviceWrapper(object):
         hw_details.min_integration_ms    = hardware.min_integration
         hw_details.max_integration_ms    = hardware.max_integration
 
+        hw_details.laser_temperature_setpoint_raw = hardware.hardware.get_laser_temperature_setpoint_raw()
+
         return hw_details

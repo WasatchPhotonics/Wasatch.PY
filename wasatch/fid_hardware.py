@@ -83,6 +83,7 @@ class FeatureIdentificationDevice(object):
 
         self.laser_status = 0
         self.laser_power_perc = 100
+        self.laser_temperature_setpoint_raw = 0
         self.detector_tec_setpoint_degC = 15.0 # MZ: hardcode
         self.detector_tec_enable = 0
         self.detector_tec_setpoint_has_been_set = False
@@ -609,20 +610,19 @@ class FeatureIdentificationDevice(object):
         buf = 8 * [0]
         bytes_written = self.send_code(0xeb, lsb, msb, buf)
 
-        # if bytes_written != len(buf):
-        #     log.error("failed to set high gain mode %s", flag)
-        #     return
-        # else:
-        #     # verify the value was set correctly
-        #     read_value = self.get_code(0xec, 1)
-        #     if read_value != set_value:
-        #         log.error("failed to verify high gain mode (read %d != set %d)", read_value, set_value)
-
     def set_laser_enable(self, flag=0):
         value = 1 if flag else 0
         log.debug("Send laser enable: %d", value)
         result = self.send_code(0xbe, value)
         return result
+
+    def get_laser_temperature_setpoint_raw(self):
+        result = self.get_code(0xe8)
+        return result[0]
+
+    def set_laser_temperature_setpoint_raw(self, value):
+        log.debug("Send laser temperature setpoint raw: %d", value)
+        return self.send_code(0xe7, value)
 
     def set_laser_power_perc(self, value=100):
         """ Laser power is determined by a combination of the pulse width, 
@@ -790,6 +790,10 @@ class FeatureIdentificationDevice(object):
         elif record.setting == "laser_power_perc":
             self.laser_power_perc = int(record.value)
             self.set_laser_power_perc(self.laser_power_perc)
+
+        elif record.setting == "laser_temperature_setpoint_raw":
+            self.laser_temperature_setpoint_raw = int(record.value)
+            self.set_laser_temperature_setpoint_raw(self.laser_temperature_setpoint_raw)
 
         elif record.setting == "ccd_gain":
             self.ccd_gain = float(record.value)
