@@ -5,12 +5,15 @@
         - split into single-class files
 """
 
+import datetime
 import logging
 import struct
 import math
 import usb
 import usb.core
 import usb.util
+
+from time import sleep
 
 from . import common
 
@@ -73,6 +76,8 @@ class FeatureIdentificationDevice(object):
 
         self.device = None
 
+        self.last_usb_timestamp = None
+
         self.laser_temperature_invalid = 0
         self.ccd_temperature_invalid = 0
 
@@ -88,6 +93,7 @@ class FeatureIdentificationDevice(object):
         self.detector_tec_enable = 0
         self.detector_tec_setpoint_has_been_set = False
         self.ccd_gain = 1.9 # See notes in control.py # MZ: hardcode
+        self.ccd_offset = 0
 
         # Defaults from Original (stroker-era) settings. These are known
         # to set ccd setpoints effectively for stroker 785 class units.
@@ -139,6 +145,22 @@ class FeatureIdentificationDevice(object):
 
         self.device = device
 
+        ########################################################################
+        # PID-specific settings
+        ########################################################################
+
+        if self.pid == 0x4000:
+            self.min_usb_interval_ms = 1
+            self.usb_delay_ms = 0.5 
+        else:
+            self.min_usb_interval_ms = 0
+
+        # overridden by EEPROM
+        if self.pid == 0x2000:
+            self.pixels = 512
+        else:
+            self.pixels = 1024
+
         self.read_eeprom()
 
         return True
@@ -156,15 +178,26 @@ class FeatureIdentificationDevice(object):
     # Utility Methods
     ############################################################################
 
+    def wait_for_usb_available(self):
+        if False and self.min_usb_interval_ms > 0:
+            if self.last_usb_timestamp is not None:
+                next_usb_timestamp = self.last_usb_timestamp + datetime.timedelta(milliseconds=self.min_usb_interval_ms)
+                while datetime.datetime.now() < next_usb_timestamp:
+                    sleep(self.usb_delay_ms / 1000.0)
+            self.last_usb_timestamp = datetime.datetime.now()
+
     def send_code(self, FID_bmRequest, FID_wValue=0, FID_wIndex=0, FID_data_or_wLength=""):
         """ Perform the control message transfer, return the extracted value. 
             Yes, the USB spec really does say data_or_length """
+
         FID_bmRequestType = 0x40 # host to device
 
         result = None
         log.debug("send_code: request 0x%02x value 0x%04x index 0x%04x data/len %s", 
             FID_bmRequest, FID_wValue, FID_wIndex, FID_data_or_wLength)
         try:
+            self.wait_for_usb_available()
+
             result = self.device.ctrl_transfer(FID_bmRequestType,
                                                FID_bmRequest,
                                                FID_wValue,
@@ -184,6 +217,8 @@ class FeatureIdentificationDevice(object):
 
         result = None
         try:
+            self.wait_for_usb_available()
+
             result = self.device.ctrl_transfer(FID_bmRequestType,
                                                FID_bmRequest,
                                                FID_wValue,
@@ -353,7 +388,13 @@ class FeatureIdentificationDevice(object):
         """ Read the integration time stored on the device. """
         result = self.get_code(0xBF)
         curr_time = (result[2] * 0x10000) + (result[1] * 0x100) + result[0]
+        log.debug("fid_hardware.get_integration_time: read %d ms", curr_time)
         return curr_time
+
+    def set_ccd_offset(self, value):
+        word = int(value) & 0xffff
+        log.debug("set ccd offset: 0x%04x", word)
+        return self.send_code(0xb6, word)
 
     def get_ccd_gain(self):
         """ Read the device stored gain.  Convert from binary wasatch format.
@@ -446,13 +487,13 @@ class FeatureIdentificationDevice(object):
         if self.ccd_trigger == 0:
             result = self.send_code(0xad, FID_data_or_wLength="00000000")
 
-        line_buffer = 2048 # 1024 16bit pixels
-        if self.pid == 0x2000:
-            line_buffer = 1024 # 512 16bit pixels
+        # regardless of pixel count, assume uint16
+        line_buffer = self.pixels * 2 
 
         # MZ: make constants for endpoints
         data = self.device.read(0x82, line_buffer, timeout=USB_TIMEOUT)
-        log.debug("get_line: %s ...", data[0:9])
+        #log.debug("get_line: %s ...", data[0:9])
+        log.debug("get_line: %s", data)
 
         try:
             # MZ: there is such a thing as "too Pythonic"
@@ -490,17 +531,31 @@ class FeatureIdentificationDevice(object):
         if raw < 0:
             raw = self.get_laser_temperature_raw()
 
+        if raw > 0xfff:
+            log.error("get_laser_temperature_degC: read raw value 0x%04x (greater than 12 bit)", raw)
+            return -99
+
         # can't take log of zero
         if raw == 0:
             return 0
 
-        voltage    = 2.5 * raw / 4096.0;
-        resistance = 21450.0 * voltage / (2.5 - voltage);
-        logVal     = math.log(resistance / 10000.0);
-        insideMain = logVal + 3977.0 / (25 + 273.0);
-        degC       = 3977.0 / insideMain - 273.0;
+        degC = -99
+        try:
+            voltage    = 2.5 * raw / 4096.0;
+            resistance = 21450.0 * voltage / (2.5 - voltage);
 
-        log.debug("Laser temperature: %.2f deg C (0x%04x raw)" % (degC, raw))
+            if resistance < 0:
+                log.error("get_laser_temperature_degC: can't compute degC: raw = 0x%04x, voltage = %f, resistance = %f", raw, voltage, resistance)
+                return -99
+
+            logVal     = math.log(resistance / 10000.0);
+            insideMain = logVal + 3977.0 / (25 + 273.0);
+            degC       = 3977.0 / insideMain - 273.0;
+
+            log.debug("Laser temperature: %.2f deg C (0x%04x raw)" % (degC, raw))
+        except:
+            log.error("exception computing laser temperature", exc_info=1)
+
         return degC
 
     def get_detector_temperature_raw(self):
@@ -591,13 +646,13 @@ class FeatureIdentificationDevice(object):
         value = 1 if flag else 0
 
         if not self.detector_tec_setpoint_has_been_set:
-            log.debug("defaulting TEC setpoint to min", self.tmin)
+            log.debug("defaulting TEC setpoint to min %s", self.tmin)
             self.set_detector_tec_setpoint_degC(self.tmin)
 
         log.debug("Send CCD TEC enable: %s", value)
         result = self.send_code(0xd6, value)
 
-    def set_ccd_trigger(self, flag=0)
+    def set_ccd_trigger(self, flag=0):
         # Don't send the opcode on ARM. See issue #2 on WasatchUSB project
         if self.pid != 0x2000:
             msb = 0
@@ -737,25 +792,37 @@ class FeatureIdentificationDevice(object):
         log.info("Laser power set to: %s", value)
         return result
 
+    def set_wavecal_coeffs(self, coeffs):
+        try:
+            (c0, c1, c2, c3) = coeffs.split(" ")
+        except Exception as exc:
+            log.critical("Wavecal coeffs split failiure", exc_info=1)
+            return
+
+        self.wavelength_coeff_0 = c0
+        self.wavelength_coeff_1 = c1
+        self.wavelength_coeff_2 = c2
+        self.wavelength_coeff_3 = c3
+
+        log.debug("updated wavecal coeffs")
+
     def set_degC_to_dac_coeffs(self, coeffs):
         """ Temporary solution for modifying the CCD TEC setpoint calibration 
             coefficients. These are used as part of a 2nd-order polynomial for 
             transforming the setpoint temperature into a DAC value. Expects a 
             great deal of accuracy on part of the user, otherwise sets default. """
 
-        degC_to_dac_coeff_0 = self.original_degC_to_dac_coeff_0
-        degC_to_dac_coeff_1 = self.original_degC_to_dac_coeff_1
-        degC_to_dac_coeff_2 = self.original_degC_to_dac_coeff_2
         try:
-            (degC_to_dac_coeff_0, degC_to_dac_coeff_1, degC_to_dac_coeff_2) = coeffs.split(" ")
+            (c0, c1, c2) = coeffs.split(" ")
         except Exception as exc:
             log.critical("TEC Coeffs split failiure", exc_info=1)
-            log.critical("Setting original class coeffs")
+            return
 
-        self.degC_to_dac_coeff_0 = float(degC_to_dac_coeff_0)
-        self.degC_to_dac_coeff_1 = float(degC_to_dac_coeff_1)
-        self.degC_to_dac_coeff_2 = float(degC_to_dac_coeff_2)
-        log.info("Succesfully changed CCD TEC setpoint coefficients")
+        self.degC_to_dac_coeff_0 = float(c0)
+        self.degC_to_dac_coeff_1 = float(c1)
+        self.degC_to_dac_coeff_2 = float(c2)
+
+        log.info("Successfully changed CCD TEC setpoint coefficients")
 
     def get_ccd_trigger(self):
         """ Read the trigger source setting from the device. 0=internal,
@@ -795,6 +862,9 @@ class FeatureIdentificationDevice(object):
         elif record.setting == "degC_to_dac_coeffs":
             self.set_degC_to_dac_coeffs(record.value) 
 
+        elif record.setting == "wavecal":
+            self.set_wavecal_coeffs(record.value)
+
         elif record.setting == "laser_power_perc":
             self.laser_power_perc = int(record.value)
             self.set_laser_power_perc(self.laser_power_perc)
@@ -806,6 +876,10 @@ class FeatureIdentificationDevice(object):
         elif record.setting == "ccd_gain":
             self.ccd_gain = float(record.value)
             self.set_ccd_gain(self.ccd_gain)
+
+        elif record.setting == "ccd_offset":
+            self.ccd_offset = float(record.value)
+            self.set_ccd_offset(self.ccd_offset)
 
         elif record.setting == "high_gain_mode_enable":
             self.high_gain_mode_enable = int(record.value)

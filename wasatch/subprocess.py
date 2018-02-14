@@ -108,7 +108,7 @@ class WasatchDeviceWrapper(object):
             log.debug("WasatchDeviceWrapper.connect: hw_details: %s", self.hw_details.__dict__)
         except Exception as exc:
             log.warn("WasatchDeviceWrapper.connect: hw_details caught exception", exc_info=1)
-            self.hw_details = "placeholder device details"
+            self.hw_details = None
             return False
 
         log.debug("WasatchDeviceWrapper.connect: succeeded")
@@ -155,6 +155,9 @@ class WasatchDeviceWrapper(object):
         if self.closing:
             log.debug("WasatchDeviceWrapper.acquire_data: closing")
             return None
+
+        # MZ: consider reading self.hw_details_queue.get_nowait() here, to allow
+        #     asynchronous update of changed spectrometer settings?
 
         if mode == common.acquisition_mode_latest:
             return self.get_final_item()
@@ -293,7 +296,7 @@ class WasatchDeviceWrapper(object):
             except Exception as exc:
                 log.critical("WasatchDeviceWrapper.continuous_poll: Exception", exc_info=1)
                 reading = devices.Reading()
-                reading.failure = exc
+                reading.failure = str(exc)
 
             log.debug("WasatchDeviceWrapper.continuous_poll: Spectrum is: %s", reading.spectrum[0:5])
             log.debug("WasatchDeviceWrapper.continuous_poll: Post acquire: %s", reading.laser_status)

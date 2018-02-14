@@ -298,6 +298,8 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2018-02-14 0.5.3
+    - added set\_ccd\_offset()
 - 2018-01-26 0.5.2
     - added set\_ccd\_trigger() 
 - 2018-01-24 0.5.1
