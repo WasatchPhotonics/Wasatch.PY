@@ -597,6 +597,14 @@ class FeatureIdentificationDevice(object):
         log.debug("Send CCD TEC enable: %s", value)
         result = self.send_code(0xd6, value)
 
+    def set_ccd_trigger(self, flag=0)
+        # Don't send the opcode on ARM. See issue #2 on WasatchUSB project
+        if self.pid != 0x2000:
+            msb = 0
+            lsb = 1 if flag else 0
+            buf = 8 * [0]
+            bytes_written = self.send_code(0xd2, lsb, msb, buf)
+
     def set_high_gain_mode_enable(self, flag=0):
         # CF_SELECT is configured using bit 2 of the FPGA configuration register 
         # 0x12.  This bit can be set using vendor commands 0xEB to SET and 0xEC 
@@ -804,9 +812,8 @@ class FeatureIdentificationDevice(object):
             self.set_high_gain_mode_enable(self.high_gain_mode_enable)
 
         elif record.setting == "ccd_trigger":
-            # Don't actually send the opcode on ARM. See issue #2 on WasatchUSB project
             self.ccd_trigger = int(record.value)
-            log.warn("Low level set trigger var: %s", self.ccd_trigger)
+            self.set_ccd_trigger(self.ccd_trigger)
 
         elif record.setting == "scans_to_average":
             self.scans_to_average = int(record.value)

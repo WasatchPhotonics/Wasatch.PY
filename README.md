@@ -7,6 +7,25 @@ It has been tested on Windows, Linux and MacOS platforms, and is directly used b
 Wasatch's own [ENLIGHTEN&trade;](https://wasatchphotonics.com/product-category/software/)
 spectroscopy desktop GUI.
 
+## History 
+
+This project can be viewed as a conceptual successor to the earlier 
+[WasatchUSB](https://github.com/WasatchPhotonics/WasatchUSB).  The main 
+differences are that while WasatchUSB was a copy-paste of key ENLIGHTEN 
+functionality, Wasatch.PY literally is a dependency of ENLIGHTEN.  As a result, 
+when we fix or add ENLIGHTEN features, Wasatch.PY will be updated by necessity;
+making the same foundational interface available to all our users.  
+
+WasatchUSB, in contrast, had the potential to drift out-of-sync with ENLIGHTEN 
+internals, such that customers and company might experience different results.  
+This new shared library exemplifies one of our core values: all about 
+[dogfooding](https://en.wikipedia.org/wiki/Eating_your_own_dog_food)!
+
+Finally, the updated project name reflects the fact that this is specifically a
+Python binding and implementation; for other USB-capable interfaces, see our
+[WasatchUSB](https://github.com/WasatchPhotonics/Wasatch.NET) or upcoming
+Wasatch.CPP libraries!
+
 # API
 
 Until we draft proper API documentation, these are the standard settings which 
@@ -279,6 +298,8 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2018-01-26 0.5.2
+    - added set\_ccd\_trigger() 
 - 2018-01-24 0.5.1
     - added get/set\_laser\_temperature\_setpoint\_raw() 
 - 2018-01-22 0.5.0
