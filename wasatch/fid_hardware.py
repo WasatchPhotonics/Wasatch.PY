@@ -145,15 +145,15 @@ class FeatureIdentificationDevice(object):
 
         self.device = device
 
+        self.usb_delay_ms = 1.0
+        self.min_usb_interval_ms = 0
+
         ########################################################################
         # PID-specific settings
         ########################################################################
 
-        if self.pid == 0x4000:
-            self.min_usb_interval_ms = 1
-            self.usb_delay_ms = 0.5 
-        else:
-            self.min_usb_interval_ms = 0
+        # if self.pid == 0x4000:
+        #     self.min_usb_interval_ms = 2
 
         # overridden by EEPROM
         if self.pid == 0x2000:
@@ -179,11 +179,13 @@ class FeatureIdentificationDevice(object):
     ############################################################################
 
     def wait_for_usb_available(self):
-        if False and self.min_usb_interval_ms > 0:
+        if self.min_usb_interval_ms > 0:
             if self.last_usb_timestamp is not None:
                 next_usb_timestamp = self.last_usb_timestamp + datetime.timedelta(milliseconds=self.min_usb_interval_ms)
-                while datetime.datetime.now() < next_usb_timestamp:
-                    sleep(self.usb_delay_ms / 1000.0)
+                if datetime.datetime.now() < next_usb_timestamp:
+                    log.debug("fid_hardware: sleeping to enforce %d ms USB interval", self.min_usb_interval_ms)
+                    while datetime.datetime.now() < next_usb_timestamp:
+                        sleep(self.usb_delay_ms / 1000.0)
             self.last_usb_timestamp = datetime.datetime.now()
 
     def send_code(self, FID_bmRequest, FID_wValue=0, FID_wIndex=0, FID_data_or_wLength=""):
@@ -489,6 +491,8 @@ class FeatureIdentificationDevice(object):
 
         # regardless of pixel count, assume uint16
         line_buffer = self.pixels * 2 
+
+        self.wait_for_usb_available()
 
         # MZ: make constants for endpoints
         data = self.device.read(0x82, line_buffer, timeout=USB_TIMEOUT)
@@ -897,6 +901,10 @@ class FeatureIdentificationDevice(object):
 
         elif record.setting == "log_level":
             self.set_log_level(record.value)
+
+        elif record.setting == "min_usb_interval_ms":
+            self.min_usb_interval_ms = int(record.value)
+            self.usb_delay_ms = max(1, self.min_usb_interval_ms / 5.0)
 
         else:
             log.critical("Unknown setting to write: %s", record.setting)

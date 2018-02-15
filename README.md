@@ -298,6 +298,8 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2018-02-15 0.5.4
+    - added "min\_usb\_interval\_ms"
 - 2018-02-14 0.5.3
     - added set\_ccd\_offset()
 - 2018-01-26 0.5.2
