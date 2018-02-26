@@ -146,14 +146,14 @@ class FeatureIdentificationDevice(object):
         self.device = device
 
         self.usb_delay_ms = 1.0
-        self.min_usb_interval_ms = 10
+        self.min_usb_interval_ms = 0
 
         ########################################################################
         # PID-specific settings
         ########################################################################
 
-        # if self.pid == 0x4000:
-        #     self.min_usb_interval_ms = 2
+        if self.pid == 0x4000:
+            self.min_usb_interval_ms = 10
 
         # overridden by EEPROM
         if self.pid == 0x2000:
@@ -491,6 +491,7 @@ class FeatureIdentificationDevice(object):
 
         # regardless of pixel count, assume uint16
         line_buffer = self.pixels * 2 
+        log.debug("waiting for %d bytes", line_buffer)
 
         self.wait_for_usb_available()
 

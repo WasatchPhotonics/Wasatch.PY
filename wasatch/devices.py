@@ -296,6 +296,9 @@ class WasatchDevice(object):
         self.settings = multiprocessing.Queue()
         self.backend_error = 0
 
+        control_object = ControlObject("integration", 10)
+        self.settings.put(control_object)
+
         # non-FID devices won't have all these fields, so provide defaults
         # (MZ: hardcodes)
 
