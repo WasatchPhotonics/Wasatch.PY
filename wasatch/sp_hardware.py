@@ -84,6 +84,9 @@ class StrokerProtocolDevice(object):
         self.max_integration = 10000 # ms
         self.min_integration = 1     # ms
 
+        self.tmin = 10
+        self.tmax = 20
+
         self.integration = self.min_integration
         self.laser_status = 0
         self.laser_temperature_setpoint_raw = 0
@@ -199,14 +202,12 @@ class StrokerProtocolDevice(object):
 
         # Older units support the 256 langid. Newer units require none.
         try:
-            serial = usb.util.get_string(self.device,
-                                         self.device.iSerialNumber, 256)
+            serial = usb.util.get_string(self.device, self.device.iSerialNumber, 256)
         except Exception as exc:
             log.info("Read new langid 256 serial: %s", exc)
 
         try:
-            serial = usb.util.get_string(self.device,
-                                         self.device.iSerialNumber)
+            serial = usb.util.get_string(self.device, self.device.iSerialNumber)
         except Exception as exc:
             log.critical("Failure to read langid none serial: %s", exc)
             raise
@@ -383,6 +384,11 @@ class StrokerProtocolDevice(object):
         try:
             voltage    = 2.5 * raw / 4096;
             resistance = 21450.0 * voltage / (2.5 - voltage);
+            if resistance <= 0:
+                log.error("get_laser_temperature_degC: invalid resistance")
+                self.laser_temperature_invalid = 1
+                return -99
+
             logVal     = math.log(resistance / 10000);
             insideMain = logVal + 3977.0 / (25 + 273.0);
             degC       = 3977.0 / insideMain - 273.0;
@@ -418,6 +424,11 @@ class StrokerProtocolDevice(object):
         try:
             voltage    = 1.5 * raw / 4096.0
             resistance = 10000 * voltage / (2 - voltage)
+            if resistance <= 0:
+                log.error("get_detector_temperature_degC: invalid resistance")
+                self.detector_temperature_invalid = 1
+                return -99
+
             logVal     = math.log(resistance / 10000)
             insideMain = logVal + 3977.0 / (25 + 273.0)
             degC       = 3977.0 / insideMain - 273.0
@@ -448,7 +459,7 @@ class StrokerProtocolDevice(object):
     def set_detector_tec_enable(self, value=0):
         """ Write one for enable, zero for disable of the ccd tec cooler. """
         if not self.detector_tec_setpoint_has_been_set:
-            log.debug("defaulting TEC setpoint to min", self.tmin)
+            log.debug("defaulting TEC setpoint to min %d", self.tmin)
             self.set_detector_tec_setpoint_degC(self.tmin)
 
         log.debug("Send CCD TEC enable: %s", value)
@@ -513,8 +524,11 @@ class StrokerProtocolDevice(object):
         return True
 
     def get_laser_temperature_setpoint_raw(self):
-        result = self.get_code(0xe8, value)
+        result = self.get_code(0xe8)
         return result[0]
+
+    def get_sensor_line_length(self):
+        return 1024 # hardcode?
 
     def set_laser_temperature_setpoint_raw(self, value):
         log.debug("Send laser temperature setpoint raw: %d", value)

@@ -146,7 +146,7 @@ class FeatureIdentificationDevice(object):
         self.device = device
 
         self.usb_delay_ms = 1.0
-        self.min_usb_interval_ms = 0
+        self.min_usb_interval_ms = 10
 
         ########################################################################
         # PID-specific settings
