@@ -14,6 +14,7 @@ import usb.core
 import usb.util
 
 from time import sleep
+from random import randint
 
 from . import common
 
@@ -145,8 +146,8 @@ class FeatureIdentificationDevice(object):
 
         self.device = device
 
-        self.usb_delay_ms = 1.0
         self.min_usb_interval_ms = 0
+        self.max_usb_interval_ms = 0
 
         ########################################################################
         # PID-specific settings
@@ -154,6 +155,7 @@ class FeatureIdentificationDevice(object):
 
         if self.pid == 0x4000:
             self.min_usb_interval_ms = 10
+            self.max_usb_interval_ms = 10
 
         # overridden by EEPROM
         if self.pid == 0x2000:
@@ -179,13 +181,14 @@ class FeatureIdentificationDevice(object):
     ############################################################################
 
     def wait_for_usb_available(self):
-        if self.min_usb_interval_ms > 0:
+        if self.max_usb_interval_ms > 0:
             if self.last_usb_timestamp is not None:
-                next_usb_timestamp = self.last_usb_timestamp + datetime.timedelta(milliseconds=self.min_usb_interval_ms)
+                delay_ms = randint(self.min_usb_interval_ms, self.max_usb_interval_ms)
+                next_usb_timestamp = self.last_usb_timestamp + datetime.timedelta(milliseconds=delay_ms)
                 if datetime.datetime.now() < next_usb_timestamp:
-                    log.debug("fid_hardware: sleeping to enforce %d ms USB interval", self.min_usb_interval_ms)
+                    log.debug("fid_hardware: sleeping to enforce %d ms USB interval", delay_ms)
                     while datetime.datetime.now() < next_usb_timestamp:
-                        sleep(self.usb_delay_ms / 1000.0)
+                        sleep(0.001) # 1ms
             self.last_usb_timestamp = datetime.datetime.now()
 
     def send_code(self, FID_bmRequest, FID_wValue=0, FID_wIndex=0, FID_data_or_wLength=""):
@@ -905,7 +908,9 @@ class FeatureIdentificationDevice(object):
 
         elif record.setting == "min_usb_interval_ms":
             self.min_usb_interval_ms = int(record.value)
-            self.usb_delay_ms = max(1, self.min_usb_interval_ms / 5.0)
+
+        elif record.setting == "max_usb_interval_ms":
+            self.max_usb_interval_ms = int(record.value)
 
         else:
             log.critical("Unknown setting to write: %s", record.setting)

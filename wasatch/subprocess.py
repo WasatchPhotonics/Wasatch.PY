@@ -271,18 +271,20 @@ class WasatchDeviceWrapper(object):
         while True:
             poison_pill = False
             queue_empty = False
-            while queue_empty == False:
-                try:
-                    record = command_queue.get_nowait()
+
+            # only keep the MOST RECENT of any given command (but retain order otherwise)
+            dedupped = self.dedupe(command_queue)
+
+            # apply dedupped commands
+            if dedupped:
+                for record in dedupped:
                     if record is None:
                         poison_pill = True
                     else:
                         log.debug("WasatchDeviceWrapper.continuous_poll: Processing command queue: %s", record.setting)
                         hardware.change_setting(record.setting, record.value)
-
-                except Queue.Empty as exc:
-                    log.debug("WasatchDeviceWrapper.continuous_poll: Queue empty, just wait")
-                    queue_empty = True
+            else:
+                log.debug("WasatchDeviceWrapper.continuous_poll: Queue empty, just wait")
 
             if poison_pill:
                 log.debug("WasatchDeviceWrapper.continuous_poll: Exit command queue")
@@ -310,6 +312,36 @@ class WasatchDeviceWrapper(object):
             time.sleep(self.poller_wait)
 
         log.info("WasatchDeviceWrapper.continuous_poll: done")
+
+    def dedupe(self, q):
+        keep = [] 
+        indices = {} 
+        while True:
+            try:
+                control_object = q.get_nowait()
+
+                # treat None elements (poison pills) same as everything else
+                if control_object is None:
+                    setting = None
+                    value = None
+                else:
+                    setting = control_object.setting
+                    value = control_object.value
+
+                # remove previous setting if duplicate
+                if setting in indices:
+                    index = indices[setting]
+                    del keep[index]
+                    del indices[setting]
+
+                # append the setting to the de-dupped list and track index
+                keep.append(control_object)
+                indices[setting] = len(keep) - 1
+
+            except Queue.Empty as exc:
+                break
+
+        return keep
 
     def build_hardware_details(self, hardware):
         """ Build a simple object that lists the second generation of

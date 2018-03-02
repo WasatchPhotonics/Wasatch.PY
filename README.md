@@ -298,6 +298,9 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2018-03-02 0.5.5
+    - added "max\_usb\_interval\_ms"
+    - de-dupe USB commands
 - 2018-02-15 0.5.4
     - added "min\_usb\_interval\_ms"
 - 2018-02-14 0.5.3
