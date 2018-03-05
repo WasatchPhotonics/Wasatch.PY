@@ -37,6 +37,7 @@ class ListDevices(object):
         list_devices = []
         for bus in usb.busses():
             for device in bus.devices:
+                # pickle error: log.debug("fid.ListDevices.get_all: bus %s, device %s", bus, device)
                 single = self.device_match(device, vid)
                 if single is not None:
                     list_devices.append(single)
@@ -168,13 +169,28 @@ class FeatureIdentificationDevice(object):
         return True
 
     def disconnect(self):
-        log.critical("Try release interface")
+        log.critical("fid_hardware.disconnect: releasing interface")
         try:
             result = usb.util.release_interface(self.device, 0)
         except Exception as exc:
             log.warn("Failure in release interface", exc_info=1)
             raise
         return True
+
+    def schedule_disconnect(self):
+        # Not doing this right now, because it's not clear that all 
+        #
+        #   "USBError: [Errno None] libusb0-dll:err [control_msg] sending 
+        #    control message failed, win error: A device attached to the system 
+        #    is not functioning." 
+        #
+        # actually indicate unrecoverable errors.  The UV-VIS currently 
+        # generates that when trying to enable the TEC, even though the TEC
+        # seems to work.
+
+        # log.critical("Due to hardware error, attempting reconnection")
+        # self.disconnect()
+        pass
 
     ############################################################################
     # Utility Methods
@@ -210,6 +226,7 @@ class FeatureIdentificationDevice(object):
                                                FID_data_or_wLength)
         except Exception as exc:
             log.critical("Hardware Failure FID Send Code Problem with ctrl transfer", exc_info=1)
+            self.schedule_disconnect()
 
         log.debug("Send Raw result: [%s]", result)
         log.debug("send_code: request 0x%02x value 0x%04x index 0x%04x data/len %s: result %s", 
@@ -230,8 +247,8 @@ class FeatureIdentificationDevice(object):
                                                FID_wIndex,
                                                FID_wLength)
         except Exception as exc:
-            log.critical("Hardware Failure Get Code Problem with ctrl transfer", exc_info=1)
-            raise
+            log.critical("Hardware Failure FID Get Code Problem with ctrl transfer", exc_info=1)
+            self.schedule_disconnect()
 
         log.debug("get_code: request 0x%02x value 0x%04x index 0x%04x = [%s]", 
             FID_bmRequest, FID_wValue, FID_wIndex, result)

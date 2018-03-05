@@ -543,10 +543,10 @@ class WasatchDevice(object):
         self.bad_pixels          = self.hardware.bad_pixels
 
     def disconnect(self):
-        """ Attempt low level disconnection from the device. """
-        log.info("in device disconnect")
+        log.info("devices.disconnect: calling hardware disconnect")
         try:
             self.hardware.disconnect()
+            # MZ: should this not update the bus, which is checked by control.connect_new?
         except Exception as exc:
             log.critical("Issue disconnecting hardware", exc_info=1)
 
