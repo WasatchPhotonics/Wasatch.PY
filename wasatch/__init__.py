@@ -1,5 +1,5 @@
 # Wasatch.PY version number
-version = "0.5.5"
+version = "0.5.6"
 
 __all__ = [ 
     "devices", 

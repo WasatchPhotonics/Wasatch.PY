@@ -308,8 +308,8 @@ class WasatchDevice(object):
         self.fpga_rev               = "pre-init"
         self.ccd_gain               = "pre-init"
         self.model                  = 785
-        self.calibrated_by          = "NA"
-        self.calibration_date       = "NA"
+        self.calibration_by         = None
+        self.calibration_date       = None
         self.slit_size              = 10
         self.excitation             = 785
         self.wavelength_coeff_0     = 1 # 7.48485E+02   # 1
@@ -517,30 +517,42 @@ class WasatchDevice(object):
         log.debug("Device Summary:\n%s" % self.summary)
 
     def load_eeprom_settings(self):
-        self.wavelength_coeff_0  = self.hardware.wavelength_coeff_0
-        self.wavelength_coeff_1  = self.hardware.wavelength_coeff_1
-        self.wavelength_coeff_2  = self.hardware.wavelength_coeff_2
-        self.wavelength_coeff_3  = self.hardware.wavelength_coeff_3
-        self.calibration_date    = self.hardware.calibration_date
-        self.calibrated_by       = self.hardware.calibrated_by
-        self.excitation          = self.hardware.excitation
-        self.slit_size           = self.hardware.slit_size
+        self.model               = self.hardware.model              
+        self.serial_number       = self.hardware.serial_number      
+        self.baud_rate           = self.hardware.baud_rate          
+        self.has_cooling         = self.hardware.has_cooling        
+        self.has_battery         = self.hardware.has_battery        
+        self.has_laser           = self.hardware.has_laser          
+        self.excitation          = self.hardware.excitation         
+        self.slit_size           = self.hardware.slit_size          
+                                                           
+        self.wavelength_coeff_0  = self.hardware.wavelength_coeff_0 
+        self.wavelength_coeff_1  = self.hardware.wavelength_coeff_1 
+        self.wavelength_coeff_2  = self.hardware.wavelength_coeff_2 
+        self.wavelength_coeff_3  = self.hardware.wavelength_coeff_3 
         self.degC_to_dac_coeff_0 = self.hardware.degC_to_dac_coeff_0
         self.degC_to_dac_coeff_1 = self.hardware.degC_to_dac_coeff_1
         self.degC_to_dac_coeff_2 = self.hardware.degC_to_dac_coeff_2
         self.adc_to_degC_coeff_0 = self.hardware.adc_to_degC_coeff_0
         self.adc_to_degC_coeff_1 = self.hardware.adc_to_degC_coeff_1
         self.adc_to_degC_coeff_2 = self.hardware.adc_to_degC_coeff_2
-        self.tmax                = self.hardware.tmax
-        self.tmin                = self.hardware.tmin
-        self.tec_r298            = self.hardware.tec_r298
-        self.tec_beta            = self.hardware.tec_beta
-        self.detector            = self.hardware.detector
-        self.pixels              = self.hardware.pixels
-        self.pixel_height        = self.hardware.pixel_height
-        self.min_integration     = self.hardware.min_integration
-        self.max_integration     = self.hardware.max_integration
+        self.tmax                = self.hardware.tmax               
+        self.tmin                = self.hardware.tmin               
+        self.tec_r298            = self.hardware.tec_r298           
+        self.tec_beta            = self.hardware.tec_beta           
+        self.calibration_date    = self.hardware.calibration_date   
+        self.calibration_by      = self.hardware.calibration_by     
+                                                           
+        self.detector            = self.hardware.detector           
+        self.pixels              = self.hardware.pixels             
+        self.pixel_height        = self.hardware.pixel_height       
+        self.min_integration     = self.hardware.min_integration    
+        self.max_integration     = self.hardware.max_integration    
+
         self.bad_pixels          = self.hardware.bad_pixels
+
+        # not really EEPROM, but go ahead
+        self.fpga_options        = self.hardware.fpga_options
 
     def disconnect(self):
         log.info("devices.disconnect: calling hardware disconnect")
@@ -670,27 +682,29 @@ class WasatchDevice(object):
         # pass this upstream for GUI display
         reading.sum_count = self.sum_count
 
-        # read detector temp
-        try:
-            reading.detector_temperature_raw  = self.hardware.get_detector_temperature_raw()
-            reading.detector_temperature_degC = self.hardware.get_detector_temperature_degC(reading.detector_temperature_raw)
-        except Exception as exc:
-            if not self.tolerant:
-                log.critical("Error reading detector temperature", exc_info=1)
-                reading.failure = exc
-            else:
-                log.debug("Error reading detector temperature", exc_info=1)
+        # read detector temperature if applicable (should we do this for Ambient as well?)
+        if True or self.hardware.has_cooling:
+            try:
+                reading.detector_temperature_raw  = self.hardware.get_detector_temperature_raw()
+                reading.detector_temperature_degC = self.hardware.get_detector_temperature_degC(reading.detector_temperature_raw)
+            except Exception as exc:
+                if not self.tolerant:
+                    log.critical("Error reading detector temperature", exc_info=1)
+                    reading.failure = exc
+                else:
+                    log.debug("Error reading detector temperature", exc_info=1)
 
-        # MZ: bug: only read laser temperature if we have a laser...
-        try:
-            reading.laser_temperature_raw  = self.hardware.get_laser_temperature_raw()
-            reading.laser_temperature_degC = self.hardware.get_laser_temperature_degC(reading.laser_temperature_raw)
-        except Exception as exc:
-            if not self.tolerant:
-                log.critical("Error reading laser temperature", exc_info=1)
-                reading.failure = exc
-            else:
-                log.debug("Error reading laser temperature", exc_info=1)
+        # only read laser temperature if we have a laser
+        if self.hardware.has_laser:
+            try:
+                reading.laser_temperature_raw  = self.hardware.get_laser_temperature_raw()
+                reading.laser_temperature_degC = self.hardware.get_laser_temperature_degC(reading.laser_temperature_raw)
+            except Exception as exc:
+                if not self.tolerant:
+                    log.critical("Error reading laser temperature", exc_info=1)
+                    reading.failure = exc
+                else:
+                    log.debug("Error reading laser temperature", exc_info=1)
 
         # have we completed the averaged reading?
         if averaging_enabled:

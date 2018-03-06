@@ -40,6 +40,7 @@ class HardwareDetails(object):
         (or defaults). Must be defined at the top level in a module in
         order to be pickleable (support serialization). """
 
+    # not sure why this isn't just a dict
     name = "hwdetails"
 
 class WasatchDeviceWrapper(object):
@@ -347,36 +348,57 @@ class WasatchDeviceWrapper(object):
         """ Build a simple object that lists the second generation of
             hardware details as pulled from the device object (which is in
             turn pulled from EEPROM where available). """
+
         hw_details = HardwareDetails()
 
+        # summary
         hw_details.summary               = hardware.summary
+
+        # EEPROM
         hw_details.model                 = hardware.model
         hw_details.serial_number         = hardware.serial_number
-        hw_details.detector              = hardware.detector
-        hw_details.degC_to_dac_coeff_0   = hardware.degC_to_dac_coeff_0
-        hw_details.degC_to_dac_coeff_1   = hardware.degC_to_dac_coeff_1
-        hw_details.degC_to_dac_coeff_2   = hardware.degC_to_dac_coeff_2
-        hw_details.detector_tec_setpoint_degC = hardware.detector_tec_setpoint_degC
-        hw_details.adc_to_degC_coeff_0   = hardware.adc_to_degC_coeff_0
-        hw_details.adc_to_degC_coeff_1   = hardware.adc_to_degC_coeff_1
-        hw_details.adc_to_degC_coeff_2   = hardware.adc_to_degC_coeff_2
-        hw_details.tec_r298              = hardware.tec_r298
-        hw_details.tec_beta              = hardware.tec_beta
-        hw_details.tmax                  = hardware.tmax
-        hw_details.tmin                  = hardware.tmin
+        hw_details.baud_rate             = hardware.baud_rate
+        hw_details.has_cooling           = hardware.has_cooling
+        hw_details.has_battery           = hardware.has_battery
+        hw_details.has_laser             = hardware.has_laser
         hw_details.excitation            = hardware.excitation
         hw_details.slit_size             = hardware.slit_size
-        hw_details.bad_pixels            = hardware.bad_pixels
+
         hw_details.wavelength_coeff_0    = hardware.wavelength_coeff_0
         hw_details.wavelength_coeff_1    = hardware.wavelength_coeff_1
         hw_details.wavelength_coeff_2    = hardware.wavelength_coeff_2
         hw_details.wavelength_coeff_3    = hardware.wavelength_coeff_3
-        hw_details.integration           = hardware.integration
-        hw_details.wavelengths           = hardware.wavelengths
-        hw_details.wavenumbers           = hardware.wavenumbers
+        hw_details.degC_to_dac_coeff_0   = hardware.degC_to_dac_coeff_0
+        hw_details.degC_to_dac_coeff_1   = hardware.degC_to_dac_coeff_1
+        hw_details.degC_to_dac_coeff_2   = hardware.degC_to_dac_coeff_2
+        hw_details.adc_to_degC_coeff_0   = hardware.adc_to_degC_coeff_0
+        hw_details.adc_to_degC_coeff_1   = hardware.adc_to_degC_coeff_1
+        hw_details.adc_to_degC_coeff_2   = hardware.adc_to_degC_coeff_2
+        hw_details.tmax                  = hardware.tmax
+        hw_details.tmin                  = hardware.tmin
+        hw_details.tec_r298              = hardware.tec_r298
+        hw_details.tec_beta              = hardware.tec_beta
+        hw_details.calibration_date      = hardware.calibration_date
+        hw_details.calibration_by        = hardware.calibration_by
+
+        hw_details.detector              = hardware.detector
+        hw_details.pixels                = hardware.pixels
+        hw_details.pixel_height          = hardware.pixel_height
         hw_details.min_integration_ms    = hardware.min_integration
         hw_details.max_integration_ms    = hardware.max_integration
 
+        hw_details.bad_pixels            = hardware.bad_pixels
+
+        # FPGA
+        hw_details.fpga_options          = hardware.fpga_options
+
+        # derived
+        hw_details.wavelengths           = hardware.wavelengths
+        hw_details.wavenumbers           = hardware.wavenumbers
+
+        # state
+        hw_details.integration                    = hardware.integration
+        hw_details.detector_tec_setpoint_degC     = hardware.detector_tec_setpoint_degC
         hw_details.laser_temperature_setpoint_raw = hardware.hardware.get_laser_temperature_setpoint_raw()
 
         return hw_details

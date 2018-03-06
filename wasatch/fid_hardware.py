@@ -18,6 +18,8 @@ from random import randint
 
 from . import common
 
+from FPGAOptions import FPGAOptions
+
 log = logging.getLogger(__name__)
 
 USB_TIMEOUT=60000
@@ -112,6 +114,16 @@ class FeatureIdentificationDevice(object):
         self.bad_pixel_mode = common.bad_pixel_mode_average
 
         self.eeprom_pages = {}
+        self.fpga_options = None
+
+        self.model               = None
+        self.serial_number       = None
+        self.baud_rate           = 0
+        self.has_cooling         = False
+        self.has_battery         = False
+        self.has_laser           = False
+        self.excitation          = 0
+        self.slit_size           = 0
 
     def connect(self):
         """ Attempt to connect to the specified device. Log any failures and
@@ -165,6 +177,8 @@ class FeatureIdentificationDevice(object):
             self.pixels = 1024
 
         self.read_eeprom()
+
+        self.read_fpga_compilation_options()
 
         return True
 
@@ -267,19 +281,22 @@ class FeatureIdentificationDevice(object):
         length     = address[2]
         end_byte   = start_byte + length
 
-        # MZ: if we write to the EEPROM, flush eeprom_pages
+        # MZ: if we ever write to the EEPROM, remember to flush eeprom_pages
         if not page in self.eeprom_pages:
             log.info("reading EEPROM page %d", page)
             self.eeprom_pages[page] = self.get_upper_code(0x01, FID_wIndex=page)
-        result = self.eeprom_pages[page]
+
+        buf = self.eeprom_pages[page]
 
         if data_type == "s":
             unpack_result = ""
-            for letter in result[start_byte:end_byte]:
-                if letter != 0:
-                    unpack_result += chr(letter)
+            for c in buf[start_byte:end_byte]:
+                if c == 0:
+                    break
+                unpack_result += chr(c)
         else:
-            unpack_result = struct.unpack(data_type, result[start_byte:end_byte])[0]
+            # see https://docs.python.org/2/library/struct.html#format-characters
+            unpack_result = struct.unpack(data_type, buf[start_byte:end_byte])[0]
 
         log.debug("Unpacked [%s]: %s", data_type, unpack_result)
 
@@ -291,14 +308,19 @@ class FeatureIdentificationDevice(object):
 
     def read_eeprom(self):
         # NJH 2017-04-11 13:53 Some ARM units may use doubles instead of floats
+        self.model               = self.get_eeprom_unpack((0,  0, 16), "s")
+        self.serial_number       = self.get_eeprom_unpack((0, 16, 16), "s")
+        self.baud_rate           = self.get_eeprom_unpack((0, 32,  4), "i")
+        self.has_cooling         = self.get_eeprom_unpack((0, 36,  1), "?")
+        self.has_battery         = self.get_eeprom_unpack((0, 37,  1), "?")
+        self.has_laser           = self.get_eeprom_unpack((0, 38,  1), "?")
+        self.excitation          = self.get_eeprom_unpack((0, 39,  2), "h")
+        self.slit_size           = self.get_eeprom_unpack((0, 41,  2), "h")
+
         self.wavelength_coeff_0  = self.get_eeprom_unpack((1,  0,  4), "f")
         self.wavelength_coeff_1  = self.get_eeprom_unpack((1,  4,  4), "f")
         self.wavelength_coeff_2  = self.get_eeprom_unpack((1,  8,  4), "f")
         self.wavelength_coeff_3  = self.get_eeprom_unpack((1, 12,  4), "f")
-        self.calibration_date    = self.get_eeprom_unpack((1, 48, 12), "s")
-        self.calibrated_by       = self.get_eeprom_unpack((1, 60,  3), "s")
-        self.excitation          = self.get_eeprom_unpack((0, 39,  2), "h")
-        self.slit_size           = self.get_eeprom_unpack((0, 41,  2), "h")
         self.degC_to_dac_coeff_0 = self.get_eeprom_unpack((1, 16,  4), "f")
         self.degC_to_dac_coeff_1 = self.get_eeprom_unpack((1, 20,  4), "f")
         self.degC_to_dac_coeff_2 = self.get_eeprom_unpack((1, 24,  4), "f")
@@ -309,22 +331,33 @@ class FeatureIdentificationDevice(object):
         self.tmin                = self.get_eeprom_unpack((1, 30,  2), "h")
         self.tec_r298            = self.get_eeprom_unpack((1, 44,  2), "h")
         self.tec_beta            = self.get_eeprom_unpack((1, 46,  2), "h")
+        self.calibration_date    = self.get_eeprom_unpack((1, 48, 12), "s")
+        self.calibration_by      = self.get_eeprom_unpack((1, 60,  3), "s")
+
         self.detector            = self.get_eeprom_unpack((2,  0, 16), "s")
         self.pixels              = self.get_eeprom_unpack((2, 16,  2), "h")
         self.pixel_height        = self.get_eeprom_unpack((2, 19,  2), "h") # MZ: skipped 18
         self.min_integration     = self.get_eeprom_unpack((2, 21,  2), "H")
         self.max_integration     = self.get_eeprom_unpack((2, 23,  2), "H") # MZ: these were signed before
+
+        # TODO: ROI, linearity coeffs (not used)
+
         self.bad_pixels          = self.populate_bad_pixels()
 
         log.info("EEPROM settings:")
+        log.info("  Model:            %s", self.model)
+        log.info("  Serial Number:    %s", self.serial_number)
+        log.info("  Baud Rate:        %d", self.baud_rate)
+        log.info("  Has Cooling:      %s", self.has_cooling)
+        log.info("  Has Battery:      %s", self.has_battery)
+        log.info("  Has Laser:        %s", self.has_laser)
+        log.info("  Excitation (nm):  %s", self.excitation)
+        log.info("  Slit size (um):   %s", self.slit_size)
+        log.info("")
         log.info("  Wavecal coeff0:   %s", self.wavelength_coeff_0)
         log.info("  Wavecal coeff1:   %s", self.wavelength_coeff_1)
         log.info("  Wavecal coeff2:   %s", self.wavelength_coeff_2)
         log.info("  Wavecal coeff3:   %s", self.wavelength_coeff_3)
-        log.info("  Calibration date: %s", self.calibration_date)
-        log.info("  Calibrated by:    %s", self.calibrated_by)
-        log.info("  Excitation (nm):  %s", self.excitation)
-        log.info("  Slit size (um):   %s", self.slit_size)
         log.info("  degCToDAC coeff0: %s", self.degC_to_dac_coeff_0)
         log.info("  degCToDAC coeff1: %s", self.degC_to_dac_coeff_1)
         log.info("  degCToDAC coeff2: %s", self.degC_to_dac_coeff_2)
@@ -335,12 +368,26 @@ class FeatureIdentificationDevice(object):
         log.info("  Det temp max:     %s", self.tmax)
         log.info("  TEC R298:         %s", self.tec_r298)
         log.info("  TEC beta:         %s", self.tec_beta)
+        log.info("  Calibration Date: %s", self.calibration_date)
+        log.info("  Calibration By:   %s", self.calibration_by)
+        log.info("")
         log.info("  Detector name:    %s", self.detector)
         log.info("  Pixels:           %d", self.pixels)
         log.info("  Pixel height:     %d", self.pixel_height)
         log.info("  Min integration:  %d", self.min_integration)
         log.info("  Max integration:  %d", self.max_integration)
+        log.info("")
         log.info("  Bad Pixels:       %s", self.bad_pixels)
+
+    def read_fpga_compilation_options(self):
+        log.debug("reading FPGA compilation options")
+        buf = self.get_upper_code(0x04)
+        if buf is None or len(buf) < 2:
+            log.error("fpga_opts: can't parse response: %s", buf)
+            return
+
+        word = buf[0] | (buf[1] << 8)
+        self.fpga_options = FPGAOptions(word)
 
     def populate_bad_pixels(self):
         """ Read list from EEPROM, de-dupe and sort """
@@ -358,53 +405,10 @@ class FeatureIdentificationDevice(object):
     ############################################################################
 
     def get_model_number(self):
-        result = self.get_upper_code(0x01)
-        model_number = ""
-        for letter in result[0:15]:
-            if letter != 0:
-                model_number += chr(letter)
-
-        return model_number
-
-    # MZ: I don't think this method is ever called, and I'm not sure it would 
-    #     work if it was called (min/max not part of tec_cal)
-    # def set_calibration(self, wvl_cal, tec_cal, las_cal):
-    #     """ Write the expected precision value for the given coefficients to the 
-    #         device eeprom. The entire page must be written at once, so make sure 
-    #         all of the values are populated. """
-    #
-    #        # MZ: not sure how to read 4d8f here; all 12 values are floats
-    #        packed = struct.pack("4d8f",
-    #                             float(wvl_cal[0]),
-    #                             float(wvl_cal[1]), 
-    #                             float(wvl_cal[2]), 
-    #                             float(wvl_cal[3]),
-    #                             float(tec_cal[0]), 
-    #                             float(tec_cal[1]),
-    #                             float(tec_cal[2]),
-    #                             float(tec_cal[3]), # max MZ: what?
-    #                             float(tec_cal[4]), # min MZ: what?
-    #                             float(las_cal[0]), 
-    #                             float(las_cal[1]),
-    #                             float(0))          # placeholder
-    #
-    #        log.debug("packed: %s" % packed)
-    #
-    #        self.send_code(FID_bmRequest=0xFF,
-    #                       FID_wValue=0x02, # Set eeprom code
-    #                       FID_wIndex=0x01, # second page
-    #                       FID_data_or_wLength=packed)
+        return self.model
 
     def get_serial_number(self):
-        """ Return the serial number portion of the model description. """
-        FID_bmRequest = 0xFF  # upper area, content is wValue
-        result = self.get_upper_code(0x01)
-        serial_number = ""
-        for letter in result[16:31]:
-            serial_number += chr(letter)
-
-        serial_number = serial_number.replace("\x00", "")
-        return serial_number
+        return self.serial_number
 
     def get_integration_time(self):
         """ Read the integration time stored on the device. """
@@ -704,6 +708,12 @@ class FeatureIdentificationDevice(object):
         result = self.send_code(0xbe, value)
         return result
 
+    def reset_fpga(self):
+        log.debug("fid_hardware: resetting FPGA")
+        self.send_code(0xb5)
+        log.debug("fid_hardware: sleeping 3sec")
+        sleep(3)
+
     def get_laser_temperature_setpoint_raw(self):
         result = self.get_code(0xe8)
         return result[0]
@@ -928,6 +938,9 @@ class FeatureIdentificationDevice(object):
 
         elif record.setting == "max_usb_interval_ms":
             self.max_usb_interval_ms = int(record.value)
+
+        elif record.setting == "reset_fpga":
+            self.reset_fpga()
 
         else:
             log.critical("Unknown setting to write: %s", record.setting)

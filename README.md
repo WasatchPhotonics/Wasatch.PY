@@ -298,6 +298,11 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2018-03-06 0.5.6
+    - added FPGAOptions
+    - supported more EEPROM options
+    - added fpga\_reset()
+    - don't read laser temp unless has\_laser
 - 2018-03-02 0.5.5
     - added "max\_usb\_interval\_ms"
     - de-dupe USB commands

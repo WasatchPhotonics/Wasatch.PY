@@ -108,6 +108,18 @@ class StrokerProtocolDevice(object):
         self.scans_to_average = 1
         self.bad_pixel_mode = common.bad_pixel_mode_average
 
+        # did Stroker Protocol spectrometers support this?
+        self.fpga_options = None
+
+        self.model               = None
+        self.serial_number       = None
+        self.baud_rate           = 0
+        self.has_cooling         = False
+        self.has_battery         = False
+        self.has_laser           = False
+        self.excitation          = 0
+        self.slit_size           = 0
+
     def connect(self):
         """ Attempt to connect to the specified device. Log any failures and
             return False if there is a problem, otherwise return True. """
@@ -193,26 +205,26 @@ class StrokerProtocolDevice(object):
         return result
 
     def get_model_number(self):
-        # MZ: make this better
         return "Stroker Protocol Device"
 
     def get_serial_number(self):
         """ Return the serial number portion of the USB descriptor. """
-        serial = "Unavailable"
+        if self.serial_number is not None:
+            return self.serial_number
 
         # Older units support the 256 langid. Newer units require none.
         try:
-            serial = usb.util.get_string(self.device, self.device.iSerialNumber, 256)
+            self.serial_number = usb.util.get_string(self.device, self.device.iSerialNumber, 256)
         except Exception as exc:
             log.info("Read new langid 256 serial: %s", exc)
 
         try:
-            serial = usb.util.get_string(self.device, self.device.iSerialNumber)
+            self.serial_number = usb.util.get_string(self.device, self.device.iSerialNumber)
         except Exception as exc:
             log.critical("Failure to read langid none serial: %s", exc)
             raise
 
-        return serial
+        return self.serial_number
 
     def get_integration_time(self):
         """ Read the integration time stored on the device. """
