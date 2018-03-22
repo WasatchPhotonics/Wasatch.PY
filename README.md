@@ -298,6 +298,9 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2018-03-22 0.6.0
+    - starting multi-spectrometer support
+    - tagging before attempting switch to MonoLibUsb
 - 2018-03-06 0.5.6
     - added FPGAOptions
     - supported more EEPROM options

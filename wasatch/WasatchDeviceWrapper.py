@@ -31,17 +31,15 @@ import common
 import logging
 import multiprocessing
 
-from . import applog, devices, utils
+from . import applog
+from . import utils
+
+from HardwareDetails import HardwareDetails
+from ControlObject   import ControlObject
+from WasatchDevice   import WasatchDevice
+from Reading         import Reading
 
 log = logging.getLogger(__name__)
-
-class HardwareDetails(object):
-    """ Simple data structure to host the details read from the EEPROM
-        (or defaults). Must be defined at the top level in a module in
-        order to be pickleable (support serialization). """
-
-    # not sure why this isn't just a dict
-    name = "hwdetails"
 
 class WasatchDeviceWrapper(object):
 
@@ -208,7 +206,7 @@ class WasatchDeviceWrapper(object):
     def change_setting(self, setting, value):
         """ Add the specified setting and value to the local control queue. """
         log.debug("WasatchDeviceWrapper.change_setting: %s => %s", setting, value)
-        control_object = devices.ControlObject(setting, value)
+        control_object = ControlObject(setting, value)
         try:
             self.command_queue.put(control_object)
         except Exception as exc:
@@ -251,7 +249,7 @@ class WasatchDeviceWrapper(object):
         applog.process_log_configure(log_queue, self.log_level)
         log.info("WasatchDeviceWrapper.continuous_poll: start (uid %s, bus_order %d)", uid, bus_order)
 
-        hardware = devices.WasatchDevice(uid, bus_order)
+        hardware = WasatchDevice(uid, bus_order)
         ok = hardware.connect()
         if not ok:
             log.critical("WasatchDeviceWrapper.continuous_poll: Cannot connect")
@@ -298,7 +296,7 @@ class WasatchDeviceWrapper(object):
                 log.critical("WasatchDeviceWrapper.continuous_poll: ValueError", exc_info=1)
             except Exception as exc:
                 log.critical("WasatchDeviceWrapper.continuous_poll: Exception", exc_info=1)
-                reading = devices.Reading()
+                reading = Reading()
                 reading.failure = str(exc)
 
             log.debug("WasatchDeviceWrapper.continuous_poll: Spectrum is: %s", reading.spectrum[0:5])

@@ -1,9 +1,10 @@
 # Wasatch.PY version number
-version = "0.5.6"
+version = "0.6.0"
 
 __all__ = [ 
-    "devices", 
-    "subprocess",
+    "WasatchBus", 
+    "WasatchDevice", 
+    "WasatchDeviceWrapper",
     "common", 
     "applog", 
     "utils", 

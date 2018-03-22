@@ -10,10 +10,11 @@ import argparse
 import multiprocessing
 
 import wasatch
-from wasatch import applog
-from wasatch import devices
-from wasatch import subprocess
 from wasatch import utils
+from wasatch import applog
+from wasatch.WasatchBus           import WasatchBus
+from wasatch.WasatchDevice        import WasatchDevice
+from wasatch.WasatchDeviceWrapper import WasatchDeviceWrapper
 
 log = logging.getLogger(__name__)
 
@@ -82,26 +83,26 @@ class WasatchDemo(object):
         # lazy-load a USB bus
         if self.bus is None:
             log.debug("instantiating WasatchBus")
-            self.bus = devices.WasatchBus(use_sim = False)
+            self.bus = WasatchBus(use_sim = False)
 
-        if self.bus.device_1 == "disconnected":
+        if not self.bus.devices:
             print("No Wasatch USB spectrometers found.")
             return 
 
         log.debug("connect: trying to connect to new device on bus 1")
-        uid = self.bus.device_1
+        uid = self.bus.devices[0]
 
         if self.args.non_blocking:
             # this is still buggy on MacOS
             log.debug("instantiating WasatchDeviceWrapper (non-blocking)")
-            device = subprocess.WasatchDeviceWrapper(
+            device = WasatchDeviceWrapper(
                 uid=uid,
                 bus_order=self.args.bus_order,
                 log_queue=self.logger.log_queue,
                 log_level=self.args.log_level)
         else:
             log.debug("instantiating WasatchDevice (blocking)")
-            device = devices.WasatchDevice(uid, bus_order=self.args.bus_order)
+            device = WasatchDevice(uid, bus_order=self.args.bus_order)
 
         ok = device.connect()
         if not ok:

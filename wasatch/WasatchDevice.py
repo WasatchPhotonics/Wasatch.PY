@@ -8,272 +8,21 @@ import time
 import numpy
 import Queue
 import logging
-import datetime
 import multiprocessing
 
 from ConfigParser import ConfigParser
-from usb import USBError
 
 from . import simulation_protocol
-from . import fid_hardware
-from . import sp_hardware
 from . import common
 from . import utils
 
+from FeatureIdentificationDevice import FeatureIdentificationDevice
+from StrokerProtocolDevice       import StrokerProtocolDevice
+from ControlObject               import ControlObject
+from WasatchBus                  import WasatchBus
+from Reading                     import Reading
+
 log = logging.getLogger(__name__)
-
-################################################################################
-#                                                                              #
-#                                 ControlObject                                #
-#                                                                              #
-################################################################################
-
-class ControlObject(object):
-    """ A simple abstraction containing a setting to control and the value to set. """
-    def __init__(self, setting=None, value=None):
-        super(ControlObject, self).__init__()
-        log.debug("%s ctor(%s, %s)", self.__class__.__name__, setting, value)
-        self.setting = setting
-        self.value = value
-
-################################################################################
-#                                                                              #
-#                                    Reading                                   #
-#                                                                              #
-################################################################################
-
-class Reading(object):
-    """ A single set of data read from a device. This includes spectrum,
-        temperature, gain, offset, etc. Essentially a snapshot of the device
-        state in time. """
-
-    def __init__(self):
-        super(Reading, self).__init__()
-        log.debug("%s setup", self.__class__.__name__)
-
-        self.timestamp = datetime.datetime.now()
-
-        # MZ: hardcode
-        self.spectrum                  = [0] * 1024
-        self.laser_temperature_raw     = 0
-        self.laser_temperature_degC    = 0
-        self.detector_temperature_raw  = 0
-        self.detector_temperature_degC = 0
-        self.laser_status              = None
-        self.failure                   = None
-        self.averaged                  = False
-
-################################################################################
-#                                                                              #
-#                                 WasatchBus                                   #
-#                                                                              #
-################################################################################
-
-class WasatchBus(object):
-    """ Use Simulation and real hardware bus to populate a device list. """
-
-    def __init__(self, use_sim=True):
-        super(WasatchBus, self).__init__()
-        log.debug("%s setup", self.__class__.__name__)
-        self.use_sim = use_sim
-
-        # MZ: hardcoded to 3 devices?
-        self.device_1 = None
-        self.device_2 = None
-        self.device_3 = None
-
-        if use_sim:
-            self.simulation_bus = SimulationBus()
-
-        self.hardware_bus = HardwareBus()
-
-        self.update_bus()
-
-    def update_bus(self):
-        """ Return a list of actual devices found on system libusb bus. """
-        if self.use_sim:
-            self.simulation_bus.update_bus()
-        self.hardware_bus.update_bus()
-
-        # Set to hardware bus list by default
-        self.device_1 = self.hardware_bus.device_1
-        self.device_2 = self.hardware_bus.device_2
-        self.device_3 = self.hardware_bus.device_3
-
-        # If the simulation devices are not in disconnected state,
-        # overwrite the existing hardware device list
-        if self.use_sim and self.simulation_bus.device_1 != "disconnected":
-            log.debug("overwriting device_1 (%s) with first simulation device",
-                self.device_1)
-            self.device_1 = self.simulation_bus.device_1
-
-    def list_status(self):
-        log.debug("Bus list: %s, %s, %s",
-            self.device_1,
-            self.device_2,
-            self.device_3)
-
-################################################################################
-#                                                                              #
-#                                 HardwareBus                                  #
-#                                                                              #
-################################################################################
-
-class HardwareBus(object):
-    """ Use libusb to list available devices on the system wide libusb bus. """
-
-    def __init__(self):
-        super(HardwareBus, self).__init__()
-        log.debug("%s setup", self.__class__.__name__)
-
-        self.backend_error = 0
-
-        self.device_1 = "disconnected"
-        self.device_2 = "disconnected"
-        self.device_3 = "disconnected"
-
-        self.update_bus()
-
-    def update_bus(self):
-        """ Return a list of actual devices found on system lib usb bus. """
-        log.debug("Update hardware bus")
-
-        conn = []
-        try:
-            sp_bus = sp_hardware.ListDevices()
-            fid_bus = fid_hardware.ListDevices()
-
-            list_sp = sp_bus.get_all()
-            list_fid = fid_bus.get_all()
-            log.debug("SP BUS: %s FID BUS: %s", list_sp, list_fid)
-
-            self.populate_devices(list_sp, list_fid)
-
-        except USBError as exc:
-            self.backend_error += 1
-            if self.backend_error == 1:
-                log.warn("No libusb backend", exc_info=1)
-                # MZ: this seems to happen when I run from Git Bash shell
-                #     (resolved on MacOS with 'brew install libusb')
-
-        except Exception as exc:
-            log.critical("LIBUSB error: %s", exc)
-
-    def populate_devices(self, list_sp, list_fid):
-        """ With the given list of devices, assign the first three to the local
-            variables. """
-
-        self.device_1 = "disconnected"
-        self.device_2 = "disconnected"
-        self.device_3 = "disconnected"
-
-        # MZ: current priortization is SIM > SP > FID...backwards IMHO
-        # MZ: and we only assign to device_1 :-(
-
-        for item in list_sp:
-            log.debug("Assign SP %s", item)
-            self.device_1 = "%s:%s" % (item[0], item[1])
-
-        for item in list_fid:
-            self.device_1 = "%s:%s" % (item[0], item[1])
-            log.debug("Assign FID %s", self.device_1)
-
-################################################################################
-#                                                                              #
-#                                 SimulationBus                                #
-#                                                                              #
-################################################################################
-
-# MZ: consider how to make non-default
-class SimulationBus(object):
-    """ Provide an interface to the ini file controlled simulation bus.  This
-        indicates whether a simulated device is present on the simulated libusb
-        bus. """
-
-    def __init__(self, status=None):
-        super(SimulationBus, self).__init__()
-        log.debug("%s setup", self.__class__.__name__)
-
-        self.status = status
-        self.filename = "enlighten/assets/example_data/simulated_bus.ini"
-        self.device_1 = None
-        self.device_2 = None
-        self.device_3 = None
-
-        if self.status == "all_connected":
-            log.info("Set all devices connected")
-            self.set_all_connected()
-
-        elif self.status == "all_disconnected":
-            log.warn("Disconnect all devices")
-            self.set_all_disconnected()
-
-        self.update_bus()
-
-    def log_status(self):
-        """ Return a list of simulated devices, or actual devices found on system lib usb bus. """
-        log.debug("Start of list status: %s", self.bus_type)
-        self.update_bus()
-
-        # MZ: hardcode
-        conn = []
-        if self.device_1 != "disconnected":
-            conn = ["0x24aa", "0x1000"]
-
-        log.info("Simulation BUS: [] FID BUS: %s" % conn)
-        return
-
-    def update_bus(self):
-        """ Open the ini file, update the class attributes with the status of each device. """
-        if not os.path.isfile(self.filename):
-            log.error("SimulationBus.update_bus: %s not found", self.filename)
-            return
-
-        # Read from the file
-        config = ConfigParser()
-        config.read(self.filename)
-        log.debug("update_bus: loaded %s", self.filename)
-
-        # look at the returned dict
-        # MZ: consider if config.has_section("LIBUSB_BUS"):
-        self.device_1 = config.get('LIBUSB_BUS', 'device_001')
-        self.device_2 = config.get('LIBUSB_BUS', 'device_002')
-        self.device_3 = config.get('LIBUSB_BUS', 'device_003')
-
-        return True
-
-    def set_all_connected(self):
-        """ Open the ini file, and set all bus entries to connected. """
-        config = ConfigParser()
-        config.read(self.filename)
-
-        # MZ: hardcode
-        config.set("LIBUSB_BUS", "device_001", "0x24aa:0x0512")
-        config.set("LIBUSB_BUS", "device_002", "0x24aa:0x1024")
-        config.set("LIBUSB_BUS", "device_003", "0x24aa:0x2048")
-        with open(self.filename, "wb") as config_file:
-            config.write(config_file)
-
-        self.update_bus()
-
-    def set_all_disconnected(self):
-        """ Open the ini file, and set all bus entries to disconnected. """
-        config = ConfigParser()
-        config.read(self.filename)
-
-        config.set("LIBUSB_BUS", "device_001", "disconnected")
-        config.set("LIBUSB_BUS", "device_002", "disconnected")
-        config.set("LIBUSB_BUS", "device_003", "disconnected")
-        with open(self.filename, "wb") as config_file:
-            config.write(config_file)
-
-        self.update_bus()
-
-################################################################################
-#                                                                              #
-#                                WasatchDevice                                 #
-#                                                                              #
-################################################################################
 
 class WasatchDevice(object):
     """ Provide an interface to the actual libusb bus.  The summary object is
@@ -395,7 +144,7 @@ class WasatchDevice(object):
             bus_pid = self.uid[7:]
             log.info("Attempt connection to: %s", bus_pid)
 
-            dev = sp_hardware.StrokerProtocolDevice(pid=bus_pid)
+            dev = StrokerProtocolDevice(pid=bus_pid)
             result = dev.connect()
             if result != True:
                 log.critical("Low level failure in device connect")
@@ -406,8 +155,7 @@ class WasatchDevice(object):
             log.critical("Problem connecting to: %s", self.uid, exc_info=1)
             return False
 
-        log.info("Connected to %s", self.uid)
-
+        log.info("Connected to StrokerProtocolDevice %s", self.uid)
         return True
 
     def connect_feature_identification(self):
@@ -431,9 +179,9 @@ class WasatchDevice(object):
         dev = None
         try:
             bus_pid = self.uid[7:]
-            log.debug("Attempt connection to bus_pid %s (bus_order %d)", bus_pid, self.bus_order)
+            log.debug("connect_fid: Attempt connection to bus_pid %s (bus_order %d)", bus_pid, self.bus_order)
 
-            dev = fid_hardware.FeatureIdentificationDevice(pid=bus_pid, bus_order=self.bus_order)
+            dev = FeatureIdentificationDevice(pid=bus_pid, bus_order=self.bus_order)
             result = False
 
             try:
@@ -442,7 +190,7 @@ class WasatchDevice(object):
 
                 # MZ: what is this? we retry with bus_order 0, PID 0x2000?
                 log.critical("Connect level exception: %s", exc)
-                dev = fid_hardware.FeatureIdentificationDevice(pid="0x2000", bus_order=0)
+                dev = FeatureIdentificationDevice(pid="0x2000", bus_order=0)
                 try:
                     result = dev.connect()
                 except Exception as exc:
@@ -457,8 +205,7 @@ class WasatchDevice(object):
             log.critical("Problem connecting to: %s", self.uid, exc_info=1)
             return False
 
-        log.info("Connected to %s", self.uid)
-
+        log.info("Connected to FeatureIdentificationDevice %s", self.uid)
         return True
 
     def populate_summary(self):
@@ -555,7 +302,7 @@ class WasatchDevice(object):
         self.fpga_options        = self.hardware.fpga_options
 
     def disconnect(self):
-        log.info("devices.disconnect: calling hardware disconnect")
+        log.info("WasatchDevice.disconnect: calling hardware disconnect")
         try:
             self.hardware.disconnect()
             # MZ: should this not update the bus, which is checked by control.connect_new?

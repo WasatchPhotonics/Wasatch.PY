@@ -1,8 +1,7 @@
 """ Interface wrapper around libusb and cypress drivers to show devices 
     compliant with the Wasatch Feature Identification Device (FID) protocol.
 
-    TODO: 
-        - split into single-class files
+    TODO: inherit from SpectrometerDevice or similar 
 """
 
 import datetime
@@ -23,47 +22,6 @@ from FPGAOptions import FPGAOptions
 log = logging.getLogger(__name__)
 
 USB_TIMEOUT=60000
-
-################################################################################
-#                                                                              #
-#                                 ListDevices                                  #
-#                                                                              #
-################################################################################
-
-class ListDevices(object):
-    def __init__(self):
-        log.debug("init")
-
-    def get_all(self, vid=0x24aa):
-        """ Return the full list of devices that match the vendor id. """
-        list_devices = []
-        for bus in usb.busses():
-            for device in bus.devices:
-                # pickle error: log.debug("fid.ListDevices.get_all: bus %s, device %s", bus, device)
-                single = self.device_match(device, vid)
-                if single is not None:
-                    list_devices.append(single)
-        return list_devices
-
-    def device_match(self, device, vid):
-        """ Match vendor id and reject all non-feature identification devices. """
-        if device.idVendor != vid:
-            return None
-
-        if device.idProduct != 0x1000 and \
-           device.idProduct != 0x2000 and \
-           device.idProduct != 0x3000 and \
-           device.idProduct != 0x4000:
-               return None
-
-        single = (hex(device.idVendor), hex(device.idProduct))
-        return single
-
-################################################################################
-#                                                                              #
-#                           FeatureIdentificationDevice                        #
-#                                                                              #
-################################################################################
 
 class FeatureIdentificationDevice(object):
 
@@ -183,7 +141,7 @@ class FeatureIdentificationDevice(object):
         return True
 
     def disconnect(self):
-        log.critical("fid_hardware.disconnect: releasing interface")
+        log.critical("fid.disconnect: releasing interface")
         try:
             result = usb.util.release_interface(self.device, 0)
         except Exception as exc:
@@ -216,7 +174,7 @@ class FeatureIdentificationDevice(object):
                 delay_ms = randint(self.min_usb_interval_ms, self.max_usb_interval_ms)
                 next_usb_timestamp = self.last_usb_timestamp + datetime.timedelta(milliseconds=delay_ms)
                 if datetime.datetime.now() < next_usb_timestamp:
-                    log.debug("fid_hardware: sleeping to enforce %d ms USB interval", delay_ms)
+                    log.debug("fid: sleeping to enforce %d ms USB interval", delay_ms)
                     while datetime.datetime.now() < next_usb_timestamp:
                         sleep(0.001) # 1ms
             self.last_usb_timestamp = datetime.datetime.now()
@@ -414,7 +372,7 @@ class FeatureIdentificationDevice(object):
         """ Read the integration time stored on the device. """
         result = self.get_code(0xBF)
         curr_time = (result[2] * 0x10000) + (result[1] * 0x100) + result[0]
-        log.debug("fid_hardware.get_integration_time: read %d ms", curr_time)
+        log.debug("fid.get_integration_time: read %d ms", curr_time)
         return curr_time
 
     def set_ccd_offset(self, value):
@@ -709,9 +667,9 @@ class FeatureIdentificationDevice(object):
         return result
 
     def reset_fpga(self):
-        log.debug("fid_hardware: resetting FPGA")
+        log.debug("fid: resetting FPGA")
         self.send_code(0xb5)
-        log.debug("fid_hardware: sleeping 3sec")
+        log.debug("fid: sleeping 3sec")
         sleep(3)
 
     def get_laser_temperature_setpoint_raw(self):
@@ -767,7 +725,7 @@ class FeatureIdentificationDevice(object):
             correctly will cause a hardware failure and complete device lockup 
             requiring a power cycle.
 
-            fid_hardware:
+            fid:
                 CRITICAL Hardware Failure FID Send Code Problem with
                          ctrl transfer: [Errno None] 11
 
