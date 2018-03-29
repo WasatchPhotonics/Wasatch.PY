@@ -500,7 +500,11 @@ class FeatureIdentificationDevice(object):
             return
 
         log.debug("Send integration time: %s", int_time)
-        result = self.send_code(0xB2, int_time)
+
+        lsw = (int_time % 65536) & 0xffff
+        msw = (int_time / 65536) & 0xffff
+
+        result = self.send_code(0xB2, lsw, msw)
         return result
 
     ############################################################################

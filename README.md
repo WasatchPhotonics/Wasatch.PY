@@ -7,6 +7,11 @@ It has been tested on Windows, Linux and MacOS platforms, and is directly used b
 Wasatch's own [ENLIGHTEN&trade;](https://wasatchphotonics.com/product-category/software/)
 spectroscopy desktop GUI.
 
+If you'd like simpler, smaller examples of how to perform individual operations
+against Wasatch spectrometers from Python, please also see our 
+[Python Example Scripts](https://github.com/WasatchPhotonics/Python-USB-WP-Raman-Examples)
+repository.
+
 ## History 
 
 This project can be viewed as a conceptual successor to the earlier 
