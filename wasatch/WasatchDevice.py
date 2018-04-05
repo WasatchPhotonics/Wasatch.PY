@@ -59,6 +59,10 @@ class WasatchDevice(object):
         self.model                  = 785
         self.calibration_by         = None
         self.calibration_date       = None
+        self.baud_rate              = 0
+        self.has_cooling            = False
+        self.has_battery            = False
+        self.has_laser              = False
         self.slit_size              = 10
         self.excitation             = 785
         self.wavelength_coeff_0     = 1 # 7.48485E+02   # 1
@@ -78,6 +82,7 @@ class WasatchDevice(object):
         self.adc_to_degC_coeff_2    = -0.0580806
         self.detector               = "NA"
         self.pixels                 = 1024
+        self.pixel_height           = 1
         self.max_integration        = 10000
         self.min_integration        = 1     # MZ: I'm not sure any of our spectrometers can do this
         self.bad_pixels             = []
@@ -85,6 +90,7 @@ class WasatchDevice(object):
         self.summary                = None
         self.wavelengths            = []
         self.wavenumbers            = []
+        self.fpga_options           = None
 
         self.integration            = self.min_integration
         self.reading                = None
@@ -447,11 +453,24 @@ class WasatchDevice(object):
                 reading.laser_temperature_raw  = self.hardware.get_laser_temperature_raw()
                 reading.laser_temperature_degC = self.hardware.get_laser_temperature_degC(reading.laser_temperature_raw)
             except Exception as exc:
-                if not self.tolerant:
+                if self.tolerant:
+                    log.debug("Error reading laser temperature", exc_info=1)
+                else:
                     log.critical("Error reading laser temperature", exc_info=1)
                     reading.failure = exc
+
+        # read secondary ADC if requested
+        if self.hardware.secondary_adc_enabled:
+            try:
+                self.hardware.select_adc(1)
+                reading.secondary_adc_raw = self.hardware.get_secondary_adc_raw()
+                self.hardware.select_adc(0)
+            except Exception as exc:
+                if self.tolerant:
+                    log.debug("Error reading secondary ADC", exc_info=1)
                 else:
-                    log.debug("Error reading laser temperature", exc_info=1)
+                    log.critical("Error reading secondary ADC", exc_info=1)
+                    reading.failure = exc
 
         # have we completed the averaged reading?
         if averaging_enabled:

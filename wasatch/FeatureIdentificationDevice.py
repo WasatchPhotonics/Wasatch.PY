@@ -56,6 +56,8 @@ class FeatureIdentificationDevice(object):
         self.detector_tec_setpoint_has_been_set = False
         self.ccd_gain = 1.9 # See notes in control.py # MZ: hardcode
         self.ccd_offset = 0
+        self.secondary_adc_enabled = False
+        self.invert_x_axis = False
 
         # Defaults from Original (stroker-era) settings. These are known
         # to set ccd setpoints effectively for stroker 785 class units.
@@ -179,59 +181,53 @@ class FeatureIdentificationDevice(object):
                         sleep(0.001) # 1ms
             self.last_usb_timestamp = datetime.datetime.now()
 
-    def send_code(self, FID_bmRequest, FID_wValue=0, FID_wIndex=0, FID_data_or_wLength=""):
-        """ Perform the control message transfer, return the extracted value. 
-            Yes, the USB spec really does say data_or_length """
-
-        FID_bmRequestType = 0x40 # host to device
-
+    # Note: some USB docs call this "bmRequest" for "bitmap" vs "byte"
+    # Yes, the USB spec really does say data_or_length.
+    def send_code(self, bRequest, wValue=0, wIndex=0, data_or_wLength="", label=""):
+        prefix = "" if not label else ("%s: " % label)
         result = None
-        log.debug("send_code: request 0x%02x value 0x%04x index 0x%04x data/len %s", 
-            FID_bmRequest, FID_wValue, FID_wIndex, FID_data_or_wLength)
+        log.debug("%ssend_code: request 0x%02x value 0x%04x index 0x%04x data/len %s", 
+            prefix, bRequest, wValue, wIndex, data_or_wLength)
         try:
             self.wait_for_usb_available()
-
-            result = self.device.ctrl_transfer(FID_bmRequestType,
-                                               FID_bmRequest,
-                                               FID_wValue,
-                                               FID_wIndex,
-                                               FID_data_or_wLength)
+            result = self.device.ctrl_transfer(0x40,     # HOST_TO_DEVICE
+                                               bRequest,
+                                               wValue,
+                                               wIndex,
+                                               data_or_wLength)
         except Exception as exc:
             log.critical("Hardware Failure FID Send Code Problem with ctrl transfer", exc_info=1)
             self.schedule_disconnect()
 
-        log.debug("Send Raw result: [%s]", result)
-        log.debug("send_code: request 0x%02x value 0x%04x index 0x%04x data/len %s: result %s", 
-            FID_bmRequest, FID_wValue, FID_wIndex, FID_data_or_wLength, result)
+        log.debug("%sSend Raw result: [%s]", prefix, result)
+        log.debug("%ssend_code: request 0x%02x value 0x%04x index 0x%04x data/len %s: result %s", 
+            prefix, bRequest, wValue, wIndex, data_or_wLength, result)
         return result
 
-    def get_code(self, FID_bmRequest, FID_wValue=0, FID_wLength=64, FID_wIndex=0):
-        """ Perform the control message transfer, return the extracted value """
-        FID_bmRequestType = 0xC0 # device to host
-
+    # It is weird to me that so few calls to this function override the default wLength
+    def get_code(self, bRequest, wValue=0, wIndex=0, wLength=64, label=""):
+        prefix = "" if not label else ("%s: " % label)
         result = None
         try:
             self.wait_for_usb_available()
-
-            result = self.device.ctrl_transfer(FID_bmRequestType,
-                                               FID_bmRequest,
-                                               FID_wValue,
-                                               FID_wIndex,
-                                               FID_wLength)
+            result = self.device.ctrl_transfer(0xc0,        # DEVICE_TO_HOST
+                                               bRequest,
+                                               wValue,
+                                               wIndex,
+                                               wLength)
         except Exception as exc:
             log.critical("Hardware Failure FID Get Code Problem with ctrl transfer", exc_info=1)
             self.schedule_disconnect()
 
-        log.debug("get_code: request 0x%02x value 0x%04x index 0x%04x = [%s]", 
-            FID_bmRequest, FID_wValue, FID_wIndex, result)
+        log.debug("%sget_code: request 0x%02x value 0x%04x index 0x%04x = [%s]", 
+            prefix, bRequest, wValue, wIndex, result)
         return result
 
-    def get_upper_code(self, FID_wValue, FID_wIndex=0):
+    # note: doesn't relay wLength, so ALWAYS expects 64-byte response!
+    def get_upper_code(self, wValue, wIndex=0, label=""): 
         """ Convenience function to wrap "upper area" bmRequest feature
             identification code around the standard get code command. """
-        return self.get_code(FID_bmRequest=0xFF,
-                             FID_wValue=FID_wValue,
-                             FID_wIndex=FID_wIndex)
+        return self.get_code(0xff, wValue, wIndex, label=label)
 
     def get_eeprom_unpack(self, address, data_type="s"):
         page       = address[0]
@@ -242,7 +238,7 @@ class FeatureIdentificationDevice(object):
         # MZ: if we ever write to the EEPROM, remember to flush eeprom_pages
         if not page in self.eeprom_pages:
             log.info("reading EEPROM page %d", page)
-            self.eeprom_pages[page] = self.get_upper_code(0x01, FID_wIndex=page)
+            self.eeprom_pages[page] = self.get_upper_code(0x01, page, label="GET_MODEL_CONFIG")
 
         buf = self.eeprom_pages[page]
 
@@ -339,7 +335,7 @@ class FeatureIdentificationDevice(object):
 
     def read_fpga_compilation_options(self):
         log.debug("reading FPGA compilation options")
-        buf = self.get_upper_code(0x04)
+        buf = self.get_upper_code(0x04, label="READ_COMPILATION_OPTIONS")
         if buf is None or len(buf) < 2:
             log.error("fpga_opts: can't parse response: %s", buf)
             return
@@ -370,7 +366,7 @@ class FeatureIdentificationDevice(object):
 
     def get_integration_time(self):
         """ Read the integration time stored on the device. """
-        result = self.get_code(0xBF)
+        result = self.get_code(0xbf, label="GET_INTEGRATION_TIME")
         curr_time = (result[2] * 0x10000) + (result[1] * 0x100) + result[0]
         log.debug("fid.get_integration_time: read %d ms", curr_time)
         return curr_time
@@ -378,7 +374,7 @@ class FeatureIdentificationDevice(object):
     def set_ccd_offset(self, value):
         word = int(value) & 0xffff
         log.debug("set ccd offset: 0x%04x", word)
-        return self.send_code(0xb6, word)
+        return self.send_code(0xb6, word, label="SET_CCD_OFFSET")
 
     def get_ccd_gain(self):
         """ Read the device stored gain.  Convert from binary wasatch format.
@@ -387,7 +383,7 @@ class FeatureIdentificationDevice(object):
             On both sides, expanded exponents (fractional or otherwise) are summed.
             E.g., 231 dec == 0x01e7 == 1.90234375
         """
-        result = self.get_code(0xC5)
+        result = self.get_code(0xc5, label="GET_CCD_GAIN")
 
         msb = result[1]
         lsb = result[0]
@@ -436,27 +432,27 @@ class FeatureIdentificationDevice(object):
         shifted_gain = (msb << 8) + lsb
 
         log.debug("Send CCD Gain: %s", shifted_gain)
-        result = self.send_code(0xb7, shifted_gain)
+        result = self.send_code(0xb7, shifted_gain, label="SET_CCD_GAIN")
 
     def get_sensor_line_length(self):
         """ The line length is encoded as a LSB-MSB ushort, such that 0x0004 =
             1024 pixels """
-        result = self.get_upper_code(0x03)
+        result = self.get_upper_code(0x03, label="GET_LINE_LENGTH")
         return result[0] + result[1] << 8
 
     def get_laser_availability(self):
-        result = self.get_upper_code(0x08)
+        result = self.get_upper_code(0x08, label="OPT_LASER")
         return result[0]
 
     def get_standard_software_code(self):
         """ Get microcontroller firmware version """
-        result = self.get_code(0xc0)
+        result = self.get_code(0xc0, label="GET_CODE_REVISION")
         return "%d.%d.%d.%d" % (result[3], result[2], result[1], result[0])
 
     # MZ: this could be simplified considerably (just return the chars in order)
     def get_fpga_revision(self):
         """ Get FPGA firmware version """
-        result = self.get_code(0xb4)
+        result = self.get_code(0xb4, label="GET_FPGA_REV")
         s = ""
         for i in range(len(result)):
             s += chr(result[i])
@@ -469,7 +465,7 @@ class FeatureIdentificationDevice(object):
         # trigger is disabled
         log.debug("get_line: requesting spectrum")
         if self.ccd_trigger == 0:
-            result = self.send_code(0xad, FID_data_or_wLength="00000000")
+            result = self.send_code(0xad, data_or_wLength="00000000", label="ACQUIRE_CCD")
 
         # regardless of pixel count, assume uint16
         line_buffer = self.pixels * 2 
@@ -479,8 +475,7 @@ class FeatureIdentificationDevice(object):
 
         # MZ: make constants for endpoints
         data = self.device.read(0x82, line_buffer, timeout=USB_TIMEOUT)
-        #log.debug("get_line: %s ...", data[0:9])
-        log.debug("get_line: %s", data)
+        log.debug("get_line: %s ...", data[0:9])
 
         try:
             # MZ: there is such a thing as "too Pythonic"
@@ -488,6 +483,16 @@ class FeatureIdentificationDevice(object):
         except Exception as exc:
             log.critical("Failure in data unpack", exc_info=1)
             raise
+
+        # For custom benches where the detector is essentially rotated
+        # 180-deg from our typical orientation with regard to the grating
+        # (e.g., red wavelengths are diffracted toward pixel 0, and blue
+        # wavelengths toward pixel 1023).  Note that this simply performs
+        # a horizontal flip of the vertically-binned 1-D spectra, and
+        # is NOT sufficient to perform a genuine 180-degree rotation of
+        # 2-D imaging mode.
+        if self.invert_x_axis:
+            data.reverse()
 
         return data
 
@@ -504,15 +509,31 @@ class FeatureIdentificationDevice(object):
         lsw = (int_time % 65536) & 0xffff
         msw = (int_time / 65536) & 0xffff
 
-        result = self.send_code(0xB2, lsw, msw)
+        result = self.send_code(0xB2, lsw, msw, label="SET_INTEGRATION_TIME")
         return result
 
     ############################################################################
     # Temperature
     ############################################################################
 
+    def select_adc(self, n):
+        log.debug("select_adc -> %d", n)
+        self.send_code(0xed, n, label="SELECT_LASER")
+
+    def get_secondary_adc_raw(self):
+        result = self.get_code(0xd5, wLength=2, label="GET_ADC")
+        value = 0
+        if result is not None and len(result) == 2:
+            # ADC values seem to be sent LSB-MSB
+            # We could validate to 12-bit here if desired
+            value = result[1] + (result[0] << 8)
+        else:
+            log.error("Error reading secondary ADC")
+        log.debug("secondary_adc_raw: 0x%04x", value)
+        return value
+
     def get_laser_temperature_raw(self):
-        result = self.get_code(0xd5)
+        result = self.get_code(0xd5, label="GET_LASER_TEMP")
         if not result:
             raise Exception("Unable to read laser temperature")
         return result[0] + (result[1] << 8)
@@ -550,7 +571,7 @@ class FeatureIdentificationDevice(object):
         return degC
 
     def get_detector_temperature_raw(self):
-        result = self.get_code(0xd7)
+        result = self.get_code(0xd7, label="GET_CCD_TEMP")
         if not result:
             raise Exception("Unable to read detector temperature")
         return result[1] + (result[0] << 8)
@@ -629,7 +650,7 @@ class FeatureIdentificationDevice(object):
             raw = 0xfff
 
         log.info("Set CCD TEC Setpoint: %.2f deg C (raw ADC 0x%04x)", degC, raw)
-        result = self.send_code(0xD8, raw)
+        self.send_code(0xd8, raw, label="SET_CCD_TEMP_SETPOINT")
         self.detector_tec_setpoint_has_been_set = True
         return True
 
@@ -641,7 +662,7 @@ class FeatureIdentificationDevice(object):
             self.set_detector_tec_setpoint_degC(self.tmin)
 
         log.debug("Send CCD TEC enable: %s", value)
-        result = self.send_code(0xd6, value)
+        self.send_code(0xd6, value, label="SET_CCD_TEC_ENABLE")
 
     def set_ccd_trigger(self, flag=0):
         # Don't send the opcode on ARM. See issue #2 on WasatchUSB project
@@ -649,7 +670,7 @@ class FeatureIdentificationDevice(object):
             msb = 0
             lsb = 1 if flag else 0
             buf = 8 * [0]
-            bytes_written = self.send_code(0xd2, lsb, msb, buf)
+            self.send_code(0xd2, lsb, msb, buf, label="SET_CCD_TRIGGER")
 
     def set_high_gain_mode_enable(self, flag=0):
         # CF_SELECT is configured using bit 2 of the FPGA configuration register 
@@ -662,27 +683,26 @@ class FeatureIdentificationDevice(object):
         msb = 0
         lsb = 1 if flag else 0
         buf = 8 * [0]
-        bytes_written = self.send_code(0xeb, lsb, msb, buf)
+        self.send_code(0xeb, lsb, msb, buf, label="SET_CF_SELECT")
 
     def set_laser_enable(self, flag=0):
         value = 1 if flag else 0
         log.debug("Send laser enable: %d", value)
-        result = self.send_code(0xbe, value)
-        return result
+        return self.send_code(0xbe, value, label="SET_LASER_ENABLE")
 
     def reset_fpga(self):
         log.debug("fid: resetting FPGA")
-        self.send_code(0xb5)
+        self.send_code(0xb5, label="RESET_FPGA")
         log.debug("fid: sleeping 3sec")
         sleep(3)
 
     def get_laser_temperature_setpoint_raw(self):
-        result = self.get_code(0xe8)
+        result = self.get_code(0xe8, label="GET_LASER_TEMP_SETPOINT")
         return result[0]
 
     def set_laser_temperature_setpoint_raw(self, value):
         log.debug("Send laser temperature setpoint raw: %d", value)
-        return self.send_code(0xe7, value)
+        return self.send_code(0xe7, value, label="SET_LASER_TEMP_SETPOINT")
 
     def set_laser_power_perc(self, value=100):
         """ Laser power is determined by a combination of the pulse width, 
@@ -699,19 +719,19 @@ class FeatureIdentificationDevice(object):
             specification. Where you can set integration time 100 ms with the 
             command:
 
-            device.ctrl_transfer(FID_bmRequestType=device to host,
-                                 FID_bmRequest=0xDB,
-                                 FID_wValue=100,
-                                 FID_wIndex=0,
-                                 FID_data_or_wLength=0)
+            device.ctrl_transfer(bRequestType=device_to_host,
+                                 bmRequest=0xDB,
+                                 wValue=100,
+                                 wIndex=0,
+                                 data_or_wLength=0)
 
             The laser pulse period must be set where the wValue and 
             data_or_wLength parameters are equal. So if you wanted a pulse
             period of 100, you must specify the value in both places:
 
             ...
-                                 FID_wValue=100,
-                                 FID_data_or_wLength=100)
+                                 wValue=100,
+                                 data_or_wLength=100)
             ...
 
             This in turn implies that the legacy firmware has a long masked
@@ -746,23 +766,17 @@ class FeatureIdentificationDevice(object):
         # Turn off modulation at full laser power, exit
         if value >= 100 or value < 0:
             log.info("Turning off laser modulation (full power)")
-            result = self.send_code(0xBD, 0)
-            return result
+            return self.send_code(0xBD, 0, label="SET_LASER_MOD_ENABLED")
 
         # Change the pulse period to 100 us
-        result = self.send_code(FID_bmRequest=0xc7, 
-                                FID_wValue=100,
-                                FID_wIndex=0,
-                                FID_data_or_wLength=100)
+        result = self.send_code(0xc7, 100, 0, 100, label="SET_MOD_PERIOD")
         if result == None:
             log.critical("Hardware Failure to send laser mod. pulse period")
             return False
 
-        # Set the pulse width to the 0-100 percentage of power
-        result = self.send_code(FID_bmRequest=0xdb, 
-                                FID_wValue=value,
-                                FID_wIndex=0,
-                                FID_data_or_wLength=value)
+        # Set the pulse width to the 0-100 percentage of power;
+        # note we send value as wValue AND wLength_or_data
+        result = self.send_code(0xdb, value, 0, value, label="SET_LASER_MOD_PULSE_WIDTH")
         if result == None:
             log.critical("Hardware Failure to send pulse width")
             return False
@@ -772,15 +786,11 @@ class FeatureIdentificationDevice(object):
         # result = self.send_code(0xBD, 1)
         #
         # This will result in a control message failure. Only for the
-        # laser modulation functions. A data length must be specified to
-        # prevent the failure. Also present in the get_line control
-        # message. Only with libusb; the original Cypress drivers do not
-        # have this requirement.
-
-        result = self.send_code(FID_bmRequest=0xbd, 
-                                FID_wValue=1,
-                                FID_wIndex=0,
-                                FID_data_or_wLength="00000000")
+        # laser modulation functions. A data buffer must be specified to
+        # prevent failure. Also present in the get_line control message. 
+        # Only with libusb; the original Cypress drivers do not have this 
+        # requirement.
+        result = self.send_code(0xbd, 1, 0, "00000000", label="SET_LASER_MOD_ENABLED")
 
         if result == None:
             log.critical("Hardware Failure to send laser modulation")
@@ -826,7 +836,7 @@ class FeatureIdentificationDevice(object):
             1=external. Use caution when interpreting the larger behavior of
             the device as ARM and FX2 implementations differ as of 2017-08-02 """
 
-        result = self.get_code(0xd3)
+        result = self.get_code(0xd3, label="GET_CCD_TRIGGER")
         return result[0]
 
     def write_setting(self, record):
@@ -903,6 +913,12 @@ class FeatureIdentificationDevice(object):
 
         elif record.setting == "reset_fpga":
             self.reset_fpga()
+
+        elif record.setting == "enable_secondary_adc":
+            self.secondary_adc_enabled = True if record.value else False
+
+        elif record.setting == "invert_x_axis":
+            self.invert_x_axis = True if record.value else False
 
         else:
             log.critical("Unknown setting to write: %s", record.setting)

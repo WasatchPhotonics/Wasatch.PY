@@ -303,6 +303,12 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2018-04-05 0.6.1
+    - StrokerProtocolDevice fixes
+    - FPGAOptions fixes to laser\_control and laser\_type
+    - added enable\_secondary\_adc
+    - added invert\_x\_axis
+    - better FID USB logging
 - 2018-03-22 0.6.0
     - starting multi-spectrometer support
     - tagging before attempting switch to MonoLibUsb

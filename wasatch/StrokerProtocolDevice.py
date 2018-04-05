@@ -42,6 +42,8 @@ class StrokerProtocolDevice(object):
         self.detector_tec_enable = 0
         self.detector_tec_setpoint_has_been_set = False
         self.ccd_adc_setpoint = 2047 # Midway of a 12bit ADC # MZ: used ever?
+        self.secondary_adc_enabled = False
+        self.invert_x_axis = False
 
         # Defaults from Original (stroker-era) settings. These are known
         # to set ccd setpoints effectively for stroker 785 class units.
@@ -307,6 +309,13 @@ class StrokerProtocolDevice(object):
     ############################################################################
     # Temperature
     ############################################################################
+
+    def select_adc(self, n):
+        log.error("StrokerProtocol: select_adc not implemented")
+
+    def get_secondary_adc_raw(self):
+        log.error("StrokerProtocol: get_secondary_adc_raw not implemented")
+        return 0
 
     def get_laser_temperature_raw(self):
         result = self.get_code(0xd5)

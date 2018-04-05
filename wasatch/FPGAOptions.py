@@ -61,9 +61,9 @@ class FPGAOptions(object):
         return "none" if v == 0 else "ocean" if v == 1 else "wasatch" if v == 2 else "unknown"
 
     def stringify_laser_type(self):
-        v = self.data_header
+        v = self.laser_type
         return "none" if v == 0 else "internal" if v == 1 else "external" if v == 2 else "unknown"
 
     def stringify_laser_control(self):
-        v = self.data_header
+        v = self.laser_control
         return "modulation" if v == 0 else "transition" if v == 1 else "ramping" if v == 2 else "unknown"
