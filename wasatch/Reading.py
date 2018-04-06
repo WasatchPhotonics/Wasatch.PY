@@ -16,11 +16,12 @@ class Reading(object):
 
         # MZ: hardcode
         self.spectrum                  = [0] * 1024
-        self.laser_temperature_raw     = 0
+        self.laser_temperature_raw     = 0 # TODO: make this None
         self.laser_temperature_degC    = 0
         self.detector_temperature_raw  = 0
         self.detector_temperature_degC = 0
         self.secondary_adc_raw         = None
+        self.secondary_adc_calibrated  = None
         self.laser_status              = None
         self.failure                   = None
         self.averaged                  = False

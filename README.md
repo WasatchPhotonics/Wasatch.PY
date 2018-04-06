@@ -303,6 +303,8 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2018-04-06 0.6.2
+    - fixed secondary ADC endian order
 - 2018-04-05 0.6.1
     - StrokerProtocolDevice fixes
     - FPGAOptions fixes to laser\_control and laser\_type
