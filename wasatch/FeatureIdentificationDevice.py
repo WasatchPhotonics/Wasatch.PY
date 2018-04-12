@@ -292,9 +292,22 @@ class FeatureIdentificationDevice(object):
         self.pixels              = self.get_eeprom_unpack((2, 16,  2), "h")
         self.pixel_height        = self.get_eeprom_unpack((2, 19,  2), "h") # MZ: skipped 18
         self.min_integration     = self.get_eeprom_unpack((2, 21,  2), "H")
-        self.max_integration     = self.get_eeprom_unpack((2, 23,  2), "H") # MZ: these were signed before
-
-        # TODO: ROI, linearity coeffs (not used)
+        self.max_integration     = self.get_eeprom_unpack((2, 23,  2), "H")
+        self.actual_horiz        = self.get_eeprom_unpack((2, 25,  2), "h")
+        self.roi_horiz_start     = self.get_eeprom_unpack((2, 27,  2), "h") # not currently used
+        self.roi_horiz_end       = self.get_eeprom_unpack((2, 29,  2), "h") # vvv
+        self.roi_vert_reg_1_start= self.get_eeprom_unpack((2, 31,  2), "h")
+        self.roi_vert_reg_1_end  = self.get_eeprom_unpack((2, 33,  2), "h")
+        self.roi_vert_reg_2_start= self.get_eeprom_unpack((2, 35,  2), "h")
+        self.roi_vert_reg_2_end  = self.get_eeprom_unpack((2, 37,  2), "h")
+        self.roi_vert_reg_3_start= self.get_eeprom_unpack((2, 39,  2), "h")
+        self.roi_vert_reg_3_end  = self.get_eeprom_unpack((2, 41,  2), "h")
+        self.linearity_coeffs = []
+        self.linearity_coeffs.append(self.get_eeprom_unpack((2, 43,  4), "f")) # overloading for secondary ADC
+        self.linearity_coeffs.append(self.get_eeprom_unpack((2, 47,  4), "f"))
+        self.linearity_coeffs.append(self.get_eeprom_unpack((2, 51,  4), "f"))
+        self.linearity_coeffs.append(self.get_eeprom_unpack((2, 55,  4), "f"))
+        self.linearity_coeffs.append(self.get_eeprom_unpack((2, 59,  4), "f"))
 
         self.bad_pixels          = self.populate_bad_pixels()
 
@@ -330,8 +343,27 @@ class FeatureIdentificationDevice(object):
         log.info("  Pixel height:     %d", self.pixel_height)
         log.info("  Min integration:  %d", self.min_integration)
         log.info("  Max integration:  %d", self.max_integration)
+        log.info("  Actual Horiz:     %d", self.actual_horiz)
+        log.info("  ROI Horiz Start:  %d", self.roi_horiz_start)
+        log.info("  ROI Horiz End:    %d", self.roi_horiz_end)
+        log.info("  ROI Vert Reg 1:   (%d, %d)", self.roi_vert_reg_1_start, self.roi_vert_reg_1_end)
+        log.info("  ROI Vert Reg 2:   (%d, %d)", self.roi_vert_reg_2_start, self.roi_vert_reg_2_end)
+        log.info("  ROI Vert Reg 3:   (%d, %d)", self.roi_vert_reg_3_start, self.roi_vert_reg_3_end)
+        log.info("  Linearity Coeff0: %f", self.linearity_coeffs[0])
+        log.info("  Linearity Coeff1: %f", self.linearity_coeffs[1])
+        log.info("  Linearity Coeff2: %f", self.linearity_coeffs[2])
+        log.info("  Linearity Coeff3: %f", self.linearity_coeffs[3])
+        log.info("  Linearity Coeff4: %f", self.linearity_coeffs[4])
         log.info("")
         log.info("  Bad Pixels:       %s", self.bad_pixels)
+
+    # whether at least one linearity coeff is other than 0 or -1
+    def has_linearity_coeffs(self):
+        if self.linearity_coeffs:
+            for c in self.linearity_coeffs:
+                if c != 0 and c != -1:
+                    return True
+        return False
 
     def read_fpga_compilation_options(self):
         log.debug("reading FPGA compilation options")
@@ -519,6 +551,22 @@ class FeatureIdentificationDevice(object):
     def select_adc(self, n):
         log.debug("select_adc -> %d", n)
         self.send_code(0xed, n, label="SELECT_LASER")
+
+    def get_secondary_adc_calibrated(self, raw=None):
+        if raw is None:
+            raw = self.get_secondary_adc_raw()
+
+        calibrated = None
+        if self.has_linearity_coeffs():
+            # use the first 4 linearity coefficients as a 3rd-order polynomial
+            calibrated = self.linearity_coeffs[0] \
+                       + self.linearity_coeffs[1] * raw \
+                       + self.linearity_coeffs[2] * raw * raw \
+                       + self.linearity_coeffs[3] * raw * raw * raw
+            log.debug("secondary_adc_calibrated: %f", calibrated)
+        else:
+            log.debug("secondary_adc_calibrated: no calibration")
+        return calibrated
 
     def get_secondary_adc_raw(self):
         result = self.get_code(0xd5, wLength=2, label="GET_ADC")

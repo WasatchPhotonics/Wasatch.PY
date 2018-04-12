@@ -464,6 +464,7 @@ class WasatchDevice(object):
             try:
                 self.hardware.select_adc(1)
                 reading.secondary_adc_raw = self.hardware.get_secondary_adc_raw()
+                reading.secondary_adc_calibrated = self.hardware.get_secondary_adc_calibrated(reading.secondary_adc_raw)
                 self.hardware.select_adc(0)
             except Exception as exc:
                 if self.tolerant:

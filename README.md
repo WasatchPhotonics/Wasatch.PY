@@ -303,6 +303,9 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2018-04-12 0.6.3
+    - added get\_secondary\_adc\_calibrated
+    - reads linearity, ROI from EEPROM
 - 2018-04-06 0.6.2
     - fixed secondary ADC endian order
 - 2018-04-05 0.6.1

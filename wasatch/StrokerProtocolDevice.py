@@ -313,6 +313,10 @@ class StrokerProtocolDevice(object):
     def select_adc(self, n):
         log.error("StrokerProtocol: select_adc not implemented")
 
+    def get_secondary_adc_calibrated(self, raw=None):
+        log.error("StrokerProtocol: get_secondary_adc_calibrated not implemented")
+        return 0
+
     def get_secondary_adc_raw(self):
         log.error("StrokerProtocol: get_secondary_adc_raw not implemented")
         return 0
