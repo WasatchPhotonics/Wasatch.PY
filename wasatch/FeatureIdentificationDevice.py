@@ -85,6 +85,11 @@ class FeatureIdentificationDevice(object):
         self.excitation          = 0
         self.slit_size           = 0
 
+        self.laser_power_ramping_enabled = False
+
+        self.last_ramped_laser_power = 0
+        self.next_ramp_laser_power = 100 
+
     def connect(self):
         """ Attempt to connect to the specified device. Log any failures and
             return False if there is a problem, otherwise return True. If
@@ -190,11 +195,13 @@ class FeatureIdentificationDevice(object):
             prefix, bRequest, wValue, wIndex, data_or_wLength)
         try:
             self.wait_for_usb_available()
+                     # self.send_code(SET_LASER_MOD_PULSE_WIDTH, width, 0, width, label="SET_LASER_MOD_PULSE_WIDTH (ramp)")
+                     # Ret = dev.ctrl_transfer(HOST_TO_DEVICE, SetCommand, SetValueLow, SetValueHigh, ZZ, TIMEOUT_MS)
             result = self.device.ctrl_transfer(0x40,     # HOST_TO_DEVICE
                                                bRequest,
                                                wValue,
                                                wIndex,
-                                               data_or_wLength)
+                                               data_or_wLength) # add TIMEOUT_MS parameter?
         except Exception as exc:
             log.critical("Hardware Failure FID Send Code Problem with ctrl transfer", exc_info=1)
             self.schedule_disconnect()
@@ -553,19 +560,20 @@ class FeatureIdentificationDevice(object):
         self.send_code(0xed, n, label="SELECT_LASER")
 
     def get_secondary_adc_calibrated(self, raw=None):
+        if not self.has_linearity_coeffs():
+            log.debug("secondary_adc_calibrated: no calibration")
+            return None
+
         if raw is None:
             raw = self.get_secondary_adc_raw()
+        raw = float(raw)
 
-        calibrated = None
-        if self.has_linearity_coeffs():
-            # use the first 4 linearity coefficients as a 3rd-order polynomial
-            calibrated = self.linearity_coeffs[0] \
-                       + self.linearity_coeffs[1] * raw \
-                       + self.linearity_coeffs[2] * raw * raw \
-                       + self.linearity_coeffs[3] * raw * raw * raw
-            log.debug("secondary_adc_calibrated: %f", calibrated)
-        else:
-            log.debug("secondary_adc_calibrated: no calibration")
+        # use the first 4 linearity coefficients as a 3rd-order polynomial
+        calibrated = float(self.linearity_coeffs[0]) \
+                   + float(self.linearity_coeffs[1]) * raw \
+                   + float(self.linearity_coeffs[2]) * raw * raw \
+                   + float(self.linearity_coeffs[3]) * raw * raw * raw
+        log.debug("secondary_adc_calibrated: %f", calibrated)
         return calibrated
 
     def get_secondary_adc_raw(self):
@@ -574,7 +582,7 @@ class FeatureIdentificationDevice(object):
         if result is not None and len(result) == 2:
             # ADC values seem to be sent MSB-LSB?
             # We could validate to 12-bit here if desired
-            value = result[0] + (result[1] << 8)
+            value = result[0] | (result[1] << 8)
         else:
             log.error("Error reading secondary ADC")
         log.debug("secondary_adc_raw: 0x%04x", value)
@@ -735,8 +743,94 @@ class FeatureIdentificationDevice(object):
 
     def set_laser_enable(self, flag=0):
         value = 1 if flag else 0
+        if flag and self.laser_power_ramping_enabled:
+            self.set_laser_enable_ramp()
+        else:
+            self.set_laser_enable_immediate(value)
+
+    def set_laser_enable_immediate(self, flag=0):
+        value = 1 if flag else 0
         log.debug("Send laser enable: %d", value)
         return self.send_code(0xbe, value, label="SET_LASER_ENABLE")
+
+    def set_laser_enable_ramp(self):
+        SET_LASER_ENABLE          = 0xbe
+        SET_LASER_MOD_ENABLE      = 0xbd
+        SET_LASER_MOD_PERIOD      = 0xc7
+        SET_LASER_MOD_PULSE_WIDTH = 0xdb
+
+        SAMPLES_PER_PULSE   = 100   # Amount of samples to acquire per stage/increment
+        SAMPLING_PERIOD_SEC = 0.2   # Time in between each sample
+        NUMBER_OF_PULSES    = 3     # Number of test pulses 
+        RAMP_SKIP_PERCENT   = 0.80  # skip (don't ramp) first 80% of the delta in power (don't increase this)
+
+        current_laser_setpoint = self.last_ramped_laser_power
+        target_laser_setpoint = self.next_ramp_laser_power
+        increments = 80
+        log.debug("set_laser_enable_ramp: ramping from %s to %s", current_laser_setpoint, target_laser_setpoint)
+
+        timeStart = datetime.datetime.now()
+        laser_setpoint = current_laser_setpoint + 0.0
+
+        # Determine laser stepsize based on inputs
+        if current_laser_setpoint < target_laser_setpoint:
+            counter_laser_stepsize = (float(target_laser_setpoint) - float(current_laser_setpoint)) / float(increments)
+        else:
+            counter_laser_stepsize = (float(current_laser_setpoint) - float(target_laser_setpoint)) / float(increments)                
+        log.debug("set_laser_enable_ramp: counter_laser_stepsize = %.2f", counter_laser_stepsize)
+
+        # Setup our modulation scheme and start at current point
+        self.send_code(SET_LASER_MOD_PERIOD, 100, 0, 100, label="SET_LASER_MOD_PERIOD (ramp)") # Sets the modulation period to 100us
+
+        width = int(current_laser_setpoint)
+        buf = [0] * 8
+        self.send_code(SET_LASER_MOD_PULSE_WIDTH, width, 0, buf, label="SET_LASER_MOD_PULSE_WIDTH (ramp)")
+
+        self.send_code(SET_LASER_ENABLE, 1, label="SET_LASER_ENABLE (ramp)")
+
+        # Apply first x% of the jump. Bounding is not needed, but done anyway
+        if (current_laser_setpoint < target_laser_setpoint):
+            laser_setpoint = min(target_laser_setpoint, (float(laser_setpoint) + (RAMP_SKIP_PERCENT * increments * float(counter_laser_stepsize))))
+        else:
+            laser_setpoint = max(target_laser_setpoint, (float(laser_setpoint) - (RAMP_SKIP_PERCENT * increments * float(counter_laser_stepsize))))
+
+        # Skip the first portion and start at RAMP_SKIP_PERCENT% of the way through the increments
+        initial_step = int(RAMP_SKIP_PERCENT * increments)
+        step = initial_step
+        while step < increments:
+
+            # Increment ramping counter
+            step += 1
+
+            # Apply based on direction and bound based on inputs
+            if current_laser_setpoint < target_laser_setpoint:
+                laser_setpoint = min(target_laser_setpoint, float(laser_setpoint) + float(counter_laser_stepsize))
+            else:
+                laser_setpoint = max(target_laser_setpoint, float(laser_setpoint) - float(counter_laser_stepsize))
+
+            # Apply value to system
+            width = int(laser_setpoint)
+            buf = [0] * 8
+            self.send_code(SET_LASER_MOD_PULSE_WIDTH, width, 0, buf, label="SET_LASER_MOD_PULSE_WIDTH (ramp)")
+
+            # This first part of the IF statement is never reached.
+            # testing has shown that the lead-in to 80% can be instantaneous.
+            # Only the last ~20% needs rounding
+            if step + 1 > increments:
+                delay_sec = 0
+            else:                        
+                # pro-rate delay such that it starts short, and lengthens as you approach the final step
+                steps_undertaken = step - initial_step
+                delay_sec = 0.00 + 0.08 * (1 - RAMP_SKIP_PERCENT) * pow(steps_undertaken, 1.30) 
+
+            log.debug("set_laser_enable_ramp: step = %3d, laser_setpoint = %8.2f, delay_sec = %8.3f", step, laser_setpoint, delay_sec)
+            sleep(delay_sec)
+
+        timeEnd = datetime.datetime.now()
+        log.debug("set_laser_enable_ramp: ramp time %.3f sec", (timeEnd - timeStart).total_seconds())
+
+        self.last_ramped_laser_power = self.next_ramp_laser_power
+        log.debug("set_laser_enable_ramp: last_ramped_laser_power = %s", self.last_ramped_laser_power)
 
     def reset_fpga(self):
         log.debug("fid: resetting FPGA")
@@ -753,6 +847,12 @@ class FeatureIdentificationDevice(object):
         return self.send_code(0xe7, value, label="SET_LASER_TEMP_SETPOINT")
 
     def set_laser_power_perc(self, value=100):
+        if self.laser_power_ramping_enabled:
+            self.set_laser_power_perc_ramp(value)
+        else:
+            self.set_laser_power_perc_immediate(value)
+
+    def set_laser_power_perc(self, value):
         """ Laser power is determined by a combination of the pulse width, 
             period and modulation being enabled. There are many combinations of 
             these values that will produce a given percentage of the total laser 
@@ -845,6 +945,10 @@ class FeatureIdentificationDevice(object):
             return False
 
         log.info("Laser power set to: %s", value)
+
+        self.next_ramp_laser_power = value
+        log.debug("next_ramp_laser_power = %s", self.next_ramp_laser_power)
+
         return result
 
     def set_wavecal_coeffs(self, coeffs):
@@ -967,6 +1071,9 @@ class FeatureIdentificationDevice(object):
 
         elif record.setting == "invert_x_axis":
             self.invert_x_axis = True if record.value else False
+
+        elif record.setting == "laser_power_ramping_enabled":
+            self.laser_power_ramping_enabled = True if record.value else False
 
         else:
             log.critical("Unknown setting to write: %s", record.setting)

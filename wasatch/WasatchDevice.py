@@ -450,7 +450,9 @@ class WasatchDevice(object):
         # only read laser temperature if we have a laser
         if self.hardware.has_laser:
             try:
-                reading.laser_temperature_raw  = self.hardware.get_laser_temperature_raw()
+                count = 2 if self.hardware.secondary_adc_enabled else 1
+                for throwaway in range(count):
+                    reading.laser_temperature_raw  = self.hardware.get_laser_temperature_raw()
                 reading.laser_temperature_degC = self.hardware.get_laser_temperature_degC(reading.laser_temperature_raw)
             except Exception as exc:
                 if self.tolerant:
@@ -463,7 +465,8 @@ class WasatchDevice(object):
         if self.hardware.secondary_adc_enabled:
             try:
                 self.hardware.select_adc(1)
-                reading.secondary_adc_raw = self.hardware.get_secondary_adc_raw()
+                for throwaway in range(2):
+                    reading.secondary_adc_raw = self.hardware.get_secondary_adc_raw()
                 reading.secondary_adc_calibrated = self.hardware.get_secondary_adc_calibrated(reading.secondary_adc_raw)
                 self.hardware.select_adc(0)
             except Exception as exc:
