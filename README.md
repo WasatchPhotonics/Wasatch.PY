@@ -303,6 +303,8 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2018-04-16 0.6.5
+    - updated laser power ramping
 - 2018-04-13 0.6.4
     - initial laser power ramping
 - 2018-04-12 0.6.3

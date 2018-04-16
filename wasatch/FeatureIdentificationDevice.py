@@ -751,6 +751,7 @@ class FeatureIdentificationDevice(object):
     def set_laser_enable_immediate(self, flag=0):
         value = 1 if flag else 0
         log.debug("Send laser enable: %d", value)
+        self.last_ramped_laser_power = 0
         return self.send_code(0xbe, value, label="SET_LASER_ENABLE")
 
     def set_laser_enable_ramp(self):
@@ -759,72 +760,58 @@ class FeatureIdentificationDevice(object):
         SET_LASER_MOD_PERIOD      = 0xc7
         SET_LASER_MOD_PULSE_WIDTH = 0xdb
 
-        SAMPLES_PER_PULSE   = 100   # Amount of samples to acquire per stage/increment
+        SAMPLES_PER_PULSE   = 150   # Amount of samples to acquire per stage/increment
         SAMPLING_PERIOD_SEC = 0.2   # Time in between each sample
-        NUMBER_OF_PULSES    = 3     # Number of test pulses 
-        RAMP_SKIP_PERCENT   = 0.80  # skip (don't ramp) first 80% of the delta in power (don't increase this)
 
         current_laser_setpoint = self.last_ramped_laser_power
         target_laser_setpoint = self.next_ramp_laser_power
-        increments = 80
+        increments = 100
         log.debug("set_laser_enable_ramp: ramping from %s to %s", current_laser_setpoint, target_laser_setpoint)
 
         timeStart = datetime.datetime.now()
-        laser_setpoint = current_laser_setpoint + 0.0
 
-        # Determine laser stepsize based on inputs
-        if current_laser_setpoint < target_laser_setpoint:
-            counter_laser_stepsize = (float(target_laser_setpoint) - float(current_laser_setpoint)) / float(increments)
-        else:
-            counter_laser_stepsize = (float(current_laser_setpoint) - float(target_laser_setpoint)) / float(increments)                
-        log.debug("set_laser_enable_ramp: counter_laser_stepsize = %.2f", counter_laser_stepsize)
+        # create Look-Up Table
+        LUT = []
+        MAX_X3 = increments * increments * increments 
+        for x in range(increments, 0, -1):
+            LUT.append(float(MAX_X3 - (x * x * x)) / 1000000.0)
 
-        # Setup our modulation scheme and start at current point
+        # start at current point
         self.send_code(SET_LASER_MOD_PERIOD, 100, 0, 100, label="SET_LASER_MOD_PERIOD (ramp)") # Sets the modulation period to 100us
 
         width = int(current_laser_setpoint)
         buf = [0] * 8
-        self.send_code(SET_LASER_MOD_PULSE_WIDTH, width, 0, buf, label="SET_LASER_MOD_PULSE_WIDTH (ramp)")
 
+        self.send_code(SET_LASER_MOD_ENABLE, 1, 0, buf, label="SET_LASER_MOD_ENABLE")
+        self.send_code(SET_LASER_MOD_PULSE_WIDTH, width, 0, buf, label="SET_LASER_MOD_PULSE_WIDTH (ramp)")
         self.send_code(SET_LASER_ENABLE, 1, label="SET_LASER_ENABLE (ramp)")
 
-        # Apply first x% of the jump. Bounding is not needed, but done anyway
-        if (current_laser_setpoint < target_laser_setpoint):
-            laser_setpoint = min(target_laser_setpoint, (float(laser_setpoint) + (RAMP_SKIP_PERCENT * increments * float(counter_laser_stepsize))))
+        # apply first 80% jump
+        if current_laser_setpoint < target_laser_setpoint:
+            laser_setpoint = ((float(target_laser_setpoint) - float(current_laser_setpoint)) / 100.0) * 80.0
+            laser_setpoint += float(current_laser_setpoint)
+            eighty_percent_start = laser_setpoint
         else:
-            laser_setpoint = max(target_laser_setpoint, (float(laser_setpoint) - (RAMP_SKIP_PERCENT * increments * float(counter_laser_stepsize))))
+            laser_setpoint = ((float(current_laser_setpoint)-float(target_laser_setpoint)) / 100.0) * 80.0
+            laser_setpoint = float(current_laser_setpoint) - laser_setpoint
+            eighty_percent_start = laser_setpoint
 
-        # Skip the first portion and start at RAMP_SKIP_PERCENT% of the way through the increments
-        initial_step = int(RAMP_SKIP_PERCENT * increments)
-        step = initial_step
-        while step < increments:
+        self.send_code(SET_LASER_MOD_PULSE_WIDTH, int(eighty_percent_start), 0, buf, label="SET_LASER_MOD_PULSE_WIDTH (80%)")
+        sleep(0.02)
 
-            # Increment ramping counter
-            step += 1
+        for counter_laser_setpoint in range(increments):
+            # compute this step's pulse width
+            lut_value = LUT[counter_laser_setpoint]
+            target_loop_setpoint = eighty_percent_start \
+                                 + (lut_value * (float(target_laser_setpoint) - eighty_percent_start))
 
-            # Apply based on direction and bound based on inputs
-            if current_laser_setpoint < target_laser_setpoint:
-                laser_setpoint = min(target_laser_setpoint, float(laser_setpoint) + float(counter_laser_stepsize))
-            else:
-                laser_setpoint = max(target_laser_setpoint, float(laser_setpoint) - float(counter_laser_stepsize))
-
-            # Apply value to system
-            width = int(laser_setpoint)
-            buf = [0] * 8
+            # apply the incremental pulse width
+            width = int(target_loop_setpoint)
             self.send_code(SET_LASER_MOD_PULSE_WIDTH, width, 0, buf, label="SET_LASER_MOD_PULSE_WIDTH (ramp)")
 
-            # This first part of the IF statement is never reached.
-            # testing has shown that the lead-in to 80% can be instantaneous.
-            # Only the last ~20% needs rounding
-            if step + 1 > increments:
-                delay_sec = 0
-            else:                        
-                # pro-rate delay such that it starts short, and lengthens as you approach the final step
-                steps_undertaken = step - initial_step
-                delay_sec = 0.00 + 0.08 * (1 - RAMP_SKIP_PERCENT) * pow(steps_undertaken, 1.30) 
-
-            log.debug("set_laser_enable_ramp: step = %3d, laser_setpoint = %8.2f, delay_sec = %8.3f", step, laser_setpoint, delay_sec)
-            sleep(delay_sec)
+            # allow 10ms to settle
+            log.debug("set_laser_enable_ramp: step = %3d, width = 0x%04x, target_loop_setpoint = %8.2f", counter_laser_setpoint, width, target_loop_setpoint)
+            sleep(0.01)
 
         timeEnd = datetime.datetime.now()
         log.debug("set_laser_enable_ramp: ramp time %.3f sec", (timeEnd - timeStart).total_seconds())
