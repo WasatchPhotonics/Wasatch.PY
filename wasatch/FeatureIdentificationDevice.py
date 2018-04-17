@@ -89,6 +89,7 @@ class FeatureIdentificationDevice(object):
 
         self.last_ramped_laser_power = 0
         self.next_ramp_laser_power = 100 
+        self.laser_ramp_increments = 100
 
     def connect(self):
         """ Attempt to connect to the specified device. Log any failures and
@@ -195,8 +196,6 @@ class FeatureIdentificationDevice(object):
             prefix, bRequest, wValue, wIndex, data_or_wLength)
         try:
             self.wait_for_usb_available()
-                     # self.send_code(SET_LASER_MOD_PULSE_WIDTH, width, 0, width, label="SET_LASER_MOD_PULSE_WIDTH (ramp)")
-                     # Ret = dev.ctrl_transfer(HOST_TO_DEVICE, SetCommand, SetValueLow, SetValueHigh, ZZ, TIMEOUT_MS)
             result = self.device.ctrl_transfer(0x40,     # HOST_TO_DEVICE
                                                bRequest,
                                                wValue,
@@ -760,21 +759,11 @@ class FeatureIdentificationDevice(object):
         SET_LASER_MOD_PERIOD      = 0xc7
         SET_LASER_MOD_PULSE_WIDTH = 0xdb
 
-        SAMPLES_PER_PULSE   = 150   # Amount of samples to acquire per stage/increment
-        SAMPLING_PERIOD_SEC = 0.2   # Time in between each sample
-
         current_laser_setpoint = self.last_ramped_laser_power
         target_laser_setpoint = self.next_ramp_laser_power
-        increments = 100
         log.debug("set_laser_enable_ramp: ramping from %s to %s", current_laser_setpoint, target_laser_setpoint)
 
         timeStart = datetime.datetime.now()
-
-        # create Look-Up Table
-        LUT = []
-        MAX_X3 = increments * increments * increments 
-        for x in range(increments, 0, -1):
-            LUT.append(float(MAX_X3 - (x * x * x)) / 1000000.0)
 
         # start at current point
         self.send_code(SET_LASER_MOD_PERIOD, 100, 0, 100, label="SET_LASER_MOD_PERIOD (ramp)") # Sets the modulation period to 100us
@@ -799,18 +788,21 @@ class FeatureIdentificationDevice(object):
         self.send_code(SET_LASER_MOD_PULSE_WIDTH, int(eighty_percent_start), 0, buf, label="SET_LASER_MOD_PULSE_WIDTH (80%)")
         sleep(0.02)
 
-        for counter_laser_setpoint in range(increments):
+        MAX_X3 = float(self.laser_ramp_increments * self.laser_ramp_increments * self.laser_ramp_increments)
+        for counter in range(self.laser_ramp_increments):
+
             # compute this step's pulse width
-            lut_value = LUT[counter_laser_setpoint]
+            x = self.laser_ramp_increments - counter 
+            scalar = (MAX_X3 - (x * x * x)) / MAX_X3
             target_loop_setpoint = eighty_percent_start \
-                                 + (lut_value * (float(target_laser_setpoint) - eighty_percent_start))
+                                 + (scalar * (float(target_laser_setpoint) - eighty_percent_start))
 
             # apply the incremental pulse width
             width = int(target_loop_setpoint)
             self.send_code(SET_LASER_MOD_PULSE_WIDTH, width, 0, buf, label="SET_LASER_MOD_PULSE_WIDTH (ramp)")
 
             # allow 10ms to settle
-            log.debug("set_laser_enable_ramp: step = %3d, width = 0x%04x, target_loop_setpoint = %8.2f", counter_laser_setpoint, width, target_loop_setpoint)
+            log.debug("set_laser_enable_ramp: counter = %3d, width = 0x%04x, target_loop_setpoint = %8.2f", counter, width, target_loop_setpoint)
             sleep(0.01)
 
         timeEnd = datetime.datetime.now()
@@ -1061,6 +1053,9 @@ class FeatureIdentificationDevice(object):
 
         elif record.setting == "laser_power_ramping_enabled":
             self.laser_power_ramping_enabled = True if record.value else False
+
+        elif record.setting == "laser_ramp_increments":
+            self.laser_ramp_increments = int(record.value)
 
         else:
             log.critical("Unknown setting to write: %s", record.setting)
