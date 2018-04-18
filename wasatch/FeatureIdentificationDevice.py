@@ -58,6 +58,7 @@ class FeatureIdentificationDevice(object):
         self.ccd_offset = 0
         self.secondary_adc_enabled = False
         self.invert_x_axis = False
+        self.area_scan_enable = False
 
         # Defaults from Original (stroker-era) settings. These are known
         # to set ccd setpoints effectively for stroker 785 class units.
@@ -470,7 +471,11 @@ class FeatureIdentificationDevice(object):
         shifted_gain = (msb << 8) + lsb
 
         log.debug("Send CCD Gain: %s", shifted_gain)
-        result = self.send_code(0xb7, shifted_gain, label="SET_CCD_GAIN")
+        self.send_code(0xb7, shifted_gain, label="SET_CCD_GAIN")
+
+    def set_area_scan_enable(self, flag):
+        value = 1 if flag else 0
+        self.send_code(0xe9, value, label="SET_AREA_SCAN_ENABLE")
 
     def get_sensor_line_length(self):
         """ The line length is encoded as a LSB-MSB ushort, such that 0x0004 =
@@ -1056,6 +1061,10 @@ class FeatureIdentificationDevice(object):
 
         elif record.setting == "laser_ramp_increments":
             self.laser_ramp_increments = int(record.value)
+
+        elif record.setting == "area_scan_enable":
+            flag = True if record.value else False
+            self.set_area_scan_enable(flag)
 
         else:
             log.critical("Unknown setting to write: %s", record.setting)
