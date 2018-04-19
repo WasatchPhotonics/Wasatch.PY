@@ -48,7 +48,7 @@ class FeatureIdentificationDevice(object):
 
         self.integration = self.min_integration
 
-        self.laser_status = 0
+        self.laser_status = False
         self.laser_power_perc = 100
         self.laser_temperature_setpoint_raw = 0
         self.detector_tec_setpoint_degC = 15.0 # MZ: hardcode
@@ -88,9 +88,9 @@ class FeatureIdentificationDevice(object):
 
         self.laser_power_ramping_enabled = False
 
-        self.last_ramped_laser_power = 0
-        self.next_ramp_laser_power = 100 
-        self.laser_ramp_increments = 100
+        self.last_applied_laser_power = 0 # last power level APPLIED to laser, either by turning off (0) or on (immediate or ramping)
+        self.next_applied_laser_power = 100 # power level to be applied NEXT time the laser is enabled (immediate or ramping)
+        self.laser_power_ramp_increments = 400
 
     def connect(self):
         """ Attempt to connect to the specified device. Log any failures and
@@ -745,17 +745,20 @@ class FeatureIdentificationDevice(object):
         buf = 8 * [0]
         self.send_code(0xeb, lsb, msb, buf, label="SET_CF_SELECT")
 
-    def set_laser_enable(self, flag=0):
-        value = 1 if flag else 0
+    def set_laser_enable(self, flag):
+        self.laser_status = flag
         if flag and self.laser_power_ramping_enabled:
             self.set_laser_enable_ramp()
         else:
-            self.set_laser_enable_immediate(value)
+            self.set_laser_enable_immediate(flag)
 
-    def set_laser_enable_immediate(self, flag=0):
+    def set_laser_enable_immediate(self, flag):
         value = 1 if flag else 0
         log.debug("Send laser enable: %d", value)
-        self.last_ramped_laser_power = 0
+        if flag:
+            self.last_applied_laser_power = 0
+        else:
+            self.last_applied_laser_power = self.next_applied_laser_power
         return self.send_code(0xbe, value, label="SET_LASER_ENABLE")
 
     def set_laser_enable_ramp(self):
@@ -764,8 +767,8 @@ class FeatureIdentificationDevice(object):
         SET_LASER_MOD_PERIOD      = 0xc7
         SET_LASER_MOD_PULSE_WIDTH = 0xdb
 
-        current_laser_setpoint = self.last_ramped_laser_power
-        target_laser_setpoint = self.next_ramp_laser_power
+        current_laser_setpoint = self.last_applied_laser_power
+        target_laser_setpoint = self.next_applied_laser_power
         log.debug("set_laser_enable_ramp: ramping from %s to %s", current_laser_setpoint, target_laser_setpoint)
 
         timeStart = datetime.datetime.now()
@@ -776,7 +779,7 @@ class FeatureIdentificationDevice(object):
         width = int(current_laser_setpoint)
         buf = [0] * 8
 
-        self.send_code(SET_LASER_MOD_ENABLE, 1, 0, buf, label="SET_LASER_MOD_ENABLE")
+        self.send_code(SET_LASER_MOD_ENABLE, 1, 0, buf, label="SET_LASER_MOD_ENABLE (ramp)")
         self.send_code(SET_LASER_MOD_PULSE_WIDTH, width, 0, buf, label="SET_LASER_MOD_PULSE_WIDTH (ramp)")
         self.send_code(SET_LASER_ENABLE, 1, label="SET_LASER_ENABLE (ramp)")
 
@@ -786,24 +789,25 @@ class FeatureIdentificationDevice(object):
             laser_setpoint += float(current_laser_setpoint)
             eighty_percent_start = laser_setpoint
         else:
-            laser_setpoint = ((float(current_laser_setpoint)-float(target_laser_setpoint)) / 100.0) * 80.0
+            laser_setpoint = ((float(current_laser_setpoint) - float(target_laser_setpoint)) / 100.0) * 80.0
             laser_setpoint = float(current_laser_setpoint) - laser_setpoint
             eighty_percent_start = laser_setpoint
 
         self.send_code(SET_LASER_MOD_PULSE_WIDTH, int(eighty_percent_start), 0, buf, label="SET_LASER_MOD_PULSE_WIDTH (80%)")
         sleep(0.02)
 
-        MAX_X3 = float(self.laser_ramp_increments * self.laser_ramp_increments * self.laser_ramp_increments)
-        for counter in range(self.laser_ramp_increments):
+        x = float(self.laser_power_ramp_increments)
+        MAX_X3 = x * x * x
+        for counter in range(self.laser_power_ramp_increments):
 
             # compute this step's pulse width
-            x = self.laser_ramp_increments - counter 
+            x = float(self.laser_power_ramp_increments - counter)
             scalar = (MAX_X3 - (x * x * x)) / MAX_X3
             target_loop_setpoint = eighty_percent_start \
                                  + (scalar * (float(target_laser_setpoint) - eighty_percent_start))
 
             # apply the incremental pulse width
-            width = int(target_loop_setpoint)
+            width = int(target_loop_setpoint + 0.5)
             self.send_code(SET_LASER_MOD_PULSE_WIDTH, width, 0, buf, label="SET_LASER_MOD_PULSE_WIDTH (ramp)")
 
             # allow 10ms to settle
@@ -813,30 +817,24 @@ class FeatureIdentificationDevice(object):
         timeEnd = datetime.datetime.now()
         log.debug("set_laser_enable_ramp: ramp time %.3f sec", (timeEnd - timeStart).total_seconds())
 
-        self.last_ramped_laser_power = self.next_ramp_laser_power
-        log.debug("set_laser_enable_ramp: last_ramped_laser_power = %s", self.last_ramped_laser_power)
-
-    def reset_fpga(self):
-        log.debug("fid: resetting FPGA")
-        self.send_code(0xb5, label="RESET_FPGA")
-        log.debug("fid: sleeping 3sec")
-        sleep(3)
-
-    def get_laser_temperature_setpoint_raw(self):
-        result = self.get_code(0xe8, label="GET_LASER_TEMP_SETPOINT")
-        return result[0]
-
-    def set_laser_temperature_setpoint_raw(self, value):
-        log.debug("Send laser temperature setpoint raw: %d", value)
-        return self.send_code(0xe7, value, label="SET_LASER_TEMP_SETPOINT")
+        self.last_applied_laser_power = self.next_applied_laser_power
+        log.debug("set_laser_enable_ramp: last_applied_laser_power = %d", self.next_applied_laser_power)
 
     def set_laser_power_perc(self, value=100):
-        if self.laser_power_ramping_enabled:
-            self.set_laser_power_perc_ramp(value)
+        # if the laser is already engaged and we're using ramping, then ramp to 
+        # the new level
+        if self.laser_power_ramping_enabled and self.laser_status:
+            value = int(max(0, min(100, value)))
+            self.next_applied_laser_power = int(value)
+            self.set_laser_enable_ramp()
         else:
+            # otherwise, set the power level more abruptly
             self.set_laser_power_perc_immediate(value)
 
-    def set_laser_power_perc(self, value):
+    # when we're not ramping laser power, this is a separate action that sets the
+    # laser power level (modulated pulse width) which will be used next time the
+    # laser is turned on (or changed immediately, if the laser is already enabled)
+    def set_laser_power_perc_immediate(self, value):
         """ Laser power is determined by a combination of the pulse width, 
             period and modulation being enabled. There are many combinations of 
             these values that will produce a given percentage of the total laser 
@@ -898,18 +896,20 @@ class FeatureIdentificationDevice(object):
         # Turn off modulation at full laser power, exit
         if value >= 100 or value < 0:
             log.info("Turning off laser modulation (full power)")
-            return self.send_code(0xBD, 0, label="SET_LASER_MOD_ENABLED")
+            self.next_applied_laser_power = 100
+            log.debug("next_applied_laser_power = 100")
+            return self.send_code(0xbd, 0, label="SET_LASER_MOD_ENABLED (full)")
 
         # Change the pulse period to 100 us
-        result = self.send_code(0xc7, 100, 0, 100, label="SET_MOD_PERIOD")
-        if result == None:
+        result = self.send_code(0xc7, 100, 0, 100, label="SET_MOD_PERIOD (immediate)")
+        if result is None:
             log.critical("Hardware Failure to send laser mod. pulse period")
             return False
 
         # Set the pulse width to the 0-100 percentage of power;
         # note we send value as wValue AND wLength_or_data
-        result = self.send_code(0xdb, value, 0, value, label="SET_LASER_MOD_PULSE_WIDTH")
-        if result == None:
+        result = self.send_code(0xdb, value, 0, value, label="SET_LASER_MOD_PULSE_WIDTH (immediate)")
+        if result is None:
             log.critical("Hardware Failure to send pulse width")
             return False
 
@@ -922,18 +922,32 @@ class FeatureIdentificationDevice(object):
         # prevent failure. Also present in the get_line control message. 
         # Only with libusb; the original Cypress drivers do not have this 
         # requirement.
-        result = self.send_code(0xbd, 1, 0, "00000000", label="SET_LASER_MOD_ENABLED")
+        result = self.send_code(0xbd, 1, 0, "00000000", label="SET_LASER_MOD_ENABLED (immediate)")
 
-        if result == None:
+        if result is None:
             log.critical("Hardware Failure to send laser modulation")
             return False
 
-        log.info("Laser power set to: %s", value)
+        log.info("Laser power set to: %d", value)
 
-        self.next_ramp_laser_power = value
-        log.debug("next_ramp_laser_power = %s", self.next_ramp_laser_power)
+        self.next_applied_laser_power = value
+        log.debug("next_applied_laser_power = %s", self.next_applied_laser_power)
 
         return result
+
+    def reset_fpga(self):
+        log.debug("fid: resetting FPGA")
+        self.send_code(0xb5, label="RESET_FPGA")
+        log.debug("fid: sleeping 3sec")
+        sleep(3)
+
+    def get_laser_temperature_setpoint_raw(self):
+        result = self.get_code(0xe8, label="GET_LASER_TEMP_SETPOINT")
+        return result[0]
+
+    def set_laser_temperature_setpoint_raw(self, value):
+        log.debug("Send laser temperature setpoint raw: %d", value)
+        return self.send_code(0xe7, value, label="SET_LASER_TEMP_SETPOINT")
 
     def set_wavecal_coeffs(self, coeffs):
         try:
@@ -986,8 +1000,8 @@ class FeatureIdentificationDevice(object):
         log.debug("fid.write_setting: %s -> %s", record.setting, record.value)
 
         if record.setting == "laser_enable":
-            self.set_laser_enable(record.value)
-            self.laser_status = record.value
+            flag = True if record.value else False
+            self.set_laser_enable(flag)
 
         elif record.setting == "integration":
             self.integration = int(record.value)
@@ -1059,8 +1073,8 @@ class FeatureIdentificationDevice(object):
         elif record.setting == "laser_power_ramping_enabled":
             self.laser_power_ramping_enabled = True if record.value else False
 
-        elif record.setting == "laser_ramp_increments":
-            self.laser_ramp_increments = int(record.value)
+        elif record.setting == "laser_power_ramp_increments":
+            self.laser_power_ramp_increments = int(record.value)
 
         elif record.setting == "area_scan_enable":
             flag = True if record.value else False

@@ -303,6 +303,8 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2018-04-19 0.6.8
+    - fixed laser ramp rounding
 - 2018-04-18 0.6.7
     - draft area scan implementation
 - 2018-04-17 0.6.6
