@@ -150,6 +150,10 @@ class FeatureIdentificationDevice(object):
         return True
 
     def disconnect(self):
+        if self.last_applied_laser_power != 0:
+            log.debug("fid.disconnect: disabling laser")
+            self.set_laser_enable_immediate(False)
+
         log.critical("fid.disconnect: releasing interface")
         try:
             result = usb.util.release_interface(self.device, 0)
@@ -257,7 +261,11 @@ class FeatureIdentificationDevice(object):
                 unpack_result += chr(c)
         else:
             # see https://docs.python.org/2/library/struct.html#format-characters
-            unpack_result = struct.unpack(data_type, buf[start_byte:end_byte])[0]
+            unpack_result = 0
+            try:
+                unpack_result = struct.unpack(data_type, buf[start_byte:end_byte])[0]
+            except:
+                log.error("error unpacking EEPROM page %d, offset %d, len %d as %s", page, start_byte, length, data_type, exc_info=1)
 
         log.debug("Unpacked [%s]: %s", data_type, unpack_result)
 

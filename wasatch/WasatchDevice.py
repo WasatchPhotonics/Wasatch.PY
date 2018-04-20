@@ -93,7 +93,6 @@ class WasatchDevice(object):
         self.fpga_options           = None
 
         self.integration            = self.min_integration
-        self.reading                = None
 
         self.summed_spectra         = None
         self.sum_count              = 0
@@ -531,7 +530,7 @@ class WasatchDevice(object):
         control_object = ControlObject(setting, value)
 
         if control_object.setting == "scans_to_average":
-            self.reading = None
+            self.sum_count = 0
 
         try:
             self.settings.put(control_object)
