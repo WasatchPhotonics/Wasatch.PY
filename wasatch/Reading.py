@@ -23,5 +23,7 @@ class Reading(object):
         self.secondary_adc_raw         = None
         self.secondary_adc_calibrated  = None
         self.laser_status              = None
+        self.laser_power               = 0
         self.failure                   = None
         self.averaged                  = False
+        self.session_count             = 0

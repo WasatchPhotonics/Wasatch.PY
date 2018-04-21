@@ -70,6 +70,9 @@ class StrokerProtocolDevice(object):
         self.excitation          = 0
         self.slit_size           = 0
 
+        self.last_applied_laser_power = 0 
+        self.next_applied_laser_power = 100
+
     def connect(self):
         """ Attempt to connect to the specified device. Log any failures and
             return False if there is a problem, otherwise return True. """
@@ -427,6 +430,11 @@ class StrokerProtocolDevice(object):
     def set_laser_enable(self, flag=0):
         value = 1 if flag else 0
         log.debug("Send laser enable: %s", value)
+
+        if not flag:
+            self.last_applied_laser_power = 0
+        else:
+            self.last_applied_laser_power = self.next_applied_laser_power
         return self.send_code(0xBE, value)
 
     def set_detector_tec_enable(self, value=0):
@@ -513,6 +521,8 @@ class StrokerProtocolDevice(object):
             these values that will produce a given percentage of the total laser 
             power through pulse width modulation. There is no 'get laser power' 
             control message on the device. """
+
+        self.next_applied_laser_power = value
 
         # Turn off modulation at full laser power, exit
         if value == 100:

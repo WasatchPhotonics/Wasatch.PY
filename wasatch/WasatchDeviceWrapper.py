@@ -67,6 +67,11 @@ class WasatchDeviceWrapper(object):
         self.bus_order  = bus_order
         self.log_level  = log_level
 
+        #self.manager =  multiprocessing.Manager()
+        #self.command_queue    = self.manager.Queue()
+        #self.response_queue   = self.manager.Queue()
+        #self.hw_details_queue = self.manager.Queue()
+
         self.log_queue        = log_queue
         self.command_queue    = multiprocessing.Queue()
         self.response_queue   = multiprocessing.Queue()
@@ -101,13 +106,19 @@ class WasatchDeviceWrapper(object):
 
         # Attempt to get the device summary information off of the queue
         # MZ: After forking the spectrometer communication loop into a separate thread,
-        #     we assume that hardware details should be available within 3 seconds.
+        #     we assume that hardware details should be available within 5 seconds.
         try:
-            self.hw_details = self.hw_details_queue.get(timeout=3)
-            log.debug("WasatchDeviceWrapper.connect: hw_details: %s", self.hw_details.__dict__)
+            self.hw_details = self.hw_details_queue.get(timeout=5)
+            log.debug("connect: hw_details: %s", self.hw_details.__dict__)
         except Exception as exc:
-            log.warn("WasatchDeviceWrapper.connect: hw_details caught exception", exc_info=1)
+            log.warn("connect: hw_details caught exception", exc_info=1)
             self.hw_details = None
+            log.warn("connect: sending poison pill to poller")
+            self.command_queue.put_nowait(None)
+            log.warn("connect: waiting 3sec")
+            sleep(3)
+            log.warn("connect: terminating poller")
+            self.poller.terminate()
             return False
 
         log.debug("WasatchDeviceWrapper.connect: succeeded")
@@ -171,9 +182,9 @@ class WasatchDeviceWrapper(object):
         # Note that these two calls to response_queue aren't synchronized
         reading = None
         qsize = self.response_queue.qsize()
-        log.info("WasatchDeviceWrapper.acquire_data: qsize %s", qsize)
         try:
             reading = self.response_queue.get_nowait()
+            log.debug("acquire_data: read Reading %d (qsize %d)", reading.session_count, qsize)
         except Queue.Empty:
             pass
 
@@ -186,6 +197,8 @@ class WasatchDeviceWrapper(object):
         while True:
             try:
                 reading = self.response_queue.get_nowait()
+                if reading:
+                    log.debug("get_final_item: read Reading %d", reading.session_count)
             except Queue.Empty:
                 break
 
@@ -247,26 +260,26 @@ class WasatchDeviceWrapper(object):
         """
 
         applog.process_log_configure(log_queue, self.log_level)
-        log.info("WasatchDeviceWrapper.continuous_poll: start (uid %s, bus_order %d)", uid, bus_order)
+        log.info("continuous_poll: start (uid %s, bus_order %d)", uid, bus_order)
 
         hardware = WasatchDevice(uid, bus_order)
         ok = hardware.connect()
         if not ok:
-            log.critical("WasatchDeviceWrapper.continuous_poll: Cannot connect")
+            log.critical("continuous_poll: Cannot connect")
             return False
 
-        log.debug("WasatchDeviceWrapper.continuous_poll: connected to a spectrometer")
+        log.debug("continuous_poll: connected to a spectrometer")
 
         # send the hardware details back to the GUI process
         # full of device details as well
-        log.debug("WasatchDeviceWrapper.continuous_poll: creating hw_details")
+        log.debug("continuous_poll: creating hw_details")
         hw_details = self.build_hardware_details(hardware)
 
-        log.debug("WasatchDeviceWrapper.continuous_poll: returning hw_details to GUI process")
+        log.debug("continuous_poll: returning hw_details to GUI process")
         hw_details_queue.put(hw_details, timeout=1)
 
         # Read forever until the None poison pill is received
-        log.debug("WasatchDeviceWrapper.continuous_poll: entering loop")
+        log.debug("continuous_poll: entering loop")
         while True:
             poison_pill = False
             queue_empty = False
@@ -280,37 +293,35 @@ class WasatchDeviceWrapper(object):
                     if record is None:
                         poison_pill = True
                     else:
-                        log.debug("WasatchDeviceWrapper.continuous_poll: Processing command queue: %s", record.setting)
+                        log.debug("continuous_poll: Processing command queue: %s", record.setting)
                         hardware.change_setting(record.setting, record.value)
             else:
-                log.debug("WasatchDeviceWrapper.continuous_poll: Queue empty, just wait")
+                log.debug("continuous_poll: Command queue empty")
 
             if poison_pill:
-                log.debug("WasatchDeviceWrapper.continuous_poll: Exit command queue")
+                log.debug("continuous_poll: Exit command queue")
                 break
 
             try:
-                log.debug("WasatchDeviceWrapper.continuous_poll: acquiring data")
+                log.debug("continuous_poll: acquiring data")
                 reading = hardware.acquire_data()
             except ValueError as val_exc:
-                log.critical("WasatchDeviceWrapper.continuous_poll: ValueError", exc_info=1)
+                log.critical("continuous_poll: ValueError", exc_info=1)
             except Exception as exc:
-                log.critical("WasatchDeviceWrapper.continuous_poll: Exception", exc_info=1)
+                log.critical("continuous_poll: Exception", exc_info=1)
                 reading = Reading()
                 reading.failure = str(exc)
 
-            log.debug("WasatchDeviceWrapper.continuous_poll: Spectrum is: %s", reading.spectrum[0:5])
-            log.debug("WasatchDeviceWrapper.continuous_poll: Post acquire: %s", reading.laser_status)
-
+            log.debug("continuous_poll: sending Reading %d back to GUI process (%s)", reading.session_count, reading.spectrum[0:5])
             response_queue.put(reading, timeout=1)
 
             if reading.failure is not None:
-                log.critical("WasatchDeviceWrapper.continuous_poll: Hardware level ERROR")
+                log.critical("continuous_poll: Hardware level ERROR")
                 break
 
             time.sleep(self.poller_wait)
 
-        log.info("WasatchDeviceWrapper.continuous_poll: done")
+        log.info("continuous_poll: done")
 
     def dedupe(self, q):
         keep = [] 

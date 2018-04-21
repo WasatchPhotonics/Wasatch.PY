@@ -96,6 +96,7 @@ class WasatchDevice(object):
 
         self.summed_spectra         = None
         self.sum_count              = 0
+        self.session_reading_count  = 0
 
     def connect(self):
         """ Attempt low level connection to the device specified in init.  """
@@ -404,6 +405,7 @@ class WasatchDevice(object):
         reading = Reading()
         reading.integration  = self.hardware.integration
         reading.laser_status = self.hardware.laser_status
+        reading.laser_power  = self.hardware.last_applied_laser_power
 
         # collect next spectrum
         try:
@@ -431,7 +433,9 @@ class WasatchDevice(object):
             log.critical("Error reading hardware data", exc_info=1)
             reading.failure = exc
 
-        # pass this upstream for GUI display
+        # count spectra
+        self.session_reading_count += 1
+        reading.session_count = self.session_reading_count
         reading.sum_count = self.sum_count
 
         # read detector temperature if applicable (should we do this for Ambient as well?)

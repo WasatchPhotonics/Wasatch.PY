@@ -303,6 +303,10 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2018-04-21 0.6.10
+    - Reading.session\_count
+    - Reading.laser\_power
+    - robustness
 - 2018-04-20 0.6.9
     - additional lasersec
 - 2018-04-19 0.6.8
