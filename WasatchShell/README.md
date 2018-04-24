@@ -1,15 +1,16 @@
 # Overview
 
 Before there was Wasatch.PY (the open-source back-end of ENLIGHTEN), there was
-"wasatch.py", a simple Python script allowing an ASCII request-response control 
-of spectrometers through STDIN / STDOUT pipes.
+"wasatch-shell.py", a simple Python script allowing an ASCII request-response 
+control of spectrometers through STDIN / STDOUT pipes.
 
 This script is not recommended for production use in new development, but is a 
-simple and useful demonstration of how to 
+simple and useful demonstration of how to enable and query various functions,
+as well as perform quick tests from the command-line.
 
 # Sample Execution
 
-    $ ./wasatch.py
+    $ ./wasatch-shell.py
     help
 
     open

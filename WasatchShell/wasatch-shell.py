@@ -1,19 +1,19 @@
 #!/usr/bin/env python
 ################################################################################
-#                                  wasatch.py                                  #
+#                               wasatch-shell.py                               #
 ################################################################################
 #                                                                              #
 #  DESCRIPTION:  A simple interactive shell allowing the caller to control     #
 #                a spectrometer via a blocking ASCII request-response          #
 #                pattern from 'expect' or similar.                             #
 #                                                                              #
-#  EXAMPLE:      $ ./wasatch.py [--logfile path]                               #
-#                  OPEN                                                        #
-#                  SETINTTIME                                                  #
+#  EXAMPLE:      $ ./wasatch-shell.py [--logfile path]                         #
+#                  open                                                        #
+#                  setinttime                                                  #
 #                  100                                                         #
-#                  STARTACQUISITION                                            #
-#                  GETSPECTRUM                                                 #
-#                  CLOSE                                                       #
+#                  startacquisition                                            #
+#                  getspectrum                                                 #
+#                  close                                                       #
 #                                                                              #
 ################################################################################
 
