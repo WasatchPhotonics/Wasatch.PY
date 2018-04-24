@@ -115,8 +115,8 @@ class WasatchDeviceWrapper(object):
             self.hw_details = None
             log.warn("connect: sending poison pill to poller")
             self.command_queue.put_nowait(None)
-            log.warn("connect: waiting 3sec")
-            sleep(3)
+            log.warn("connect: waiting 1sec")
+            time.sleep(1)
             log.warn("connect: terminating poller")
             self.poller.terminate()
             return False
