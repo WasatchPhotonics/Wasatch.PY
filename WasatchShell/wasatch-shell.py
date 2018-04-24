@@ -25,6 +25,7 @@ import os
 from time import sleep
 
 # constants
+SCRIPT_VERSION = "1.0.1"
 HOST_TO_DEVICE = 0x40
 DEVICE_TO_HOST = 0xC0
 BUFFER_SIZE    = 8
@@ -195,15 +196,18 @@ def initializeGetters():
     return getters
 
 def printHelp():
-    print """The following commands are supported:
+    print """
+    Version: %s
+    The following commands are supported:
 
         OPEN, CLOSE, SETINTTIME, GETSPECTRUM, STARTACQUISITION,
         GETDATA, GETTEMP, SETLSI, GETCONFIG, SETLSE, SETTECE,
         GETTEMPSET, SETTEMPSET, GET_INTEGRATION_TIME, GET_CCD_GAIN,
         GET_LASER_RAMPING_MODE, GET_HORIZ_BINNING, SELECT_LASER,
-        CUSTOMSET, CUSTOMGET, CUSTOMGET12, CUSTOMGET3, CONNECTION_CHECK
+        CUSTOMSET, CUSTOMGET, CUSTOMGET12, CUSTOMGET3, 
+        CONNECTION_CHECK, SCRIPT_VERSION
 
-    The following getters are also available:"""
+    The following getters are also available:""" % SCRIPT_VERSION
     print sorted(getters.keys())
 
 ################################################################################
@@ -320,6 +324,9 @@ try:
 
         elif command == "HELP": 
             printHelp()
+
+        elif command == "SCRIPT_VERSION":
+            print(SCRIPT_VERSION)
 
         else:
             logging.debug("Unknown command: " + str(command))
