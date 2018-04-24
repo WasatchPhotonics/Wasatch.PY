@@ -1,8 +1,24 @@
 #!/usr/bin/env python
+################################################################################
+#                                  wasatch.py                                  #
+################################################################################
+#                                                                              #
+#  DESCRIPTION:  A simple interactive shell allowing the caller to control     #
+#                a spectrometer via a blocking ASCII request-response          #
+#                pattern from 'expect' or similar.                             #
+#                                                                              #
+#  EXAMPLE:      $ ./wasatch.py [--logfile path]                               #
+#                  OPEN                                                        #
+#                  SETINTTIME                                                  #
+#                  100                                                         #
+#                  STARTACQUISITION                                            #
+#                  GETSPECTRUM                                                 #
+#                  CLOSE                                                       #
+#                                                                              #
+################################################################################
 
 import usb.core
-import datetime
-import platform
+import argparse
 import logging
 import sys
 import os
@@ -18,18 +34,18 @@ PIXEL_COUNT    = 1024
 
 def Get_Value(Command, ByteCount, wValue=0):
     RetVal = 0
-    if(Command == 0):
+    if Command == 0:
         return 0
-    RetArray = dev.ctrl_transfer(DEVICE_TO_HOST, Command, wValue,0, ByteCount, TIMEOUT_MS)
+    RetArray = dev.ctrl_transfer(DEVICE_TO_HOST, Command, wValue, 0, ByteCount, TIMEOUT_MS)
     for i in range (0, ByteCount):
-        RetVal = RetVal*256 + RetArray[ByteCount - i - 1]
+        RetVal = RetVal * 256 + RetArray[ByteCount - i - 1]
     return RetVal
 
 def Get_Value_12bit(Command):
     RetVal = 0
-    if(Command == 0):
+    if Command == 0:
         return 0
-    RetArray = dev.ctrl_transfer(DEVICE_TO_HOST, Command, 0,0, 2, TIMEOUT_MS)
+    RetArray = dev.ctrl_transfer(DEVICE_TO_HOST, Command, 0, 0, 2, TIMEOUT_MS)
     RetVal = RetArray[0] * 256 + RetArray[1];
     return RetVal
 
@@ -37,10 +53,10 @@ def Test_Set(setCommand, getCommand, wValue, wIndex, RetLen):
     return Test_Set(setCommand, getCommand, wValue | wIndex * 0x10000, RetLen)
 
 def Test_Set(SetCommand, GetCommand, SetValue, RetLen):
-    SetValueHigh = SetValue/0x10000
-    SetValueLow = SetValue & 0xFFFF
+    SetValueHigh = SetValue / 0x10000
+    SetValueLow  = SetValue & 0xFFFF
     
-    Ret = dev.ctrl_transfer(HOST_TO_DEVICE, SetCommand, SetValueLow, int(SetValueHigh), ZZ, TIMEOUT_MS)# set configuration
+    Ret = dev.ctrl_transfer(HOST_TO_DEVICE, SetCommand, SetValueLow, int(SetValueHigh), ZZ, TIMEOUT_MS)
     if BUFFER_SIZE != Ret:
         logging.debug('Set {0:x}    Fail'.format(SetCommand))
         return False
@@ -52,7 +68,8 @@ def Test_Set(SetCommand, GetCommand, SetValue, RetLen):
             logging.debug('Get {0:x} Failure. Txd:0x{1:x} Rxd:0x{2:x}'.format(GetCommand, SetValue, RetValue))
             return False
 
-def Heighest_Peak():
+# MZ: not used?
+def Highest_Peak():
     max_data = 0
     Data = dev.read(0x82, PIXEL_COUNT * 2)
     for j in range (0, int((PIXEL_COUNT * 2)/32), 1):
@@ -62,9 +79,8 @@ def Heighest_Peak():
     return max_data
 
 def data_poll():
-    count = 0
-    while(Get_Value(0xd4, 4) == 0):
-        count += 1
+    while Get_Value(0xd4, 4) == 0:
+        pass
 
 def setIntTime(time):
     print(Test_Set(0xb2, 0xbf, time, 6))      # Set integration time
@@ -85,32 +101,32 @@ def getData():
 
 def Open_Spectrometers():
     logging.debug("in open spectrometers")
-    global dev
-    dev=usb.core.find(idVendor=0x24aa, idProduct=0x1000)
+    dev = usb.core.find(idVendor=0x24aa, idProduct=0x1000)
     logging.debug("opened spectrometer")
     print(dev.bNumConfigurations)
+    return dev
 
 def getTemp():
     print(Get_Value_12bit(0xd7))
 
-def setLSI(period,width):
-    if(Test_Set(0xc7, 0xcb, period, 5)):
-        print(Test_Set(0xdb, 0xdc, width, 5))
+def setLSI(period, width):
+    if(Test_Set(0xc7, 0xcb, period, 5)): # SET_MOD_PERIOD
+        print(Test_Set(0xdb, 0xdc, width, 5)) # SET_LASER_MOD_PULSE_WIDTH
     else:
         print(False)
 
 def getConfig(index):
     logging.debug("getting config with index " + str(index))
-    buff = dev.ctrl_transfer(DEVICE_TO_HOST, 0xff, 1, index, 64, TIMEOUT_MS)
-    logging.debug("config: " + str(buff))
-    for b in buff:
+    buf = dev.ctrl_transfer(DEVICE_TO_HOST, 0xff, 1, index, 64, TIMEOUT_MS)
+    logging.debug("config: " + str(buf))
+    for b in buf:
         #logging.debug("b: " + str(b))
         print(str(b))
 
 def setLightSourceEnable(enable):
-    if(enable):
-        if(Test_Set(0xbd, 0xe3, 1, 1)):
-            print(Test_Set(0xbe, 0xe2, 1, 1))
+    if enable:
+        if Test_Set(0xbd, 0xe3, 1, 1):          # SET_LASER_MOD_ENABLED
+            print(Test_Set(0xbe, 0xe2, 1, 1))   # SET_LASER_ENABLED
         else:
             print(False)
     else:
@@ -130,12 +146,6 @@ def getTempSetPoint():
 def setTempSetPoint(val):
     print(Test_Set(0xd8, 0xd9, val, 2))
 
-def getTECEnable():
-    print(Get_Value(0xda,1))
-    
-def getLaserTemp():
-    print(Get_Value(0xd5,2))
-
 def getIntegrationTime():
     RetArray = dev.ctrl_transfer(DEVICE_TO_HOST, 0xbf, 0,0, 6, TIMEOUT_MS)
     RetVal = RetArray[0] + RetArray[1] * 256 + RetArray[2] * 65536;
@@ -148,6 +158,8 @@ def getCCDGain():
 
 def initializeGetters():
     getters = {}
+    getters["GETTECENABLE"]                             = (0xda, 1)
+    getters["GETLASERTEMP"]                             = (0xd5, 2)
     getters["GET_ACTUAL_FRAMES"]                        = (0xe4, 2)
     getters["GET_ACTUAL_INTEGRATION_TIME"]              = (0xdf, 6)
     getters["GET_CCD_OFFSET"]                           = (0xc4, 2)
@@ -182,26 +194,47 @@ def initializeGetters():
     getters["READ_COMPILATION_OPTIONS"]                 = (0xff, 2, 0x04)
     return getters
 
+def printHelp():
+    print """The following commands are supported:
+
+        OPEN, CLOSE, SETINTTIME, GETSPECTRUM, STARTACQUISITION,
+        GETDATA, GETTEMP, SETLSI, GETCONFIG, SETLSE, SETTECE,
+        GETTEMPSET, SETTEMPSET, GET_INTEGRATION_TIME, GET_CCD_GAIN,
+        GET_LASER_RAMPING_MODE, GET_HORIZ_BINNING, SELECT_LASER,
+        CUSTOMSET, CUSTOMGET, CUSTOMGET12, CUSTOMGET3, CONNECTION_CHECK
+
+    The following getters are also available:"""
+    print sorted(getters.keys())
+
 ################################################################################
 #                                                                              #
 #                                  main()                                      #
 #                                                                              #
 ################################################################################
 
-# configure logging
-logfile = 'wasatch.log'
-if os.environ['WASATCH_LOGFILE']:
-    logfile = os.environ['WASATCH_LOGFILE']
-logging.basicConfig(filename=logfile, level=logging.DEBUG, format='%(asctime)s.%(msecs)03d %(message)s', datefmt='%m/%d/%Y %I:%M:%S')
+# process command-line options
+parser = argparse.ArgumentParser()
+parser.add_argument("--logfile", default="wasatch.log")
+args = parser.parse_args()
 
-getters = initialize_getters()
+# configure logging
+logging.basicConfig(filename=args.logfile, 
+                    level=logging.DEBUG, 
+                    format='%(asctime)s.%(msecs)03d %(message)s', 
+                    datefmt='%m/%d/%Y %I:%M:%S')
+dev = None
+getters = initializeGetters()
 try:
     while True:
         logging.debug("waiting for command")
         command = sys.stdin.readline().strip().upper()
         logging.debug("received command: " + command);
 
-        if command in getters:
+        # ignore comments
+        if command.startswith('#') or len(command) == 0:
+            pass
+
+        elif command in getters:
             args = getters[command]
             if len(args) == 2:
                 print Get_Value(args[0], args[1])
@@ -210,7 +243,7 @@ try:
             
         elif command == "OPEN":
             try:
-                Open_Spectrometers()
+                dev = Open_Spectrometers()
             except Exception as e:
                 logging.error(e,exc_info=1)
                 print(0)
@@ -241,26 +274,26 @@ try:
             getTempSetPoint()
         elif command == "SETTEMPSET":
             setTempSetPoint(int(sys.stdin.readline()))
-        elif command == "GETTECENABLE":
-            getTECEnable()
-        elif command == "GETLASERTEMP":
-            getLaserTemp()
-        elif command == "GET_INTEGRATION_TIME":
+        elif command == "GET_INTEGRATION_TIME":  # MZ: some have underbars, some don't...?
             getIntegrationTime()
         elif command == "GET_CCD_GAIN":
             getCCDGain()
         elif command == "GET_LASER_RAMPING_MODE":
-            if Get_Value(0xff,1,0x09) == 2:
-                print(Get_Value(0xea,1))
+            if Get_Value(0xff, 1, 0x09) == 2:
+                print(Get_Value(0xea, 1))
             else:
                 print(0)
         elif command == "GET_HORIZ_BINNING":
-            if Get_Value(0xff,1,0x0c) == 1:
-                print(Get_Value(0xbc,1))
+            if Get_Value(0xff, 1, 0x0c) == 1:
+                print(Get_Value(0xbc, 1))
             else:
                 print(0)
 
-        elif command == "CUSTOMSET"):
+        # MZ: added
+        elif command == "SELECT_LASER":
+            print(Test_Set(0xed, 0xee, int(sys.stdin.readline(), 16), 1))
+
+        elif command == "CUSTOMSET":
             print(Test_Set(int(sys.stdin.readline(), 16), 
                            int(sys.stdin.readline(), 16), 
                            int(sys.stdin.readline(), 16), 
@@ -277,19 +310,24 @@ try:
             print(Get_Value(int(sys.stdin.readline(), 16), 
                             int(sys.stdin.readline(), 16), 
                             int(sys.stdin.readline(), 16)))
+
         elif command == "CONNECTION_CHECK":
             try:
-                Get_Value(0xe3, 1)
+                Get_Value(0xe3, 1) # GET_LASER_MOD_ENABLED
                 print(True)
             except Exception as e:
                 print(False)
+
+        elif command == "HELP": 
+            printHelp()
+
         else:
             logging.debug("Unknown command: " + str(command))
             break
 
         sys.stdout.flush()
 
-    # always enable the laser at all times
+    # disable the laser if not connected
     if dev is not None:
         setLightSourceEnable(0)
 

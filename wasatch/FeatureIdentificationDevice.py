@@ -592,7 +592,6 @@ class FeatureIdentificationDevice(object):
         result = self.get_code(0xd5, wLength=2, label="GET_ADC")
         value = 0
         if result is not None and len(result) == 2:
-            # ADC values seem to be sent MSB-LSB?
             # We could validate to 12-bit here if desired
             value = result[0] | (result[1] << 8)
         else:
