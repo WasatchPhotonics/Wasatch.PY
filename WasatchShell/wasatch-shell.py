@@ -22,10 +22,9 @@ import argparse
 import logging
 import sys
 import os
-from time import sleep
 
 # constants
-SCRIPT_VERSION = "1.0.1"
+SCRIPT_VERSION = "1.0.2"
 HOST_TO_DEVICE = 0x40
 DEVICE_TO_HOST = 0xC0
 BUFFER_SIZE    = 8
@@ -69,16 +68,6 @@ def Test_Set(SetCommand, GetCommand, SetValue, RetLen):
             logging.debug('Get {0:x} Failure. Txd:0x{1:x} Rxd:0x{2:x}'.format(GetCommand, SetValue, RetValue))
             return False
 
-# MZ: not used?
-def Highest_Peak():
-    max_data = 0
-    Data = dev.read(0x82, PIXEL_COUNT * 2)
-    for j in range (0, int((PIXEL_COUNT * 2)/32), 1):
-        for i in range (0, 31, 2):
-            NewData = Data[j*32+i+1]*256+Data[j*32+i]
-            max_data = max(max_data,NewData)
-    return max_data
-
 def data_poll():
     while Get_Value(0xd4, 4) == 0:
         pass
@@ -86,7 +75,7 @@ def data_poll():
 def setIntTime(time):
     print(Test_Set(0xb2, 0xbf, time, 6))      # Set integration time
 
-def getSpectra():
+def getSpectrum():
     startAcquisition()
     getData()
 
@@ -99,6 +88,7 @@ def getData():
     for j in range (0, int((PIXEL_COUNT * 2)/32), 1):
         for i in range (0, 31, 2):
             print(Data[j*32+i+1]*256+Data[j*32+i])
+    logging.debug("returned %d pixels", PIXEL_COUNT)
 
 def Open_Spectrometers():
     logging.debug("in open spectrometers")
@@ -226,6 +216,8 @@ logging.basicConfig(filename=args.logfile,
                     level=logging.DEBUG, 
                     format='%(asctime)s.%(msecs)03d %(message)s', 
                     datefmt='%m/%d/%Y %I:%M:%S')
+logging.debug("wasatch-shell version %s" % SCRIPT_VERSION)
+
 dev = None
 getters = initializeGetters()
 try:
@@ -259,7 +251,7 @@ try:
         elif command == "SETINTTIME":
             setIntTime(int(sys.stdin.readline()))
         elif(command == "GETSPECTRUM"):
-            getSpectra()
+            getSpectrum()
         elif command == "STARTACQUISITION":
             startAcquisition()
         elif command == "GETDATA":
@@ -293,10 +285,6 @@ try:
             else:
                 print(0)
 
-        # MZ: added
-        elif command == "SELECT_LASER":
-            print(Test_Set(0xed, 0xee, int(sys.stdin.readline(), 16), 1))
-
         elif command == "CUSTOMSET":
             print(Test_Set(int(sys.stdin.readline(), 16), 
                            int(sys.stdin.readline(), 16), 
@@ -321,6 +309,10 @@ try:
                 print(True)
             except Exception as e:
                 print(False)
+
+        # MZ: added
+        elif command == "SELECT_LASER":
+            print(Test_Set(0xed, 0xee, int(sys.stdin.readline(), 16), 1))
 
         elif command == "HELP": 
             printHelp()
