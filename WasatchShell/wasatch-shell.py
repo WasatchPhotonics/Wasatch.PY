@@ -24,13 +24,33 @@ import sys
 import os
 
 # constants
-SCRIPT_VERSION = "1.0.2"
+SCRIPT_VERSION = "1.0.3"
 HOST_TO_DEVICE = 0x40
 DEVICE_TO_HOST = 0xC0
 BUFFER_SIZE    = 8
 ZZ             = [0] * BUFFER_SIZE
 TIMEOUT_MS     = 1000
 PIXEL_COUNT    = 1024
+
+################################################################################
+# Utility Functions
+################################################################################
+
+def printHelp():
+    print """
+    Version: %s
+    The following commands are supported:
+
+        OPEN, CLOSE, SETINTTIME, GETSPECTRUM, STARTACQUISITION,
+        GETDATA, GETTEMP, SETLSI, GETCONFIG, SETLSE, SETTECE,
+        GETTEMPSET, SETTEMPSET, GET_INTEGRATION_TIME, GET_CCD_GAIN,
+        GET_LASER_RAMPING_MODE, GET_HORIZ_BINNING, SELECT_LASER,
+        CUSTOMSET, CUSTOMGET, CUSTOMGET12, CUSTOMGET3, 
+        CONNECTION_CHECK, SCRIPT_VERSION, GET_LASER_TEMP, 
+        GET_PHOTODIODE
+
+    The following getters are also available:""" % SCRIPT_VERSION
+    print sorted(getters.keys())
 
 def Get_Value(Command, ByteCount, wValue=0):
     RetVal = 0
@@ -49,9 +69,6 @@ def Get_Value_12bit(Command):
     RetVal = RetArray[0] * 256 + RetArray[1];
     return RetVal
 
-def Test_Set(setCommand, getCommand, wValue, wIndex, RetLen):
-    return Test_Set(setCommand, getCommand, wValue | wIndex * 0x10000, RetLen)
-
 def Test_Set(SetCommand, GetCommand, SetValue, RetLen):
     SetValueHigh = SetValue / 0x10000
     SetValueLow  = SetValue & 0xFFFF
@@ -67,6 +84,10 @@ def Test_Set(SetCommand, GetCommand, SetValue, RetLen):
         else:
             logging.debug('Get {0:x} Failure. Txd:0x{1:x} Rxd:0x{2:x}'.format(GetCommand, SetValue, RetValue))
             return False
+
+################################################################################
+# Spectrometer Features
+################################################################################
 
 def data_poll():
     while Get_Value(0xd4, 4) == 0:
@@ -147,10 +168,19 @@ def getCCDGain():
     RetVal = RetArray[1] + RetArray[0] / 256.0;
     print(RetVal)
 
+def getLaserTemp():
+    Test_Set(0xed, 0xee, 0, 1)  # select the primary ADC
+    Get_Value(0xd5, 2)          # throwaway read
+    print Get_Value(0xd5, 2)    # stable read
+    
+def getPhotodiode():
+    Test_Set(0xed, 0xee, 1, 1)  # select the secondary ADC
+    Get_Value(0xd5, 2)          # throwaway read
+    print Get_Value(0xd5, 2)    # stable read
+
 def initializeGetters():
     getters = {}
     getters["GETTECENABLE"]                             = (0xda, 1)
-    getters["GETLASERTEMP"]                             = (0xd5, 2)
     getters["GET_ACTUAL_FRAMES"]                        = (0xe4, 2)
     getters["GET_ACTUAL_INTEGRATION_TIME"]              = (0xdf, 6)
     getters["GET_CCD_OFFSET"]                           = (0xc4, 2)
@@ -164,7 +194,6 @@ def initializeGetters():
     getters["GET_LASER"]                                = (0xe2, 1)
     getters["GET_LASER_MOD"]                            = (0xe3, 1)
     getters["GET_LASER_MOD_PULSE_WIDTH"]                = (0xdc, 5)
-    getters["GET_LASER_TEMP"]                           = (0xd5, 2)
     getters["GET_LASER_TEMP_SETPOINT"]                  = (0xe8, 6)
     getters["GET_LINK_LASER_MOD_TO_INTEGRATION_TIME"]   = (0xde, 1)
     getters["GET_MOD_DURATION"]                         = (0xc3, 5)
@@ -184,21 +213,6 @@ def initializeGetters():
     getters["OPT_LASER_CONTROL"]                        = (0xff, 1, 0x09)
     getters["READ_COMPILATION_OPTIONS"]                 = (0xff, 2, 0x04)
     return getters
-
-def printHelp():
-    print """
-    Version: %s
-    The following commands are supported:
-
-        OPEN, CLOSE, SETINTTIME, GETSPECTRUM, STARTACQUISITION,
-        GETDATA, GETTEMP, SETLSI, GETCONFIG, SETLSE, SETTECE,
-        GETTEMPSET, SETTEMPSET, GET_INTEGRATION_TIME, GET_CCD_GAIN,
-        GET_LASER_RAMPING_MODE, GET_HORIZ_BINNING, SELECT_LASER,
-        CUSTOMSET, CUSTOMGET, CUSTOMGET12, CUSTOMGET3, 
-        CONNECTION_CHECK, SCRIPT_VERSION
-
-    The following getters are also available:""" % SCRIPT_VERSION
-    print sorted(getters.keys())
 
 ################################################################################
 #                                                                              #
@@ -313,6 +327,12 @@ try:
         # MZ: added
         elif command == "SELECT_LASER":
             print(Test_Set(0xed, 0xee, int(sys.stdin.readline(), 16), 1))
+
+        elif command == "GET_PHOTODIODE":
+            getPhotodiode()
+
+        elif command == "GET_LASER_TEMP":
+            getLaserTemp()
 
         elif command == "HELP": 
             printHelp()
