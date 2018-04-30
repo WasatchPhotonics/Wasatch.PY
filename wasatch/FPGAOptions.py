@@ -20,7 +20,17 @@ LASER_CONTROL_RAMPING           = 2
 
 class FPGAOptions(object):
 
-    def __init__(self, word):
+    def __init__(self):
+        self.integration_time_resolution = INTEG_TIME_RES_ONE_MS
+        self.data_header                 = DATA_HEADER_NONE
+        self.has_cf_select               = False
+        self.laser_type                  = LASER_TYPE_NONE
+        self.laser_control               = LASER_CONTROL_MODULATION
+        self.has_area_scan               = False
+        self.has_actual_integ_time       = False
+        self.has_horiz_binning           = False
+
+    def parse(self, word):
         # bits 0-2: 0000 0000 0000 0111 IntegrationTimeResolution
         # bit  3-5: 0000 0000 0011 1000 DataHeader
         # bit    6: 0000 0000 0100 0000 HasCFSelect
@@ -54,16 +64,44 @@ class FPGAOptions(object):
 
     def stringify_resolution(self):
         v = self.integration_time_resolution
-        return "1ms" if v == 0 else "10ms" if v == 1 else "switchable" if v == 2 else "unknown"
+        if v == INTEG_TIME_RES_ONE_MS:
+            return "1ms"
+        elif v == INTEG_TIME_RES_TEN_MS:
+            return "10ms"
+        elif v == INTEG_TIME_RES_SWITCHABLE:
+            return "Switchable"
+        else:
+            return "ERROR"
 
     def stringify_header(self):
         v = self.data_header
-        return "none" if v == 0 else "ocean" if v == 1 else "wasatch" if v == 2 else "unknown"
+        if v == DATA_HEADER_NONE:
+            return "None"
+        elif v == DATA_HEADER_OCEAN_OPTICS:
+            return "Ocean Optics"
+        elif v == DATA_HEADER_WASATCH:
+            return "Wasatch"
+        else:
+            return "ERROR"
 
     def stringify_laser_type(self):
         v = self.laser_type
-        return "none" if v == 0 else "internal" if v == 1 else "external" if v == 2 else "unknown"
+        if v == LASER_TYPE_NONE:
+            return "None"
+        elif v == LASER_TYPE_INTERNAL:
+            return "Internal"
+        elif v == LASER_TYPE_EXTERNAL:
+            return "External"
+        else:
+            return "ERROR"
 
     def stringify_laser_control(self):
         v = self.laser_control
-        return "modulation" if v == 0 else "transition" if v == 1 else "ramping" if v == 2 else "unknown"
+        if v == LASER_CONTROL_MODULATION:
+            return "Modulation"
+        elif v == LASER_CONTROL_TRANSITION_POINTS:
+            return "Transition Points"
+        elif v == LASER_CONTROL_RAMPING:
+            return "Ramping"
+        else:
+            return "ERROR"

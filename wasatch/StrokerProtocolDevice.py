@@ -61,6 +61,9 @@ class StrokerProtocolDevice(object):
         # did Stroker Protocol spectrometers support this?
         self.fpga_options = None
 
+        # SP devices definitely don't have this... YOU ARE HERE
+        self.eeprom = EEPROM()
+
         self.model               = None
         self.serial_number       = None
         self.baud_rate           = 0
@@ -224,7 +227,7 @@ class StrokerProtocolDevice(object):
 
         return 0
 
-    def get_standard_software_code(self):
+    def get_microcontroller_firmware_version(self):
         """ 0xC0 is not to be confused with the device to host specification in
             the control message. This is a vendor defined opcode for returning 
             the software information. Result is Major version, hyphen, minor
@@ -233,7 +236,7 @@ class StrokerProtocolDevice(object):
         sw_code = "%d-%d" % (result[0], result[1])
         return sw_code
 
-    def get_fpga_revision(self):
+    def get_fpga_firmware_version(self):
         """ The version of the FPGA code read from the device. First three bytes 
             plus a hyphen is the major version, then last three bytes is the 
             minor. """

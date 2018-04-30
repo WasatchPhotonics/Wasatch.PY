@@ -11,7 +11,7 @@
         calls connect() on it
     4. WasatchDeviceWrapper.connect() forks a child process running the
         continuous_poll() method of the same WasatchDeviceWrapper instance,
-        then waits on hw_details to be returned via a pipe (queue).
+        then waits on SpectrometerSettings to be returned via a pipe (queue).
 
        [-- at this point, the same WasatchDeviceWrapper instance is being 
            accessed by two processes...be careful! --]
@@ -21,8 +21,8 @@
     6. continuous_poll() calls WasatchDevice.connect() (exits on failure)
         6.a WasatchDevice instantiates a Sim, FID or SP based on UID
         6.b if FID, WasatchDevice.connect() loads the EEPROM
-    7. continuous_poll() populates hw_details object (contains bits read earlier 
-        from EEPROM), then feeds it back to MainProcess
+    7. continuous_poll() populates (exactly once) SpectrometerSettings object,
+       then feeds it back to MainProcess
 """
 
 import time
@@ -34,10 +34,10 @@ import multiprocessing
 from . import applog
 from . import utils
 
-from HardwareDetails import HardwareDetails
-from ControlObject   import ControlObject
-from WasatchDevice   import WasatchDevice
-from Reading         import Reading
+from SpectrometerSettings import SpectrometerSettings
+from ControlObject        import ControlObject
+from WasatchDevice        import WasatchDevice
+from Reading              import Reading
 
 log = logging.getLogger(__name__)
 
@@ -70,18 +70,18 @@ class WasatchDeviceWrapper(object):
         #self.manager =  multiprocessing.Manager()
         #self.command_queue    = self.manager.Queue()
         #self.response_queue   = self.manager.Queue()
-        #self.hw_details_queue = self.manager.Queue()
+        #self.spectrometer_settings_queue = self.manager.Queue()
 
         self.log_queue        = log_queue
         self.command_queue    = multiprocessing.Queue()
         self.response_queue   = multiprocessing.Queue()
-        self.hw_details_queue = multiprocessing.Queue()
+        self.spectrometer_settings_queue = multiprocessing.Queue()
 
         self.poller_wait  = 0.05    # MZ: update from hardware device at 20Hz
         self.acquire_sent = False   # Wait for an acquire to complete
         self.closing      = False   # Don't permit new requires during close
         self.poller       = None    # basically, "subprocess"
-        self.hw_details   = None
+        self.settings     = None
 
     # called by Controller.connect_new()
     def connect(self):
@@ -100,7 +100,7 @@ class WasatchDeviceWrapper(object):
                 self.log_queue,
                 self.command_queue, 
                 self.response_queue,
-                self.hw_details_queue)
+                self.spectrometer_settings_queue)
         self.poller = multiprocessing.Process(target=self.continuous_poll, args=args)
         self.poller.start()
 
@@ -108,19 +108,29 @@ class WasatchDeviceWrapper(object):
         # MZ: After forking the spectrometer communication loop into a separate thread,
         #     we assume that hardware details should be available within 5 seconds.
         try:
-            self.hw_details = self.hw_details_queue.get(timeout=5)
-            log.debug("connect: hw_details: %s", self.hw_details.__dict__)
+            self.settings = self.spectrometer_settings_queue.get(timeout=5)
+            log.info("connect: received SpectrometerSettings")
+            self.settings.dump()
         except Exception as exc:
-            log.warn("connect: hw_details caught exception", exc_info=1)
-            self.hw_details = None
+            log.warn("connect: spectrometer_settings_queue caught exception", exc_info=1)
+            self.settings = None
+
             log.warn("connect: sending poison pill to poller")
-            self.command_queue.put_nowait(None)
-            log.warn("connect: waiting 1sec")
-            time.sleep(1)
-            log.warn("connect: terminating poller")
-            self.poller.terminate()
+            self.command_queue.put(None, 2)
+
+            log.warn("connect: waiting .5 sec")
+            time.sleep(.5)
+
+            # log.warn("connect: terminating poller")
+            # self.poller.terminate()
+
+            log.warn("releasing poller")
+            self.poller = None
+
             return False
 
+        # The fact that we're returning True means that this Wrapper object now 
+        # has a valid and complete SpectrometerSettings object for the GUI.
         log.debug("WasatchDeviceWrapper.connect: succeeded")
         return True
 
@@ -165,9 +175,6 @@ class WasatchDeviceWrapper(object):
         if self.closing:
             log.debug("WasatchDeviceWrapper.acquire_data: closing")
             return None
-
-        # MZ: consider reading self.hw_details_queue.get_nowait() here, to allow
-        #     asynchronous update of changed spectrometer settings?
 
         if mode == common.acquisition_mode_latest:
             return self.get_final_item()
@@ -225,14 +232,6 @@ class WasatchDeviceWrapper(object):
         except Exception as exc:
             log.critical("WasatchDeviceWrapper.change_setting: Problem enqueuing %s", setting, exc_info=1)
 
-    def get_detail(self, field):
-        tmp = self.hw_details
-        if tmp is None:
-            return "UNKNOWN-1"
-        if hasattr(tmp, field):
-            return getattr(tmp, field)
-        return "UNKNOWN-2"
-
     ############################################################################
     #                                                                          #
     #                                 Subprocess                               #
@@ -245,7 +244,7 @@ class WasatchDeviceWrapper(object):
                         log_queue, 
                         command_queue, 
                         response_queue, 
-                        hw_details_queue):
+                        spectrometer_settings_queue):
 
         """ Continuously process with the simulated device. First setup
             the log queue handler. While waiting forever for the None poison
@@ -256,27 +255,26 @@ class WasatchDeviceWrapper(object):
                 thread).  Hopefully we can scale this to one per spectrometer.  
                 All communications with the parent process are routed through
                 one of the three queues (cmd inputs, response outputs, and
-                a one-shot hw_details).
+                a one-shot SpectrometerSettings).
         """
 
         applog.process_log_configure(log_queue, self.log_level)
         log.info("continuous_poll: start (uid %s, bus_order %d)", uid, bus_order)
 
-        hardware = WasatchDevice(uid, bus_order)
-        ok = hardware.connect()
+        wasatch_device = WasatchDevice(uid, bus_order)
+        ok = wasatch_device.connect()
         if not ok:
             log.critical("continuous_poll: Cannot connect")
             return False
 
         log.debug("continuous_poll: connected to a spectrometer")
 
-        # send the hardware details back to the GUI process
-        # full of device details as well
-        log.debug("continuous_poll: creating hw_details")
-        hw_details = self.build_hardware_details(hardware)
+        # send the SpectrometerSettings back to the GUI process
+        log.debug("continuous_poll: getting SpectrometerSettings")
+        settings = wasatch_device.settings
 
-        log.debug("continuous_poll: returning hw_details to GUI process")
-        hw_details_queue.put(hw_details, timeout=1)
+        log.debug("continuous_poll: returning SpectrometerSettings to GUI process")
+        spectrometer_settings_queue.put(settings, timeout=3)
 
         # Read forever until the None poison pill is received
         log.debug("continuous_poll: entering loop")
@@ -294,7 +292,7 @@ class WasatchDeviceWrapper(object):
                         poison_pill = True
                     else:
                         log.debug("continuous_poll: Processing command queue: %s", record.setting)
-                        hardware.change_setting(record.setting, record.value)
+                        wasatch_device.change_setting(record.setting, record.value)
             else:
                 log.debug("continuous_poll: Command queue empty")
 
@@ -304,7 +302,7 @@ class WasatchDeviceWrapper(object):
 
             try:
                 log.debug("continuous_poll: acquiring data")
-                reading = hardware.acquire_data()
+                reading = wasatch_device.acquire_data()
             except ValueError as val_exc:
                 log.critical("continuous_poll: ValueError", exc_info=1)
             except Exception as exc:
@@ -352,62 +350,3 @@ class WasatchDeviceWrapper(object):
                 break
 
         return keep
-
-    def build_hardware_details(self, hardware):
-        """ Build a simple object that lists the second generation of
-            hardware details as pulled from the device object (which is in
-            turn pulled from EEPROM where available). """
-
-        hw_details = HardwareDetails()
-
-        # summary
-        hw_details.summary               = hardware.summary
-
-        # EEPROM
-        hw_details.model                 = hardware.model
-        hw_details.serial_number         = hardware.serial_number
-        hw_details.baud_rate             = hardware.baud_rate
-        hw_details.has_cooling           = hardware.has_cooling
-        hw_details.has_battery           = hardware.has_battery
-        hw_details.has_laser             = hardware.has_laser
-        hw_details.excitation            = hardware.excitation
-        hw_details.slit_size             = hardware.slit_size
-
-        hw_details.wavelength_coeff_0    = hardware.wavelength_coeff_0
-        hw_details.wavelength_coeff_1    = hardware.wavelength_coeff_1
-        hw_details.wavelength_coeff_2    = hardware.wavelength_coeff_2
-        hw_details.wavelength_coeff_3    = hardware.wavelength_coeff_3
-        hw_details.degC_to_dac_coeff_0   = hardware.degC_to_dac_coeff_0
-        hw_details.degC_to_dac_coeff_1   = hardware.degC_to_dac_coeff_1
-        hw_details.degC_to_dac_coeff_2   = hardware.degC_to_dac_coeff_2
-        hw_details.adc_to_degC_coeff_0   = hardware.adc_to_degC_coeff_0
-        hw_details.adc_to_degC_coeff_1   = hardware.adc_to_degC_coeff_1
-        hw_details.adc_to_degC_coeff_2   = hardware.adc_to_degC_coeff_2
-        hw_details.tmax                  = hardware.tmax
-        hw_details.tmin                  = hardware.tmin
-        hw_details.tec_r298              = hardware.tec_r298
-        hw_details.tec_beta              = hardware.tec_beta
-        hw_details.calibration_date      = hardware.calibration_date
-        hw_details.calibration_by        = hardware.calibration_by
-
-        hw_details.detector              = hardware.detector
-        hw_details.pixels                = hardware.pixels
-        hw_details.pixel_height          = hardware.pixel_height
-        hw_details.min_integration_ms    = hardware.min_integration
-        hw_details.max_integration_ms    = hardware.max_integration
-
-        hw_details.bad_pixels            = hardware.bad_pixels
-
-        # FPGA
-        hw_details.fpga_options          = hardware.fpga_options
-
-        # derived
-        hw_details.wavelengths           = hardware.wavelengths
-        hw_details.wavenumbers           = hardware.wavenumbers
-
-        # state
-        hw_details.integration                    = hardware.integration
-        hw_details.detector_tec_setpoint_degC     = hardware.detector_tec_setpoint_degC
-        hw_details.laser_temperature_setpoint_raw = hardware.hardware.get_laser_temperature_setpoint_raw()
-
-        return hw_details

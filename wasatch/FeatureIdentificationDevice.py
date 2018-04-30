@@ -6,7 +6,6 @@
 
 import datetime
 import logging
-import struct
 import math
 import usb
 import usb.core
@@ -18,10 +17,11 @@ from random import randint
 from . import common
 
 from FPGAOptions import FPGAOptions
+from EEPROM      import EEPROM
 
 log = logging.getLogger(__name__)
 
-USB_TIMEOUT=60000
+USB_TIMEOUT_MS = 60000
 
 class FeatureIdentificationDevice(object):
 
@@ -60,21 +60,11 @@ class FeatureIdentificationDevice(object):
         self.invert_x_axis = False
         self.area_scan_enable = False
 
-        # Defaults from Original (stroker-era) settings. These are known
-        # to set ccd setpoints effectively for stroker 785 class units.
-        self.original_degC_to_dac_coeff_0 = 3566.62 # MZ: hardcode
-        self.original_degC_to_dac_coeff_1 = -143.543
-        self.original_degC_to_dac_coeff_2 = -0.324723
-
-        self.degC_to_dac_coeff_0 = self.original_degC_to_dac_coeff_0
-        self.degC_to_dac_coeff_1 = self.original_degC_to_dac_coeff_1
-        self.degC_to_dac_coeff_2 = self.original_degC_to_dac_coeff_2
-
-        self.ccd_trigger = 0  # 0 internal, 1 external
+        self.ccd_trigger_source = 0  # 0 internal, 1 external
         self.scans_to_average = 1
         self.bad_pixel_mode = common.bad_pixel_mode_average
 
-        self.eeprom_pages = {}
+        self.eeprom = EEPROM()
         self.fpga_options = None
 
         self.model               = None
@@ -240,142 +230,24 @@ class FeatureIdentificationDevice(object):
             identification code around the standard get code command. """
         return self.get_code(0xff, wValue, wIndex, label=label)
 
-    def get_eeprom_unpack(self, address, data_type="s"):
-        page       = address[0]
-        start_byte = address[1]
-        length     = address[2]
-        end_byte   = start_byte + length
-
-        # MZ: if we ever write to the EEPROM, remember to flush eeprom_pages
-        if not page in self.eeprom_pages:
-            log.info("reading EEPROM page %d", page)
-            self.eeprom_pages[page] = self.get_upper_code(0x01, page, label="GET_MODEL_CONFIG")
-
-        buf = self.eeprom_pages[page]
-
-        if data_type == "s":
-            unpack_result = ""
-            for c in buf[start_byte:end_byte]:
-                if c == 0:
-                    break
-                unpack_result += chr(c)
-        else:
-            # see https://docs.python.org/2/library/struct.html#format-characters
-            unpack_result = 0
-            try:
-                unpack_result = struct.unpack(data_type, buf[start_byte:end_byte])[0]
-            except:
-                log.error("error unpacking EEPROM page %d, offset %d, len %d as %s", page, start_byte, length, data_type, exc_info=1)
-
-        log.debug("Unpacked [%s]: %s", data_type, unpack_result)
-
-        return unpack_result
-
     ############################################################################
     # initialization
     ############################################################################
 
     def read_eeprom(self):
-        # NJH 2017-04-11 13:53 Some ARM units may use doubles instead of floats
-        self.model               = self.get_eeprom_unpack((0,  0, 16), "s")
-        self.serial_number       = self.get_eeprom_unpack((0, 16, 16), "s")
-        self.baud_rate           = self.get_eeprom_unpack((0, 32,  4), "i")
-        self.has_cooling         = self.get_eeprom_unpack((0, 36,  1), "?")
-        self.has_battery         = self.get_eeprom_unpack((0, 37,  1), "?")
-        self.has_laser           = self.get_eeprom_unpack((0, 38,  1), "?")
-        self.excitation          = self.get_eeprom_unpack((0, 39,  2), "h")
-        self.slit_size           = self.get_eeprom_unpack((0, 41,  2), "h")
 
-        self.wavelength_coeff_0  = self.get_eeprom_unpack((1,  0,  4), "f")
-        self.wavelength_coeff_1  = self.get_eeprom_unpack((1,  4,  4), "f")
-        self.wavelength_coeff_2  = self.get_eeprom_unpack((1,  8,  4), "f")
-        self.wavelength_coeff_3  = self.get_eeprom_unpack((1, 12,  4), "f")
-        self.degC_to_dac_coeff_0 = self.get_eeprom_unpack((1, 16,  4), "f")
-        self.degC_to_dac_coeff_1 = self.get_eeprom_unpack((1, 20,  4), "f")
-        self.degC_to_dac_coeff_2 = self.get_eeprom_unpack((1, 24,  4), "f")
-        self.adc_to_degC_coeff_0 = self.get_eeprom_unpack((1, 32,  4), "f")
-        self.adc_to_degC_coeff_1 = self.get_eeprom_unpack((1, 36,  4), "f")
-        self.adc_to_degC_coeff_2 = self.get_eeprom_unpack((1, 40,  4), "f")
-        self.tmax                = self.get_eeprom_unpack((1, 28,  2), "h")
-        self.tmin                = self.get_eeprom_unpack((1, 30,  2), "h")
-        self.tec_r298            = self.get_eeprom_unpack((1, 44,  2), "h")
-        self.tec_beta            = self.get_eeprom_unpack((1, 46,  2), "h")
-        self.calibration_date    = self.get_eeprom_unpack((1, 48, 12), "s")
-        self.calibration_by      = self.get_eeprom_unpack((1, 60,  3), "s")
+        buffers = []
+        for page in range(6):
+            log.info("reading EEPROM page %d", page)
+            buf = self.get_upper_code(0x01, page, label="GET_MODEL_CONFIG(%d)" % page)
+            buffers.append(buf)
 
-        self.detector            = self.get_eeprom_unpack((2,  0, 16), "s")
-        self.pixels              = self.get_eeprom_unpack((2, 16,  2), "h")
-        self.pixel_height        = self.get_eeprom_unpack((2, 19,  2), "h") # MZ: skipped 18
-        self.min_integration     = self.get_eeprom_unpack((2, 21,  2), "H")
-        self.max_integration     = self.get_eeprom_unpack((2, 23,  2), "H")
-        self.actual_horiz        = self.get_eeprom_unpack((2, 25,  2), "h")
-        self.roi_horiz_start     = self.get_eeprom_unpack((2, 27,  2), "h") # not currently used
-        self.roi_horiz_end       = self.get_eeprom_unpack((2, 29,  2), "h") # vvv
-        self.roi_vert_reg_1_start= self.get_eeprom_unpack((2, 31,  2), "h")
-        self.roi_vert_reg_1_end  = self.get_eeprom_unpack((2, 33,  2), "h")
-        self.roi_vert_reg_2_start= self.get_eeprom_unpack((2, 35,  2), "h")
-        self.roi_vert_reg_2_end  = self.get_eeprom_unpack((2, 37,  2), "h")
-        self.roi_vert_reg_3_start= self.get_eeprom_unpack((2, 39,  2), "h")
-        self.roi_vert_reg_3_end  = self.get_eeprom_unpack((2, 41,  2), "h")
-        self.linearity_coeffs = []
-        self.linearity_coeffs.append(self.get_eeprom_unpack((2, 43,  4), "f")) # overloading for secondary ADC
-        self.linearity_coeffs.append(self.get_eeprom_unpack((2, 47,  4), "f"))
-        self.linearity_coeffs.append(self.get_eeprom_unpack((2, 51,  4), "f"))
-        self.linearity_coeffs.append(self.get_eeprom_unpack((2, 55,  4), "f"))
-        self.linearity_coeffs.append(self.get_eeprom_unpack((2, 59,  4), "f"))
-
-        self.bad_pixels          = self.populate_bad_pixels()
-
-        log.info("EEPROM settings:")
-        log.info("  Model:            %s", self.model)
-        log.info("  Serial Number:    %s", self.serial_number)
-        log.info("  Baud Rate:        %d", self.baud_rate)
-        log.info("  Has Cooling:      %s", self.has_cooling)
-        log.info("  Has Battery:      %s", self.has_battery)
-        log.info("  Has Laser:        %s", self.has_laser)
-        log.info("  Excitation (nm):  %s", self.excitation)
-        log.info("  Slit size (um):   %s", self.slit_size)
-        log.info("")
-        log.info("  Wavecal coeff0:   %s", self.wavelength_coeff_0)
-        log.info("  Wavecal coeff1:   %s", self.wavelength_coeff_1)
-        log.info("  Wavecal coeff2:   %s", self.wavelength_coeff_2)
-        log.info("  Wavecal coeff3:   %s", self.wavelength_coeff_3)
-        log.info("  degCToDAC coeff0: %s", self.degC_to_dac_coeff_0)
-        log.info("  degCToDAC coeff1: %s", self.degC_to_dac_coeff_1)
-        log.info("  degCToDAC coeff2: %s", self.degC_to_dac_coeff_2)
-        log.info("  adcToDegC coeff0: %s", self.adc_to_degC_coeff_0)
-        log.info("  adcToDegC coeff1: %s", self.adc_to_degC_coeff_1)
-        log.info("  adcToDegC coeff2: %s", self.adc_to_degC_coeff_2)
-        log.info("  Det temp min:     %s", self.tmin)
-        log.info("  Det temp max:     %s", self.tmax)
-        log.info("  TEC R298:         %s", self.tec_r298)
-        log.info("  TEC beta:         %s", self.tec_beta)
-        log.info("  Calibration Date: %s", self.calibration_date)
-        log.info("  Calibration By:   %s", self.calibration_by)
-        log.info("")
-        log.info("  Detector name:    %s", self.detector)
-        log.info("  Pixels:           %d", self.pixels)
-        log.info("  Pixel height:     %d", self.pixel_height)
-        log.info("  Min integration:  %d", self.min_integration)
-        log.info("  Max integration:  %d", self.max_integration)
-        log.info("  Actual Horiz:     %d", self.actual_horiz)
-        log.info("  ROI Horiz Start:  %d", self.roi_horiz_start)
-        log.info("  ROI Horiz End:    %d", self.roi_horiz_end)
-        log.info("  ROI Vert Reg 1:   (%d, %d)", self.roi_vert_reg_1_start, self.roi_vert_reg_1_end)
-        log.info("  ROI Vert Reg 2:   (%d, %d)", self.roi_vert_reg_2_start, self.roi_vert_reg_2_end)
-        log.info("  ROI Vert Reg 3:   (%d, %d)", self.roi_vert_reg_3_start, self.roi_vert_reg_3_end)
-        log.info("  Linearity Coeff0: %f", self.linearity_coeffs[0])
-        log.info("  Linearity Coeff1: %f", self.linearity_coeffs[1])
-        log.info("  Linearity Coeff2: %f", self.linearity_coeffs[2])
-        log.info("  Linearity Coeff3: %f", self.linearity_coeffs[3])
-        log.info("  Linearity Coeff4: %f", self.linearity_coeffs[4])
-        log.info("")
-        log.info("  Bad Pixels:       %s", self.bad_pixels)
+        self.eeprom.parse(buffers)
 
     # whether at least one linearity coeff is other than 0 or -1
     def has_linearity_coeffs(self):
-        if self.linearity_coeffs:
-            for c in self.linearity_coeffs:
+        if self.eeprom.linearity_coeffs:
+            for c in self.eeprom.linearity_coeffs:
                 if c != 0 and c != -1:
                     return True
         return False
@@ -388,18 +260,8 @@ class FeatureIdentificationDevice(object):
             return
 
         word = buf[0] | (buf[1] << 8)
-        self.fpga_options = FPGAOptions(word)
-
-    def populate_bad_pixels(self):
-        """ Read list from EEPROM, de-dupe and sort """
-        bad = []
-        for count in range(15):
-            pixel = self.get_eeprom_unpack((5, count * 2, 2), "h")
-            if str(pixel) != "-1":
-                if pixel not in bad:
-                    bad.append(pixel)
-        bad.sort()
-        return bad
+        self.fpga_options = FPGAOptions()
+        self.fpga_options.parse(word)
 
     ############################################################################
     # Accessors
@@ -495,14 +357,11 @@ class FeatureIdentificationDevice(object):
         result = self.get_upper_code(0x08, label="OPT_LASER")
         return result[0]
 
-    def get_standard_software_code(self):
-        """ Get microcontroller firmware version """
+    def get_microcontroller_firmware_version(self):
         result = self.get_code(0xc0, label="GET_CODE_REVISION")
         return "%d.%d.%d.%d" % (result[3], result[2], result[1], result[0])
 
-    # MZ: this could be simplified considerably (just return the chars in order)
-    def get_fpga_revision(self):
-        """ Get FPGA firmware version """
+    def get_fpga_firmware_version(self):
         result = self.get_code(0xb4, label="GET_FPGA_REV")
         s = ""
         for i in range(len(result)):
@@ -512,10 +371,9 @@ class FeatureIdentificationDevice(object):
     def get_line(self):
         """ getSpectrum: send "acquire", then immediately read the bulk endpoint. """
 
-        # Only send the CMD_GET_IMAGE (internal trigger) if external
-        # trigger is disabled
+        # Only send the CCD_GET_IMAGE (internal trigger) if external trigger is disabled
         log.debug("get_line: requesting spectrum")
-        if self.ccd_trigger == 0:
+        if self.ccd_trigger_source == 0: # INTERNAL
             result = self.send_code(0xad, data_or_wLength="00000000", label="ACQUIRE_CCD")
 
         # regardless of pixel count, assume uint16
@@ -525,7 +383,7 @@ class FeatureIdentificationDevice(object):
         self.wait_for_usb_available()
 
         # MZ: make constants for endpoints
-        data = self.device.read(0x82, line_buffer, timeout=USB_TIMEOUT)
+        data = self.device.read(0x82, line_buffer, timeout=USB_TIMEOUT_MS)
         log.debug("get_line: %s ...", data[0:9])
 
         try:
@@ -581,10 +439,10 @@ class FeatureIdentificationDevice(object):
         raw = float(raw)
 
         # use the first 4 linearity coefficients as a 3rd-order polynomial
-        calibrated = float(self.linearity_coeffs[0]) \
-                   + float(self.linearity_coeffs[1]) * raw \
-                   + float(self.linearity_coeffs[2]) * raw * raw \
-                   + float(self.linearity_coeffs[3]) * raw * raw * raw
+        calibrated = float(self.eeprom.linearity_coeffs[0]) \
+                   + float(self.eeprom.linearity_coeffs[1]) * raw \
+                   + float(self.eeprom.linearity_coeffs[2]) * raw * raw \
+                   + float(self.eeprom.linearity_coeffs[3]) * raw * raw * raw
         log.debug("secondary_adc_calibrated: %f", calibrated)
         return calibrated
 
@@ -600,7 +458,7 @@ class FeatureIdentificationDevice(object):
         return value
 
     def get_laser_temperature_raw(self):
-        result = self.get_code(0xd5, label="GET_LASER_TEMP")
+        result = self.get_code(0xd5, wLength=2, label="GET_LASER_TEMP")
         if not result:
             raise Exception("Unable to read laser temperature")
         return result[0] + (result[1] << 8)
@@ -647,9 +505,9 @@ class FeatureIdentificationDevice(object):
         if raw < 0:
             raw = self.get_detector_temperature_raw()
 
-        degC = self.adc_to_degC_coeff_0             \
-             + self.adc_to_degC_coeff_1 * raw       \
-             + self.adc_to_degC_coeff_2 * raw * raw
+        degC = self.eeprom.adc_to_degC_coeffs[0]             \
+             + self.eeprom.adc_to_degC_coeffs[1] * raw       \
+             + self.eeprom.adc_to_degC_coeffs[2] * raw * raw
         log.debug("Detector temperature: %.2f deg C (0x%04x raw)" % (degC, raw))
         return degC
 
@@ -700,15 +558,17 @@ class FeatureIdentificationDevice(object):
             issues. This value is a default and is hugely dependent on the 
             environmental conditions. """
 
-        if degC < self.tmin:
-            log.critical("set_detector_tec_setpoint_degC: setpoint %f below min %f", degC, self.tmin)
+        if degC < self.eeprom.min_temp_degC:
+            log.critical("set_detector_tec_setpoint_degC: setpoint %f below min %f", degC, self.min_temp_degC)
             return False
 
-        if degC > self.tmax:
-            log.critical("set_detector_tec_setpoint_degC: setpoint %f exceeds max %f", degC, self.tmax)
+        if degC > self.eeprom.max_temp_degC:
+            log.critical("set_detector_tec_setpoint_degC: setpoint %f exceeds max %f", degC, self.max_temp_degC)
             return False
 
-        raw = int(self.degC_to_dac_coeff_0 + self.degC_to_dac_coeff_1 * degC + self.degC_to_dac_coeff_2 * degC * degC)
+        raw = int(self.eeprom.degC_to_dac_coeffs[0] 
+                + self.eeprom.degC_to_dac_coeffs[1] * degC 
+                + self.eeprom.degC_to_dac_coeffs[2] * degC * degC)
 
         # constrain to 12-bit DAC
         if (raw < 0):
@@ -725,19 +585,19 @@ class FeatureIdentificationDevice(object):
         value = 1 if flag else 0
 
         if not self.detector_tec_setpoint_has_been_set:
-            log.debug("defaulting TEC setpoint to min %s", self.tmin)
-            self.set_detector_tec_setpoint_degC(self.tmin)
+            log.debug("defaulting TEC setpoint to min %s", self.eeprom.min_temp_degC)
+            self.set_detector_tec_setpoint_degC(self.eeprom.min_temp_degC)
 
         log.debug("Send CCD TEC enable: %s", value)
         self.send_code(0xd6, value, label="SET_CCD_TEC_ENABLE")
 
-    def set_ccd_trigger(self, flag=0):
+    def set_ccd_trigger_source(self, flag):
         # Don't send the opcode on ARM. See issue #2 on WasatchUSB project
         if self.pid != 0x2000:
             msb = 0
             lsb = 1 if flag else 0
             buf = 8 * [0]
-            self.send_code(0xd2, lsb, msb, buf, label="SET_CCD_TRIGGER")
+            self.send_code(0xd2, lsb, msb, buf, label="SET_CCD_TRIGGER_SOURCE")
 
     def set_high_gain_mode_enable(self, flag=0):
         # CF_SELECT is configured using bit 2 of the FPGA configuration register 
@@ -956,44 +816,16 @@ class FeatureIdentificationDevice(object):
         log.debug("Send laser temperature setpoint raw: %d", value)
         return self.send_code(0xe7, value, label="SET_LASER_TEMP_SETPOINT")
 
-    def set_wavecal_coeffs(self, coeffs):
-        try:
-            (c0, c1, c2, c3) = coeffs.split(" ")
-        except Exception as exc:
-            log.critical("Wavecal coeffs split failiure", exc_info=1)
-            return
-
-        self.wavelength_coeff_0 = c0
-        self.wavelength_coeff_1 = c1
-        self.wavelength_coeff_2 = c2
-        self.wavelength_coeff_3 = c3
-
-        log.debug("updated wavecal coeffs")
-
     def set_degC_to_dac_coeffs(self, coeffs):
-        """ Temporary solution for modifying the CCD TEC setpoint calibration 
-            coefficients. These are used as part of a 2nd-order polynomial for 
-            transforming the setpoint temperature into a DAC value. Expects a 
-            great deal of accuracy on part of the user, otherwise sets default. """
+        self.eeprom.degC_to_dac_coeffs = coeffs
 
-        try:
-            (c0, c1, c2) = coeffs.split(" ")
-        except Exception as exc:
-            log.critical("TEC Coeffs split failiure", exc_info=1)
-            return
-
-        self.degC_to_dac_coeff_0 = float(c0)
-        self.degC_to_dac_coeff_1 = float(c1)
-        self.degC_to_dac_coeff_2 = float(c2)
-
-        log.info("Successfully changed CCD TEC setpoint coefficients")
-
-    def get_ccd_trigger(self):
+    # never called by ENLIGHTEN - provided for OEMs
+    def get_ccd_trigger_source(self):
         """ Read the trigger source setting from the device. 0=internal,
             1=external. Use caution when interpreting the larger behavior of
             the device as ARM and FX2 implementations differ as of 2017-08-02 """
 
-        result = self.get_code(0xd3, label="GET_CCD_TRIGGER")
+        result = self.get_code(0xd3, label="GET_CCD_TRIGGER_SOURCE")
         return result[0]
 
     def write_setting(self, record):
@@ -1026,9 +858,6 @@ class FeatureIdentificationDevice(object):
         elif record.setting == "degC_to_dac_coeffs":
             self.set_degC_to_dac_coeffs(record.value) 
 
-        elif record.setting == "wavecal":
-            self.set_wavecal_coeffs(record.value)
-
         elif record.setting == "laser_power_perc":
             self.laser_power_perc = int(record.value)
             self.set_laser_power_perc(self.laser_power_perc)
@@ -1049,9 +878,9 @@ class FeatureIdentificationDevice(object):
             self.high_gain_mode_enable = int(record.value)
             self.set_high_gain_mode_enable(self.high_gain_mode_enable)
 
-        elif record.setting == "ccd_trigger":
-            self.ccd_trigger = int(record.value)
-            self.set_ccd_trigger(self.ccd_trigger)
+        elif record.setting == "set_ccd_trigger_source":
+            self.ccd_trigger_source = int(record.value)
+            self.set_ccd_trigger_source(self.ccd_trigger_source)
 
         elif record.setting == "scans_to_average":
             self.scans_to_average = int(record.value)

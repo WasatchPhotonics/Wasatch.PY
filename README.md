@@ -303,6 +303,10 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2018-04-30 0.7.0
+    - added SpectrometerSettings
+    - added SpectrometerState
+    - added EEPROM
 - 2018-04-21 0.6.10
     - Reading.session\_count
     - Reading.laser\_power
