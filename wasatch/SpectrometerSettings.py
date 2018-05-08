@@ -22,6 +22,10 @@ class SpectrometerSettings(object):
         # volatile state
         self.state = SpectrometerState()
 
+        # For consistency, consider adding a class FPGARegisters here for writable 
+        # settings like ccd_gain, ccd_offset etc which aren't naturally supported
+        # by on-screen widgets like integration time.
+
         # permanent attributes
         self.microcontroller_firmware_version = None
         self.fpga_firmware_version = None
@@ -46,15 +50,23 @@ class SpectrometerSettings(object):
     ############################################################################
 
     def update_wavecal(self, coeffs=None):
-        if coeffs is not None:
+        if coeffs is None:
+            coeffs = self.eeprom.wavelength_coeffs
+        else:
             self.eeprom.wavelength_coeffs = coeffs
 
-        self.wavelengths = utils.generate_wavelengths(
-            self.pixels(), 
-            self.eeprom.wavelength_coeffs[0], 
-            self.eeprom.wavelength_coeffs[1], 
-            self.eeprom.wavelength_coeffs[2], 
-            self.eeprom.wavelength_coeffs[3])
+        if coeffs:
+            self.wavelengths = utils.generate_wavelengths(
+                self.pixels(), 
+                self.eeprom.wavelength_coeffs[0], 
+                self.eeprom.wavelength_coeffs[1], 
+                self.eeprom.wavelength_coeffs[2], 
+                self.eeprom.wavelength_coeffs[3])
+        else:
+            # this can happen on Stroker Protocol before/without .ini file
+            log.debug("no wavecal found - using pixel space")
+            self.wavelengths = range(self.pixels())
+
         log.debug("generated %d wavelengths from %.2f to %.2f", 
             len(self.wavelengths), self.wavelengths[0], self.wavelengths[-1])
 

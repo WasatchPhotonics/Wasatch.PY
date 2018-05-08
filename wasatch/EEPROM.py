@@ -11,21 +11,21 @@ class EEPROM(object):
         self.has_cooling                 = False
         self.has_battery                 = False
         self.has_laser                   = False
-        self.excitation_nm               = None
+        self.excitation_nm               = 0.0  # None is weird for a float
         self.slit_size_um                = 0
                                          
         self.wavelength_coeffs           = []
         self.degC_to_dac_coeffs          = []
         self.adc_to_degC_coeffs          = []
-        self.max_temp_degC               = 0
-        self.min_temp_degC               = 0
+        self.max_temp_degC               = 20
+        self.min_temp_degC               = 10
         self.tec_r298                    = 0
         self.tec_beta                    = 0
         self.calibration_date            = None
         self.calibrated_by               = None
                                          
         self.detector                    = None
-        self.active_pixels_horizontal    = 0
+        self.active_pixels_horizontal    = 1024
         self.active_pixels_vertical      = 0
         self.min_integration_time_ms     = 0
         self.max_integration_time_ms     = 0
@@ -40,11 +40,12 @@ class EEPROM(object):
         self.roi_vertical_region_3_end   = 0
         self.linearity_coeffs            = []
 
-        self.max_laser_power_mW          = 0
-        self.min_laser_power_mW          = 0
+        self.max_laser_power_mW          = 0.0
+        self.min_laser_power_mW          = 0.0
         self.laser_power_coeffs          = []
 
         self.user_data                   = None
+        self.user_text                   = None
 
         self.bad_pixels                  = []
                                          
@@ -99,7 +100,7 @@ class EEPROM(object):
         self.tec_r298                    = self.unpack((1, 44,  2), "h")
         self.tec_beta                    = self.unpack((1, 46,  2), "h")
         self.calibration_date            = self.unpack((1, 48, 12), "s")
-        self.calibration_by              = self.unpack((1, 60,  3), "s")
+        self.calibrated_by               = self.unpack((1, 60,  3), "s")
                                     
         # Page 2                    
         self.detector                    = self.unpack((2,  0, 16), "s")
@@ -156,22 +157,15 @@ class EEPROM(object):
         log.info("  Excitation (nm):  %s", self.excitation_nm)
         log.info("  Slit size (um):   %s", self.slit_size_um)
         log.info("")
-        log.info("  Wavecal coeff0:   %s", self.wavelength_coeffs[0])
-        log.info("  Wavecal coeff1:   %s", self.wavelength_coeffs[1])
-        log.info("  Wavecal coeff2:   %s", self.wavelength_coeffs[2])
-        log.info("  Wavecal coeff3:   %s", self.wavelength_coeffs[3])
-        log.info("  degCToDAC coeff0: %s", self.degC_to_dac_coeffs[0])
-        log.info("  degCToDAC coeff1: %s", self.degC_to_dac_coeffs[1])
-        log.info("  degCToDAC coeff2: %s", self.degC_to_dac_coeffs[2])
-        log.info("  adcToDegC coeff0: %s", self.adc_to_degC_coeffs[0])
-        log.info("  adcToDegC coeff1: %s", self.adc_to_degC_coeffs[1])
-        log.info("  adcToDegC coeff2: %s", self.adc_to_degC_coeffs[2])
+        log.info("  Wavecal coeffs:   %s", self.wavelength_coeffs)
+        log.info("  degCToDAC coeffs: %s", self.degC_to_dac_coeffs)
+        log.info("  adcToDegC coeffs: %s", self.adc_to_degC_coeffs)
         log.info("  Det temp max:     %s", self.max_temp_degC)
         log.info("  Det temp min:     %s", self.min_temp_degC)
         log.info("  TEC R298:         %s", self.tec_r298)
         log.info("  TEC beta:         %s", self.tec_beta)
         log.info("  Calibration Date: %s", self.calibration_date)
-        log.info("  Calibration By:   %s", self.calibration_by)
+        log.info("  Calibration By:   %s", self.calibrated_by)
         log.info("")
         log.info("  Detector name:    %s", self.detector)
         log.info("  Active horiz:     %d", self.active_pixels_horizontal)
@@ -184,20 +178,13 @@ class EEPROM(object):
         log.info("  ROI Vert Reg 1:   (%d, %d)", self.roi_vertical_region_1_start, self.roi_vertical_region_1_end)
         log.info("  ROI Vert Reg 2:   (%d, %d)", self.roi_vertical_region_2_start, self.roi_vertical_region_2_end)
         log.info("  ROI Vert Reg 3:   (%d, %d)", self.roi_vertical_region_3_start, self.roi_vertical_region_3_end)
-        log.info("  Linearity Coeff0: %f", self.linearity_coeffs[0])
-        log.info("  Linearity Coeff1: %f", self.linearity_coeffs[1])
-        log.info("  Linearity Coeff2: %f", self.linearity_coeffs[2])
-        log.info("  Linearity Coeff3: %f", self.linearity_coeffs[3])
-        log.info("  Linearity Coeff4: %f", self.linearity_coeffs[4])
+        log.info("  Linearity Coeffs: %s", self.linearity_coeffs)
         log.info("")
-        log.info("  Laser coeff0:     %s", self.laser_power_coeffs[0])
-        log.info("  Laser coeff1:     %s", self.laser_power_coeffs[1])
-        log.info("  Laser coeff2:     %s", self.laser_power_coeffs[2])
-        log.info("  Laser coeff3:     %s", self.laser_power_coeffs[3])
+        log.info("  Laser coeffs:     %s", self.laser_power_coeffs)
         log.info("  Max Laser mW:     %s", self.max_laser_power_mW)
         log.info("  Min Laser mW:     %s", self.min_laser_power_mW)
         log.info("")
-        log.info("  User Text:        %s", self.printable(self.user_text))
+        log.info("  User Text:        %s", self.user_text)
         log.info("")
         log.info("  Bad Pixels:       %s", self.bad_pixels)
 

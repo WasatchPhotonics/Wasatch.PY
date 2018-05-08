@@ -19,6 +19,7 @@ from . import utils
 from FeatureIdentificationDevice import FeatureIdentificationDevice
 from StrokerProtocolDevice       import StrokerProtocolDevice
 from SpectrometerSettings        import SpectrometerSettings
+from SpectrometerState           import SpectrometerState
 from ControlObject               import ControlObject
 from WasatchBus                  import WasatchBus
 from Reading                     import Reading
@@ -46,7 +47,7 @@ class WasatchDevice(object):
         self.command_queue = multiprocessing.Queue() # routes ENLIGHTEN 'change settings' commands to the spectrometer process
         self.backend_error = 0
 
-        control_object = ControlObject("integration", 10)
+        control_object = ControlObject("integration_time_ms", 10)
         self.command_queue.put(control_object)
 
         self.settings = SpectrometerSettings()
@@ -118,7 +119,7 @@ class WasatchDevice(object):
         return True
 
     def connect_feature_identification(self):
-        """ Given a specified universal identifier, attempt to connect to the 
+        """ Given a specified universal identifier, attempt to connect to the
             device using feature identification firmware. """
         FID_list = ["0x1000", "0x2000", "0x3000", "0x4000"]
 
@@ -171,17 +172,13 @@ class WasatchDevice(object):
         if self.connected == False:
             return
 
-        self.settings = SpectrometerSettings()
+        self.settings = self.hardware.settings
 
-        self.settings.eeprom                           = self.hardware.eeprom
-        self.settings.fpga_options                     = self.hardware.fpga_options
-        self.settings.microcontroller_firmware_version = self.hardware.get_microcontroller_firmware_version()
-        self.settings.fpga_firmware_version            = self.hardware.get_fpga_firmware_version()
-
-        # TODO: actually instantiate a SpectrometerState inside FID/SP and keep it current,
-        # so we can easily grab it here
-        self.settings.state.integration_time_ms        = self.hardware.get_integration_time()
-        self.settings.state.ccd_gain                   = self.hardware.get_ccd_gain()
+        # generic post-initialization stuff for both SP and FID
+        self.hardware.get_microcontroller_firmware_version()
+        self.hardware.get_fpga_firmware_version()
+        self.hardware.get_integration_time()
+        self.hardware.get_ccd_gain()
 
         # could read the defaults for these ss.state volatiles from FID/SP too:
         #
@@ -190,6 +187,7 @@ class WasatchDevice(object):
         # self.triggering_enabled
         # self.laser_enabled
         # self.laser_power_perc
+        # self.ccd_offset
 
         self.settings.update_wavecal()
         self.settings.dump()
@@ -287,13 +285,17 @@ class WasatchDevice(object):
         # they can turn off laser, disable averaging etc
         self.process_commands()
 
-        averaging_enabled = (self.hardware.scans_to_average > 1)
+        averaging_enabled = (self.settings.state.scans_to_average > 1)
 
         # start a new reading
         reading = Reading()
-        reading.integration  = self.hardware.integration
-        reading.laser_status = self.hardware.laser_status
-        reading.laser_power  = self.hardware.last_applied_laser_power
+
+        # TODO...just include a copy of SpectrometerState? something to think about
+        # That would actually provide a reason to roll all the temperature etc readouts
+        # into the SpectrometerState class...
+        reading.integration_time_ms = self.settings.state.integration_time_ms
+        reading.laser_enabled       = self.settings.state.laser_enabled
+        reading.laser_power_perc    = self.settings.state.laser_power_perc
 
         # collect next spectrum
         try:
@@ -302,7 +304,7 @@ class WasatchDevice(object):
             log.debug("device.acquire_data: got %s ...", reading.spectrum[0:9])
 
             # bad pixel correction
-            if self.hardware.bad_pixel_mode == common.bad_pixel_mode_average:
+            if self.settings.state.bad_pixel_mode == SpectrometerState.BAD_PIXEL_MODE_AVERAGE:
                 self.correct_bad_pixels(reading.spectrum)
 
             log.debug("device.acquire_data: after bad_pixel correction: %s ...", reading.spectrum[0:9])
@@ -327,7 +329,7 @@ class WasatchDevice(object):
         reading.sum_count = self.sum_count
 
         # read detector temperature if applicable (should we do this for Ambient as well?)
-        if True or self.hardware.has_cooling:
+        if True or self.settings.eeprom.has_cooling:
             try:
                 reading.detector_temperature_raw  = self.hardware.get_detector_temperature_raw()
                 reading.detector_temperature_degC = self.hardware.get_detector_temperature_degC(reading.detector_temperature_raw)
@@ -338,10 +340,10 @@ class WasatchDevice(object):
                 else:
                     log.debug("Error reading detector temperature", exc_info=1)
 
-        # only read laser temperature if we have a laser
-        if self.hardware.has_laser:
+        # only read laser temperature if we have a laser (how do we determine this for StrokerProtocol?)
+        if self.settings.eeprom.has_laser:
             try:
-                count = 2 if self.hardware.secondary_adc_enabled else 1
+                count = 2 if self.settings.state.secondary_adc_enabled else 1
                 for throwaway in range(count):
                     reading.laser_temperature_raw  = self.hardware.get_laser_temperature_raw()
                 reading.laser_temperature_degC = self.hardware.get_laser_temperature_degC(reading.laser_temperature_raw)
@@ -353,7 +355,7 @@ class WasatchDevice(object):
                     reading.failure = exc
 
         # read secondary ADC if requested
-        if self.hardware.secondary_adc_enabled:
+        if self.settings.state.secondary_adc_enabled:
             try:
                 self.hardware.select_adc(1)
                 for throwaway in range(2):
@@ -369,7 +371,7 @@ class WasatchDevice(object):
 
         # have we completed the averaged reading?
         if averaging_enabled:
-            if self.sum_count >= self.hardware.scans_to_average:
+            if self.sum_count >= self.settings.state.scans_to_average:
                 # if we wanted to send the averaged spectrum as ints, use numpy.ndarray.astype(int)
                 reading.spectrum = numpy.divide(self.summed_spectra, self.sum_count).tolist()
                 log.debug("device.acquire_data: averaged_spectrum : %s ...", reading.spectrum[0:9])
@@ -399,18 +401,6 @@ class WasatchDevice(object):
             except Exception as exc:
                 log.critical("process_commands: error dequeuing or writing control object", exc_info=1)
                 raise
-
-    def update_wavelengths(self):
-        self.wavelengths = utils.generate_wavelengths(self.pixels,
-                                                      self.wavelength_coeff_0,
-                                                      self.wavelength_coeff_1,
-                                                      self.wavelength_coeff_2,
-                                                      self.wavelength_coeff_3)
-        if self.excitation > 0:
-            self.wavenumbers = utils.generate_wavenumbers(self.excitation, self.wavelengths)
-        else:
-            log.debug("No excitation defined")
-            self.wavenumbers = None
 
     # called by subprocess.continuous_poll
     def change_setting(self, setting, value):

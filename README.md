@@ -303,6 +303,8 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2018-05-08 0.7.1
+    - updates for ENLIGHTEN 1.3.0
 - 2018-04-30 0.7.0
     - added SpectrometerSettings
     - added SpectrometerState

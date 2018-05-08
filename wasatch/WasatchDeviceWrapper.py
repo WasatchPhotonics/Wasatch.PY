@@ -1,4 +1,7 @@
-""" Long-polling multiprocessing wrappers. 
+""" Wrap WasatchDevice in a non-blocking interface run in a separate
+    process. Use a summary queue to pass meta information about the
+    device for multiprocessing-safe spectrometer settings and spectral 
+    acquisition on Windows. 
 
     From ENLIGHTEN's standpoint (one Wasatch.PY user), here's what's going on:
 
@@ -43,10 +46,47 @@ log = logging.getLogger(__name__)
 
 class WasatchDeviceWrapper(object):
 
-    """ Wrap WasatchDevice in a non-blocking interface run in a separate
-        process. Use a summary queue to pass meta information about the
-        device for multiprocessing-safe spectrometer settings and spectral 
-        acquisition on Windows. """
+    ACQUISITION_MODE_KEEP_ALL      = 0 # don't drop frames
+    ACQUISITION_MODE_LATEST        = 1 # only grab most-recent frame (allow dropping)
+    ACQUISITION_MODE_KEEP_COMPLETE = 2 # generally grab most-recent frame (allow dropping),
+                                       # except don't drop FULLY AVERAGED frames (summation
+                                       # contributors can be skipped).  If the most-recent
+                                       # frame IS a partial summation contributor, then send it on.
+
+    DEVICE_CONTROL_COMMANDS = {
+        # eeprom
+        "adc_to_degC_coeffs":              ("float[]"),
+        "degC_to_dac_coeffs":              ("float[]"),
+        "wavelength_coeffs":               ("float[]"),
+
+        # state
+        "area_scan_enable":                ("bool"),
+        "bad_pixel_mode":                  ("int"),
+        "detector_tec_enable":             ("bool"),
+        "detector_tec_setpoint_degC":      ("int"),
+
+        # FPGA registers
+        "ccd_gain":                        ("float"),
+        "ccd_offset":                      ("int"),
+
+        "enable_secondary_adc":            ("bool"),
+        "high_gain_mode_enable":           ("bool"),
+        "integration_time_ms":             ("int"),
+        "invert_x_axis":                   ("bool"),
+        "laser_enable":                    ("bool"),
+        "laser_power_perc":                ("int"),
+        "laser_power_ramp_increments":     ("int"),
+        "laser_power_ramping_enabled":     ("bool"),
+        "laser_temperature_setpoint_raw":  ("int"),
+        "log_level":                       ("string"),
+        "max_usb_interval_ms":             ("int"),
+        "min_usb_interval_ms":             ("int"),
+        "scans_to_average":                ("int"),
+        "trigger_source":                  ("int"),
+
+        # other
+        "reset_fpga":                      ("bool"),
+    }
 
     ############################################################################
     #                                                                          #
@@ -163,7 +203,7 @@ class WasatchDeviceWrapper(object):
 
         return True
 
-    def acquire_data(self, mode=common.acquisition_mode_keep_complete):
+    def acquire_data(self, mode=None):
         """ Don't use if queue.empty() for flow control on python 2.7 on
             windows, as it will hang. Use the catch of the queue empty exception as
             shown below instead.
@@ -172,16 +212,22 @@ class WasatchDeviceWrapper(object):
             potentially voluminous amount of data returned from the device.
             get_last by default will make sure the queue is cleared, then
             return the most recent reading from the device. """
+
+        if mode == None:
+            mode = self.ACQUISITION_MODE_KEEP_COMPLETE
+
         if self.closing:
             log.debug("WasatchDeviceWrapper.acquire_data: closing")
             return None
 
-        if mode == common.acquisition_mode_latest:
+        if mode == self.ACQUISITION_MODE_LATEST:
             return self.get_final_item()
-        elif mode == common.acquisition_mode_keep_complete:
+
+        elif mode == self.ACQUISITION_MODE_KEEP_COMPLETE:
+            # This is the ENLIGHTEN "default"
             return self.get_final_item(keep_averaged=True)
 
-        # presumably mode == common.acquisition_mode_keep_all:
+        # presumably mode == self.ACQUISITION_MODE_KEEP_ALL:
 
         # Get the oldest entry off of the queue, expect the user to be
         # able to acquire them upstream as fast as possible.

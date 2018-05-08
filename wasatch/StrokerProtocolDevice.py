@@ -1,5 +1,5 @@
 """ Interface wrapper around the libusb drivers to show stroker protocol
-    communication for devices from Wasatch Photonics. Stroker in this case is an 
+    communication for devices from Wasatch Photonics. Stroker in this case is an
     homage to automotive performance: https://en.wikipedia.org/wiki/Stroker_kit """
 
 import usb
@@ -7,16 +7,16 @@ import math
 import struct
 import logging
 
-from . import common
+from SpectrometerSettings import SpectrometerSettings
 
 log = logging.getLogger(__name__)
 
-USB_TIMEOUT=60000
+USB_TIMEOUT_MS = 60000
 
 class StrokerProtocolDevice(object):
-    """ Provide function wrappers for all of the common tasks associated with 
-        stroker control. This includes control messages to pass settings back 
-        and forth, as well as bulk transfers to get lines of data from the 
+    """ Provide function wrappers for all of the common tasks associated with
+        stroker control. This includes control messages to pass settings back
+        and forth, as well as bulk transfers to get lines of data from the
         device. """
 
     def __init__(self, vid="0x24aa", pid="0x0001"):
@@ -26,54 +26,23 @@ class StrokerProtocolDevice(object):
 
         self.device = None
 
-        self.laser_temperature_invalid = 0
-        self.detector_temperature_invalid = 0
+        self.laser_temperature_invalid = False
+        self.detector_temperature_invalid = False
 
-        self.max_integration = 10000 # ms
-        self.min_integration = 1     # ms
+        self.settings = SpectrometerSettings()
 
-        self.tmin = 10
-        self.tmax = 20
+        # apply StrokerProtocol defaults
+        self.settings.eeprom.model = "Stroker Protocol Device"
 
-        self.integration = self.min_integration
-        self.laser_status = 0
-        self.laser_temperature_setpoint_raw = 0
-        self.detector_tec_setpoint_degC = 15.0
-        self.detector_tec_enable = 0
         self.detector_tec_setpoint_has_been_set = False
-        self.ccd_adc_setpoint = 2047 # Midway of a 12bit ADC # MZ: used ever?
         self.secondary_adc_enabled = False
         self.invert_x_axis = False
 
-        # Defaults from Original (stroker-era) settings. These are known
-        # to set ccd setpoints effectively for stroker 785 class units.
-        self.original_degC_to_dac_coeff_0 = 3566.62
-        self.original_degC_to_dac_coeff_1 = -143.543
-        self.original_degC_to_dac_coeff_2 =   -0.324723
+        # Defaults from Original (Stroker-era) settings. These are known
+        # to set ccd setpoints effectively for Stroker 785-class units.
+        self.settings.eeprom.degC_to_dac_coeffs = [ 3566.62, -143.543, -0.324723 ]
 
-        self.degC_to_dac_coeff_0 = self.original_degC_to_dac_coeff_0
-        self.degC_to_dac_coeff_1 = self.original_degC_to_dac_coeff_1
-        self.degC_to_dac_coeff_2 = self.original_degC_to_dac_coeff_2
-
-        self.scans_to_average = 1
-        self.bad_pixel_mode = common.bad_pixel_mode_average
-
-        # did Stroker Protocol spectrometers support this?
-        self.fpga_options = None
-
-        # SP devices definitely don't have this... YOU ARE HERE
-        self.eeprom = EEPROM()
-
-        self.model               = None
-        self.serial_number       = None
-        self.baud_rate           = 0
-        self.has_cooling         = False
-        self.has_battery         = False
-        self.has_laser           = False
-        self.excitation          = 0
-        self.slit_size           = 0
-
-        self.last_applied_laser_power = 0 
+        self.last_applied_laser_power = 0
         self.next_applied_laser_power = 100
 
     def connect(self):
@@ -105,10 +74,18 @@ class StrokerProtocolDevice(object):
             raise
 
         self.device = device
+
+        log.debug("reading serial number")
+        self.load_serial_number()
+        log.debug("serial_number = %s", self.settings.eeprom.serial_number)
+
+        log.debug("getting pixels")
+        self.get_sensor_line_length()
+
         return True
 
     def disconnect(self):
-        """ Function stub for historical matching of expected explicit connect 
+        """ Function stub for historical matching of expected explicit connect
             and disconnect. """
         log.critical("USB release interface")
         try:
@@ -120,8 +97,6 @@ class StrokerProtocolDevice(object):
         return True
 
     def send_code(self, FID_bmRequest, FID_wValue=0):
-        """ Perform the control message transfer required to send a value to the 
-            device, return the extracted value. """
         FID_bmRequestType = 0x40 # host to device
         FID_wIndex = 0           # current specification has all index 0
         FID_wLength = ""
@@ -141,8 +116,6 @@ class StrokerProtocolDevice(object):
         return result
 
     def get_code(self, FID_bmRequest, FID_wValue=0, FID_wLength=64):
-        """ Use the StrokerProtocol (sp), and perform the control message 
-            transfer required to get a setting from the device. """
         FID_bmRequestType = 0xC0 # device to host
         FID_wIndex = 0           # current specification has all index 0
 
@@ -160,33 +133,29 @@ class StrokerProtocolDevice(object):
         log.debug("Raw result: [%s]", result)
         return result
 
-    def get_model_number(self):
-        return "Stroker Protocol Device"
-
-    def get_serial_number(self):
+    def load_serial_number(self):
         """ Return the serial number portion of the USB descriptor. """
-        if self.serial_number is not None:
-            return self.serial_number
+        if self.settings.eeprom.serial_number is not None:
+            return self.settings.eeprom.serial_number
 
         # Older units support the 256 langid. Newer units require none.
         try:
-            self.serial_number = usb.util.get_string(self.device, self.device.iSerialNumber, 256)
+            self.settings.eeprom.kerial_number = usb.util.get_string(self.device, self.device.iSerialNumber, 256)
         except Exception as exc:
             log.info("Read new langid 256 serial: %s", exc)
-
-        try:
-            self.serial_number = usb.util.get_string(self.device, self.device.iSerialNumber)
-        except Exception as exc:
-            log.critical("Failure to read langid none serial: %s", exc)
-            raise
-
-        return self.serial_number
+            try:
+                self.settings.eeprom.serial_number = usb.util.get_string(self.device, self.device.iSerialNumber)
+            except Exception as exc:
+                log.critical("Failure to read langid none serial: %s", exc)
+                raise
 
     def get_integration_time(self):
         """ Read the integration time stored on the device. """
         result = self.get_code(0xBF)
 
         curr_time = (result[2] * 0x10000) + (result[1] * 0x100) + result[0]
+
+        # MZ: should we be multiplying by 10 on PID 0x0001?
 
         log.debug("Integration time: %s", curr_time)
         return curr_time
@@ -210,35 +179,30 @@ class StrokerProtocolDevice(object):
             elif bit_val == 1 and i == 6: gain = gain + 0.0078125
             elif bit_val == 1 and i == 7: gain = gain + 0.00390625
 
-        log.debug("Raw gain [sp] is: %s", result)
+        self.settings.state.ccd_gain = gain
 
+        log.debug("Gain is: %s raw (%.2f)", result, gain)
         return gain
 
     def bit_from_string(self, string, index):
         """ Given a string of 1's and 0's, look through each ordinal position
             and return a 1 if it has a one. Otherwise return zero. """
         i, j = divmod(index, 8)
-
-        # Uncomment this if you want the high-order bit first
-        #j = 8 - j
-
-        if ord(string[i]) & (1 << j):
-            return 1
-
-        return 0
+        return ord(string[i]) & (1 << j)
 
     def get_microcontroller_firmware_version(self):
         """ 0xC0 is not to be confused with the device to host specification in
-            the control message. This is a vendor defined opcode for returning 
+            the control message. This is a vendor defined opcode for returning
             the software information. Result is Major version, hyphen, minor
             version. """
         result = self.get_code(0xC0)
         sw_code = "%d-%d" % (result[0], result[1])
+        self.settings.microcontroller_firmware_version = sw_code
         return sw_code
 
     def get_fpga_firmware_version(self):
-        """ The version of the FPGA code read from the device. First three bytes 
-            plus a hyphen is the major version, then last three bytes is the 
+        """ The version of the FPGA code read from the device. First three bytes
+            plus a hyphen is the major version, then last three bytes is the
             minor. """
         result = self.get_code(0xB4)
 
@@ -250,10 +214,12 @@ class StrokerProtocolDevice(object):
                           % (chr(result[0]), chr(result[1]),
                              chr(result[2]), chr(result[3]))
 
-        return "%s%s" % (chr_fpga_prefix, chr_fpga_suffix)
+        version = "%s%s" % (chr_fpga_prefix, chr_fpga_suffix)
+        self.settings.fpga_firmware_version = version
+        return version
 
     def get_line(self):
-        """ Issue the "acquire" control message, then immediately read back from 
+        """ Issue the "acquire" control message, then immediately read back from
             the bulk endpoint. """
         log.debug("INSIDE get line")
 
@@ -265,7 +231,7 @@ class StrokerProtocolDevice(object):
         if self.pid == 0x2000:
             line_buffer = 1024 # 512 16bit pixels
 
-        data = self.device.read(0x82, line_buffer, timeout=USB_TIMEOUT)
+        data = self.device.read(0x82, line_buffer, timeout=USB_TIMEOUT_MS)
         log.debug("Raw data: %s", data[0:9])
 
         try:
@@ -275,16 +241,16 @@ class StrokerProtocolDevice(object):
             raise
 
         log.debug("DONE   get line")
-        # Append the 2048 pixel data for just MTI produt id (1)
-        if self.pid == 1:
+
+        # Append the 2048 pixel data for just MTI produt id 0x0001
+        if self.pid == 0x0001:
             second_half = self.read_second_half()
             data.extend(second_half)
 
         return data
 
     def read_second_half(self):
-        """ Read from end point 86 of the ancient-er 2048 pixel hamamatsu 
-            detector in MTI units. """
+        """ Read from endpoint 86 of the 2048-pixel Hamamatsu detector in MTI units. """
         log.debug("Also read off end point 86")
         data = self.device.read(0x86, 2048, timeout=1000)
         try:
@@ -296,21 +262,17 @@ class StrokerProtocolDevice(object):
 
         return data
 
-    def set_integration_time(self, int_time):
-        """ Send the updated integration time in a control message to the device. """
+    def set_integration_time(self, value):
+        # Mustard Tree PID=0x0001 class devices have a hard-coded integration time
+        # resolution of 10ms; e.g. if you set a value of 500, you will get a 5
+        # second integration.
+        self.settings.state.integration_time_ms = value
 
-        log.debug("Send integration time: %s", int_time)
-
-        # Welcome back MTI - we did not miss you. PID=0x0001 class
-        # devices only support integration time measured in units of
-        # 10msec. If you send in 500msec, you will get a 5 second
-        # integration. Search the through Dash code base to see why we
-        # never, ever want to do this.
         if self.pid == 1:
-            int_time = int(int_time / 10)
+            log.debug("scaled Mustard Tree integration time by 0.1")
+            value = int(value / 10)
 
-        result = self.send_code(0xB2, int_time)
-        return result
+        return self.send_code(0xB2, value)
 
     ############################################################################
     # Temperature
@@ -333,39 +295,39 @@ class StrokerProtocolDevice(object):
             raise Exception("Unable to read raw laser temperature")
         return result[0] + result[1] << 8
 
-    def get_laser_temperature_degC(self, raw=0):
-        """ Read the Analog to Digital conversion value from the device.  Apply 
-            formula to convert AD value to temperature, return raw temperature 
+    def get_laser_temperature_degC(self, raw=None):
+        """ Read the Analog to Digital conversion value from the device.  Apply
+            formula to convert AD value to temperature, return raw temperature
             value. """
 
-        if raw == 0:
+        if raw is None:
             raw = get_laser_temperature_raw()
 
         try:
-            if raw == 0:
-                if self.laser_temperature_invalid == 0:
-                    log.critical("Hardware Laser temperature invalid (0)")
-                self.laser_temperature_invalid = 1
+            if raw is None:
+                if not self.laser_temperature_invalid:
+                    log.critical("Hardware Laser temperature invalid")
+                self.laser_temperature_invalid = True
                 return 0
 
         except TypeError:
-            if self.laser_temperature_invalid == 0:
+            if not self.laser_temperature_invalid:
                 log.critical("Laser temperature invalid (TypeError)")
-            self.laser_temperature_invalid = 1
+            self.laser_temperature_invalid = True
             raise
 
         except IndexError:
-            if self.laser_temperature_invalid == 0:
+            if not self.laser_temperature_invalid:
                 log.critical("Laser temperature invalid (IndexError)")
-            self.laser_temperature_invalid = 1
+            self.laser_temperature_invalid = True
             raise
 
         try:
             voltage    = 2.5 * raw / 4096;
             resistance = 21450.0 * voltage / (2.5 - voltage);
             if resistance <= 0:
-                log.error("get_laser_temperature_degC: invalid resistance")
-                self.laser_temperature_invalid = 1
+                log.debug("get_laser_temperature_degC: invalid resistance")
+                self.laser_temperature_invalid = True
                 return -99
 
             logVal     = math.log(resistance / 10000);
@@ -373,10 +335,10 @@ class StrokerProtocolDevice(object):
             degC       = 3977.0 / insideMain - 273.0;
 
         except ValueError as exc:
-            if self.laser_temperature_invalid == 0:
+            if not self.laser_temperature_invalid:
                 log.critical("Hardware Laser temp invalid (math domain error)")
                 log.critical("exception: %s", exc)
-            self.laser_temperature_invalid = 1
+            self.laser_temperature_invalid = True
             raise
 
         except Exception as exc:
@@ -396,41 +358,45 @@ class StrokerProtocolDevice(object):
         """ Read the Analog to Digital conversion value from the device.
             Apply formula to convert AD value to temperature, return raw
             temperature value. (Stroker Protocol units had no EEPROM) """
-    
+
         if raw == 0:
-            raw = float(self.get_detector_temperature_raw())
-    
+            raw = self.get_detector_temperature_raw()
+        raw = float(raw)
+
         try:
             voltage    = 1.5 * raw / 4096.0
             resistance = 10000 * voltage / (2 - voltage)
             if resistance <= 0:
                 log.error("get_detector_temperature_degC: invalid resistance")
-                self.detector_temperature_invalid = 1
+                self.detector_temperature_invalid = True
                 return -99
 
             logVal     = math.log(resistance / 10000)
             insideMain = logVal + 3977.0 / (25 + 273.0)
             degC       = 3977.0 / insideMain - 273.0
-    
+
         except ValueError as exc:
-            if self.detector_temperature_invalid == 0:
+            if not self.detector_temperature_invalid:
                 log.critical("Hardware CCD temp invalid (math domain error)")
-    
-            self.detector_temperature_invalid = 1
+
+            self.detector_temperature_invalid = True
             raise
-    
+
         except Exception as exc:
             log.critical("Failure processing ccd temperature: %s", exc)
             raise
-    
+
         return degC
 
     def get_laser_enable(self):
         """ Read the laser enable status from the device. """
         result = self.get_code(0xE2)
-        return result[0]
+        enabled = result[0] != 0
+        self.settings.state.laser_enabled = enabled
+        return enabled
 
-    def set_laser_enable(self, flag=0):
+    def set_laser_enable(self, flag):
+        self.settings.state.laser_enabled = flag
         value = 1 if flag else 0
         log.debug("Send laser enable: %s", value)
 
@@ -440,15 +406,17 @@ class StrokerProtocolDevice(object):
             self.last_applied_laser_power = self.next_applied_laser_power
         return self.send_code(0xBE, value)
 
-    def set_detector_tec_enable(self, value=0):
-        """ Write one for enable, zero for disable of the ccd tec cooler. """
+    def set_detector_tec_enable(self, flag):
         if not self.detector_tec_setpoint_has_been_set:
-            log.debug("defaulting TEC setpoint to min %d", self.tmin)
-            self.set_detector_tec_setpoint_degC(self.tmin)
+            log.debug("defaulting TEC setpoint to min %d", self.settings.eeprom.min_temp_degC)
+            self.set_tec_setpoint_degC(self.settings.eeprom.min_temp_degC)
 
-        log.debug("Send CCD TEC enable: %s", value)
-        result = self.send_code(0xD6, value)
+        self.settings.state.tec_enabled = flag
+        log.debug("CCD TEC enable: %s", flag)
+        result = self.send_code(0xD6, 1 if flag else 0)
 
+    # MZ: I don't know if this is ever used.  I'm confused...I thought
+    # StrokerProtocol devices didn't have an EEPROM "by definition".
     def get_calibration_coeffs(self):
         """ Read the calibration coefficients from the on-board EEPROM. """
 
@@ -461,49 +429,50 @@ class StrokerProtocolDevice(object):
         c3 = self.decode_eeprom(eeprom_data, width=8, offset=24)
 
         log.debug("Coeffs: %s, %s, %s, %s" % (c0, c1, c2, c3))
-        return [c0, c1, c2, c3]
+        self.settings.eeprom.wavelength_coeffs = [c0, c1, c2, c3]
+        return self.settings.eeprom.wavelength_coeffs
 
     def decode_eeprom(self, raw_data, width, offset=0):
-        """ Reorder, pad and decode the eeprom data to produce a string 
+        """ Reorder, pad and decode the eeprom data to produce a string
             representation of the value stored in the device memory. """
         # Take N width slice of the data starting from the offset
         top_slice = raw_data[offset:offset+width]
 
-        # Unpack as an integer, always returns a tuple
+        # Legacy comment: Unpack as an integer, always returns a tuple
+        # MZ: "d" means a double, not integer:
+        #     https://docs.python.org/2/library/struct.html#format-characters
         unpacked = struct.unpack("d", top_slice)
 
         log.debug("Unpacked str: %s ", unpacked)
         return str(unpacked[0])
 
-    def set_detector_tec_setpoint_degC(self, degC):
-        """ Attempt to set the CCD cooler setpoint. Verify that it is within an 
-            acceptable range. Ideally this is to prevent condensation and other 
-            issues. This value is a default and is hugely dependent on the 
+    def set_tec_setpoint_degC(self, degC):
+        """ Attempt to set the CCD cooler setpoint. Verify that it is within an
+            acceptable range. Ideally this is to prevent condensation and other
+            issues. This value is a default and is hugely dependent on the
             environmental conditions. """
 
-        setpoint_min_degC = 10
-        setpoint_max_degC = 20
-        ok_range = "%s, %s" % (setpoint_min_degC, setpoint_max_degC)
+        ok_range = "%s, %s" % (self.settings.eeprom.min_temp_degC,
+                               self.settings.eeprom.max_temp_degC)
 
-        if degC < setpoint_min_degC:
+        if degC < self.settings.eeprom.min_temp_degC:
             log.critical("TEC setpoint MIN out of range (%s)", ok_range)
             return False
 
-        if degC > setpoint_max_degC:
+        if degC > self.settings.eeprom.max_temp_degC:
             log.critical("TEC setpoint MAX out of range (%s)", ok_range)
             return False
 
-        raw = int(self.degC_to_dac_coeff_0 
-                + self.degC_to_dac_coeff_1 * degC 
-                + self.degC_to_dac_coeff_2 * degC * degC)
+        raw = int(self.settings.eeprom.degC_to_dac_coeffs[0]
+                + self.settings.eeprom.degC_to_dac_coeffs[1] * degC
+                + self.settings.eeprom.degC_to_dac_coeffs[2] * degC * degC)
 
-        if raw < 0:
-            raw = 0
-        elif raw > 4095:
-            raw = 4095
+        raw = max(0, min(4095, raw))
 
-        log.debug("Setting TEC setpoint to: %s (deg C) (%d raw)", degC, raw)
-        result = self.send_code(0xd8, raw)
+        self.settings.state.tec_setpoint_degC = degC
+
+        log.debug("Setting TEC setpoint to: %s degC (%d raw)", degC, raw)
+        self.send_code(0xd8, raw)
         self.detector_tec_setpoint_has_been_set = True
         return True
 
@@ -512,20 +481,31 @@ class StrokerProtocolDevice(object):
         return result[0]
 
     def get_sensor_line_length(self):
-        return 1024 # hardcode?
+        if self.pid == 0x0001: # MTI Stroker Protocol devices with 2048 pixels
+            pixels = 2048
+        elif self.pid == 0x2000:
+            pixels = 512 # are there any Stroker Protocol InGaAs?
+        else:
+            pixels = 1024
+
+        log.debug("sp.get_sensor_line_length: pixels = %d", pixels)
+        self.settings.eeprom.active_pixels_horizontal = pixels
+
+        return pixels
 
     def set_laser_temperature_setpoint_raw(self, value):
         log.debug("Send laser temperature setpoint raw: %d", value)
         return self.send_code(0xe7, value)
 
     def set_laser_power_perc(self, value=100):
-        """ Laser power is determined by a combination of the pulse width, 
-            period and modulation being enabled. There are many combinations of 
-            these values that will produce a given percentage of the total laser 
-            power through pulse width modulation. There is no 'get laser power' 
+        """ Laser power is determined by a combination of the pulse width,
+            period and modulation being enabled. There are many combinations of
+            these values that will produce a given percentage of the total laser
+            power through pulse width modulation. There is no 'get laser power'
             control message on the device. """
 
         self.next_applied_laser_power = value
+        self.settings.state.laser_power_perc = value
 
         # Turn off modulation at full laser power, exit
         if value == 100:
@@ -554,46 +534,45 @@ class StrokerProtocolDevice(object):
             return False
 
         log.info("Laser power set to: %s", value)
+
         return result
 
+    # implemented subset of WasatchDeviceWrapper.DEVICE_CONTROL_COMMANDS
     def write_setting(self, record):
-        """ Perform the specified setting such as physically writing the laser 
+        """ Perform the specified setting such as physically writing the laser
             on, changing the integration time, turning the cooler on etc. """
 
+        log.debug("sp.write_setting: %s -> %s", record.setting, record.value)
+
         if record.setting == "laser_enable":
-            self.set_laser_enable(record.value)
-            self.laser_status = record.value
+            self.set_laser_enable(True if record.value else False)
 
-        elif record.setting == "integration":
-            self.integration = int(record.value)
-            self.set_integration_time(self.integration)
-
-            log.debug("Set integration to: %s", self.integration)
+        elif record.setting == "integration_time_ms":
+            self.set_integration_time(int(record.value))
 
         elif record.setting == "detector_tec_setpoint_degC":
-            self.detector_tec_setpoint_degC = int(record.value)
-            self.set_detector_tec_setpoint_degC(self.detector_tec_setpoint_degC)
+            self.set_tec_setpoint_degC(int(record.value))
 
         elif record.setting == "degC_to_dac_coeffs":
-            self.set_degC_to_dac_coeffs(record.value)
+            self.settings.eeprom.degC_to_dac_coeffs = record.value
 
         elif record.setting == "detector_tec_enable":
-            self.detector_tec_enable = int(record.value)
-            self.set_detector_tec_enable(self.detector_tec_enable)
+            self.set_detector_tec_enable(True if record.value else False)
 
         elif record.setting == "laser_power_perc":
-            self.laser_power_perc = int(record.value)
-            self.set_laser_power_perc(self.laser_power_perc)
+            self.set_laser_power_perc(int(record.value))
 
         elif record.setting == "laser_temperature_setpoint_raw":
-            self.laser_temperature_setpoint_raw = int(record.value)
-            self.set_laser_temperature_setpoint_raw(self.laser_temperature_setpoint_raw)
+            self.set_laser_temperature_setpoint_raw(int(record.value))
 
         elif record.setting == "scans_to_average":
-            self.scans_to_average = int(record.value)
+            self.settings.state.scans_to_average = int(record.value)
 
         elif record.setting == "bad_pixel_mode":
-            self.bad_pixel_mode = int(record.value)
+            self.settings.state.bad_pixel_mode = int(record.value)
+
+        elif record.setting == "log_level":
+            self.set_log_level(record.value)
 
         else:
             log.critical("Unknown setting: %s", record.setting)
@@ -601,18 +580,7 @@ class StrokerProtocolDevice(object):
 
         return True
 
-    def set_degC_to_dac_coeffs(self, coeffs):
-        degC_to_dac_coeff_0 = self.original_degC_to_dac_coeff_0
-        degC_to_dac_coeff_1 = self.original_degC_to_dac_coeff_1
-        degC_to_dac_coeff_2 = self.original_degC_to_dac_coeff_2
-
-        try:
-            (degC_to_dac_coeff_0, degC_to_dac_coeff_1, degC_to_dac_coeff_2) = coeffs.split(" ")
-        except Exception as exc:
-            log.critical("TEC Coeffs split failiure: %s", exc)
-            log.critical("Setting original class coeffs")
-
-        self.degC_to_dac_coeff_0 = float(degC_to_dac_coeff_0)
-        self.degC_to_dac_coeff_1 = float(degC_to_dac_coeff_1)
-        self.degC_to_dac_coeff_2 = float(degC_to_dac_coeff_2)
-        log.info("Succesfully changed DegC-to-DAC setpoint coefficients")
+    def set_log_level(self, s):
+        lvl = logging.DEBUG if s == "DEBUG" else logging.INFO
+        log.info("fid.set_log_level: setting to %s", lvl)
+        logging.getLogger().setLevel(lvl)
