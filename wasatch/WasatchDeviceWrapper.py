@@ -140,7 +140,8 @@ class WasatchDeviceWrapper(object):
                 self.log_queue,
                 self.command_queue, 
                 self.response_queue,
-                self.spectrometer_settings_queue)
+                self.spectrometer_settings_queue,
+                log.getEffectiveLevel())
         self.poller = multiprocessing.Process(target=self.continuous_poll, args=args)
         self.poller.start()
 
@@ -290,7 +291,8 @@ class WasatchDeviceWrapper(object):
                         log_queue, 
                         command_queue, 
                         response_queue, 
-                        spectrometer_settings_queue):
+                        spectrometer_settings_queue,
+                        log_level):
 
         """ Continuously process with the simulated device. First setup
             the log queue handler. While waiting forever for the None poison
@@ -304,7 +306,7 @@ class WasatchDeviceWrapper(object):
                 a one-shot SpectrometerSettings).
         """
 
-        applog.process_log_configure(log_queue, self.log_level)
+        applog.process_log_configure(log_queue, log_level)
         log.info("continuous_poll: start (uid %s, bus_order %d)", uid, bus_order)
 
         wasatch_device = WasatchDevice(uid, bus_order)

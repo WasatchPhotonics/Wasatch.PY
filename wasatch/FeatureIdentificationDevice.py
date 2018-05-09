@@ -140,7 +140,7 @@ class FeatureIdentificationDevice(object):
     def wait_for_usb_available(self):
         if self.settings.state.max_usb_interval_ms > 0:
             if self.last_usb_timestamp is not None:
-                delay_ms = randint(self.min_usb_interval_ms, self.settings.state.max_usb_interval_ms)
+                delay_ms = randint(self.settings.state.min_usb_interval_ms, self.settings.state.max_usb_interval_ms)
                 next_usb_timestamp = self.last_usb_timestamp + datetime.timedelta(milliseconds=delay_ms)
                 if datetime.datetime.now() < next_usb_timestamp:
                     log.debug("fid: sleeping to enforce %d ms USB interval", delay_ms)
@@ -343,21 +343,28 @@ class FeatureIdentificationDevice(object):
             result = self.send_code(0xad, data_or_wLength="00000000", label="ACQUIRE_CCD")
 
         # regardless of pixel count, assume uint16
-        line_buffer = self.settings.pixels() * 2
-        log.debug("waiting for %d bytes", line_buffer)
+        pixels = self.settings.pixels()
+
+        if pixels in (512, 1024):
+            endpoints = [0x82]
+            block_len_bytes = pixels * 2
+        elif pixels == 2048:
+            endpoints = [0x82, 0x86]
+            block_len_bytes = 2048 # pixels * 2 / 2
+        else:
+            raise Exception("Unsupported number of pixels: %d" % pixels)
 
         self.wait_for_usb_available()
 
-        # MZ: make constants for endpoints
-        data = self.device.read(0x82, line_buffer, timeout=USB_TIMEOUT_MS)
-        log.debug("get_line: %s ...", data[0:9])
+        spectrum = []
+        for endpoint in endpoints:
+            log.debug("waiting for %d bytes", block_len_bytes)
+            data = self.device.read(endpoint, block_len_bytes, timeout=USB_TIMEOUT_MS)
+            subspectrum = [i + 256 * j for i, j in zip(data[::2], data[1::2])]
+            spectrum.extend(subspectrum)
 
-        try:
-            # MZ: there is such a thing as "too Pythonic"
-            data = [i + 256 * j for i, j in zip(data[::2], data[1::2])]
-        except Exception as exc:
-            log.critical("Failure in data unpack", exc_info=1)
-            raise
+        log.debug("get_line: pixels %d, endpoints %s, block %d, spectrum %s ...", 
+            len(spectrum), endpoints, block_len_bytes, spectrum[0:9])
 
         # For custom benches where the detector is essentially rotated
         # 180-deg from our typical orientation with regard to the grating
@@ -368,9 +375,9 @@ class FeatureIdentificationDevice(object):
         # 2-D imaging mode; if area scan is enabled, the user would likewise
         # need to reverse the display order of the rows.
         if self.settings.state.invert_x_axis:
-            data.reverse()
+            spectrum.reverse()
 
-        return data
+        return spectrum
 
     def set_integration_time(self, ms):
         """ Send the updated integration time in a control message to the device. """

@@ -206,6 +206,10 @@ class EEPROM(object):
         end_byte   = start_byte + length
 
         buf = self.buffers[page]
+        if buf is None or end_byte > len(buf):
+            log.error("error unpacking EEPROM page %d, offset %d, len %d as %s: buf is %s", 
+                page, start_byte, length, data_type, buf, exc_info=1)
+            return
 
         if data_type == "s":
             unpack_result = ""
