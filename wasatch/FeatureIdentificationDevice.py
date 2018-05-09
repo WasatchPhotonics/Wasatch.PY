@@ -366,6 +366,9 @@ class FeatureIdentificationDevice(object):
         log.debug("get_line: pixels %d, endpoints %s, block %d, spectrum %s ...", 
             len(spectrum), endpoints, block_len_bytes, spectrum[0:9])
 
+        if len(spectrum) != pixels:
+            raise Exception("get_line read wrong number of pixels (expected %d, read %d)" % (pixels, len(spectrum)))
+
         # For custom benches where the detector is essentially rotated
         # 180-deg from our typical orientation with regard to the grating
         # (e.g., red wavelengths are diffracted toward pixel 0, and blue

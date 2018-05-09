@@ -303,6 +303,8 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2018-05-09 0.7.3
+    - raise exception on reading unexpected pixel count
 - 2018-05-09 0.7.2
     - added support for 2048-pixel FID spectrometers
 - 2018-05-08 0.7.1
