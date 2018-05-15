@@ -303,6 +303,10 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2018-05-15 0.8.0
+    - EEPROM writing works
+- 2018-05-14 0.7.4
+    - fixed get\_ccd\_gain in StrokerProtocol devices
 - 2018-05-09 0.7.3
     - raise exception on reading unexpected pixel count
 - 2018-05-09 0.7.2

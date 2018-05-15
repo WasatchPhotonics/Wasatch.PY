@@ -6,6 +6,7 @@
 
 import datetime
 import logging
+import copy
 import math
 import usb
 import usb.core
@@ -18,6 +19,7 @@ from . import common
 
 from SpectrometerSettings import SpectrometerSettings
 from SpectrometerState    import SpectrometerState
+from EEPROM               import EEPROM
 
 log = logging.getLogger(__name__)
 
@@ -44,6 +46,7 @@ class FeatureIdentificationDevice(object):
         self.ccd_temperature_invalid = False
 
         self.settings = SpectrometerSettings()
+        self.eeprom_backup = None
 
         ########################################################################
         # these are "driver state" within FeatureIdentificationDevice, and don't
@@ -52,7 +55,7 @@ class FeatureIdentificationDevice(object):
 
         self.detector_tec_setpoint_has_been_set = False
         self.last_applied_laser_power = 0 # last power level APPLIED to laser, either by turning off (0) or on (immediate or ramping)
-        self.next_applied_laser_power = 100 # power level to be applied NEXT time the laser is enabled (immediate or ramping)
+        self.next_applied_laser_power = None # power level to be applied NEXT time the laser is enabled (immediate or ramping)
 
     def connect(self):
         """ Attempt to connect to the specified device. Log any failures and
@@ -106,7 +109,7 @@ class FeatureIdentificationDevice(object):
         return True
 
     def disconnect(self):
-        if self.last_applied_laser_power != 0:
+        if self.last_applied_laser_power:
             log.debug("fid.disconnect: disabling laser")
             self.set_laser_enable_immediate(False)
 
@@ -217,7 +220,7 @@ class FeatureIdentificationDevice(object):
         if buf is None or len(buf) < 2:
             log.error("fpga_opts: can't parse response: %s", buf)
             return
-        word = buf[0] | (buf[1] << 8)
+        word = buf[0] | (buf[1] << 8) # LSB-MSB
         self.settings.fpga_options.parse(word)
 
     ############################################################################
@@ -226,7 +229,7 @@ class FeatureIdentificationDevice(object):
 
     def get_integration_time(self):
         result = self.get_code(0xbf, label="GET_INTEGRATION_TIME")
-        curr_time = (result[2] * 0x10000) + (result[1] * 0x100) + result[0]
+        curr_time = (result[2] << 32) | (result[1] << 16) | result[0] # MSB-LSB
         self.settings.state.integration_time_ms = curr_time
         return curr_time
 
@@ -244,8 +247,8 @@ class FeatureIdentificationDevice(object):
         """
         result = self.get_code(0xc5, label="GET_CCD_GAIN")
 
+        lsb = result[0] # LSB-MSB
         msb = result[1]
-        lsb = result[0]
 
         gain = msb + lsb / 256.0
         log.debug("Gain is: %f (msb %d, lsb %d)" % (gain, msb, lsb))
@@ -291,6 +294,8 @@ class FeatureIdentificationDevice(object):
         lsb = int((gain - msb) * 256)
         raw = (msb << 8) + lsb
 
+        # MZ: note that we SEND gain MSB-LSB, but we READ gain LSB-MSB?!
+
         log.debug("Send CCD Gain: 0x%04x (%s)", raw, gain)
         self.send_code(0xb7, raw, label="SET_CCD_GAIN")
         self.settings.state.ccd_gain = gain
@@ -304,7 +309,7 @@ class FeatureIdentificationDevice(object):
         """ The line length is encoded as a LSB-MSB ushort, such that 0x0004 =
             1024 pixels """
         result = self.get_upper_code(0x03, label="GET_LINE_LENGTH")
-        value = result[0] + result[1] << 8
+        value = result[0] | result[1] << 8 # LSB-MSB
         if value != self.settings.eeprom.active_pixels_horizontal:
             log.error("GET_LINE_LENGTH opcode result %d != EEPROM active_pixels_horizontal %d (using opcode)",
                 value, self.settings.eeprom.active_pixels_horizontal)
@@ -322,7 +327,7 @@ class FeatureIdentificationDevice(object):
 
     def get_microcontroller_firmware_version(self):
         result = self.get_code(0xc0, label="GET_CODE_REVISION")
-        s = "%d.%d.%d.%d" % (result[3], result[2], result[1], result[0])
+        s = "%d.%d.%d.%d" % (result[3], result[2], result[1], result[0]) # MSB-LSB
         self.settings.microcontroller_firmware_version = s
         return s
 
@@ -360,7 +365,7 @@ class FeatureIdentificationDevice(object):
         for endpoint in endpoints:
             log.debug("waiting for %d bytes", block_len_bytes)
             data = self.device.read(endpoint, block_len_bytes, timeout=USB_TIMEOUT_MS)
-            subspectrum = [i + 256 * j for i, j in zip(data[::2], data[1::2])]
+            subspectrum = [i + 256 * j for i, j in zip(data[::2], data[1::2])] # LSB-MSB
             spectrum.extend(subspectrum)
 
         log.debug("get_line: pixels %d, endpoints %s, block %d, spectrum %s ...", 
@@ -428,17 +433,17 @@ class FeatureIdentificationDevice(object):
         value = 0
         if result is not None and len(result) == 2:
             # We could validate to 12-bit here if desired
-            value = result[0] | (result[1] << 8)
+            value = result[0] | (result[1] << 8) # LSB-MSB
         else:
             log.error("Error reading secondary ADC")
         log.debug("secondary_adc_raw: 0x%04x", value)
         return value
 
     def get_laser_temperature_raw(self):
-        result = self.get_code(0xd5, wLength=2, label="GET_LASER_TEMP")
+        result = self.get_code(0xd5, wLength=2, label="GET_ADC")
         if not result:
             raise Exception("Unable to read laser temperature")
-        return result[0] + (result[1] << 8)
+        return result[0] + (result[1] << 8) # LSB-MSB
 
     def get_laser_temperature_degC(self, raw=-1):
         """ reminder, laser doesn't use EEPROM coeffs at all """
@@ -476,7 +481,7 @@ class FeatureIdentificationDevice(object):
         result = self.get_code(0xd7, label="GET_CCD_TEMP")
         if not result:
             raise Exception("Unable to read detector temperature")
-        return result[1] + (result[0] << 8)
+        return result[1] + (result[0] << 8) # MSB-LSB
 
     def get_detector_temperature_degC(self, raw=-1):
         if raw < 0:
@@ -493,6 +498,9 @@ class FeatureIdentificationDevice(object):
             acceptable range. Ideally this is to prevent condensation and other
             issues. This value is a default and is hugely dependent on the
             environmental conditions. """
+        if not self.settings.eeprom.has_cooling:
+            log.error("unable to control TEC: EEPROM reports no cooling")
+            return
 
         if degC < self.settings.eeprom.min_temp_degC:
             log.critical("set_detector_tec_setpoint_degC: setpoint %f below min %f", degC, self.settings.eeprom.min_temp_degC)
@@ -506,7 +514,7 @@ class FeatureIdentificationDevice(object):
                 + self.settings.eeprom.degC_to_dac_coeffs[1] * degC
                 + self.settings.eeprom.degC_to_dac_coeffs[2] * degC * degC)
 
-        # constrain to 12-bit DAC
+        # constrain to 12-bit DAC (big-endian)
         if (raw < 0):
             raw = 0
         if (raw > 0xfff):
@@ -519,6 +527,10 @@ class FeatureIdentificationDevice(object):
         return True
 
     def set_tec_enable(self, flag):
+        if not self.settings.eeprom.has_cooling:
+            log.error("unable to control TEC: EEPROM reports no cooling")
+            return
+
         value = 1 if flag else 0
 
         if not self.detector_tec_setpoint_has_been_set:
@@ -555,6 +567,14 @@ class FeatureIdentificationDevice(object):
         self.settings.state.high_gain_mode_enabled = flag
 
     def set_laser_enable(self, flag):
+        if not self.settings.eeprom.has_laser:
+            log.error("unable to control laser: EEPROM reports no laser installed")
+            return
+
+        # perhaps ARM doesn't like the laser enabled before laser power is configured?
+        if self.next_applied_laser_power is None:
+            self.set_laser_power_perc(100)
+
         self.settings.state.laser_enabled = flag
         if flag and self.settings.state.laser_power_ramping_enabled:
             self.set_laser_enable_ramp()
@@ -568,13 +588,18 @@ class FeatureIdentificationDevice(object):
             self.last_applied_laser_power = 0
         else:
             self.last_applied_laser_power = self.next_applied_laser_power
-        return self.send_code(0xbe, value, label="SET_LASER_ENABLE")
+        lsb = value
+        msb = 0
+        buf = [0] * 8
+        return self.send_code(0xbe, lsb, msb, value, label="SET_LASER_ENABLE")
 
     def set_laser_enable_ramp(self):
         SET_LASER_ENABLE          = 0xbe
         SET_LASER_MOD_ENABLE      = 0xbd
         SET_LASER_MOD_PERIOD      = 0xc7
         SET_LASER_MOD_PULSE_WIDTH = 0xdb
+
+        # MZ: so if we never use SET_LASER_MOD_DURATION (0xb9), what's it for?
 
         current_laser_setpoint = self.last_applied_laser_power
         target_laser_setpoint = self.next_applied_laser_power
@@ -630,6 +655,10 @@ class FeatureIdentificationDevice(object):
         log.debug("set_laser_enable_ramp: last_applied_laser_power = %d", self.next_applied_laser_power)
 
     def set_laser_power_perc(self, value):
+        if not self.settings.eeprom.has_laser:
+            log.error("unable to control laser: EEPROM reports no laser installed")
+            return
+
         # if the laser is already engaged and we're using ramping, then ramp to
         # the new level
         value = int(max(0, min(100, value)))
@@ -708,9 +737,13 @@ class FeatureIdentificationDevice(object):
             log.info("Turning off laser modulation (full power)")
             self.next_applied_laser_power = 100
             log.debug("next_applied_laser_power = 100")
-            return self.send_code(0xbd, 0, label="SET_LASER_MOD_ENABLED (full)")
+            lsb = 0
+            msb = 0
+            buf = [0] * 8
+            return self.send_code(0xbd, lsb, msb, buf, label="SET_LASER_MOD_ENABLED (full)")
 
         # Change the pulse period to 100 us
+        # MZ: this doesn't seem to agree with ENG-0001's comment about "square root"
         result = self.send_code(0xc7, 100, 0, 100, label="SET_MOD_PERIOD (immediate)")
         if result is None:
             log.critical("Hardware Failure to send laser mod. pulse period")
@@ -727,12 +760,15 @@ class FeatureIdentificationDevice(object):
         #
         # result = self.send_code(0xBD, 1)
         #
-        # This will result in a control message failure. Only for the
-        # laser modulation functions. A data buffer must be specified to
+        # This will result in a control message failure, for this and 
+        # many other functions. A data buffer must be specified to
         # prevent failure. Also present in the get_line control message.
         # Only with libusb; the original Cypress drivers do not have this
         # requirement.
-        result = self.send_code(0xbd, 1, 0, "00000000", label="SET_LASER_MOD_ENABLED (immediate)")
+        lsb = 1
+        msb = 0
+        buf = [0] * 8
+        result = self.send_code(0xbd, lsb, msb, buf, label="SET_LASER_MOD_ENABLED (immediate)")
 
         if result is None:
             log.critical("Hardware Failure to send laser modulation")
@@ -751,10 +787,16 @@ class FeatureIdentificationDevice(object):
         log.debug("fid: sleeping 3sec")
         sleep(3)
 
+    # never used, provided for OEM?
     def get_laser_temperature_setpoint_raw(self):
+        if not self.settings.eeprom.has_laser:
+            log.error("unable to control laser: EEPROM reports no laser installed")
+            return 0
+
         result = self.get_code(0xe8, label="GET_LASER_TEMP_SETPOINT")
         return result[0]
 
+    # MZ: ENG-0001 says this should be sent LSB first (little-endian), but I don't believe them
     def set_laser_temperature_setpoint_raw(self, value):
         log.debug("Send laser temperature setpoint raw: %d", value)
         return self.send_code(0xe7, value, label="SET_LASER_TEMP_SETPOINT")
@@ -776,19 +818,19 @@ class FeatureIdentificationDevice(object):
         log.info("fid.set_log_level: setting to %s", lvl)
         logging.getLogger().setLevel(lvl)
 
-    def update_session_eeprom(self, pair):
+    def validate_eeprom(self, pair):
         try:
             if len(pair) != 2:
-                raise Exception("expected 2-tuple")
+                raise Exception("pair had %d items" % len(pair))
             intended_serial = pair[0]
             new_eeprom = pair[1]
         except:
-            log.critical("fid.update_session_eeprom: was not passed (serial_number, EEPROM) pair", exc_info=1)
-            return
+            log.critical("fid.validate_eeprom: expected (sn, EEPROM) pair", exc_info=1)
+            return False
 
         if not isinstance(new_eeprom, EEPROM):
-            log.critical("fid.update_session_eeprom: rejecting invalid EEPROM")
-            return
+            log.critical("fid.validate_eeprom: rejecting invalid EEPROM reference")
+            return False
 
         # Confirm that this FeatureIdentificationDevice instance is the intended
         # recipient of the new EEPROM image, else things could get really confusing.
@@ -796,12 +838,57 @@ class FeatureIdentificationDevice(object):
         # however, they should pass along the "old / previous" serial number for 
         # validation.
         if intended_serial != self.settings.eeprom.serial_number:
-            log.critical("fid.update_session_eeprom: %s process rejecting EEPROM intended for %s",
+            log.critical("fid.validate_eeprom: %s process rejecting EEPROM intended for %s",
                 self.settings.eeprom.serial_number, intended_serial)
+            return False
+
+        return True
+
+    def update_session_eeprom(self, pair):
+        if not self.validate_eeprom(pair):
             return
 
-        log.debug("fid: %s accepting EEPROM instance for session use (not writing)", intended_serial)
-        self.settings.eeprom = record.value
+        log.debug("fid.update_session_eeprom: %s updating EEPROM instance", self.settings.eeprom.serial_number)
+
+        if not self.eeprom_backup:
+            self.eeprom_backup = copy.deepcopy(self.settings.eeprom)
+
+        self.settings.eeprom.update_editable(pair[1])
+
+    def replace_session_eeprom(self, pair):
+        if not self.validate_eeprom(pair):
+            return
+
+        log.debug("fid.replace_session_eeprom: %s replacing EEPROM instance", self.settings.eeprom.serial_number)
+
+        if not self.eeprom_backup:
+            self.eeprom_backup = copy.deepcopy(self.settings.eeprom)
+
+        self.settings.eeprom = pair[1]
+
+    def write_eeprom(self):
+        if not self.eeprom_backup:
+            log.critical("expected to update or replace EEPROM object before write command")
+            return
+
+        # backup contents of previous EEPROM in log
+        log.info("Original EEPROM contents")
+        self.eeprom_backup.dump()
+        log.info("Original EEPROM buffers: %s", self.eeprom_backup.buffers)
+
+        try:
+            self.settings.eeprom.generate_write_buffers()
+        except:
+            log.critical("failed to render EEPROM write buffers", exc_info=1)
+            return
+
+        log.info("Would write new buffers: %s", self.settings.eeprom.write_buffers)
+
+        for page in range(5, -1, -1):
+            DATA_START = 0x3c00
+            offset = DATA_START + page * 64
+            log.debug("writing page %d at offset 0x%04x: %s", page, offset, self.settings.eeprom.write_buffers[page])
+            self.send_code(0xa2, offset, 0, self.settings.eeprom.write_buffers[page])
 
     # implemented subset of WasatchDeviceWrapper.DEVICE_CONTROL_COMMANDS
     def write_setting(self, record):
@@ -876,11 +963,14 @@ class FeatureIdentificationDevice(object):
         elif record.setting == "area_scan_enable":
             self.set_area_scan_enable(True if record.value else False)
 
-        elif record.setting == "eeprom":
+        elif record.setting == "update_eeprom":
             self.update_session_eeprom(record.value)
 
+        elif record.setting == "replace_eeprom":
+            self.replace_session_eeprom(record.value)
+
         elif record.setting == "write_eeprom":
-            log.critical("WRITE_EEPROM NOT IMPLEMENTED")
+            self.write_eeprom()
 
         else:
             log.critical("Unknown setting to write: %s", record.setting)

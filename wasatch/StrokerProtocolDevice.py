@@ -33,6 +33,7 @@ class StrokerProtocolDevice(object):
 
         # apply StrokerProtocol defaults
         self.settings.eeprom.model = "Stroker Protocol Device"
+        self.settings.eeprom.wavelength_coeffs = [ 0, 1, 0, 0 ]
 
         self.detector_tec_setpoint_has_been_set = False
         self.secondary_adc_enabled = False
@@ -96,36 +97,37 @@ class StrokerProtocolDevice(object):
 
         return True
 
-    def send_code(self, FID_bmRequest, FID_wValue=0):
-        FID_bmRequestType = 0x40 # host to device
-        FID_wIndex = 0           # current specification has all index 0
-        FID_wLength = ""
-
+    def send_code(self, bRequest, wValue=0, wIndex=0, data_or_wLength="", label=""):
+        prefix = "" if not label else ("%s: " % label)
         result = None
+        log.debug("%ssend_code: request 0x%02x value 0x%04x index 0x%04x data/len %s",
+            prefix, bRequest, wValue, wIndex, data_or_wLength)
         try:
-            result = self.device.ctrl_transfer(FID_bmRequestType,
-                                               FID_bmRequest,
-                                               FID_wValue,
-                                               FID_wIndex,
-                                               FID_wLength)
+            result = self.device.ctrl_transfer(0x40,     # HOST_TO_DEVICE
+                                               bRequest,
+                                               wValue,
+                                               wIndex,
+                                               data_or_wLength) # add TIMEOUT_MS parameter?
         except Exception as exc:
-            log.critical("Hardware Problem with send ctrl transfer: %s", exc)
-            #raise
+            log.critical("Hardware Failure FID Send Code Problem with ctrl transfer", exc_info=1)
+            self.schedule_disconnect()
 
-        log.debug("Raw result: [%s]", result)
+        log.debug("%sSend Raw result: [%s]", prefix, result)
+        log.debug("%ssend_code: request 0x%02x value 0x%04x index 0x%04x data/len %s: result %s",
+            prefix, bRequest, wValue, wIndex, data_or_wLength, result)
         return result
 
-    def get_code(self, FID_bmRequest, FID_wValue=0, FID_wLength=64):
-        FID_bmRequestType = 0xC0 # device to host
-        FID_wIndex = 0           # current specification has all index 0
+    def get_code(self, bmRequest, wValue=0, wLength=64):
+        bmRequestType = 0xC0 # device to host
+        wIndex = 0           # current specification has all index 0
 
         result = None
         try:
-            result = self.device.ctrl_transfer(FID_bmRequestType,
-                                               FID_bmRequest,
-                                               FID_wValue,
-                                               FID_wIndex,
-                                               FID_wLength)
+            result = self.device.ctrl_transfer(bmRequestType,
+                                               bmRequest,
+                                               wValue,
+                                               wIndex,
+                                               wLength)
         except Exception as exc:
             log.critical("Hardware Problem with get ctrl transfer: %s", exc)
             raise
@@ -165,23 +167,15 @@ class StrokerProtocolDevice(object):
                 1st byte is binary encoded: 0 = 1/2, 1 = 1/4, 2 = 1/8 etc
                 2nd byte is the part to the left of the decimal
             So 231 is 1e7 is 1.90234375 """
-        result = self.get_code(0xC5)
-        gain = result[1]
-        start_byte = str(result[0])
-        for i in range(8):
-            bit_val = self.bit_from_string(start_byte, i)
-            if   bit_val == 1 and i == 0: gain = gain + 0.5
-            elif bit_val == 1 and i == 1: gain = gain + 0.25
-            elif bit_val == 1 and i == 2: gain = gain + 0.125
-            elif bit_val == 1 and i == 3: gain = gain + 0.0625
-            elif bit_val == 1 and i == 4: gain = gain + 0.03125
-            elif bit_val == 1 and i == 5: gain = gain + 0.015625
-            elif bit_val == 1 and i == 6: gain = gain + 0.0078125
-            elif bit_val == 1 and i == 7: gain = gain + 0.00390625
+        result = self.get_code(0xc5)
 
+        lsb = result[0] # LSB-MSB
+        msb = result[1]
+
+        gain = msb + lsb / 256.0
+        log.debug("ccd_gain is: %f (msb %d, lsb %d)" % (gain, msb, lsb))
         self.settings.state.ccd_gain = gain
 
-        log.debug("Gain is: %s raw (%.2f)", result, gain)
         return gain
 
     def bit_from_string(self, string, index):
@@ -225,7 +219,7 @@ class StrokerProtocolDevice(object):
 
         # Apparently 0x0009 class devices (ARM Board), will report an
         # errno None, code 110 on sending this.
-        result = self.send_code(0xAD)
+        result = self.send_code(0xAD, label="CCD_ACQUIRE")
 
         line_buffer = 2048 # 1024 16bit pixels
         if self.pid == 0x2000:
@@ -234,33 +228,28 @@ class StrokerProtocolDevice(object):
         data = self.device.read(0x82, line_buffer, timeout=USB_TIMEOUT_MS)
         log.debug("Raw data: %s", data[0:9])
 
+        if self.pid == 0x0001:
+            data.extend(self.read_second_half())
+
         try:
-            data = [i + 256 * j for i, j in zip(data[::2], data[1::2])]
+            spectrum = [i + 256 * j for i, j in zip(data[::2], data[1::2])]
         except Exception as exc:
             log.critical("Failure in data unpack: %s", exc)
             raise
 
+        if len(spectrum) != self.settings.pixels():
+            log.critical("Read read %d pixels (expected %d)", len(spectrum), self.settings.pixels())
+            return None
+
         log.debug("DONE   get line")
 
         # Append the 2048 pixel data for just MTI produt id 0x0001
-        if self.pid == 0x0001:
-            second_half = self.read_second_half()
-            data.extend(second_half)
-
-        return data
+        return spectrum
 
     def read_second_half(self):
         """ Read from endpoint 86 of the 2048-pixel Hamamatsu detector in MTI units. """
         log.debug("Also read off end point 86")
-        data = self.device.read(0x86, 2048, timeout=1000)
-        try:
-            data = [i + 256 * j for i, j in zip(data[::2], data[1::2])]
-
-        except Exception as exc:
-            log.critical("Failure in data unpack: %s", exc)
-            data = None
-
-        return data
+        return self.device.read(0x86, 2048, timeout=1000)
 
     def set_integration_time(self, value):
         # Mustard Tree PID=0x0001 class devices have a hard-coded integration time
@@ -272,7 +261,7 @@ class StrokerProtocolDevice(object):
             log.debug("scaled Mustard Tree integration time by 0.1")
             value = int(value / 10)
 
-        return self.send_code(0xB2, value)
+        return self.send_code(0xB2, value, label="SET_INTEGRATION_TIME")
 
     ############################################################################
     # Temperature
@@ -404,7 +393,7 @@ class StrokerProtocolDevice(object):
             self.last_applied_laser_power = 0
         else:
             self.last_applied_laser_power = self.next_applied_laser_power
-        return self.send_code(0xBE, value)
+        return self.send_code(0xBE, value, label="SET_LASER_ENABLE")
 
     def set_detector_tec_enable(self, flag):
         if not self.detector_tec_setpoint_has_been_set:
@@ -413,7 +402,7 @@ class StrokerProtocolDevice(object):
 
         self.settings.state.tec_enabled = flag
         log.debug("CCD TEC enable: %s", flag)
-        result = self.send_code(0xD6, 1 if flag else 0)
+        result = self.send_code(0xD6, 1 if flag else 0, label="SET_TEC_ENABLE")
 
     # MZ: I don't know if this is ever used.  I'm confused...I thought
     # StrokerProtocol devices didn't have an EEPROM "by definition".
@@ -466,13 +455,14 @@ class StrokerProtocolDevice(object):
         raw = int(self.settings.eeprom.degC_to_dac_coeffs[0]
                 + self.settings.eeprom.degC_to_dac_coeffs[1] * degC
                 + self.settings.eeprom.degC_to_dac_coeffs[2] * degC * degC)
+        log.debug("degC-to-DAC coeffs: %s", self.settings.eeprom.degC_to_dac_coeffs)
 
         raw = max(0, min(4095, raw))
 
         self.settings.state.tec_setpoint_degC = degC
 
-        log.debug("Setting TEC setpoint to: %s degC (%d raw)", degC, raw)
-        self.send_code(0xd8, raw)
+        log.debug("calling SET_TEC_SETPOINT with %s degC (raw 0x%04x, %d dec)", degC, raw, raw)
+        self.send_code(0xd8, raw, label="SET_TEC_SETPOINT")
         self.detector_tec_setpoint_has_been_set = True
         return True
 
@@ -495,7 +485,7 @@ class StrokerProtocolDevice(object):
 
     def set_laser_temperature_setpoint_raw(self, value):
         log.debug("Send laser temperature setpoint raw: %d", value)
-        return self.send_code(0xe7, value)
+        return self.send_code(0xe7, value, label="SET_LASER_SETPOINT")
 
     def set_laser_power_perc(self, value=100):
         """ Laser power is determined by a combination of the pulse width,
@@ -510,25 +500,25 @@ class StrokerProtocolDevice(object):
         # Turn off modulation at full laser power, exit
         if value == 100:
             log.info("Turning off laser modulation (full power)")
-            result = self.send_code(0xBD, 0)
+            result = self.send_code(0xBD, 0, label="SET_LASER_MODULATION")
             return result
 
         # Change the pulse period to 100 us
-        result = self.send_code(0xC7, 100)
+        result = self.send_code(0xC7, 100, label="SET_LASER_PULSE_PERIOD")
 
         if result == None:
             log.critical("Hardware Failure to send laser mod. pulse period")
             return False
 
         # Set the pulse width to the 0-100 percentage of power
-        result = self.send_code(0xDB, value)
+        result = self.send_code(0xDB, value, label="SET_LASER_PULSE_WIDTH")
 
         if result == None:
             log.critical("Hardware Failure to send pulse width")
             return False
 
-        # Enable modulation
-        result = self.send_code(0xC7, 1)
+        # Enable modulation (MZ: C7 is "PULSE_PERIOD" above...?)
+        result = self.send_code(0xC7, 1, label="SET_LASER_SOMETHING")
         if result == None:
             log.critical("Hardware Failure to send laser modulation")
             return False

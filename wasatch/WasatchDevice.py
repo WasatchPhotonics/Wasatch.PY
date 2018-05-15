@@ -300,6 +300,8 @@ class WasatchDevice(object):
         # collect next spectrum
         try:
             reading.spectrum = self.hardware.get_line()
+            if reading.spectrum is None:
+                raise Exception("device.acquire_data: failed to acquire spectrum")
 
             log.debug("device.acquire_data: got %s ...", reading.spectrum[0:9])
 

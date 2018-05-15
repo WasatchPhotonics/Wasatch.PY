@@ -1,5 +1,8 @@
 import logging
 import struct
+import array
+import copy
+import json
 
 log = logging.getLogger(__name__)
 
@@ -27,8 +30,8 @@ class EEPROM(object):
         self.detector                    = None
         self.active_pixels_horizontal    = 1024
         self.active_pixels_vertical      = 0
-        self.min_integration_time_ms     = 0
-        self.max_integration_time_ms     = 0
+        self.min_integration_time_ms     = 10
+        self.max_integration_time_ms     = 60000
         self.actual_horizontal           = 0
         self.roi_horizontal_start        = 0
         self.roi_horizontal_end          = 0
@@ -47,15 +50,42 @@ class EEPROM(object):
         self.user_data                   = None
         self.user_text                   = None
 
-        self.bad_pixels                  = []
+        self.bad_pixels                  = [] # should be set, not list
                                          
         self.buffers = []
+        self.revisions = [] # ENG-0034 page revs
+        self.write_buffers = []
 
-    def write_all(self):
-        pass
+        self.editable = [ "excitation_nm",
+                          "calibrated_by",
+                          "calibration_date", 
+                          "user_text",
+                          "wavelength_coeffs",
+                          "bad_pixels",
+                          "roi_horizontal_end",             
+                          "roi_horizontal_start",           
+                          "roi_vertical_region_1_end",      
+                          "roi_vertical_region_1_start",    
+                          "roi_vertical_region_2_end",      
+                          "roi_vertical_region_2_start",    
+                          "roi_vertical_region_3_end",      
+                          "roi_vertical_region_3_start" ]
 
-    def write_user_facing(self):
-        pass
+    def is_editable(self, name):
+        return name.lower() in self.editable
+
+    def update_editable(self, new_eeprom):
+        for field in self.editable:
+            log.debug("Updating %s", field)
+            old = getattr(self, field)
+            new = copy.deepcopy(getattr(new_eeprom, field))
+
+            if old == new:
+                log.debug("  no change")
+            else:
+                setattr(self, field, new)
+                log.debug("  old: %s", old)
+                log.debug("  new: %s", getattr(self, field))
 
     def parse(self, buffers):
         if len(buffers) != 6:
@@ -70,6 +100,7 @@ class EEPROM(object):
 
     # see https://docs.python.org/2/library/struct.html#format-characters
     def read_eeprom(self):
+        self.revisions = []
 
         # Page 0
         self.model                       = self.unpack((0,  0, 16), "s")
@@ -80,6 +111,7 @@ class EEPROM(object):
         self.has_laser                   = self.unpack((0, 38,  1), "?")
         self.excitation_nm               = self.unpack((0, 39,  2), "h")
         self.slit_size_um                = self.unpack((0, 41,  2), "h")
+        self.revisions             .append(self.unpack((0, 63,  1), "B"))
 
         # Page 1
         self.wavelength_coeffs = []
@@ -101,6 +133,7 @@ class EEPROM(object):
         self.tec_beta                    = self.unpack((1, 46,  2), "h")
         self.calibration_date            = self.unpack((1, 48, 12), "s")
         self.calibrated_by               = self.unpack((1, 60,  3), "s")
+        self.revisions             .append(self.unpack((1, 63,  1), "B"))
                                     
         # Page 2                    
         self.detector                    = self.unpack((2,  0, 16), "s")
@@ -123,19 +156,22 @@ class EEPROM(object):
         self.linearity_coeffs      .append(self.unpack((2, 51,  4), "f"))
         self.linearity_coeffs      .append(self.unpack((2, 55,  4), "f"))
         self.linearity_coeffs      .append(self.unpack((2, 59,  4), "f"))
+        self.revisions             .append(self.unpack((2, 63,  1), "B"))
 
         # Page 3
         self.laser_power_coeffs = []
-        self.laser_power_coeffs    .append(self.unpack((3, 12, 4), "f"))
-        self.laser_power_coeffs    .append(self.unpack((3, 16, 4), "f"))
-        self.laser_power_coeffs    .append(self.unpack((3, 20, 4), "f"))
-        self.laser_power_coeffs    .append(self.unpack((3, 24, 4), "f"))
-        self.max_laser_power_mW          = self.unpack((3, 28, 4), "f")
-        self.min_laser_power_mW          = self.unpack((3, 32, 4), "f")
+        self.laser_power_coeffs    .append(self.unpack((3, 12,  4), "f"))
+        self.laser_power_coeffs    .append(self.unpack((3, 16,  4), "f"))
+        self.laser_power_coeffs    .append(self.unpack((3, 20,  4), "f"))
+        self.laser_power_coeffs    .append(self.unpack((3, 24,  4), "f"))
+        self.max_laser_power_mW          = self.unpack((3, 28,  4), "f")
+        self.min_laser_power_mW          = self.unpack((3, 32,  4), "f")
+        self.revisions             .append(self.unpack((3, 63,  1), "B"))
 
         # Page 4
-        self.user_data = self.buffers[4]
+        self.user_data = self.buffers[4][:63]
         self.user_text = self.printable(self.user_data)
+        self.revisions             .append(self.unpack((4, 63,  1), "B"))
 
         # Page 5
         bad = set()
@@ -145,6 +181,21 @@ class EEPROM(object):
                 bad.add(pixel)
         self.bad_pixels = list(bad)
         self.bad_pixels.sort()
+        self.revisions             .append(self.unpack((5, 63,  1), "B"))
+
+    def json(self):
+        tmp_buf  = self.buffers
+        tmp_data = self.user_data
+
+        self.buffers   = str(self.buffers)
+        self.user_data = str(self.user_data)
+
+        s = json.dumps(self.__dict__, indent=2, sort_keys=True)
+
+        self.buffers   = tmp_buf
+        self.user_data = tmp_data
+
+        return s
 
     def dump(self):
         log.info("EEPROM settings:")
@@ -199,7 +250,7 @@ class EEPROM(object):
                 s += '.'
         return s
 
-    def unpack(self, address, data_type="s"):
+    def unpack(self, address, data_type):
         page       = address[0]
         start_byte = address[1]
         length     = address[2]
@@ -226,3 +277,117 @@ class EEPROM(object):
 
         log.debug("Unpacked [%s]: %s", data_type, unpack_result)
         return unpack_result
+
+    def pack(self, address, data_type, value):
+        page       = address[0]
+        start_byte = address[1]
+        length     = address[2]
+        end_byte   = start_byte + length
+
+        buf = self.write_buffers[page]
+        if buf is None or end_byte > 63: # byte [63] for revision
+            raise Exception("error packing EEPROM page %d, offset %2d, len %2d as %s: buf is %s" % (
+                page, start_byte, length, data_type, buf))
+
+        if data_type == "s":
+            for i in range(min(length, len(value))):
+                if i < len(value):
+                    buf[start_byte + i] = ord(value[i])
+                else:
+                    buf[start_byte + i] = 0
+        else:
+            struct.pack_into(data_type, buf, start_byte, value)
+
+        log.debug("Packed (%d, %2d, %2d) '%s' value %s -> %s", 
+            page, start_byte, length, data_type, value, buf[start_byte:end_byte])
+
+    def generate_write_buffers(self):
+        # stub-out 6 blank buffers
+        self.write_buffers = []
+        for page in range(6):
+            self.write_buffers.append(array.array('B', [0] * 64))
+
+        # should apply LATEST page revision numbers per ENG-0034, but
+        # for now maintain compatibility with StrokerConsole/ModelConfigurationFormat.cs
+        revs = { 0: 1,   # 2, 
+                 1: 1,   # 2, 
+                 2: 2, 
+                 3: 255, # 2, 
+                 4: 1, 
+                 5: 1 }
+        for page in revs.keys():
+            self.write_buffers[page][63] = revs[page]
+
+        # Page 0
+        self.pack((0,  0, 16), "s", self.model                )
+        self.pack((0, 16, 16), "s", self.serial_number        )
+        self.pack((0, 32,  4), "i", self.baud_rate            )
+        self.pack((0, 36,  1), "?", self.has_cooling          )
+        self.pack((0, 37,  1), "?", self.has_battery          )
+        self.pack((0, 38,  1), "?", self.has_laser            )
+        self.pack((0, 39,  2), "h", self.excitation_nm        )
+        self.pack((0, 41,  2), "h", self.slit_size_um         )
+
+        # Page 1
+        self.pack((1,  0,  4), "f", self.wavelength_coeffs[0] )
+        self.pack((1,  4,  4), "f", self.wavelength_coeffs[1] )
+        self.pack((1,  8,  4), "f", self.wavelength_coeffs[2] )
+        self.pack((1, 12,  4), "f", self.wavelength_coeffs[3] )
+        self.pack((1, 16,  4), "f", self.degC_to_dac_coeffs[0])
+        self.pack((1, 20,  4), "f", self.degC_to_dac_coeffs[1])
+        self.pack((1, 24,  4), "f", self.degC_to_dac_coeffs[2])
+        self.pack((1, 32,  4), "f", self.adc_to_degC_coeffs[0])
+        self.pack((1, 36,  4), "f", self.adc_to_degC_coeffs[1])
+        self.pack((1, 40,  4), "f", self.adc_to_degC_coeffs[2])
+        self.pack((1, 28,  2), "h", self.max_temp_degC        )
+        self.pack((1, 30,  2), "h", self.min_temp_degC        )
+        self.pack((1, 44,  2), "h", self.tec_r298             )
+        self.pack((1, 46,  2), "h", self.tec_beta             )
+        self.pack((1, 48, 12), "s", self.calibration_date     )
+        self.pack((1, 60,  3), "s", self.calibrated_by        )
+                                    
+        # Page 2                    
+        self.pack((2,  0, 16), "s", self.detector                    )
+        self.pack((2, 16,  2), "h", self.active_pixels_horizontal    )
+        self.pack((2, 19,  2), "h", self.active_pixels_vertical      )
+        self.pack((2, 21,  2), "H", self.min_integration_time_ms     )
+        self.pack((2, 23,  2), "H", self.max_integration_time_ms     )
+        self.pack((2, 25,  2), "h", self.actual_horizontal           )
+        self.pack((2, 27,  2), "h", self.roi_horizontal_start        )
+        self.pack((2, 29,  2), "h", self.roi_horizontal_end          )
+        self.pack((2, 31,  2), "h", self.roi_vertical_region_1_start )
+        self.pack((2, 33,  2), "h", self.roi_vertical_region_1_end   )
+        self.pack((2, 35,  2), "h", self.roi_vertical_region_2_start )
+        self.pack((2, 37,  2), "h", self.roi_vertical_region_2_end   )
+        self.pack((2, 39,  2), "h", self.roi_vertical_region_3_start )
+        self.pack((2, 41,  2), "h", self.roi_vertical_region_3_end   )
+        self.pack((2, 43,  4), "f", self.linearity_coeffs[0]         )
+        self.pack((2, 47,  4), "f", self.linearity_coeffs[1]         )
+        self.pack((2, 51,  4), "f", self.linearity_coeffs[2]         )
+        self.pack((2, 55,  4), "f", self.linearity_coeffs[3]         )
+        self.pack((2, 59,  4), "f", self.linearity_coeffs[4]         )
+
+        # Page 3
+        self.pack((3, 12,  4), "f", self.laser_power_coeffs[0])
+        self.pack((3, 16,  4), "f", self.laser_power_coeffs[1])
+        self.pack((3, 20,  4), "f", self.laser_power_coeffs[2])
+        self.pack((3, 24,  4), "f", self.laser_power_coeffs[3])
+        self.pack((3, 28,  4), "f", self.max_laser_power_mW)
+        self.pack((3, 32,  4), "f", self.min_laser_power_mW)
+
+        # Page 4
+        self.pack((4,  0, 63), "s", self.user_text)
+
+        # Page 5
+        bad_pixel_set = set()
+        for i in self.bad_pixels:
+            if i >= 0:
+                bad_pixel_set.add(i)
+        bad_pixels = list(bad_pixel_set)
+        bad_pixels.sort()
+        for i in range(15):
+            if i < len(bad_pixels):
+                value = bad_pixels[i]
+            else:
+                value = -1
+            self.pack((5, i * 2, 2), "h", value)

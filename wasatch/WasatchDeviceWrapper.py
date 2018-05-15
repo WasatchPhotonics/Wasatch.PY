@@ -28,6 +28,7 @@
        then feeds it back to MainProcess
 """
 
+import sys
 import time
 import Queue
 import common
@@ -306,7 +307,10 @@ class WasatchDeviceWrapper(object):
                 a one-shot SpectrometerSettings).
         """
 
+        # we have just forked into a new process, so the first thing we do is
+        # configure logging for this process
         applog.process_log_configure(log_queue, log_level)
+
         log.info("continuous_poll: start (uid %s, bus_order %d)", uid, bus_order)
 
         wasatch_device = WasatchDevice(uid, bus_order)
@@ -345,7 +349,7 @@ class WasatchDeviceWrapper(object):
                 log.debug("continuous_poll: Command queue empty")
 
             if poison_pill:
-                log.debug("continuous_poll: Exit command queue")
+                log.debug("continuous_poll: Exit command queue (poison pill received)")
                 break
 
             try:
@@ -368,6 +372,7 @@ class WasatchDeviceWrapper(object):
             time.sleep(self.poller_wait)
 
         log.info("continuous_poll: done")
+        sys.exit()
 
     def dedupe(self, q):
         keep = [] 

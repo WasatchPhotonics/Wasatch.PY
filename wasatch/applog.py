@@ -74,7 +74,8 @@ def process_log_configure(log_queue, log_level=logging.DEBUG):
         root_log.addHandler(queue_handler)
         root_log.setLevel(log_level)
 
-    root_log.debug("Sub process setup configuration")
+    # MZ: how to log from the logger
+    root_log.debug("applog.process_log_configure: process_id %s", os.getpid())
 
 def get_text_from_log():
     """ Mimic the capturelog style of just slurping the entire log file contents. """
@@ -99,6 +100,7 @@ def delete_log_file_if_exists():
         return False
     return True
 
+# MZ: do we need to call this from Controller or EnlightenApplication?
 def explicit_log_close():
     """ Apparently, tests run in py.test will not remove the existing handlers 
         as expected. This mainfests as hanging tests during py.test runs, or 
@@ -107,6 +109,7 @@ def explicit_log_close():
         Use this function to close all of the log file handlers, including the 
         QueueHandler custom objects. """
     root_log = logging.getLogger()
+    root_log.debug("applog.explicit_log_close: closing and removing all handlers")
     handlers = root_log.handlers[:]
     for handler in handlers:
         handler.close()
