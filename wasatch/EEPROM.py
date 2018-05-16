@@ -391,3 +391,27 @@ class EEPROM(object):
             else:
                 value = -1
             self.pack((5, i * 2, 2), "h", value)
+
+    def has_laser_power_calibration(self):
+        if self.max_laser_power_mW <= 0:
+            return False
+
+        if self.laser_power_coeffs is None or len(self.laser_power_coeffs) < 4:
+            return False
+
+        for c in self.laser_power_coeffs:
+            if math.isnan(c):
+                return False
+
+        return True
+
+    def laser_power_mW_to_percent(self, mW):
+        if not self.has_laser_power_calibration():
+            return 0
+
+        perc = self.laser_power_coeffs[0] \
+             + self.laser_power_coeffs[1] * mW \
+             + self.laser_power_coeffs[2] * mW * mW \
+             + self.laser_power_coeffs[3] * mW * mW * mW
+
+        return perc

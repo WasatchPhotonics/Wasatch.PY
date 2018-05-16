@@ -31,6 +31,7 @@ class FeatureIdentificationDevice(object):
     # Lifecycle
     ############################################################################
 
+    # weird having a default PID...
     def __init__(self, vid="0x24aa", pid="0x1000", bus_order=0):
 
         log.debug("init %s", pid)
@@ -95,12 +96,12 @@ class FeatureIdentificationDevice(object):
         # PID-specific settings
         ########################################################################
 
-        if self.pid == 0x4000:
+        if self.is_arm():
             self.settings.state.min_usb_interval_ms = 10
             self.settings.state.max_usb_interval_ms = 10
 
-        # overridden by EEPROM
-        if self.pid == 0x2000:
+        # overridden by EEPROM...do we need this?
+        if self.is_ingaas():
             self.settings.eeprom.active_pixels_horizontal = 512
 
         self.read_eeprom()
@@ -140,6 +141,12 @@ class FeatureIdentificationDevice(object):
     # Utility Methods
     ############################################################################
 
+    def is_arm(self):
+        return self.pid == 0x4000
+
+    def is_ingaas(self):
+        return self.pid == 0x2000
+
     def wait_for_usb_available(self):
         if self.settings.state.max_usb_interval_ms > 0:
             if self.last_usb_timestamp is not None:
@@ -156,6 +163,11 @@ class FeatureIdentificationDevice(object):
     def send_code(self, bRequest, wValue=0, wIndex=0, data_or_wLength="", label=""):
         prefix = "" if not label else ("%s: " % label)
         result = None
+
+        # MZ: need this?
+        if self.is_arm() and len(data_or_wLength) == 0:
+            data_or_wLength = [0] * 8
+
         log.debug("%ssend_code: request 0x%02x value 0x%04x index 0x%04x data/len %s",
             prefix, bRequest, wValue, wIndex, data_or_wLength)
         try:
@@ -543,7 +555,7 @@ class FeatureIdentificationDevice(object):
 
     def set_ccd_trigger_source(self, value):
         # Don't send the opcode on ARM. See issue #2 on WasatchUSB project
-        if self.pid == 0x2000:
+        if self.is_arm():
             return
 
         msb = 0
@@ -653,6 +665,16 @@ class FeatureIdentificationDevice(object):
 
         self.last_applied_laser_power = self.next_applied_laser_power
         log.debug("set_laser_enable_ramp: last_applied_laser_power = %d", self.next_applied_laser_power)
+
+    def set_laser_power_mW(self, mW):
+        if not self.settings.eeprom.has_laser_power_calibration():
+            log.error("EEPROM doesn't have laser power calibration")
+            return
+
+        mW = min(self.settings.eeprom.max_laser_power_mW, max(self.settings.eeprom.min_laser_power_mW, mW))
+
+        perc = self.settings.eeprom.convert_laser_power_mW_to_percent(mW)
+        self.set_laser_power_perc(perc)
 
     def set_laser_power_perc(self, value):
         if not self.settings.eeprom.has_laser:
@@ -914,6 +936,9 @@ class FeatureIdentificationDevice(object):
 
         elif record.setting == "laser_power_perc":
             self.set_laser_power_perc(int(record.value))
+
+        elif record.setting == "laser_power_mW":
+            self.set_laser_power_mW(int(record.value))
 
         elif record.setting == "laser_temperature_setpoint_raw":
             self.set_laser_temperature_setpoint_raw(int(record.value))

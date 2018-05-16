@@ -303,6 +303,10 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2018-05-?? 0.8.1
+    - ARM fixes
+    - added set\_laser\_power\_mW
+    - ...
 - 2018-05-15 0.8.0
     - EEPROM writing works
 - 2018-05-14 0.7.4
