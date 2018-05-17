@@ -31,7 +31,8 @@ class SpectrometerState(object):
 
         # laser
         self.laser_enabled = False
-        self.laser_power_perc = 0
+        self.laser_power_in_mW = False
+        self.laser_power = 0
         self.laser_temperature_setpoint_raw = 0
         self.selected_adc = 0
 
@@ -114,7 +115,7 @@ class SpectrometerState(object):
         log.info("  TEC Enabled:            %s", self.tec_enabled)
         log.info("  High Gain Mode Enabled: %s", self.high_gain_mode_enabled)
         log.info("  Laser Enabled:          %s", self.laser_enabled)
-        log.info("  Laser Power:            %d%%", self.laser_power_perc)
+        log.info("  Laser Power:            %.2f", self.laser_power)
         log.info("  Laser Temp Setpoint:    0x%04x", self.laser_temperature_setpoint_raw)
         log.info("  Selected ADC:           %d", self.selected_adc)
         log.info("  Trigger Source:         %s", self.stringify_trigger_source())

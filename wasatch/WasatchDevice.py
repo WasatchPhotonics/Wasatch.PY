@@ -186,7 +186,7 @@ class WasatchDevice(object):
         # self.high_gain_mode_enabled
         # self.triggering_enabled
         # self.laser_enabled
-        # self.laser_power_perc
+        # self.laser_power
         # self.ccd_offset
 
         self.settings.update_wavecal()
@@ -295,7 +295,8 @@ class WasatchDevice(object):
         # into the SpectrometerState class...
         reading.integration_time_ms = self.settings.state.integration_time_ms
         reading.laser_enabled       = self.settings.state.laser_enabled
-        reading.laser_power_perc    = self.settings.state.laser_power_perc
+        reading.laser_power         = self.settings.state.laser_power
+        reading.laser_power_in_mW   = self.settings.state.laser_power_in_mW
 
         # collect next spectrum
         try:

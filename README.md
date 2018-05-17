@@ -298,15 +298,13 @@ Using [Homebrew](https://brew.sh/), type:
 # Backlog
 
 - [ ] provide simplified blocking API
-- [ ] provide API documentation
-- [ ] provide queriable non-blocking interface?
+- [ ] provide rendered API documentation (http://www.sphinx-doc.org/en/master/)
 
 # Version History
 
-- 2018-05-?? 0.8.1
-    - ARM fixes
+- 2018-05-17 0.8.1
+    - ARM debugs
     - added set\_laser\_power\_mW
-    - ...
 - 2018-05-15 0.8.0
     - EEPROM writing works
 - 2018-05-14 0.7.4

@@ -1,6 +1,7 @@
 import logging
 import struct
 import array
+import math
 import copy
 import json
 
@@ -392,17 +393,25 @@ class EEPROM(object):
                 value = -1
             self.pack((5, i * 2, 2), "h", value)
 
+    ############################################################################
+    # Laser Power accessors...not sure these belong here
+    ############################################################################
+
     def has_laser_power_calibration(self):
         if self.max_laser_power_mW <= 0:
+            log.debug("has_laser_power_calibration: False (low max)")
             return False
 
         if self.laser_power_coeffs is None or len(self.laser_power_coeffs) < 4:
+            log.debug("has_laser_power_calibration: False (missing coeffs)")
             return False
 
         for c in self.laser_power_coeffs:
             if math.isnan(c):
+                log.debug("has_laser_power_calibration: False (NaN)")
                 return False
 
+        log.debug("has_laser_power_calibration: True")
         return True
 
     def laser_power_mW_to_percent(self, mW):

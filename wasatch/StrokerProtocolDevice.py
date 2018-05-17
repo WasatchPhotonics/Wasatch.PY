@@ -110,7 +110,7 @@ class StrokerProtocolDevice(object):
                                                data_or_wLength) # add TIMEOUT_MS parameter?
         except Exception as exc:
             log.critical("Hardware Failure FID Send Code Problem with ctrl transfer", exc_info=1)
-            self.schedule_disconnect()
+            #self.schedule_disconnect()
 
         log.debug("%sSend Raw result: [%s]", prefix, result)
         log.debug("%ssend_code: request 0x%02x value 0x%04x index 0x%04x data/len %s: result %s",
@@ -495,7 +495,7 @@ class StrokerProtocolDevice(object):
             control message on the device. """
 
         self.next_applied_laser_power = value
-        self.settings.state.laser_power_perc = value
+        self.settings.state.laser_power = value
 
         # Turn off modulation at full laser power, exit
         if value == 100:

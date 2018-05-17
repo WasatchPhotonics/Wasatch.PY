@@ -23,7 +23,8 @@ class Reading(object):
         self.secondary_adc_raw         = None
         self.secondary_adc_calibrated  = None
         self.laser_status              = None   # make this laser_enabled
-        self.laser_power               = 0      # make this laser_power_perc
+        self.laser_power               = 0      
+        self.laser_power_in_mW         = False
         self.failure                   = None
         self.averaged                  = False
         self.session_count             = 0
@@ -38,7 +39,7 @@ class Reading(object):
         log.info("  2nd ADC Raw:            %s", None if self.secondary_adc_raw is None else "0x%04x" % self.secondary_adc_raw)
         log.info("  2nd ADC Calibrated:     %s", None if self.secondary_adc_calibrated is None else "%.2f" % self.secondary_adc_calibrated)
         log.info("  Laser Status:           %s", self.laser_status)
-        log.info("  Laser Power:            %d", self.laser_power)
+        log.info("  Laser Power:            %d %s", self.laser_power, "mW" if self.laser_power_in_mW else "%")
         log.info("  Failure:                %s", self.failure)
         log.info("  Averaged:               %s", self.averaged)
         log.info("  Session Count:          %d", self.session_count)

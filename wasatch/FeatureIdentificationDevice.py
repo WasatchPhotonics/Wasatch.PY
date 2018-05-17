@@ -12,8 +12,8 @@ import usb
 import usb.core
 import usb.util
 
-from time import sleep
 from random import randint
+from time   import sleep
 
 from . import common
 
@@ -160,16 +160,20 @@ class FeatureIdentificationDevice(object):
 
     # Note: some USB docs call this "bmRequest" for "bitmap" vs "byte", but it's
     #       definitely an octet.  And yes, the USB spec really does say "data_or_length".
-    def send_code(self, bRequest, wValue=0, wIndex=0, data_or_wLength="", label=""):
+    def send_code(self, bRequest, wValue=0, wIndex=0, data_or_wLength=None, label=""):
         prefix = "" if not label else ("%s: " % label)
         result = None
 
         # MZ: need this?
-        if self.is_arm() and len(data_or_wLength) == 0:
-            data_or_wLength = [0] * 8
+        doL = data_or_wLength
+        if data_or_wLength is None:
+            if self.is_arm():
+                data_or_wLength = [0] * 8
+            else:
+                data_or_wLength = ""
 
-        log.debug("%ssend_code: request 0x%02x value 0x%04x index 0x%04x data/len %s",
-            prefix, bRequest, wValue, wIndex, data_or_wLength)
+        log.debug("%ssend_code: request 0x%02x value 0x%04x index 0x%04x data/len %s (orig %s)",
+            prefix, bRequest, wValue, wIndex, data_or_wLength, doL)
         try:
             self.wait_for_usb_available()
             result = self.device.ctrl_transfer(0x40,     # HOST_TO_DEVICE
@@ -354,7 +358,7 @@ class FeatureIdentificationDevice(object):
     def get_line(self):
         """ getSpectrum: send "acquire", then immediately read the bulk endpoint. """
 
-        # Only send the CCD_GET_IMAGE (internal trigger) if external trigger is disabled
+        # Only send the CCD_GET_IMAGE (internal trigger) if external trigger is disabled (default)
         log.debug("get_line: requesting spectrum")
         if self.settings.state.trigger_source == SpectrometerState.TRIGGER_SOURCE_INTERNAL:
             result = self.send_code(0xad, data_or_wLength="00000000", label="ACQUIRE_CCD")
@@ -522,9 +526,9 @@ class FeatureIdentificationDevice(object):
             log.critical("set_detector_tec_setpoint_degC: setpoint %f exceeds max %f", degC, self.settings.eeprom.max_temp_degC)
             return False
 
-        raw = int(self.settings.eeprom.degC_to_dac_coeffs[0]
-                + self.settings.eeprom.degC_to_dac_coeffs[1] * degC
-                + self.settings.eeprom.degC_to_dac_coeffs[2] * degC * degC)
+        raw = int(round(self.settings.eeprom.degC_to_dac_coeffs[0]
+                      + self.settings.eeprom.degC_to_dac_coeffs[1] * degC
+                      + self.settings.eeprom.degC_to_dac_coeffs[2] * degC * degC))
 
         # constrain to 12-bit DAC (big-endian)
         if (raw < 0):
@@ -560,7 +564,10 @@ class FeatureIdentificationDevice(object):
 
         msb = 0
         lsb = value
-        buf = 8 * [0]
+        buf = [0] * 8
+
+        # MZ: this is weird...we're sending the buffer on an FX2-only command
+
         self.send_code(0xd2, lsb, msb, buf, label="SET_CCD_TRIGGER_SOURCE")
         self.settings.state.trigger_source = value
 
@@ -574,7 +581,7 @@ class FeatureIdentificationDevice(object):
 
         msb = 0
         lsb = 1 if flag else 0
-        buf = 8 * [0]
+        buf = [0] * 8
         self.send_code(0xeb, lsb, msb, buf, label="SET_CF_SELECT")
         self.settings.state.high_gain_mode_enabled = flag
 
@@ -600,9 +607,11 @@ class FeatureIdentificationDevice(object):
             self.last_applied_laser_power = 0
         else:
             self.last_applied_laser_power = self.next_applied_laser_power
+
         lsb = value
         msb = 0
-        buf = [0] * 8
+        buf = [0] * 8 # defined but not used
+
         return self.send_code(0xbe, lsb, msb, value, label="SET_LASER_ENABLE")
 
     def set_laser_enable_ramp(self):
@@ -622,12 +631,12 @@ class FeatureIdentificationDevice(object):
         # start at current point
         self.send_code(SET_LASER_MOD_PERIOD, 100, 0, 100, label="SET_LASER_MOD_PERIOD (ramp)") # Sets the modulation period to 100us
 
-        width = int(current_laser_setpoint)
+        width = int(round(current_laser_setpoint))
         buf = [0] * 8
 
         self.send_code(SET_LASER_MOD_ENABLE, 1, 0, buf, label="SET_LASER_MOD_ENABLE (ramp)")
         self.send_code(SET_LASER_MOD_PULSE_WIDTH, width, 0, buf, label="SET_LASER_MOD_PULSE_WIDTH (ramp)")
-        self.send_code(SET_LASER_ENABLE, 1, label="SET_LASER_ENABLE (ramp)")
+        self.send_code(SET_LASER_ENABLE, 1, label="SET_LASER_ENABLE (ramp)") # no buf
 
         # apply first 80% jump
         if current_laser_setpoint < target_laser_setpoint:
@@ -639,7 +648,7 @@ class FeatureIdentificationDevice(object):
             laser_setpoint = float(current_laser_setpoint) - laser_setpoint
             eighty_percent_start = laser_setpoint
 
-        self.send_code(SET_LASER_MOD_PULSE_WIDTH, int(eighty_percent_start), 0, buf, label="SET_LASER_MOD_PULSE_WIDTH (80%)")
+        self.send_code(SET_LASER_MOD_PULSE_WIDTH, int(round(eighty_percent_start)), 0, buf, label="SET_LASER_MOD_PULSE_WIDTH (80%)")
         sleep(0.02)
 
         x = float(self.settings.state.laser_power_ramp_increments)
@@ -653,7 +662,7 @@ class FeatureIdentificationDevice(object):
                                  + (scalar * (float(target_laser_setpoint) - eighty_percent_start))
 
             # apply the incremental pulse width
-            width = int(target_loop_setpoint + 0.5)
+            width = int(round(target_loop_setpoint))
             self.send_code(SET_LASER_MOD_PULSE_WIDTH, width, 0, buf, label="SET_LASER_MOD_PULSE_WIDTH (ramp)")
 
             # allow 10ms to settle
@@ -666,25 +675,35 @@ class FeatureIdentificationDevice(object):
         self.last_applied_laser_power = self.next_applied_laser_power
         log.debug("set_laser_enable_ramp: last_applied_laser_power = %d", self.next_applied_laser_power)
 
-    def set_laser_power_mW(self, mW):
+    def set_laser_power_mW(self, mW_in):
         if not self.settings.eeprom.has_laser_power_calibration():
             log.error("EEPROM doesn't have laser power calibration")
             return
 
-        mW = min(self.settings.eeprom.max_laser_power_mW, max(self.settings.eeprom.min_laser_power_mW, mW))
+        mW = min(self.settings.eeprom.max_laser_power_mW, max(self.settings.eeprom.min_laser_power_mW, mW_in))
 
-        perc = self.settings.eeprom.convert_laser_power_mW_to_percent(mW)
+        perc = self.settings.eeprom.laser_power_mW_to_percent(mW)
+        log.debug("set_laser_power_mW: range (%.2f, %.2f), requested %.2f, approved %.2f, percent = %.2f", 
+            self.settings.eeprom.min_laser_power_mW, 
+            self.settings.eeprom.max_laser_power_mW, 
+            mW_in,
+            mW,
+            perc)
         self.set_laser_power_perc(perc)
 
-    def set_laser_power_perc(self, value):
+    # TODO: support floating-point value, as we have a 12-bit ADC and can provide
+    # a bit more precision than 100 discrete steps (goal to support 0.1 - .125% resolution)
+    def set_laser_power_perc(self, value_in):
         if not self.settings.eeprom.has_laser:
             log.error("unable to control laser: EEPROM reports no laser installed")
             return
 
         # if the laser is already engaged and we're using ramping, then ramp to
         # the new level
-        value = int(max(0, min(100, value)))
-        self.settings.state.laser_power_perc = value
+        value = int(round(max(0, min(100, value_in))))
+        self.settings.state.laser_power = value
+        log.debug("set_laser_power_perc: range (0, 100), requested %.2f, applying %s", value_in, value)
+
         if self.settings.state.laser_power_ramping_enabled and self.settings.state.laser_enabled:
             self.next_applied_laser_power = value
             self.set_laser_enable_ramp()
@@ -752,7 +771,7 @@ class FeatureIdentificationDevice(object):
             customer. """
 
         # don't want anything weird when passing over USB
-        value = int(max(0, min(100, value)))
+        value = int(max(0, min(100, round(value))))
 
         # Turn off modulation at full laser power, exit
         if value >= 100 or value < 0:
@@ -923,10 +942,10 @@ class FeatureIdentificationDevice(object):
             self.set_laser_enable(True if record.value else False)
 
         elif record.setting == "integration_time_ms":
-            self.set_integration_time(int(record.value))
+            self.set_integration_time(int(round(record.value)))
 
         elif record.setting == "detector_tec_setpoint_degC":
-            self.set_detector_tec_setpoint_degC(int(record.value))
+            self.set_detector_tec_setpoint_degC(int(round(record.value)))
 
         elif record.setting == "detector_tec_enable":
             self.set_tec_enable(True if record.value else False)
@@ -935,19 +954,19 @@ class FeatureIdentificationDevice(object):
             self.settings.eeprom.degC_to_dac_coeffs = record.value
 
         elif record.setting == "laser_power_perc":
-            self.set_laser_power_perc(int(record.value))
+            self.set_laser_power_perc(record.value)
 
         elif record.setting == "laser_power_mW":
-            self.set_laser_power_mW(int(record.value))
+            self.set_laser_power_mW(record.value)
 
         elif record.setting == "laser_temperature_setpoint_raw":
-            self.set_laser_temperature_setpoint_raw(int(record.value))
+            self.set_laser_temperature_setpoint_raw(int(round(record.value)))
 
         elif record.setting == "ccd_gain":
             self.set_ccd_gain(float(record.value))
 
         elif record.setting == "ccd_offset":
-            self.set_ccd_offset(int(record.value))
+            self.set_ccd_offset(int(round(record.value)))
 
         elif record.setting == "high_gain_mode_enable":
             self.set_high_gain_mode_enable(True if record.value else False)
@@ -965,10 +984,10 @@ class FeatureIdentificationDevice(object):
             self.set_log_level(record.value)
 
         elif record.setting == "min_usb_interval_ms":
-            self.settings.state.min_usb_interval_ms = int(record.value)
+            self.settings.state.min_usb_interval_ms = int(round(record.value))
 
         elif record.setting == "max_usb_interval_ms":
-            self.settings.state.max_usb_interval_ms = int(record.value)
+            self.settings.state.max_usb_interval_ms = int(round(record.value))
 
         elif record.setting == "reset_fpga":
             self.reset_fpga()
