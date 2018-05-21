@@ -109,7 +109,7 @@ class StrokerProtocolDevice(object):
                                                wIndex,
                                                data_or_wLength) # add TIMEOUT_MS parameter?
         except Exception as exc:
-            log.critical("Hardware Failure FID Send Code Problem with ctrl transfer", exc_info=1)
+            log.critical("Hardware Failure SP Send Code Problem with ctrl transfer", exc_info=1)
             #self.schedule_disconnect()
 
         log.debug("%sSend Raw result: [%s]", prefix, result)
@@ -494,6 +494,9 @@ class StrokerProtocolDevice(object):
             power through pulse width modulation. There is no 'get laser power'
             control message on the device. """
 
+        # round to an int between 0-100
+        value = min(100, max(0, int(round(value))))
+
         self.next_applied_laser_power = value
         self.settings.state.laser_power = value
 
@@ -502,6 +505,9 @@ class StrokerProtocolDevice(object):
             log.info("Turning off laser modulation (full power)")
             result = self.send_code(0xBD, 0, label="SET_LASER_MODULATION")
             return result
+
+        log.error("StrokerProtocolDevice.set_laser_power_perc: disabled until properly tested")
+        return
 
         # Change the pulse period to 100 us
         result = self.send_code(0xC7, 100, label="SET_LASER_PULSE_PERIOD")
@@ -550,7 +556,7 @@ class StrokerProtocolDevice(object):
             self.set_detector_tec_enable(True if record.value else False)
 
         elif record.setting == "laser_power_perc":
-            self.set_laser_power_perc(int(record.value))
+            self.set_laser_power_perc(record.value)
 
         elif record.setting == "laser_temperature_setpoint_raw":
             self.set_laser_temperature_setpoint_raw(int(record.value))
@@ -572,5 +578,5 @@ class StrokerProtocolDevice(object):
 
     def set_log_level(self, s):
         lvl = logging.DEBUG if s == "DEBUG" else logging.INFO
-        log.info("fid.set_log_level: setting to %s", lvl)
+        log.info("sp.set_log_level: setting to %s", lvl)
         logging.getLogger().setLevel(lvl)

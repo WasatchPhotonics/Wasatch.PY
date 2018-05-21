@@ -55,7 +55,7 @@ class FeatureIdentificationDevice(object):
         ########################################################################
 
         self.detector_tec_setpoint_has_been_set = False
-        self.last_applied_laser_power = 0 # last power level APPLIED to laser, either by turning off (0) or on (immediate or ramping)
+        self.last_applied_laser_power = 0.0 # last power level APPLIED to laser, either by turning off (0) or on (immediate or ramping)
         self.next_applied_laser_power = None # power level to be applied NEXT time the laser is enabled (immediate or ramping)
 
     def connect(self):
@@ -592,7 +592,7 @@ class FeatureIdentificationDevice(object):
 
         # perhaps ARM doesn't like the laser enabled before laser power is configured?
         if self.next_applied_laser_power is None:
-            self.set_laser_power_perc(100)
+            self.set_laser_power_perc(100.0)
 
         self.settings.state.laser_enabled = flag
         if flag and self.settings.state.laser_power_ramping_enabled:
@@ -604,7 +604,7 @@ class FeatureIdentificationDevice(object):
         value = 1 if flag else 0
         log.debug("Send laser enable: %d", value)
         if flag:
-            self.last_applied_laser_power = 0
+            self.last_applied_laser_power = 0.0
         else:
             self.last_applied_laser_power = self.next_applied_laser_power
 
@@ -700,9 +700,9 @@ class FeatureIdentificationDevice(object):
 
         # if the laser is already engaged and we're using ramping, then ramp to
         # the new level
-        value = int(round(max(0, min(100, value_in))))
+        value = float(max(0, min(100, value_in)))
         self.settings.state.laser_power = value
-        log.debug("set_laser_power_perc: range (0, 100), requested %.2f, applying %s", value_in, value)
+        log.debug("set_laser_power_perc: range (0, 100), requested %.2f, applying %.2f", value_in, value)
 
         if self.settings.state.laser_power_ramping_enabled and self.settings.state.laser_enabled:
             self.next_applied_laser_power = value
@@ -770,14 +770,21 @@ class FeatureIdentificationDevice(object):
             specification area of the code before it can adversely impact a
             customer. """
 
+        # MZ: as long as laser power is modulated using a period of 100us,
+        #     with a necessarily-integral pulse width of 1-99us, then it's
+        #     not physically possible to support fractional power levels.
+        # TODO: talk to Jason about changing modulation PERIOD to longer
+        #     value (200us? 400? 1000?), OR whether pulse WIDTH can be
+        #     in smaller unit (500ns? 100ns?)
+
         # don't want anything weird when passing over USB
         value = int(max(0, min(100, round(value))))
 
         # Turn off modulation at full laser power, exit
         if value >= 100 or value < 0:
             log.info("Turning off laser modulation (full power)")
-            self.next_applied_laser_power = 100
-            log.debug("next_applied_laser_power = 100")
+            self.next_applied_laser_power = 100.0
+            log.debug("next_applied_laser_power = 100.0")
             lsb = 0
             msb = 0
             buf = [0] * 8

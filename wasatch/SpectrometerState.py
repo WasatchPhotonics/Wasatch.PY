@@ -12,8 +12,8 @@ class SpectrometerState(object):
     TRIGGER_SOURCE_INTERNAL = 0
     TRIGGER_SOURCE_EXTERNAL = 1
 
-    BAD_PIXEL_MODE_NONE    = 0
-    BAD_PIXEL_MODE_AVERAGE = 1
+    BAD_PIXEL_MODE_NONE     = 0
+    BAD_PIXEL_MODE_AVERAGE  = 1
 
     def __init__(self):
 
