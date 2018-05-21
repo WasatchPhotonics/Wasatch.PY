@@ -8,6 +8,9 @@ This script is not recommended for production use in new development, but is a
 simple and useful demonstration of how to enable and query various functions,
 as well as perform quick tests from the command-line.
 
+Note that the local copy of EEPROM.py is snapshot of ../wasatch/EEPROM.py, and 
+can be freely updated from that source.
+
 # Sample Execution
 
     $ ./wasatch-shell.py
@@ -30,15 +33,20 @@ as well as perform quick tests from the command-line.
     # confirm laser firing
     get_laser
 
+    # set laser to 50mW
+    set_lsi_mw
+    50
+
+    # confirm laser output power
+    get_photodiode_mw
+    49.1342855427
+
     # read laser temperature
-    select_laser
-    0
     get_laser_temp
 
     # read secondary adc
-    select_laser
-    1
-    get_laser_temp
+    get_photodiode
+    1152
 
     startacquisition
 

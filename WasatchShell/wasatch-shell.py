@@ -23,8 +23,10 @@ import logging
 import sys
 import os
 
+from EEPROM import EEPROM
+
 # constants
-SCRIPT_VERSION = "1.0.3"
+SCRIPT_VERSION = "1.0.4"
 HOST_TO_DEVICE = 0x40
 DEVICE_TO_HOST = 0xC0
 BUFFER_SIZE    = 8
@@ -47,16 +49,19 @@ def printHelp():
         GET_LASER_RAMPING_MODE, GET_HORIZ_BINNING, SELECT_LASER,
         CUSTOMSET, CUSTOMGET, CUSTOMGET12, CUSTOMGET3, 
         CONNECTION_CHECK, SCRIPT_VERSION, GET_LASER_TEMP, 
-        GET_PHOTODIODE
+        GET_PHOTODIODE, GET_PHOTODIODE_MW, SET_LSI_MW, 
+        SET_TEMP_SETPOINT_DEGC, GET_TEMP_DEGC, GET_CONFIG_JSON
 
     The following getters are also available:""" % SCRIPT_VERSION
     print sorted(getters.keys())
 
-def Get_Value(Command, ByteCount, wValue=0):
+def Get_Value(Command, ByteCount, wValue=0, wIndex=0, raw=False):
     RetVal = 0
     if Command == 0:
         return 0
-    RetArray = dev.ctrl_transfer(DEVICE_TO_HOST, Command, wValue, 0, ByteCount, TIMEOUT_MS)
+    RetArray = dev.ctrl_transfer(DEVICE_TO_HOST, Command, wValue, wIndex, ByteCount, TIMEOUT_MS)
+    if raw:
+        return RetArray
     for i in range (0, ByteCount):
         RetVal = RetVal * 256 + RetArray[ByteCount - i - 1]
     return RetVal
@@ -116,16 +121,36 @@ def Open_Spectrometers():
     dev = usb.core.find(idVendor=0x24aa, idProduct=0x1000)
     logging.debug("opened spectrometer")
     print(dev.bNumConfigurations)
+
     return dev
 
 def getTemp():
-    print(Get_Value_12bit(0xd7))
+    return Get_Value_12bit(0xd7)
 
+def getTempDegC():
+    raw = getTemp()
+    coeffs = eeprom.adc_to_degC_coeffs
+    degC = coeffs[0] \
+         + coeffs[1] * raw \
+         + coeffs[2] * raw * raw
+    return degC
+    
 def setLSI(period, width):
     if(Test_Set(0xc7, 0xcb, period, 5)): # SET_MOD_PERIOD
         print(Test_Set(0xdb, 0xdc, width, 5)) # SET_LASER_MOD_PULSE_WIDTH
     else:
         print(False)
+
+def setLaserPowerMW(requestedMW):
+    coeffs = eeprom.laser_power_coeffs
+    mW = min(eeprom.max_laser_power_mW, max(eeprom.min_laser_power_mW, requestedMW))
+    perc = coeffs[0] \
+         + coeffs[1] * mW \
+         + coeffs[2] * mW * mW \
+         + coeffs[3] * mW * mW * mW
+
+    perc = int(max(0, min(100, round(perc))))
+    setLSI(100, perc)
 
 def getConfig(index):
     logging.debug("getting config with index " + str(index))
@@ -156,7 +181,16 @@ def getTempSetPoint():
     print(RetVal)
 
 def setTempSetPoint(val):
-    print(Test_Set(0xd8, 0xd9, val, 2))
+    return Test_Set(0xd8, 0xd9, val, 2)
+
+def setTempSetPointDegC(requestedDegC):
+    degC = max(eeprom.min_temp_degC, min(eeprom.max_temp_degC, requestedDegC))
+    coeffs = eeprom.degC_to_dac_coeffs
+    raw = coeffs[0] \
+        + coeffs[1] * degC \
+        + coeffs[2] * degC * degC
+    raw = int(max(0, min(0xfff, raw)))
+    return setTempSetPoint(raw)
 
 def getIntegrationTime():
     RetArray = dev.ctrl_transfer(DEVICE_TO_HOST, 0xbf, 0,0, 6, TIMEOUT_MS)
@@ -171,12 +205,21 @@ def getCCDGain():
 def getLaserTemp():
     Test_Set(0xed, 0xee, 0, 1)  # select the primary ADC
     Get_Value(0xd5, 2)          # throwaway read
-    print Get_Value(0xd5, 2)    # stable read
-    
+    return Get_Value(0xd5, 2)    # stable read
+
 def getPhotodiode():
     Test_Set(0xed, 0xee, 1, 1)  # select the secondary ADC
     Get_Value(0xd5, 2)          # throwaway read
-    print Get_Value(0xd5, 2)    # stable read
+    return Get_Value(0xd5, 2)   # stable read
+
+def getPhotodiodeMW():
+    raw = getPhotodiode()
+    coeffs = eeprom.linearity_coeffs
+    mW = coeffs[0] \
+       + coeffs[1] * raw \
+       + coeffs[2] * raw * raw \
+       + coeffs[3] * raw * raw * raw
+    return mW
 
 def initializeGetters():
     getters = {}
@@ -214,6 +257,15 @@ def initializeGetters():
     getters["READ_COMPILATION_OPTIONS"]                 = (0xff, 2, 0x04)
     return getters
 
+def Load_EEPROM():
+    global eeprom
+    eeprom = EEPROM()
+    buffers = []
+    for page in range(6):
+        buffers.append(Get_Value(0xff, 64, 0x01, wIndex=page, raw=True))
+    eeprom.parse(buffers)
+    eeprom.dump()
+
 ################################################################################
 #                                                                              #
 #                                  main()                                      #
@@ -233,6 +285,7 @@ logging.basicConfig(filename=args.logfile,
 logging.debug("wasatch-shell version %s" % SCRIPT_VERSION)
 
 dev = None
+eeprom = None
 getters = initializeGetters()
 try:
     while True:
@@ -254,6 +307,7 @@ try:
         elif command == "OPEN":
             try:
                 dev = Open_Spectrometers()
+                Load_EEPROM()
             except Exception as e:
                 logging.error(e,exc_info=1)
                 print(0)
@@ -271,11 +325,17 @@ try:
         elif command == "GETDATA":
             getData()
         elif command == "GETTEMP":
-            getTemp()
+            print getTemp()
+        elif command == "GET_TEMP_DEGC":
+            print getTempDegC()
         elif command == "SETLSI":
             setLSI(int(sys.stdin.readline()), int(sys.stdin.readline()))
+        elif command == "SET_LSI_MW":
+            setLaserPowerMW(requestedMW=float(sys.stdin.readline()))
         elif command == "GETCONFIG":
             getConfig(int(sys.stdin.readline()))
+        elif command == "GET_CONFIG_JSON":
+            print eeprom.json()
         elif command == "SETLSE":
             setLightSourceEnable(int(sys.stdin.readline()))
         elif command == "SETTECE":
@@ -283,7 +343,9 @@ try:
         elif command == "GETTEMPSET":
             getTempSetPoint()
         elif command == "SETTEMPSET":
-            setTempSetPoint(int(sys.stdin.readline()))
+            print setTempSetPoint(int(sys.stdin.readline()))
+        elif command == "SET_TEMP_SETPOINT_DEGC":
+            print setTempSetPointDegC(float(sys.stdin.readline()))
         elif command == "GET_INTEGRATION_TIME":  # MZ: some have underbars, some don't...?
             getIntegrationTime()
         elif command == "GET_CCD_GAIN":
@@ -329,10 +391,13 @@ try:
             print(Test_Set(0xed, 0xee, int(sys.stdin.readline(), 16), 1))
 
         elif command == "GET_PHOTODIODE":
-            getPhotodiode()
+            print getPhotodiode()
+
+        elif command == "GET_PHOTODIODE_MW":
+            print getPhotodiodeMW()
 
         elif command == "GET_LASER_TEMP":
-            getLaserTemp()
+            print getLaserTemp()
 
         elif command == "HELP": 
             printHelp()
