@@ -4,7 +4,13 @@
 #                                                                              #
 ################################################################################
 
+import logging
 import numpy
+import json
+import os
+import re
+
+log = logging.getLogger(__name__)
 
 def generate_wavelengths(pixels, c0, c1, c2, c3):
     wavelengths = []
@@ -76,3 +82,43 @@ def dump(foo, indent=0):
         s += spc + str(foo)
 
     return s
+
+def update_dict(dest, src):
+    for k in dest.__dict__.keys():
+        if hasattr(src, k):
+            setattr(dest, k, getattr(src, k))
+
+def load_json(pathname):
+    try:
+        with open(pathname) as infile:
+            return json.load(infile)
+    except:
+        log.error("unable to load %s", pathname, exc_info=1)
+
+def get_pathnames_from_directory(rootdir, pattern=None, recursive=False):
+    pathnames = []
+    log.debug("searching %s matching %s with recursive %s", rootdir, pattern, recursive)
+    if recursive:
+        for (directory, dirnames, filenames) in walk(rootdir):
+            for filename in filenames:
+                pathname = os.path.join(directory, filename)
+                if pattern:
+                    if re.search(pattern, filename):
+                        pathnames.append(pathname)
+                    else:
+                        log.debug("%s does not match %s", pathname, pattern)
+                else:
+                    pathnames.append(pathname)
+    else:
+        for filename in os.listdir(rootdir):
+            pathname = os.path.join(rootdir, filename)
+            if os.path.isfile(pathname):
+                if pattern:
+                    if re.search(pattern, filename):
+                        pathnames.append(pathname)
+                    else:
+                        log.debug("%s does not match %s", pathname, pattern)
+                else:
+                    pathnames.append(pathname)
+    log.debug("returning %s", pathnames)
+    return pathnames

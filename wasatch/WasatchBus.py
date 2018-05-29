@@ -16,43 +16,71 @@ log = logging.getLogger(__name__)
 class WasatchBus(object):
     """ Use Simulation and real hardware bus to populate a device list. """
 
-    def __init__(self, use_sim=False):
-        super(WasatchBus, self).__init__()
-        log.debug("%s setup", self.__class__.__name__)
-        self.use_sim = use_sim
+    def __init__(self, 
+            use_sim     = False,
+            monitor_dir = None):
+
+        self.use_sim     = use_sim
+        self.monitor_dir = monitor_dir
 
         self.devices = []
 
-        if use_sim:
-            self.simulation_bus = SimulationBus()
-
+        self.simulation_bus = SimulationBus() if self.use_sim else None
+        self.file_bus = FileBus(self.monitor_dir) if self.monitor_dir else None
         self.hardware_bus = HardwareBus()
 
         # iterate buses on creation
         self.update()
 
+    # called by Controller.update_connections
     def update(self):
-        """ Return a list of actual devices found on system libusb bus. """
-        if self.use_sim:
-            self.simulation_bus.update()
-
-        self.hardware_bus.update()
-
-        # no need to update simulation bus...?
-
+        """ return a list of UIDs found on any bus """
         self.devices = []
 
-        # Start with hardware bus list by default
-        for device in self.hardware_bus.devices:
-            self.devices.append(device)
+        if self.simulation_bus:
+            self.devices.extend(self.simulation_bus.update())
 
-        # add in any configured simulation devices
-        if self.use_sim:
-            for device in self.simulation_bus.devices:
-                self.devices.append(device)
+        if self.file_bus:
+            self.devices.extend(self.file_bus.update())
 
+        if self.hardware_bus:
+            self.devices.extend(self.hardware_bus.update())
+
+    # called by Controller.update_connections
     def dump(self):
         log.debug("Bus list: %s", self.devices)
+
+################################################################################
+#                                                                              #
+#                                   Buses                                      #
+#                                                                              #
+################################################################################
+
+# The different bus classes don't use inheritance and don't follow a common ABC
+# or interface, but each should have an update() method, and each should have a 
+# 'devices' array.  
+#
+# 'devices' should be an array of strings, where the values are meaningful to 
+# that particular bus ("VID:PID" for HardwareBus or SimulationBus, "/foo/bar" 
+# for MonitorBus).  The devices array can be empty, or the first element can
+# be "disconnected".
+
+################################################################################
+#                                                                              #
+#                                   FileBus                                    #
+#                                                                              #
+################################################################################
+
+class FileBus(object):
+    def __init__(self, directory):
+        self.directory = directory
+        self.configfile = os.path.join(self.directory, "spectrometer.json")
+
+    def update(self):
+        devices = []
+        if os.access(self.directory, os.W_OK) and os.path.isfile(self.configfile):
+            devices.append(self.directory)
+        return devices
 
 ################################################################################
 #                                                                              #
@@ -64,41 +92,33 @@ class HardwareBus(object):
     """ Use libusb to list available devices on the system wide libusb bus. """
 
     def __init__(self):
-        super(HardwareBus, self).__init__()
-        log.debug("%s setup", self.__class__.__name__)
-
-        self.backend_error_count = 0
+        self.backend_error_raised = False
         self.update()
 
     def update(self):
         """ Return a list of actual devices found on system lib usb bus. """
         log.debug("Update hardware bus")
 
-        self.devices = []
+        devices = []
 
         try:
-            fid_bus = DeviceListFID()
-            sp_bus  = DeviceListSP()
+            for item in DeviceListFID().get_all_vid_pids():
+                devices.append("%s:%s" % (item[0], item[1]))
 
-            list_fid = fid_bus.get_all_vid_pids()
-            list_sp  =  sp_bus.get_all_vid_pids()
-            log.debug("FID BUS: %s   SP BUS: %s", list_fid, list_sp)
-
-            for item in list_fid:
-                self.devices.append("%s:%s" % (item[0], item[1]))
-
-            for item in list_sp:
-                self.devices.append("%s:%s" % (item[0], item[1]))
+            for item in DeviceListSP().get_all_vid_pids():
+                devices.append("%s:%s" % (item[0], item[1]))
 
         except USBError:
             # MZ: this seems to happen when I run from Git Bash shell
             #     (resolved on MacOS with 'brew install libusb')
-            if self.backend_error_count == 0:
+            if not self.backend_error_raised:
                 log.warn("No libusb backend", exc_info=1)
-            self.backend_error_count += 1
+                self.backend_error_raised = True
 
         except Exception:
             log.critical("LIBUSB error", exc_info=1)
+
+        return devices
 
 ################################################################################
 #                                                                              #
@@ -106,16 +126,12 @@ class HardwareBus(object):
 #                                                                              #
 ################################################################################
 
-# MZ: consider how to make non-default
 class SimulationBus(object):
     """ Provide an interface to the ini file controlled simulation bus.  This
         indicates whether a simulated device is present on the simulated libusb
         bus. """
 
     def __init__(self, status=None):
-        super(SimulationBus, self).__init__()
-        log.debug("%s setup", self.__class__.__name__)
-
         self.status = status
         self.filename = "enlighten/assets/example_data/simulated_bus.ini"
         self.devices = []
@@ -142,7 +158,6 @@ class SimulationBus(object):
             conn = []
 
         log.info("Simulation BUS: [] FID BUS: %s" % conn)
-        return
 
     def update(self):
         """ Open the ini file, update the class attributes with the status of each device. """
@@ -157,18 +172,19 @@ class SimulationBus(object):
 
         # look at the returned dict
         # MZ: consider if config.has_section("LIBUSB_BUS"):
+        self.devices = []
+
         self.devices.append(config.get('LIBUSB_BUS', 'device_001'))
         self.devices.append(config.get('LIBUSB_BUS', 'device_002'))
         self.devices.append(config.get('LIBUSB_BUS', 'device_003'))
 
-        return True
+        return self.devices
 
     def set_all_connected(self):
         """ Open the ini file, and set all bus entries to connected. """
         config = ConfigParser()
         config.read(self.filename)
 
-        # MZ: hardcode
         config.set("LIBUSB_BUS", "device_001", "0x24aa:0x0512")
         config.set("LIBUSB_BUS", "device_002", "0x24aa:0x1024")
         config.set("LIBUSB_BUS", "device_003", "0x24aa:0x2048")

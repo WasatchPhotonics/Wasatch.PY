@@ -1,3 +1,4 @@
+import json
 import utils
 import logging
 
@@ -37,6 +38,18 @@ class SpectrometerSettings(object):
         # derived attributes
         self.wavelengths = None
         self.wavenumbers = None
+
+        self.update_wavecal()
+
+    # given a JSON-formatted string, parse and apply FPGAOptions and EEPROM
+    # sections if available
+    def update_from_json(self, json):
+        obj = json.loads(json)
+        if hasattr(obj, 'FPGAOptions'):
+            utils.update_dict(self.fpga_options, obj.FPGAOptions)
+        if hasattr(obj, 'EEPROM'):
+            utils.update_dict(self.eeprom, obj.EEPROM)
+            self.update_wavecal()
 
     ############################################################################
     # accessors

@@ -302,6 +302,9 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2018-05-29 0.8.2
+    - initial version of FileSpectrometer
+    - added JSON support
 - 2018-05-17 0.8.1
     - ARM debugs
     - added set\_laser\_power\_mW

@@ -20,6 +20,7 @@ from FeatureIdentificationDevice import FeatureIdentificationDevice
 from StrokerProtocolDevice       import StrokerProtocolDevice
 from SpectrometerSettings        import SpectrometerSettings
 from SpectrometerState           import SpectrometerState
+from FileSpectrometer            import FileSpectrometer
 from ControlObject               import ControlObject
 from WasatchBus                  import WasatchBus
 from Reading                     import Reading
@@ -27,26 +28,32 @@ from Reading                     import Reading
 log = logging.getLogger(__name__)
 
 class WasatchDevice(object):
-    """ Provide an interface to the actual libusb bus.  The summary object is
-        used in order to pass just a simple python object on the multiprocessing
-        queue instead of an entire device object. Passing the entire device
-        object caused problems on Windows.
+    """ Provide an interface to the actual libusb bus.  
 
-        MZ: some of these methods are called from MainProcess, others by
+        Some of these methods are called from MainProcess, others by
         subprocess. """
 
-    def __init__(self, uid=None, bus_order=0, tolerant=True):
-        super(WasatchDevice, self).__init__()
-        log.debug("%s setup", self.__class__.__name__)
+    def __init__(self, uid, bus_order=0):
 
-        self.uid = uid
+        self.uid       = uid
         self.bus_order = bus_order
-        self.tolerant = tolerant
+
         self.connected = False
 
-        self.command_queue = multiprocessing.Queue() # routes ENLIGHTEN 'change settings' commands to the spectrometer process
-        self.backend_error = 0
+        # Receives ENLIGHTEN's 'change settings' commands in the spectrometer 
+        # process. It's not clear why we're using a multiprocessing.Queue inside
+        # WasatchDevice (all the multiprocessing communications are encapsulated
+        # within WasatchDeviceWrapper), or in fact why WasatchDevice.command_queue
+        # is needed at all -- we already have WasatchDeviceWrapper.command_queue, 
+        # which is already deduped within continuous_poll(), so why not just have 
+        # continuous_poll call WasatchDevice.hardware.write_setting(control_obj)
+        # directly?  Still, probably(?) not hurting anything.  May be leftover
+        # from pre-WasatchDeviceWrapper days, when ENLIGHTEN had a blocking 
+        # interface to the spectrometer.
+        # 
+        self.command_queue = multiprocessing.Queue() 
 
+        # a reasonable default
         control_object = ControlObject("integration_time_ms", 10)
         self.command_queue.put(control_object)
 
@@ -56,6 +63,12 @@ class WasatchDevice(object):
         self.sum_count              = 0
         self.session_reading_count  = 0
 
+    ############################################################################
+    #                                                                          #
+    #                               Connection                                 #
+    #                                                                          #
+    ############################################################################
+
     def connect(self):
         """ Attempt low level connection to the device specified in init.  """
         # if self.uid == "0x24aa:0x0512":
@@ -64,6 +77,12 @@ class WasatchDevice(object):
         #     self.connected = True
         #     self.initialize_settings()
         #     return True
+
+        if "/" in self.uid and self.connect_file_spectrometer():
+            log.info("connected to FileSpectrometer")
+            self.connected = True
+            self.initialize_settings()
+            return True
 
         if self.connect_feature_identification():
             log.info("Connected to FeatureIdentificationDevice")
@@ -81,6 +100,22 @@ class WasatchDevice(object):
 
         return False
 
+    def disconnect(self):
+        log.info("WasatchDevice.disconnect: calling hardware disconnect")
+        try:
+            self.hardware.disconnect()
+        except Exception as exc:
+            log.critical("Issue disconnecting hardware", exc_info=1)
+
+        time.sleep(0.1)
+        return True
+
+    def connect_file_spectrometer(self):
+        dev = FileSpectrometer(self.uid)
+        if dev.connect():
+            self.hardware = dev
+            return True
+
     def connect_stroker_protocol(self):
         """ Given a specified universal identifier, attempt to connect to the device using stroker protocol. """
         FID_list = ["0x1000", "0x2000", "0x3000", "0x4000"]
@@ -92,11 +127,6 @@ class WasatchDevice(object):
         if any(fid in self.uid for fid in FID_list):
             log.debug("Compatible feature ID not found")
             return False
-
-        if self.backend_error >= 1:
-            if self.backend_error == 2:
-                log.warn("Don't attempt to connect with no backend")
-            return
 
         # MZ: what is self.uid?
         dev = None
@@ -130,11 +160,6 @@ class WasatchDevice(object):
         if not any(fid in self.uid for fid in FID_list):
             log.debug("Compatible feature ID not found")
             return False
-
-        if self.backend_error >= 1:
-            if self.backend_error == 2:
-                log.warn("Don't attempt to connect with no backend")
-            return
 
         dev = None
         try:
@@ -174,7 +199,8 @@ class WasatchDevice(object):
 
         self.settings = self.hardware.settings
 
-        # generic post-initialization stuff for both SP and FID
+        # generic post-initialization stuff for both SP and FID (and now
+        # FileSpectrometer) - we probably need an ABC for this
         self.hardware.get_microcontroller_firmware_version()
         self.hardware.get_fpga_firmware_version()
         self.hardware.get_integration_time()
@@ -192,16 +218,11 @@ class WasatchDevice(object):
         self.settings.update_wavecal()
         self.settings.dump()
 
-    def disconnect(self):
-        log.info("WasatchDevice.disconnect: calling hardware disconnect")
-        try:
-            self.hardware.disconnect()
-            # MZ: should this not update the bus, which is checked by control.connect_new?
-        except Exception as exc:
-            log.critical("Issue disconnecting hardware", exc_info=1)
-
-        time.sleep(0.1)
-        return True
+    ############################################################################
+    #                                                                          #
+    #                               Acquisition                                #
+    #                                                                          #
+    ############################################################################
 
     # Assumes bad_pixels is a sorted array (possibly empty)
     def correct_bad_pixels(self, spectrum):
@@ -283,7 +304,7 @@ class WasatchDevice(object):
 
         # yes, allow settings to change in the midst of a long average; this way
         # they can turn off laser, disable averaging etc
-        self.process_commands()
+        self.process_commands() 
 
         averaging_enabled = (self.settings.state.scans_to_average > 1)
 
@@ -337,11 +358,7 @@ class WasatchDevice(object):
                 reading.detector_temperature_raw  = self.hardware.get_detector_temperature_raw()
                 reading.detector_temperature_degC = self.hardware.get_detector_temperature_degC(reading.detector_temperature_raw)
             except Exception as exc:
-                if not self.tolerant:
-                    log.critical("Error reading detector temperature", exc_info=1)
-                    reading.failure = exc
-                else:
-                    log.debug("Error reading detector temperature", exc_info=1)
+                log.debug("Error reading detector temperature", exc_info=1)
 
         # only read laser temperature if we have a laser (how do we determine this for StrokerProtocol?)
         if self.settings.eeprom.has_laser:
@@ -351,11 +368,7 @@ class WasatchDevice(object):
                     reading.laser_temperature_raw  = self.hardware.get_laser_temperature_raw()
                 reading.laser_temperature_degC = self.hardware.get_laser_temperature_degC(reading.laser_temperature_raw)
             except Exception as exc:
-                if self.tolerant:
-                    log.debug("Error reading laser temperature", exc_info=1)
-                else:
-                    log.critical("Error reading laser temperature", exc_info=1)
-                    reading.failure = exc
+                log.debug("Error reading laser temperature", exc_info=1)
 
         # read secondary ADC if requested
         if self.settings.state.secondary_adc_enabled:
@@ -366,11 +379,7 @@ class WasatchDevice(object):
                 reading.secondary_adc_calibrated = self.hardware.get_secondary_adc_calibrated(reading.secondary_adc_raw)
                 self.hardware.select_adc(0)
             except Exception as exc:
-                if self.tolerant:
-                    log.debug("Error reading secondary ADC", exc_info=1)
-                else:
-                    log.critical("Error reading secondary ADC", exc_info=1)
-                    reading.failure = exc
+                log.debug("Error reading secondary ADC", exc_info=1)
 
         # have we completed the averaged reading?
         if averaging_enabled:
@@ -386,12 +395,12 @@ class WasatchDevice(object):
 
         return reading
 
-    # MZ: called by acquire_data, ergo subprocess
+    # MZ: called by acquire_data, ergo subprocess 
     def process_commands(self):
         """ Process every entry on the settings queue, write them to the
             device. Failures when writing settings are collected by this
             exception handler. """
-
+    
         control_object = "throwaway"
         while control_object != None:
             try:
