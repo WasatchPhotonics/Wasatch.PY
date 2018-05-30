@@ -61,3 +61,8 @@ can be freely updated from that source.
 
     # shutdown
     close
+
+# Version History
+
+- 05-30-2018 1.0.5
+    - added HAS\_PHOTODIODE\_CALIBRATION

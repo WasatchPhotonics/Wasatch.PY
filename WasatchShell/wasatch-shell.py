@@ -26,7 +26,7 @@ import os
 from EEPROM import EEPROM
 
 # constants
-SCRIPT_VERSION = "1.0.4"
+SCRIPT_VERSION = "1.0.5"
 HOST_TO_DEVICE = 0x40
 DEVICE_TO_HOST = 0xC0
 BUFFER_SIZE    = 8
@@ -50,7 +50,8 @@ def printHelp():
         CUSTOMSET, CUSTOMGET, CUSTOMGET12, CUSTOMGET3, 
         CONNECTION_CHECK, SCRIPT_VERSION, GET_LASER_TEMP, 
         GET_PHOTODIODE, GET_PHOTODIODE_MW, SET_LSI_MW, 
-        SET_TEMP_SETPOINT_DEGC, GET_TEMP_DEGC, GET_CONFIG_JSON
+        SET_TEMP_SETPOINT_DEGC, GET_TEMP_DEGC, GET_CONFIG_JSON,
+        HAS_PHOTODIODE_CALIBRATION
 
     The following getters are also available:""" % SCRIPT_VERSION
     print sorted(getters.keys())
@@ -220,6 +221,13 @@ def getPhotodiodeMW():
        + coeffs[2] * raw * raw \
        + coeffs[3] * raw * raw * raw
     return mW
+
+def hasPhotodiodeCalibration():
+    coeffs = eeprom.linearity_coeffs
+    for i in range(4):
+        if coeffs[i] != 0.0 and coeffs[i] != -1:
+            return 1
+    return 0
 
 def initializeGetters():
     getters = {}
@@ -395,6 +403,9 @@ try:
 
         elif command == "GET_PHOTODIODE_MW":
             print getPhotodiodeMW()
+
+        elif command == "HAS_PHOTODIODE_CALIBRATION":
+            print hasPhotodiodeCalibration()
 
         elif command == "GET_LASER_TEMP":
             print getLaserTemp()
