@@ -5,7 +5,7 @@ log = logging.getLogger(__name__)
 
 class DeviceListFID(object):
     def __init__(self):
-        log.debug("init")
+        pass
 
     def get_all_vid_pids(self):
         """ Return the full list of devices that match the vendor id. """

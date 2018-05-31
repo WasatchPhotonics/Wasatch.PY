@@ -43,12 +43,13 @@ class SpectrometerSettings(object):
 
     # given a JSON-formatted string, parse and apply FPGAOptions and EEPROM
     # sections if available
-    def update_from_json(self, json):
-        obj = json.loads(json)
-        if hasattr(obj, 'FPGAOptions'):
-            utils.update_dict(self.fpga_options, obj.FPGAOptions)
-        if hasattr(obj, 'EEPROM'):
-            utils.update_dict(self.eeprom, obj.EEPROM)
+    def update_from_json(self, s):
+        log.debug("updating SpectrometerSettings from JSON: %s", s)
+        obj = json.loads(s)
+        if 'FPGAOptions' in obj:
+            utils.update_obj_from_dict(self.fpga_options, obj['FPGAOptions'])
+        if 'EEPROM' in obj:
+            utils.update_obj_from_dict(self.eeprom, obj['EEPROM'])
             self.update_wavecal()
 
     ############################################################################

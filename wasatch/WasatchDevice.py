@@ -78,7 +78,7 @@ class WasatchDevice(object):
         #     self.initialize_settings()
         #     return True
 
-        if "/" in self.uid and self.connect_file_spectrometer():
+        if ("/" in self.uid or "\\" in self.uid) and self.connect_file_spectrometer():
             log.info("connected to FileSpectrometer")
             self.connected = True
             self.initialize_settings()
@@ -323,7 +323,12 @@ class WasatchDevice(object):
         try:
             reading.spectrum = self.hardware.get_line()
             if reading.spectrum is None:
-                raise Exception("device.acquire_data: failed to acquire spectrum")
+                # hardware devices (FID, SP) should never do this: for better or worse,
+                # they're blocked on a USB call.  FileSpectrometer can, though, if there
+                # is no new spectrum to read.  So let's just return None for now...not
+                # as a poison pill, but to literally say there is no data.
+                log.debug("device.acquire_data: no spectrum")
+                return None
 
             log.debug("device.acquire_data: got %s ...", reading.spectrum[0:9])
 

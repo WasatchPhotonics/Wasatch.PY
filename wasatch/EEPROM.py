@@ -17,6 +17,13 @@ class EEPROM(object):
         self.has_laser                   = False
         self.excitation_nm               = 0.0  # None is weird for a float
         self.slit_size_um                = 0
+        self.startup_integration_time_ms = 10
+        self.startup_temp_degC           = 10
+        self.startup_triggering_scheme   = 0
+        self.detector_gain               = 1.9
+        self.detector_offset             = 0
+        self.detector_gain_odd           = 1.9
+        self.detector_offset_odd         = 0
                                          
         self.wavelength_coeffs           = []
         self.degC_to_dac_coeffs          = []
@@ -103,78 +110,103 @@ class EEPROM(object):
     def read_eeprom(self):
         self.revisions = []
 
+        for page in range(6):
+            self.revisions.append(self.unpack((page, 63,  1), "B"))
+
+        ########################################################################
         # Page 0
-        self.model                       = self.unpack((0,  0, 16), "s")
-        self.serial_number               = self.unpack((0, 16, 16), "s")
-        self.baud_rate                   = self.unpack((0, 32,  4), "i")
-        self.has_cooling                 = self.unpack((0, 36,  1), "?")
-        self.has_battery                 = self.unpack((0, 37,  1), "?")
-        self.has_laser                   = self.unpack((0, 38,  1), "?")
-        self.excitation_nm               = self.unpack((0, 39,  2), "h")
-        self.slit_size_um                = self.unpack((0, 41,  2), "h")
-        self.revisions             .append(self.unpack((0, 63,  1), "B"))
+        ########################################################################
 
+        self.model                           = self.unpack((0,  0, 16), "s")
+        self.serial_number                   = self.unpack((0, 16, 16), "s")
+        self.baud_rate                       = self.unpack((0, 32,  4), "i")
+        self.has_cooling                     = self.unpack((0, 36,  1), "?")
+        self.has_battery                     = self.unpack((0, 37,  1), "?")
+        self.has_laser                       = self.unpack((0, 38,  1), "?")
+        self.excitation_nm                   = self.unpack((0, 39,  2), "H" if self.revisions[0] >= 3 else "h")
+        self.slit_size_um                    = self.unpack((0, 41,  2), "h")
+        if self.revisions[0] >= 3:
+            self.startup_integration_time_ms = self.unpack((0, 43,  2), "H")
+            self.startup_temp_degC           = self.unpack((0, 45,  2), "h")
+            self.startup_triggering_scheme   = self.unpack((0, 47,  1), "B")
+            self.detector_gain               = self.unpack((0, 48,  4), "f") # "even pixels" for InGaAs
+            self.detector_offset             = self.unpack((0, 52,  2), "h") # "even pixels" for InGaAs
+            self.detector_gain_odd           = self.unpack((0, 54,  4), "f") # InGaAs-only
+            self.detector_offset_odd         = self.unpack((0, 58,  2), "h") # InGaAs-only
+
+        ########################################################################
         # Page 1
+        ########################################################################
+
         self.wavelength_coeffs = []
-        self.wavelength_coeffs     .append(self.unpack((1,  0,  4), "f"))
-        self.wavelength_coeffs     .append(self.unpack((1,  4,  4), "f"))
-        self.wavelength_coeffs     .append(self.unpack((1,  8,  4), "f"))
-        self.wavelength_coeffs     .append(self.unpack((1, 12,  4), "f"))
+        self.wavelength_coeffs         .append(self.unpack((1,  0,  4), "f"))
+        self.wavelength_coeffs         .append(self.unpack((1,  4,  4), "f"))
+        self.wavelength_coeffs         .append(self.unpack((1,  8,  4), "f"))
+        self.wavelength_coeffs         .append(self.unpack((1, 12,  4), "f"))
         self.degC_to_dac_coeffs = []
-        self.degC_to_dac_coeffs    .append(self.unpack((1, 16,  4), "f"))
-        self.degC_to_dac_coeffs    .append(self.unpack((1, 20,  4), "f"))
-        self.degC_to_dac_coeffs    .append(self.unpack((1, 24,  4), "f"))
+        self.degC_to_dac_coeffs        .append(self.unpack((1, 16,  4), "f"))
+        self.degC_to_dac_coeffs        .append(self.unpack((1, 20,  4), "f"))
+        self.degC_to_dac_coeffs        .append(self.unpack((1, 24,  4), "f"))
         self.adc_to_degC_coeffs = []
-        self.adc_to_degC_coeffs    .append(self.unpack((1, 32,  4), "f"))
-        self.adc_to_degC_coeffs    .append(self.unpack((1, 36,  4), "f"))
-        self.adc_to_degC_coeffs    .append(self.unpack((1, 40,  4), "f"))
-        self.max_temp_degC               = self.unpack((1, 28,  2), "h")
-        self.min_temp_degC               = self.unpack((1, 30,  2), "h")
-        self.tec_r298                    = self.unpack((1, 44,  2), "h")
-        self.tec_beta                    = self.unpack((1, 46,  2), "h")
-        self.calibration_date            = self.unpack((1, 48, 12), "s")
-        self.calibrated_by               = self.unpack((1, 60,  3), "s")
-        self.revisions             .append(self.unpack((1, 63,  1), "B"))
+        self.adc_to_degC_coeffs        .append(self.unpack((1, 32,  4), "f"))
+        self.adc_to_degC_coeffs        .append(self.unpack((1, 36,  4), "f"))
+        self.adc_to_degC_coeffs        .append(self.unpack((1, 40,  4), "f"))
+        self.max_temp_degC                   = self.unpack((1, 28,  2), "h")
+        self.min_temp_degC                   = self.unpack((1, 30,  2), "h")
+        self.tec_r298                        = self.unpack((1, 44,  2), "h")
+        self.tec_beta                        = self.unpack((1, 46,  2), "h")
+        self.calibration_date                = self.unpack((1, 48, 12), "s")
+        self.calibrated_by                   = self.unpack((1, 60,  3), "s")
                                     
+        ########################################################################
         # Page 2                    
-        self.detector                    = self.unpack((2,  0, 16), "s")
-        self.active_pixels_horizontal    = self.unpack((2, 16,  2), "h")
-        self.active_pixels_vertical      = self.unpack((2, 19,  2), "h") # MZ: skipped 18
-        self.min_integration_time_ms     = self.unpack((2, 21,  2), "H")
-        self.max_integration_time_ms     = self.unpack((2, 23,  2), "H")
-        self.actual_horizontal           = self.unpack((2, 25,  2), "h")
-        self.roi_horizontal_start        = self.unpack((2, 27,  2), "h") # not currently used
-        self.roi_horizontal_end          = self.unpack((2, 29,  2), "h") # vvv
-        self.roi_vertical_region_1_start = self.unpack((2, 31,  2), "h")
-        self.roi_vertical_region_1_end   = self.unpack((2, 33,  2), "h")
-        self.roi_vertical_region_2_start = self.unpack((2, 35,  2), "h")
-        self.roi_vertical_region_2_end   = self.unpack((2, 37,  2), "h")
-        self.roi_vertical_region_3_start = self.unpack((2, 39,  2), "h")
-        self.roi_vertical_region_3_end   = self.unpack((2, 41,  2), "h")
+        ########################################################################
+
+        self.detector                        = self.unpack((2,  0, 16), "s")
+        self.active_pixels_horizontal        = self.unpack((2, 16,  2), "h")
+        self.active_pixels_vertical          = self.unpack((2, 19,  2), "h") # MZ: skipped 18
+        self.min_integration_time_ms         = self.unpack((2, 21,  2), "H")
+        self.max_integration_time_ms         = self.unpack((2, 23,  2), "H")
+        self.actual_horizontal               = self.unpack((2, 25,  2), "h")
+        self.roi_horizontal_start            = self.unpack((2, 27,  2), "h") # not currently used
+        self.roi_horizontal_end              = self.unpack((2, 29,  2), "h") # vvv
+        self.roi_vertical_region_1_start     = self.unpack((2, 31,  2), "h")
+        self.roi_vertical_region_1_end       = self.unpack((2, 33,  2), "h")
+        self.roi_vertical_region_2_start     = self.unpack((2, 35,  2), "h")
+        self.roi_vertical_region_2_end       = self.unpack((2, 37,  2), "h")
+        self.roi_vertical_region_3_start     = self.unpack((2, 39,  2), "h")
+        self.roi_vertical_region_3_end       = self.unpack((2, 41,  2), "h")
         self.linearity_coeffs = []
-        self.linearity_coeffs      .append(self.unpack((2, 43,  4), "f")) # overloading for secondary ADC
-        self.linearity_coeffs      .append(self.unpack((2, 47,  4), "f"))
-        self.linearity_coeffs      .append(self.unpack((2, 51,  4), "f"))
-        self.linearity_coeffs      .append(self.unpack((2, 55,  4), "f"))
-        self.linearity_coeffs      .append(self.unpack((2, 59,  4), "f"))
-        self.revisions             .append(self.unpack((2, 63,  1), "B"))
+        self.linearity_coeffs          .append(self.unpack((2, 43,  4), "f")) # overloading for secondary ADC
+        self.linearity_coeffs          .append(self.unpack((2, 47,  4), "f"))
+        self.linearity_coeffs          .append(self.unpack((2, 51,  4), "f"))
+        self.linearity_coeffs          .append(self.unpack((2, 55,  4), "f"))
+        self.linearity_coeffs          .append(self.unpack((2, 59,  4), "f"))
 
+        ########################################################################
         # Page 3
+        ########################################################################
+        
+        # WARNING - this conflicts with "Preview 1" of ENG-0034 Rev 3
         self.laser_power_coeffs = []
-        self.laser_power_coeffs    .append(self.unpack((3, 12,  4), "f"))
-        self.laser_power_coeffs    .append(self.unpack((3, 16,  4), "f"))
-        self.laser_power_coeffs    .append(self.unpack((3, 20,  4), "f"))
-        self.laser_power_coeffs    .append(self.unpack((3, 24,  4), "f"))
-        self.max_laser_power_mW          = self.unpack((3, 28,  4), "f")
-        self.min_laser_power_mW          = self.unpack((3, 32,  4), "f")
-        self.revisions             .append(self.unpack((3, 63,  1), "B"))
+        self.laser_power_coeffs        .append(self.unpack((3, 12,  4), "f"))
+        self.laser_power_coeffs        .append(self.unpack((3, 16,  4), "f"))
+        self.laser_power_coeffs        .append(self.unpack((3, 20,  4), "f"))
+        self.laser_power_coeffs        .append(self.unpack((3, 24,  4), "f"))
+        self.max_laser_power_mW              = self.unpack((3, 28,  4), "f")
+        self.min_laser_power_mW              = self.unpack((3, 32,  4), "f")
 
+        ########################################################################
         # Page 4
+        ########################################################################
+
         self.user_data = self.buffers[4][:63]
         self.user_text = self.printable(self.user_data)
-        self.revisions             .append(self.unpack((4, 63,  1), "B"))
 
+        ########################################################################
         # Page 5
+        ########################################################################
+
         bad = set()
         for count in range(15):
             pixel = self.unpack((5, count * 2, 2), "h")
@@ -182,7 +214,6 @@ class EEPROM(object):
                 bad.add(pixel)
         self.bad_pixels = list(bad)
         self.bad_pixels.sort()
-        self.revisions             .append(self.unpack((5, 63,  1), "B"))
 
     def json(self):
         tmp_buf  = self.buffers
@@ -206,14 +237,21 @@ class EEPROM(object):
         log.info("  Has Cooling:      %s", self.has_cooling)
         log.info("  Has Battery:      %s", self.has_battery)
         log.info("  Has Laser:        %s", self.has_laser)
-        log.info("  Excitation (nm):  %s", self.excitation_nm)
-        log.info("  Slit size (um):   %s", self.slit_size_um)
+        log.info("  Excitation:       %s nm", self.excitation_nm)
+        log.info("  Slit size:    :   %s um", self.slit_size_um)
+        log.info("  Start Integ Time: %d ms", self.startup_integration_time_ms)
+        log.info("  Start Temp:       %d degC", self.startup_temp_degC)
+        log.info("  Start Triggering: 0x%02x", self.startup_triggering_scheme)
+        log.info("  Det Gain:         %f", self.detector_gain)
+        log.info("  Det Offset:       %d", self.detector_offset)
+        log.info("  Det Gain Odd:     %f", self.detector_gain_odd)
+        log.info("  Det Offset Odd:   %d", self.detector_offset_odd)
         log.info("")
         log.info("  Wavecal coeffs:   %s", self.wavelength_coeffs)
         log.info("  degCToDAC coeffs: %s", self.degC_to_dac_coeffs)
         log.info("  adcToDegC coeffs: %s", self.adc_to_degC_coeffs)
-        log.info("  Det temp max:     %s", self.max_temp_degC)
-        log.info("  Det temp min:     %s", self.min_temp_degC)
+        log.info("  Det temp max:     %s degC", self.max_temp_degC)
+        log.info("  Det temp min:     %s degC", self.min_temp_degC)
         log.info("  TEC R298:         %s", self.tec_r298)
         log.info("  TEC beta:         %s", self.tec_beta)
         log.info("  Calibration Date: %s", self.calibration_date)
@@ -233,8 +271,8 @@ class EEPROM(object):
         log.info("  Linearity Coeffs: %s", self.linearity_coeffs)
         log.info("")
         log.info("  Laser coeffs:     %s", self.laser_power_coeffs)
-        log.info("  Max Laser mW:     %s", self.max_laser_power_mW)
-        log.info("  Min Laser mW:     %s", self.min_laser_power_mW)
+        log.info("  Max Laser Power:  %s mW", self.max_laser_power_mW)
+        log.info("  Min Laser Power:  %s mW", self.min_laser_power_mW)
         log.info("")
         log.info("  User Text:        %s", self.user_text)
         log.info("")
@@ -310,7 +348,7 @@ class EEPROM(object):
 
         # should apply LATEST page revision numbers per ENG-0034, but
         # for now maintain compatibility with StrokerConsole/ModelConfigurationFormat.cs
-        revs = { 0: 1,   # 2, 
+        revs = { 0: 1,   # 3, 
                  1: 1,   # 2, 
                  2: 2, 
                  3: 255, # 2, 
@@ -320,32 +358,39 @@ class EEPROM(object):
             self.write_buffers[page][63] = revs[page]
 
         # Page 0
-        self.pack((0,  0, 16), "s", self.model                )
-        self.pack((0, 16, 16), "s", self.serial_number        )
-        self.pack((0, 32,  4), "i", self.baud_rate            )
-        self.pack((0, 36,  1), "?", self.has_cooling          )
-        self.pack((0, 37,  1), "?", self.has_battery          )
-        self.pack((0, 38,  1), "?", self.has_laser            )
-        self.pack((0, 39,  2), "h", self.excitation_nm        )
-        self.pack((0, 41,  2), "h", self.slit_size_um         )
+        self.pack((0,  0, 16), "s", self.model                       )
+        self.pack((0, 16, 16), "s", self.serial_number               )
+        self.pack((0, 32,  4), "i", self.baud_rate                   )
+        self.pack((0, 36,  1), "?", self.has_cooling                 )
+        self.pack((0, 37,  1), "?", self.has_battery                 )
+        self.pack((0, 38,  1), "?", self.has_laser                   )
+        self.pack((0, 39,  2), "h", self.excitation_nm               )
+        self.pack((0, 41,  2), "h", self.slit_size_um                )
+        self.pack((0, 43,  2), "H", self.startup_integration_time_ms )
+        self.pack((0, 45,  2), "h", self.startup_temp_degC           )
+        self.pack((0, 47,  1), "B", self.startup_triggering_scheme   )
+        self.pack((0, 48,  4), "f", self.detector_gain               )
+        self.pack((0, 52,  2), "h", self.detector_offset             )
+        self.pack((0, 54,  4), "f", self.detector_gain_odd           )
+        self.pack((0, 58,  2), "h", self.detector_offset_odd         )
 
         # Page 1
-        self.pack((1,  0,  4), "f", self.wavelength_coeffs[0] )
-        self.pack((1,  4,  4), "f", self.wavelength_coeffs[1] )
-        self.pack((1,  8,  4), "f", self.wavelength_coeffs[2] )
-        self.pack((1, 12,  4), "f", self.wavelength_coeffs[3] )
-        self.pack((1, 16,  4), "f", self.degC_to_dac_coeffs[0])
-        self.pack((1, 20,  4), "f", self.degC_to_dac_coeffs[1])
-        self.pack((1, 24,  4), "f", self.degC_to_dac_coeffs[2])
-        self.pack((1, 32,  4), "f", self.adc_to_degC_coeffs[0])
-        self.pack((1, 36,  4), "f", self.adc_to_degC_coeffs[1])
-        self.pack((1, 40,  4), "f", self.adc_to_degC_coeffs[2])
-        self.pack((1, 28,  2), "h", self.max_temp_degC        )
-        self.pack((1, 30,  2), "h", self.min_temp_degC        )
-        self.pack((1, 44,  2), "h", self.tec_r298             )
-        self.pack((1, 46,  2), "h", self.tec_beta             )
-        self.pack((1, 48, 12), "s", self.calibration_date     )
-        self.pack((1, 60,  3), "s", self.calibrated_by        )
+        self.pack((1,  0,  4), "f", self.wavelength_coeffs[0]  )
+        self.pack((1,  4,  4), "f", self.wavelength_coeffs[1]  )
+        self.pack((1,  8,  4), "f", self.wavelength_coeffs[2]  )
+        self.pack((1, 12,  4), "f", self.wavelength_coeffs[3]  )
+        self.pack((1, 16,  4), "f", self.degC_to_dac_coeffs[0] )
+        self.pack((1, 20,  4), "f", self.degC_to_dac_coeffs[1] )
+        self.pack((1, 24,  4), "f", self.degC_to_dac_coeffs[2] )
+        self.pack((1, 32,  4), "f", self.adc_to_degC_coeffs[0] )
+        self.pack((1, 36,  4), "f", self.adc_to_degC_coeffs[1] )
+        self.pack((1, 40,  4), "f", self.adc_to_degC_coeffs[2] )
+        self.pack((1, 28,  2), "h", self.max_temp_degC         )
+        self.pack((1, 30,  2), "h", self.min_temp_degC         )
+        self.pack((1, 44,  2), "h", self.tec_r298              )
+        self.pack((1, 46,  2), "h", self.tec_beta              )
+        self.pack((1, 48, 12), "s", self.calibration_date      )
+        self.pack((1, 60,  3), "s", self.calibrated_by         )
                                     
         # Page 2                    
         self.pack((2,  0, 16), "s", self.detector                    )

@@ -180,14 +180,25 @@ class WasatchDeviceWrapper(object):
                 self.response_queue,
                 self.spectrometer_settings_queue,
                 log.getEffectiveLevel())
+        log.debug("forking continuous_poll")
         self.poller = multiprocessing.Process(target=self.continuous_poll, args=args)
+        log.debug("starting continuous_poll")
         self.poller.start()
+        log.debug("after starting continuous_poll")
+        time.sleep(0.1)
+        log.debug("after starting continuous_poll + 0.1")
 
         # read the post-initialization SpectrometerSettings object off of the queue
         try:
-            self.settings = self.spectrometer_settings_queue.get(timeout=5)
-            log.info("connect: received SpectrometerSettings")
+            log.debug("blocking on spectrometer_settings_queue (waiting on forked continuous_poll)")
+            # note: testing indicates it may take more than 2.5sec for the forked
+            # continuous_poll to actually start moving.  5sec timeout may be on the short side?
+            self.settings = self.spectrometer_settings_queue.get(timeout=8)
+            log.info("connect: received SpectrometerSettings response")
+            if self.settings is None:
+                raise Exception("MainProcess WasatchDeviceWrapper received poison-pill from forked continuous_poll")
             self.settings.dump()
+
         except Exception as exc:
             # Apparently something failed in initialization of the subprocess, and it
             # never succeeded in sending a SpectrometerSettings object. Do our best to
@@ -395,27 +406,24 @@ class WasatchDeviceWrapper(object):
             wasatch_device = WasatchDevice(uid, bus_order)
         except:
             log.critical("continuous_poll: exception instantiating WasatchDevice", exc_info=1)
-            return False
+            return spectrometer_settings_queue.put(None, timeout=2)
 
         ok = False
         try:
             ok = wasatch_device.connect()
         except:
             log.critical("continuous_poll: exception connecting", exc_info=1)
-            return False
+            return spectrometer_settings_queue.put(None, timeout=2)
 
         if not ok:
             log.critical("continuous_poll: failed to connect")
-            return False
+            return spectrometer_settings_queue.put(None, timeout=2)
 
         log.debug("continuous_poll: connected to a spectrometer")
 
         # send the SpectrometerSettings back to the GUI process
-        log.debug("continuous_poll: getting SpectrometerSettings")
-        settings = wasatch_device.settings
-
         log.debug("continuous_poll: returning SpectrometerSettings to GUI process")
-        spectrometer_settings_queue.put(settings, timeout=3)
+        spectrometer_settings_queue.put(wasatch_device.settings, timeout=3)
 
         # Read forever until the None poison pill is received
         log.debug("continuous_poll: entering loop")
@@ -444,21 +452,31 @@ class WasatchDeviceWrapper(object):
             try:
                 log.debug("continuous_poll: acquiring data")
                 reading = wasatch_device.acquire_data()
-            except ValueError as val_exc:
-                log.critical("continuous_poll: ValueError", exc_info=1)
             except Exception as exc:
                 log.critical("continuous_poll: Exception", exc_info=1)
-                reading = Reading()
-                reading.failure = str(exc)
-
-            log.debug("continuous_poll: sending Reading %d back to GUI process (%s)", reading.session_count, reading.spectrum[0:5])
-            response_queue.put(reading, timeout=1)
-
-            if reading.failure is not None:
-                log.critical("continuous_poll: Hardware level ERROR")
                 break
 
+            if reading is None:
+                # FileSpectrometer does this right now...hardware "can't" really, 
+                # because we use blocking calls, although we could probably add
+                # timeouts to break those blocks.
+                log.debug("continuous_poll: no Reading to be had")
+            else:
+                if reading.spectrum is None:
+                    log.debug("continuous_poll: sending Reading %d back to GUI process (no spectrum)", reading.session_count)
+                else:
+                    log.debug("continuous_poll: sending Reading %d back to GUI process (%s)", reading.session_count, reading.spectrum[0:5])
+                response_queue.put(reading, timeout=1)
+
+                if reading.failure is not None:
+                    log.critical("continuous_poll: Hardware level ERROR")
+                    break
+
+            # only poll hardware at 20Hz
             time.sleep(self.poller_wait)
+
+        # send poison-pill upstream to Controller, then quit
+        response_queue.put(None, timeout=1)
 
         log.info("continuous_poll: done")
         sys.exit()

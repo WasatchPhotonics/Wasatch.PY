@@ -8,7 +8,7 @@ class DeviceListSP(object):
         with the 0x24AA VID. Explicitly reject the newer feature identification 
         devices. """
     def __init__(self):
-        log.debug("init")
+        pass
 
     def get_all_vid_pids(self):
         """ Return the full list of devices that match the vendor id. Explicitly 

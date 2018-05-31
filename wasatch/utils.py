@@ -83,10 +83,11 @@ def dump(foo, indent=0):
 
     return s
 
-def update_dict(dest, src):
-    for k in dest.__dict__.keys():
-        if hasattr(src, k):
-            setattr(dest, k, getattr(src, k))
+def update_obj_from_dict(dest_obj, src_dict):
+    for k in sorted(dest_obj.__dict__.keys()):
+        if k in src_dict:
+            log.debug("%s -> %s", k, src_dict[k])
+            setattr(dest_obj, k, src_dict[k])
 
 def load_json(pathname):
     try:

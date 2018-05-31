@@ -1,5 +1,6 @@
 import logging
 import json
+import os
 
 from SpectrometerSettings import SpectrometerSettings
 
@@ -133,15 +134,18 @@ class FileSpectrometer(object):
         for filename in os.listdir(self.directory):
             if filename.startswith("command") and filename.endswith("csv"):
                 pathname = os.path.join(self.directory, filename)
-                log.debug("deleting %s", pathname)
+                log.debug("erase_commands: deleting %s", pathname)
                 os.remove(pathname)
 
     def write_setting(self, control_object):
         self.command_count += 1
-        filename = "command_%08d.csv" % self.command_count
+        filename = "command-%08d.csv" % self.command_count
         pathname = os.path.join(self.directory, filename)
-        with open(pathname, "w") as outfile:
-            outfile.write("%s,%s", control_object.setting, control_object.value)
+        with open(pathname + ".tmp", "w") as outfile:
+            outfile.write("%s,%s" % (control_object.setting, control_object.value))
+
+        # atomic rename to reduce conflicts with remote application
+        os.rename(pathname + ".tmp", pathname)
 
     def get_line(self):
         pathname = None
@@ -161,11 +165,21 @@ class FileSpectrometer(object):
                     y = values[1]
                 else:
                     y = values[0]
-                spectrum.append(y)
+                spectrum.append(int(y))
 
-        if len(spectrum) != self.settings.pixels():
+        try:
+            os.remove(pathname)
+        except:
+            log.debug("error deleting %s", pathname, exc_info=1)
+
+        pixels = len(spectrum)
+        if pixels != self.settings.pixels():
             log.warn("Read spectrum of %d pixels from %s (expected %d per %s)", 
-                len(spectrum), pathname, self.settings.pixels(), self.configfile)
+                pixels, pathname, self.settings.pixels(), self.configfile)
+            if pixels < self.settings.pixels():
+                spectrum.extend([0] * (self.settings.pixels() - pixels))
+            else:
+                spectrum = spectrum[:-self.settings.pixels()]
 
         return spectrum
 
@@ -193,11 +207,11 @@ class FileSpectrometer(object):
     def get_secondary_adc_raw(self):
         return 0
 
-    def get_secondary_adc_calibrated(self):
+    def get_secondary_adc_calibrated(self, raw):
         return 0
 
     def get_detector_temperature_raw(self):
         return 0
 
-    def get_detector_temperature_degC(self):
+    def get_detector_temperature_degC(self, raw):
         return 0
