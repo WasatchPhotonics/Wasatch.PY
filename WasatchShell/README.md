@@ -64,5 +64,7 @@ can be freely updated from that source.
 
 # Version History
 
+- 05-31-2018 1.0.6
+    - changed laser power granularity to 0.1%
 - 05-30-2018 1.0.5
     - added HAS\_PHOTODIODE\_CALIBRATION

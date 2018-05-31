@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python -u
 ################################################################################
 #                               wasatch-shell.py                               #
 ################################################################################
@@ -26,7 +26,7 @@ import os
 from EEPROM import EEPROM
 
 # constants
-SCRIPT_VERSION = "1.0.5"
+SCRIPT_VERSION = "1.0.6"
 HOST_TO_DEVICE = 0x40
 DEVICE_TO_HOST = 0xC0
 BUFFER_SIZE    = 8
@@ -76,8 +76,8 @@ def Get_Value_12bit(Command):
     return RetVal
 
 def Test_Set(SetCommand, GetCommand, SetValue, RetLen):
-    SetValueHigh = SetValue / 0x10000
-    SetValueLow  = SetValue & 0xFFFF
+    SetValueHigh = (SetValue >> 16) & 0xffff
+    SetValueLow  =  SetValue        & 0xffff
     
     Ret = dev.ctrl_transfer(HOST_TO_DEVICE, SetCommand, SetValueLow, int(SetValueHigh), ZZ, TIMEOUT_MS)
     if BUFFER_SIZE != Ret:
@@ -137,21 +137,29 @@ def getTempDegC():
     return degC
     
 def setLSI(period, width):
-    if(Test_Set(0xc7, 0xcb, period, 5)): # SET_MOD_PERIOD
-        print(Test_Set(0xdb, 0xdc, width, 5)) # SET_LASER_MOD_PULSE_WIDTH
+    if width > period:
+        logging.error("setLSI: width %d exceeded period %d", width, period)
+        print False
+        return
+
+    if(Test_Set(0xc7, 0xcb, period, 5)):        # SET_MOD_PERIOD
+        print(Test_Set(0xdb, 0xdc, width, 5))   # SET_LASER_MOD_PULSE_WIDTH
     else:
         print(False)
 
 def setLaserPowerMW(requestedMW):
     coeffs = eeprom.laser_power_coeffs
     mW = min(eeprom.max_laser_power_mW, max(eeprom.min_laser_power_mW, requestedMW))
+
+    # note: the laser_power_coeffs convert mW to percent, not tenth_percent
     perc = coeffs[0] \
          + coeffs[1] * mW \
          + coeffs[2] * mW * mW \
          + coeffs[3] * mW * mW * mW
 
-    perc = int(max(0, min(100, round(perc))))
-    setLSI(100, perc)
+    MAX_TENTHS = 1000
+    tenth_percent = int(max(0, min(MAX_TENTHS, round(perc * 10))))
+    setLSI(MAX_TENTHS, tenth_percent)
 
 def getConfig(index):
     logging.debug("getting config with index " + str(index))
@@ -164,11 +172,11 @@ def getConfig(index):
 def setLightSourceEnable(enable):
     if enable:
         if Test_Set(0xbd, 0xe3, 1, 1):          # SET_LASER_MOD_ENABLED
-            print(Test_Set(0xbe, 0xe2, 1, 1))   # SET_LASER_ENABLED
+            return Test_Set(0xbe, 0xe2, 1, 1)   # SET_LASER_ENABLED
         else:
-            print(False)
+            return False
     else:
-        print(Test_Set(0xbe, 0xe2, 0, 1))
+        return Test_Set(0xbe, 0xe2, 0, 1)
 
 def setTECEnable(enable):
     if(enable):
@@ -290,7 +298,8 @@ logging.basicConfig(filename=args.logfile,
                     level=logging.DEBUG, 
                     format='%(asctime)s.%(msecs)03d %(message)s', 
                     datefmt='%m/%d/%Y %I:%M:%S')
-logging.debug("wasatch-shell version %s" % SCRIPT_VERSION)
+logging.info("-" * 80)
+logging.info("wasatch-shell version %s invoked" % SCRIPT_VERSION)
 
 dev = None
 eeprom = None
@@ -317,7 +326,7 @@ try:
                 dev = Open_Spectrometers()
                 Load_EEPROM()
             except Exception as e:
-                logging.error(e,exc_info=1)
+                logging.error(e, exc_info=1)
                 print(0)
                 break
 
@@ -345,7 +354,7 @@ try:
         elif command == "GET_CONFIG_JSON":
             print eeprom.json()
         elif command == "SETLSE":
-            setLightSourceEnable(int(sys.stdin.readline()))
+            print setLightSourceEnable(int(sys.stdin.readline()))
         elif command == "SETTECE":
             setTECEnable(int(sys.stdin.readline()))
         elif command == "GETTEMPSET":
@@ -420,12 +429,18 @@ try:
             logging.debug("Unknown command: " + str(command))
             break
 
-        sys.stdout.flush()
+        try:
+            sys.stdout.flush()
+        except:
+            logging.error("caller has closed stdout...exiting")
+            break
 
-    # disable the laser if not connected
+    # disable the laser if connected
     if dev is not None:
         setLightSourceEnable(0)
 
 except Exception as e:
     logging.error(e, exc_info=1)
     raise
+
+logging.info("wasatch-shell exiting")
