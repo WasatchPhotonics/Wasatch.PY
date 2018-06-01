@@ -19,11 +19,13 @@ from . import common
 
 from SpectrometerSettings import SpectrometerSettings
 from SpectrometerState    import SpectrometerState
+from Overrides            import Overrides
 from EEPROM               import EEPROM
 
 log = logging.getLogger(__name__)
 
 USB_TIMEOUT_MS = 60000
+MICROSEC_TO_SEC = 0.000001
 
 class FeatureIdentificationDevice(object):
 
@@ -31,11 +33,10 @@ class FeatureIdentificationDevice(object):
     # Lifecycle
     ############################################################################
 
-    # weird having a default PID...
-    def __init__(self, vid="0x24aa", pid="0x1000", bus_order=0):
+    def __init__(self, pid, bus_order=0):
 
         log.debug("init %s", pid)
-        self.vid = int(vid, 16)
+        self.vid = 0x24aa
         self.pid = int(pid, 16)
         self.bus_order = bus_order
 
@@ -48,6 +49,8 @@ class FeatureIdentificationDevice(object):
 
         self.settings = SpectrometerSettings()
         self.eeprom_backup = None
+
+        self.overrides = None
 
         ########################################################################
         # these are "driver state" within FeatureIdentificationDevice, and don't
@@ -160,7 +163,7 @@ class FeatureIdentificationDevice(object):
 
     # Note: some USB docs call this "bmRequest" for "bitmap" vs "byte", but it's
     #       definitely an octet.  And yes, the USB spec really does say "data_or_length".
-    def send_code(self, bRequest, wValue=0, wIndex=0, data_or_wLength=None, label=""):
+    def send_code(self, bRequest, wValue=0, wIndex=0, data_or_wLength=None, label="", dry_run=False):
         prefix = "" if not label else ("%s: " % label)
         result = None
 
@@ -174,6 +177,10 @@ class FeatureIdentificationDevice(object):
 
         log.debug("%ssend_code: request 0x%02x value 0x%04x index 0x%04x data/len %s (orig %s)",
             prefix, bRequest, wValue, wIndex, data_or_wLength, doL)
+
+        if dry_run:
+            return True
+
         try:
             self.wait_for_usb_available()
             result = self.device.ctrl_transfer(0x40,     # HOST_TO_DEVICE
@@ -649,7 +656,7 @@ class FeatureIdentificationDevice(object):
             eighty_percent_start = laser_setpoint
 
         self.send_code(SET_LASER_MOD_PULSE_WIDTH, int(round(eighty_percent_start)), 0, buf, label="SET_LASER_MOD_PULSE_WIDTH (80%)")
-        sleep(0.02)
+        sleep(0.02) # 20ms
 
         x = float(self.settings.state.laser_power_ramp_increments)
         MAX_X3 = x * x * x
@@ -667,7 +674,7 @@ class FeatureIdentificationDevice(object):
 
             # allow 10ms to settle
             log.debug("set_laser_enable_ramp: counter = %3d, width = 0x%04x, target_loop_setpoint = %8.2f", counter, width, target_loop_setpoint)
-            sleep(0.01)
+            sleep(0.01) # 10ms
 
         timeEnd = datetime.datetime.now()
         log.debug("set_laser_enable_ramp: ramp time %.3f sec", (timeEnd - timeStart).total_seconds())
@@ -938,93 +945,154 @@ class FeatureIdentificationDevice(object):
             log.debug("writing page %d at offset 0x%04x: %s", page, offset, self.settings.eeprom.write_buffers[page])
             self.send_code(0xa2, offset, 0, self.settings.eeprom.write_buffers[page])
 
+    def apply_override(self, setting, value):
+        if not self.overrides or not self.overrides.has_override(setting):
+            log.error("no override for %s", setting)
+            return
+
+        if not self.overrides.valid_value(setting, value):
+            log.error("%s is not a valid value for the %s override", value, setting)
+            return
+
+        # apparently it's a valid override setting and value...proceed
+        log.debug("applying override for %s %s", setting, value)
+        override = self.overrides.get_override(setting, value)
+
+        # Theoretically there could be many types of overrides. This is all
+        # I've implemented for now.
+        if "byte_strings" in override:
+            self.apply_override_byte_strings(override["byte_strings"])
+        else:
+            log.error("unsupported override configuration for %s %s", setting, value)
+
+    def apply_override_byte_strings(self, byte_strings):
+        """ assumes 'bytes' is an array of strings, where each string is a 
+            comma-delimited tuple like "2,0A,F0" or "DELAY_US,5" """
+        log.debug("sending %d byte strings over I2C", len(byte_strings))
+        for s in byte_strings:
+            if s[0] == "DELAY_US":
+                delay_us = int(s[1]) 
+                sleep(delay_us * MICROSEC_TO_SEC)
+                continue
+
+            # ARM seems to expect "at least" 8 bytes, so provide at least that 
+            # many, and append if more are needed.  Not sure how we're supposed
+            # to handle message length in this case.
+            buf = [0] * 8
+            data = [int(b.strip(), 16) for b in s.split(',')]
+            for i in range(len(data)):
+                if i < len(buf):
+                    buf[i] = data[i]
+                else:
+                    buf.append(data[i])
+            if len(buf) > 64:
+                log.warn("unsure whether protocol supports payload of %d bytes", len(buf))
+            self.send_code(bRequest        = 0xff, 
+                           wValue          = 0x11, 
+                           wIndex          = 0, 
+                           data_or_wLength = buf,
+                           dry_run         = True,
+                           label           = "OVERRIDE_BYTE_STRINGS")
+
+            if self.overrides.min_delay_us > 0:
+                sleep(self.overrides.min_delay_us * MICROSEC_TO_SEC)
+                
     # implemented subset of WasatchDeviceWrapper.DEVICE_CONTROL_COMMANDS
     def write_setting(self, record):
         """ Perform the specified setting such as physically writing the laser
             on, changing the integration time, turning the cooler on, etc. """
 
-        log.debug("fid.write_setting: %s -> %s", record.setting, record.value)
+        setting = record.setting
+        value   = record.value
 
-        if record.setting == "laser_enable":
-            self.set_laser_enable(True if record.value else False)
+        log.debug("fid.write_setting: %s -> %s", setting, value)
 
-        elif record.setting == "integration_time_ms":
-            self.set_integration_time(int(round(record.value)))
+        if self.overrides and self.overrides.has_override(setting):
+            self.apply_override(setting, value)
 
-        elif record.setting == "detector_tec_setpoint_degC":
-            self.set_detector_tec_setpoint_degC(int(round(record.value)))
+        elif setting == "laser_enable":
+            self.set_laser_enable(True if value else False)
 
-        elif record.setting == "detector_tec_enable":
-            self.set_tec_enable(True if record.value else False)
+        elif setting == "integration_time_ms":
+            self.set_integration_time(int(round(value)))
 
-        elif record.setting == "degC_to_dac_coeffs":
-            self.settings.eeprom.degC_to_dac_coeffs = record.value
+        elif setting == "detector_tec_setpoint_degC":
+            self.set_detector_tec_setpoint_degC(int(round(value)))
 
-        elif record.setting == "laser_power_perc":
-            self.set_laser_power_perc(record.value)
+        elif setting == "detector_tec_enable":
+            self.set_tec_enable(True if value else False)
 
-        elif record.setting == "laser_power_mW":
-            self.set_laser_power_mW(record.value)
+        elif setting == "degC_to_dac_coeffs":
+            self.settings.eeprom.degC_to_dac_coeffs = value
 
-        elif record.setting == "laser_temperature_setpoint_raw":
-            self.set_laser_temperature_setpoint_raw(int(round(record.value)))
+        elif setting == "laser_power_perc":
+            self.set_laser_power_perc(value)
 
-        elif record.setting == "ccd_gain":
-            self.set_ccd_gain(float(record.value))
+        elif setting == "laser_power_mW":
+            self.set_laser_power_mW(value)
 
-        elif record.setting == "ccd_offset":
-            self.set_ccd_offset(int(round(record.value)))
+        elif setting == "laser_temperature_setpoint_raw":
+            self.set_laser_temperature_setpoint_raw(int(round(value)))
 
-        elif record.setting == "high_gain_mode_enable":
-            self.set_high_gain_mode_enable(True if record.value else False)
+        elif setting == "ccd_gain":
+            self.set_ccd_gain(float(value))
 
-        elif record.setting == "trigger_source":
-            self.set_ccd_trigger_source(int(record.value))
+        elif setting == "ccd_offset":
+            self.set_ccd_offset(int(round(value)))
 
-        elif record.setting == "scans_to_average":
-            self.settings.state.scans_to_average = int(record.value)
+        elif setting == "high_gain_mode_enable":
+            self.set_high_gain_mode_enable(True if value else False)
 
-        elif record.setting == "bad_pixel_mode":
-            self.settings.state.bad_pixel_mode = int(record.value)
+        elif setting == "trigger_source":
+            self.set_ccd_trigger_source(int(value))
 
-        elif record.setting == "log_level":
-            self.set_log_level(record.value)
+        elif setting == "scans_to_average":
+            self.settings.state.scans_to_average = int(value)
 
-        elif record.setting == "min_usb_interval_ms":
-            self.settings.state.min_usb_interval_ms = int(round(record.value))
+        elif setting == "bad_pixel_mode":
+            self.settings.state.bad_pixel_mode = int(value)
 
-        elif record.setting == "max_usb_interval_ms":
-            self.settings.state.max_usb_interval_ms = int(round(record.value))
+        elif setting == "log_level":
+            self.set_log_level(value)
 
-        elif record.setting == "reset_fpga":
+        elif setting == "min_usb_interval_ms":
+            self.settings.state.min_usb_interval_ms = int(round(value))
+
+        elif setting == "max_usb_interval_ms":
+            self.settings.state.max_usb_interval_ms = int(round(value))
+
+        elif setting == "reset_fpga":
             self.reset_fpga()
 
-        elif record.setting == "enable_secondary_adc":
-            self.settings.state.secondary_adc_enabled = True if record.value else False
+        elif setting == "enable_secondary_adc":
+            self.settings.state.secondary_adc_enabled = True if value else False
 
-        elif record.setting == "invert_x_axis":
-            self.settings.state.invert_x_axis = True if record.value else False
+        elif setting == "invert_x_axis":
+            self.settings.state.invert_x_axis = True if value else False
 
-        elif record.setting == "laser_power_ramping_enabled":
-            self.settings.state.laser_power_ramping_enabled = True if record.value else False
+        elif setting == "laser_power_ramping_enabled":
+            self.settings.state.laser_power_ramping_enabled = True if value else False
 
-        elif record.setting == "laser_power_ramp_increments":
-            self.settings.state.laser_power_ramp_increments = int(record.value)
+        elif setting == "laser_power_ramp_increments":
+            self.settings.state.laser_power_ramp_increments = int(value)
 
-        elif record.setting == "area_scan_enable":
-            self.set_area_scan_enable(True if record.value else False)
+        elif setting == "area_scan_enable":
+            self.set_area_scan_enable(True if value else False)
 
-        elif record.setting == "update_eeprom":
-            self.update_session_eeprom(record.value)
+        elif setting == "update_eeprom":
+            self.update_session_eeprom(value)
 
-        elif record.setting == "replace_eeprom":
-            self.replace_session_eeprom(record.value)
+        elif setting == "replace_eeprom":
+            self.replace_session_eeprom(value)
 
-        elif record.setting == "write_eeprom":
+        elif setting == "write_eeprom":
             self.write_eeprom()
 
+        elif setting == "overrides":
+            self.overrides = value
+
         else:
-            log.critical("Unknown setting to write: %s", record.setting)
+            log.critical("Unknown setting to write: %s", setting)
             return False
 
         return True

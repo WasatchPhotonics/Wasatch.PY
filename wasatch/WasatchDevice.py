@@ -167,23 +167,17 @@ class WasatchDevice(object):
             log.debug("connect_fid: Attempt connection to bus_pid %s (bus_order %d)", bus_pid, self.bus_order)
 
             dev = FeatureIdentificationDevice(pid=bus_pid, bus_order=self.bus_order)
-            result = False
 
             try:
-                result = dev.connect()
+                ok = dev.connect()
             except Exception as exc:
+                log.critical("connect_feature_identification: %s", exc)
+                return False
 
-                # MZ: what is this? we retry with bus_order 0, PID 0x2000?
-                log.critical("Connect level exception: %s", exc, exc_info=1)
-                dev = FeatureIdentificationDevice(pid="0x2000", bus_order=0)
-                try:
-                    result = dev.connect()
-                except Exception as exc:
-                    log.critical("SECOND Level exception: %s", exc)
-
-            if result != True:
+            if not ok:
                 log.critical("Low level failure in device connect")
                 return False
+
             self.hardware = dev
 
         except Exception as exc:
