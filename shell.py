@@ -10,10 +10,11 @@ import argparse
 import multiprocessing
 
 import wasatch
-
 from wasatch import applog
-from wasatch.WasatchBus           import WasatchBus
+
+from wasatch.CommandSettings      import CommandSettings
 from wasatch.WasatchDeviceWrapper import WasatchDeviceWrapper
+from wasatch.WasatchBus           import WasatchBus
 
 log = logging.getLogger(__name__)
 
@@ -26,14 +27,17 @@ class Shell(object):
     ############################################################################
 
     def __init__(self):
-        self.bus     = None
-        self.device  = None
-        self.logger  = None
-        self.exiting = False
+        self.bus         = None
+        self.device      = None
+        self.main_logger = None
+        self.exiting     = False
 
         self.args = self.parse_args(sys.argv)
+        self.command_settings = CommandSettings()
 
-        self.logger = applog.MainLogger(self.args.log_level)
+        self.main_logger = applog.MainLogger(self.args.log_level, enable_stdout=False)
+        log.info("-" * 80)
+        log.info("Wasatch.PY %s Shell", wasatch.version)
 
     ############################################################################
     #                                                                          #
@@ -43,7 +47,7 @@ class Shell(object):
 
     def parse_args(self, argv):
         parser = argparse.ArgumentParser(description="Simple demo to acquire spectra from command-line interface")
-        parser.add_argument("--log-level",           type=str, default="INFO", help="logging level [DEBUG,INFO,WARNING,ERROR,CRITICAL]")
+        parser.add_argument("--log-level", type=str, default="info", help="logging level", choices=['debug', 'info', 'warning', 'error', 'critical'])
         args = parser.parse_args(argv[1:])
 
         # normalize log level
@@ -85,7 +89,7 @@ class Shell(object):
         device = WasatchDeviceWrapper(
             uid=uid,
             bus_order=0,
-            log_queue=self.logger.log_queue,
+            log_queue=self.main_logger.log_queue,
             log_level=self.args.log_level)
 
         ok = device.connect()
@@ -135,7 +139,7 @@ class Shell(object):
                     log.error("set syntax error: expected 3 tokens")
                 else:
                     setting = tok[1]
-                    if self.device.is_setting(setting):
+                    if self.command_settings.valid(setting):
                         value = self.device.convert_type(setting, tok[2])
                         self.device.change_setting(setting, value)
                     else:
@@ -203,16 +207,15 @@ class Shell(object):
                 return
 
     def do_help(self):
-        print "Wasatch.PY %s (C) 2018, Wasatch Photonics", wasatch.version
+        print "Wasatch.PY %s (C) 2018, Wasatch Photonics" % wasatch.version
         print ""
         print "Supported commands:"
         print "  get_reading            - retrieve a measurement as JSON string"
         print "  set <setting> <value>  - change a given spectrometer setting"
         print ""
-        if self.device:
-            print "Supported settings:"
-            for setting in self.device.get_settings():
-                print "  %10s %s" % (self.device.get_setting_type(setting), setting)
+        print "Supported command settings:"
+        for setting in self.command_settings.get_settings():
+            print "  %-7s %s" % (self.command_settings.get_datatype(setting), setting)
 
 ################################################################################
 # main()
@@ -221,9 +224,6 @@ class Shell(object):
 if __name__ == '__main__':
     multiprocessing.freeze_support()
 
-    log.info("-" * 80)
-    log.info("Wasatch.PY %s Shell", wasatch.version)
-
     shell = Shell()
     shell.run()
 
@@ -231,8 +231,8 @@ if __name__ == '__main__':
         log.debug("closing background thread")
         shell.device.disconnect()
 
-    if shell.logger:
+    if shell.main_logger:
         log.debug("closing logger")
-        shell.logger.close()
+        shell.main_logger.close()
 
     log.info("done")

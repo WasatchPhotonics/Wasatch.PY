@@ -54,41 +54,6 @@ class WasatchDeviceWrapper(object):
                                        # contributors can be skipped).  If the most-recent
                                        # frame IS a partial summation contributor, then send it on.
 
-    DEVICE_CONTROL_COMMANDS = {
-        # eeprom
-        "adc_to_degC_coeffs":              { "datatype": "float[]" },
-        "degC_to_dac_coeffs":              { "datatype": "float[]" },
-        "wavelength_coeffs":               { "datatype": "float[]" },
-
-        # state
-        "area_scan_enable":                { "datatype": "bool" },
-        "bad_pixel_mode":                  { "datatype": "int" },
-        "detector_tec_enable":             { "datatype": "bool" },
-        "detector_tec_setpoint_degC":      { "datatype": "int" },
-
-        # FPGA registers
-        "ccd_gain":                        { "datatype": "float" },
-        "ccd_offset":                      { "datatype": "int" },
-
-        "enable_secondary_adc":            { "datatype": "bool" },
-        "high_gain_mode_enable":           { "datatype": "bool" },
-        "integration_time_ms":             { "datatype": "int" },
-        "invert_x_axis":                   { "datatype": "bool" },
-        "laser_enable":                    { "datatype": "bool" },
-        "laser_power_perc":                { "datatype": "int" },
-        "laser_power_ramp_increments":     { "datatype": "int" },
-        "laser_power_ramping_enabled":     { "datatype": "bool" },
-        "laser_temperature_setpoint_raw":  { "datatype": "int" },
-        "log_level":                       { "datatype": "string" },
-        "max_usb_interval_ms":             { "datatype": "int" },
-        "min_usb_interval_ms":             { "datatype": "int" },
-        "scans_to_average":                { "datatype": "int" },
-        "trigger_source":                  { "datatype": "int" },
-
-        # other
-        "reset_fpga":                      { "datatype": "bool" },
-    }
-
     ############################################################################
     #                                                                          #
     #                                MainProcess                               #
@@ -509,36 +474,3 @@ class WasatchDeviceWrapper(object):
                 break
 
         return keep
-
-    def get_settings(self):
-        return sorted(self.DEVICE_CONTROL_COMMANDS.keys())
-
-    def get_setting_type(self, setting):
-        if not setting in self.DEVICE_CONTROL_COMMANDS:
-            return None
-
-        return self.DEVICE_CONTROL_COMMANDS[setting]["datatype"]
-
-    def is_setting(self, setting):
-        return setting in self.DEVICE_CONTROL_COMMANDS
-
-    def convert_type(self, setting, value):
-        if not setting in self.DEVICE_CONTROL_COMMANDS:
-            log.error("invalid setting: %s", setting)
-            return None
-
-        dt = self.DEVICE_CONTROL_COMMANDS[setting]["datatype"]
-        if dt == "bool":
-            return "true" in value.lower()
-        elif dt == "int":
-            return int(value)
-        elif dt == "float":
-            return float(value)
-        elif dt == "string":
-            return str(value)
-        elif dt == "float[]":
-            values = []
-            for tok in value.split(','):
-                values.append(float(tok))
-            return values
-            

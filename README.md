@@ -302,6 +302,9 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2018-06-04 0.8.6
+    - added CommandSettings.py
+    - added wasatch.applog.MainLogger(enable\_stdout=True)
 - 2018-06-04 0.8.5
     - added shell.py
 - 2018-06-01 0.8.4
