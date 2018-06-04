@@ -9,9 +9,6 @@ class Reading(object):
         state in time. """
 
     def __init__(self):
-        super(Reading, self).__init__()
-        log.debug("%s setup", self.__class__.__name__)
-
         self.timestamp = datetime.datetime.now()
 
         # MZ: hardcode

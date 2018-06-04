@@ -329,13 +329,14 @@ class WasatchDevice(object):
             # bad pixel correction
             if self.settings.state.bad_pixel_mode == SpectrometerState.BAD_PIXEL_MODE_AVERAGE:
                 self.correct_bad_pixels(reading.spectrum)
+            reading.spectrum = list(reading.spectrum)
 
             log.debug("device.acquire_data: after bad_pixel correction: %s ...", reading.spectrum[0:9])
 
             # update summed spectrum
             if averaging_enabled:
                 if self.sum_count == 0:
-                    self.summed_spectra = numpy.array([float(i) for i in reading.spectrum])
+                    self.summed_spectra = list(numpy.array([float(i) for i in reading.spectrum]))
                 else:
                     log.debug("device.acquire_data: summing spectra")
                     self.summed_spectra = numpy.add(self.summed_spectra, reading.spectrum)
@@ -344,7 +345,7 @@ class WasatchDevice(object):
 
         except Exception as exc:
             log.critical("Error reading hardware data", exc_info=1)
-            reading.failure = exc
+            reading.failure = str(exc)
 
         # count spectra
         self.session_reading_count += 1
