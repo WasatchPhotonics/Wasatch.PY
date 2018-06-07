@@ -43,10 +43,11 @@ class Overrides(object):
         self.min_delay_us = 0
         self.settings = {}
 
-        try:
-            self.load()
-        except:
-            log.error("Could not load and parse %s", self.pathname, exc_info=1)
+        if self.pathname:
+            try:
+                self.load()
+            except:
+                log.error("Could not load and parse %s", self.pathname, exc_info=1)
 
     def empty(self):
         return len(self.settings) == 0

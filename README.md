@@ -302,6 +302,8 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2018-06-06 0.8.7
+    - added area\_under\_peak
 - 2018-06-04 0.8.6
     - added CommandSettings.py
     - added wasatch.applog.MainLogger(enable\_stdout=True)

@@ -36,7 +36,7 @@ def generate_wavenumbers(excitation, wavelengths):
     return wavenumbers
 
 # http://stackoverflow.com/questions/14313510/how-to-calculate-moving-average-using-numpy
-# NOTE: this trims the ends of the array!
+# NOTE: this trims the ends of the array!  len(a) > len(moving_average(a, n))
 def moving_average(a, n):
     ret = numpy.cumsum(a, dtype=float)
     ret[n:] = ret[n:] - ret[:-n]
@@ -47,6 +47,8 @@ def apply_boxcar(a, half_width):
         return None
     if half_width < 1:
         return a
+    
+    # "horizontally stack" a series of lists, then flatten them sequentially
     return numpy.hstack((a[0:half_width], 
                          moving_average(a, half_width * 2 + 1), 
                          a[-half_width:])).ravel()
@@ -123,3 +125,74 @@ def get_pathnames_from_directory(rootdir, pattern=None, recursive=False):
                     pathnames.append(pathname)
     log.debug("returning %s", pathnames)
     return pathnames
+
+# probably a numpy shortcut for this
+def find_local_maxima(a, x_axis, center, tolerance=0):
+    # generate subset of array within tolerance of center
+    x = []
+    y = []
+    indices = []
+    for i in range(len(x_axis)):
+        x_value = x_axis[i]
+        if center - tolerance <= x_value or x_value <= center + tolerance:
+            indices.append(i)
+            x.append(x_value)
+            y.append(a[i])
+    
+    if not x:
+        raise("no points within %s of %s" % (tolerance, center))
+
+    # find maxima within subset
+    best_x_index = indices[0]
+    best_x_value = x_axis[0]
+    best_y = y[0]
+    for i in range(len(x)):
+        if best_y < y[i]:
+            best_x_index = indices[i]
+            best_x_value = x_axis[i]
+            best_y = y[i]
+
+    # no point with linear interpolation, as it would only go "down"
+    # (could do Gaussian / polynomial fit)
+
+    return (best_y, best_x_value, best_x_index)
+
+def find_peak_feet_indices(spectrum, x_axis, x_index, boxcar_half_width=0):
+    if boxcar_half_width:
+        smoothed = apply_boxcar(spectrum, boxcar_half_width)
+    else:
+        smoothed = spectrum
+
+    left_index = x_index
+    for i in range(x_index - (boxcar_half_width + 1), -1, -1):
+        if i == 0 or smoothed[i] > smoothed[left_index]:
+            break
+        left_index = i
+
+    right_index = x_index
+    for i in range(x_index + (boxcar_half_width + 1), len(spectrum)):
+        if i + 1 == len(spectrum) or smoothed[i] > smoothed[right_index]:
+            break
+        right_index = i
+
+    return (left_index, right_index)
+
+def area_under_peak(spectrum, x_axis, x_index, boxcar_half_width=0):
+    # find left and right "feet" of the peak
+    (left_index, right_index) = find_peak_feet_indices(
+        spectrum, x_axis, x_index, boxcar_half_width)
+
+    # generate baseline-subtracted subspectrum of just the peak, considering
+    #    the baseline to be a straight line between the two feet
+    slope = float(spectrum[right_index] - spectrum[left_index]) / \
+                   (x_axis[right_index] - x_axis[left_index])
+    subspectrum = []
+    subx_axis = []
+    for i in range (left_index, right_index + 1):
+        baseline = spectrum[left_index] + slope * (x_axis[i] - x_axis[left_index])
+        subspectrum.append(spectrum[i] - baseline)
+        subx_axis.append(x_axis[i])
+
+    # 4. integrate subspectrum
+    area = numpy.trapz(subspectrum, subx_axis)
+    return area

@@ -315,14 +315,16 @@ class WasatchDevice(object):
 
         # collect next spectrum
         try:
-            reading.spectrum = self.hardware.get_line()
-            if reading.spectrum is None:
-                # hardware devices (FID, SP) should never do this: for better or worse,
-                # they're blocked on a USB call.  FileSpectrometer can, though, if there
-                # is no new spectrum to read.  So let's just return None for now...not
-                # as a poison pill, but to literally say there is no data.
-                log.debug("device.acquire_data: no spectrum")
-                return None
+            while True:
+                reading.spectrum = self.hardware.get_line()
+                if reading.spectrum is None:
+                    # hardware devices (FID, SP) should never do this: for better or worse,
+                    # they're blocked on a USB call.  FileSpectrometer can, though, if there
+                    # is no new spectrum to read.  And sometimes 2048-pixel SP spectrometers
+                    # will be unable to stitch together a complete spectrum
+                    log.debug("device.acquire_data: get_line None, retrying")
+                else:
+                    break
 
             log.debug("device.acquire_data: got %s ...", reading.spectrum[0:9])
 
