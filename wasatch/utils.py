@@ -128,16 +128,20 @@ def get_pathnames_from_directory(rootdir, pattern=None, recursive=False):
 
 # probably a numpy shortcut for this
 def find_local_maxima(a, x_axis, center, tolerance=0):
+    log.debug("find_local_maxima: center %.2f (tolerance %.2f)", center, tolerance)
     # generate subset of array within tolerance of center
     x = []
     y = []
     indices = []
     for i in range(len(x_axis)):
         x_value = x_axis[i]
-        if center - tolerance <= x_value or x_value <= center + tolerance:
+        if center - tolerance <= x_value <= center + tolerance:
             indices.append(i)
             x.append(x_value)
             y.append(a[i])
+
+    log.debug("  range x: %s", x)
+    log.debug("  range y: %s", y)
     
     if not x:
         raise("no points within %s of %s" % (tolerance, center))
@@ -145,17 +149,21 @@ def find_local_maxima(a, x_axis, center, tolerance=0):
     # find maxima within subset
     best_x_index = indices[0]
     best_x_value = x_axis[0]
-    best_y = y[0]
+    best_y_value = y[0]
     for i in range(len(x)):
-        if best_y < y[i]:
+        if best_y_value < y[i]:
             best_x_index = indices[i]
-            best_x_value = x_axis[i]
-            best_y = y[i]
+            best_x_value = x_axis[best_x_index]
+            best_y_value = y[i]
 
     # no point with linear interpolation, as it would only go "down"
     # (could do Gaussian / polynomial fit)
 
-    return (best_y, best_x_value, best_x_index)
+    log.debug("  best_x_index: %d", best_x_index)
+    log.debug("  best_x_value: %.2f", best_x_value)
+    log.debug("  best_y_value: %.2f", best_y_value)
+
+    return (best_y_value, best_x_value, best_x_index)
 
 def find_peak_feet_indices(spectrum, x_axis, x_index, boxcar_half_width=0):
     if boxcar_half_width:
@@ -187,12 +195,37 @@ def area_under_peak(spectrum, x_axis, x_index, boxcar_half_width=0):
     slope = float(spectrum[right_index] - spectrum[left_index]) / \
                    (x_axis[right_index] - x_axis[left_index])
     subspectrum = []
-    subx_axis = []
+    subaxis = []
     for i in range (left_index, right_index + 1):
         baseline = spectrum[left_index] + slope * (x_axis[i] - x_axis[left_index])
         subspectrum.append(spectrum[i] - baseline)
-        subx_axis.append(x_axis[i])
+        subaxis.append(x_axis[i])
 
     # 4. integrate subspectrum
-    area = numpy.trapz(subspectrum, subx_axis)
+    area = numpy.trapz(subspectrum, subaxis)
     return area
+
+def peak_height_above_background(spectrum, x_axis, x_index, boxcar_half_width=0):
+    # find left and right "feet" of the peak
+    (left_index, right_index) = find_peak_feet_indices(
+        spectrum, x_axis, x_index, boxcar_half_width)
+
+    width_wn = x_axis[right_index] - x_axis[left_index]
+    width_px = right_index - left_index + 1
+
+    # generate baseline-subtracted subspectrum of just the peak, considering
+    #    the baseline to be a straight line between the two feet
+    slope = float(spectrum[right_index] - spectrum[left_index]) / width_wn
+    baseline = spectrum[left_index] + slope * (x_axis[x_index] - x_axis[left_index])
+    height = spectrum[x_index] - baseline
+
+    log.debug("peak_height_above_background: peak at x_index %d (boxcar %d)", x_index, boxcar_half_width)
+    log.debug("peak_height_above_background:   abs height: %.2f", spectrum[x_index])
+    log.debug("peak_height_above_background:   peak width: (%d px, %.2f cm-1)", width_px, width_wn)
+    log.debug("peak_height_above_background:   feet: (%d, %d)", left_index, right_index)
+    log.debug("peak_height_above_background:   feet height: (%.2f, %.2f)", spectrum[left_index], spectrum[right_index])
+    log.debug("peak_height_above_background:   slope: %.2f", slope)
+    log.debug("peak_height_above_background:   peak baseline: %.2f", baseline)
+    log.debug("peak_height_above_background:   relative height: %.2f", height)
+
+    return (height, width_wn, width_px)

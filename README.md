@@ -302,6 +302,8 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2018-06-07 0.8.8
+    - peak math
 - 2018-06-06 0.8.7
     - added area\_under\_peak
 - 2018-06-04 0.8.6
