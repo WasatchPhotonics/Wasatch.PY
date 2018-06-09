@@ -162,7 +162,7 @@ class StrokerProtocolDevice(object):
         log.debug("Integration time: %s", curr_time)
         return curr_time
 
-    def get_ccd_gain(self):
+    def get_detector_gain(self):
         """ Read the device stored gain.  Convert from binary wasatch format.
                 1st byte is binary encoded: 0 = 1/2, 1 = 1/4, 2 = 1/8 etc
                 2nd byte is the part to the left of the decimal
@@ -173,8 +173,8 @@ class StrokerProtocolDevice(object):
         msb = result[1]
 
         gain = msb + lsb / 256.0
-        log.debug("ccd_gain is: %f (msb %d, lsb %d)" % (gain, msb, lsb))
-        self.settings.state.ccd_gain = gain
+        log.debug("detector_gain is: %f (msb %d, lsb %d)" % (gain, msb, lsb))
+        self.settings.eeprom.detector_gain = gain
 
         return gain
 

@@ -256,30 +256,30 @@ class FeatureIdentificationDevice(object):
         self.settings.state.integration_time_ms = curr_time
         return curr_time
 
-    def set_ccd_offset(self, value):
+    def set_detector_offset(self, value):
         word = int(value) & 0xffff
-        self.settings.state.ccd_offset = word
-        return self.send_code(0xb6, word, label="SET_CCD_OFFSET")
+        self.settings.eeprom.detector_offset = word
+        return self.send_code(0xb6, word, label="SET_DETECTOR_OFFSET")
 
-    def get_ccd_gain(self):
+    def get_detector_gain(self):
         """ Read the device stored gain.  Convert from binary wasatch format.
             1st byte is binary encoded: 0 = 1/2, 1 = 1/4, 2 = 1/8 etc.
             2nd byte is the part to the left of the decimal
             On both sides, expanded exponents (fractional or otherwise) are summed.
             E.g., 231 dec == 0x01e7 == 1.90234375
         """
-        result = self.get_code(0xc5, label="GET_CCD_GAIN")
+        result = self.get_code(0xc5, label="GET_DETECTOR_GAIN")
 
         lsb = result[0] # LSB-MSB
         msb = result[1]
 
         gain = msb + lsb / 256.0
         log.debug("Gain is: %f (msb %d, lsb %d)" % (gain, msb, lsb))
-        self.settings.state.ccd_gain = gain
+        self.settings.eeprom.detctor_gain = gain
 
         return gain
 
-    def set_ccd_gain(self, gain):
+    def set_detector_gain(self, gain):
         """ Re-implementation for required gain settings with S10141
             sensor. These comments are from the C DLL for the SDK - also see
             control.py for details.
@@ -290,7 +290,7 @@ class FeatureIdentificationDevice(object):
             // the binary encoding?) It looks like the value gets sent to the
             // device correctly, but is stored incorrectly (maybe).
 
-            For example, if you run 'get_ccd_gain' on the device:
+            For example, if you run 'get_detector_gain' on the device:
             C-00130   gain is 1.421875  1064  G9214
             WP-00108  gain is 1.296875  830-C S10141
             WP-00132  gain is 1.296875  638-R S11511
@@ -313,15 +313,20 @@ class FeatureIdentificationDevice(object):
             Get gain again: 1.296875
             Why does it not change?
         """
+
+        if round(gain, 2) == 1.90:
+            log.warn("legacy spectrometers don't like gain being re-set to default 1.90...ignoring")
+            return
+
         msb = int(gain)
         lsb = int((gain - msb) * 256)
         raw = (msb << 8) + lsb
 
         # MZ: note that we SEND gain MSB-LSB, but we READ gain LSB-MSB?!
 
-        log.debug("Send CCD Gain: 0x%04x (%s)", raw, gain)
-        self.send_code(0xb7, raw, label="SET_CCD_GAIN")
-        self.settings.state.ccd_gain = gain
+        log.debug("Send Detector Gain: 0x%04x (%s)", raw, gain)
+        self.send_code(0xb7, raw, label="SET_DETECTOR_GAIN")
+        self.settings.eeprom.detector_gain = gain
 
     def set_area_scan_enable(self, flag):
         value = 1 if flag else 0
@@ -1034,11 +1039,11 @@ class FeatureIdentificationDevice(object):
         elif setting == "laser_temperature_setpoint_raw":
             self.set_laser_temperature_setpoint_raw(int(round(value)))
 
-        elif setting == "ccd_gain":
-            self.set_ccd_gain(float(value))
+        elif setting == "detector_gain":
+            self.set_detector_gain(float(value))
 
-        elif setting == "ccd_offset":
-            self.set_ccd_offset(int(round(value)))
+        elif setting == "detector_offset":
+            self.set_detector_offset(int(round(value)))
 
         elif setting == "high_gain_mode_enable":
             self.set_high_gain_mode_enable(True if value else False)

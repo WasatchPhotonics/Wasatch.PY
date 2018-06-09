@@ -198,7 +198,7 @@ class WasatchDevice(object):
         self.hardware.get_microcontroller_firmware_version()
         self.hardware.get_fpga_firmware_version()
         self.hardware.get_integration_time()
-        self.hardware.get_ccd_gain()
+        self.hardware.get_detector_gain()
 
         # could read the defaults for these ss.state volatiles from FID/SP too:
         #
@@ -322,7 +322,9 @@ class WasatchDevice(object):
                     # they're blocked on a USB call.  FileSpectrometer can, though, if there
                     # is no new spectrum to read.  And sometimes 2048-pixel SP spectrometers
                     # will be unable to stitch together a complete spectrum
-                    log.debug("device.acquire_data: get_line None, retrying")
+                    #
+                    # log.debug("device.acquire_data: get_line None, retrying")
+                    pass
                 else:
                     break
 

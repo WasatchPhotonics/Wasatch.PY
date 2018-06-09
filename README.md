@@ -302,6 +302,9 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2018-06-08 0.8.9
+    - detector\_ccd/offset\_odd stubbed
+    - fixed command de-dupping
 - 2018-06-07 0.8.8
     - peak math
 - 2018-06-06 0.8.7

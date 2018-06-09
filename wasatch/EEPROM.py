@@ -65,6 +65,10 @@ class EEPROM(object):
         self.write_buffers = []
 
         self.editable = [ "excitation_nm",
+                          "detector_gain",
+                          "detector_offset",
+                          "detector_gain_odd",
+                          "detector_offset_odd",
                           "calibrated_by",
                           "calibration_date", 
                           "user_text",

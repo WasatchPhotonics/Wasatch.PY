@@ -138,14 +138,16 @@ class FileSpectrometer(object):
                 os.remove(pathname)
 
     def write_setting(self, control_object):
+        cmd = "%s,%s" % (control_object.setting, control_object.value)
         self.command_count += 1
         filename = "command-%08d.csv" % self.command_count
         pathname = os.path.join(self.directory, filename)
         with open(pathname + ".tmp", "w") as outfile:
-            outfile.write("%s,%s" % (control_object.setting, control_object.value))
+            outfile.write(cmd)
 
         # atomic rename to reduce conflicts with remote application
         os.rename(pathname + ".tmp", pathname)
+        log.debug("wrote (%s) to %s", cmd, pathname)
 
     def get_line(self):
         pathname = None
@@ -190,16 +192,16 @@ class FileSpectrometer(object):
     ############################################################################
 
     def get_microcontroller_firmware_version(self):
-        return "NA"
+        pass
 
     def get_fpga_firmware_version(self):
-        return "NA"
+        pass
 
     def get_integration_time(self):
-        return self.settings.state.integration_time_ms
+        pass
 
-    def get_ccd_gain(self):
-        return 1.9
+    def get_detector_gain(self):
+        pass
 
     def select_adc(self):
         pass

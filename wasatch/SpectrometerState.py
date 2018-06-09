@@ -19,8 +19,6 @@ class SpectrometerState(object):
 
         # detector
         self.integration_time_ms = 0
-        self.ccd_gain = 1.9
-        self.ccd_offset = 0
 
         # TEC
         self.tec_setpoint_degC = 15
@@ -109,8 +107,6 @@ class SpectrometerState(object):
     def dump(self):
         log.info("SpectrometerState:")
         log.info("  Integration Time:       %dms", self.integration_time_ms)
-        log.info("  CCD Gain:               %.2f", self.ccd_gain)
-        log.info("  CCD Offset:             %d", self.ccd_offset) 
         log.info("  TEC Setpoint:           %.2f degC", self.tec_setpoint_degC)
         log.info("  TEC Enabled:            %s", self.tec_enabled)
         log.info("  High Gain Mode Enabled: %s", self.high_gain_mode_enabled)

@@ -446,8 +446,7 @@ class WasatchDeviceWrapper(object):
         sys.exit()
 
     def dedupe(self, q):
-        keep = [] 
-        indices = {} 
+        keep = [] # list, not a set, because we want to keep it ordered
         while True:
             try:
                 control_object = q.get_nowait()
@@ -461,14 +460,14 @@ class WasatchDeviceWrapper(object):
                     value = control_object.value
 
                 # remove previous setting if duplicate
-                if setting in indices:
-                    index = indices[setting]
-                    del keep[index]
-                    del indices[setting]
+                new_keep = []
+                for co in keep:
+                    if co.setting != setting:
+                        new_keep.append(co)
+                keep = new_keep
 
                 # append the setting to the de-dupped list and track index
                 keep.append(control_object)
-                indices[setting] = len(keep) - 1
 
             except Queue.Empty as exc:
                 break
