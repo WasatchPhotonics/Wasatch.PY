@@ -302,6 +302,8 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2018-06-12 0.9.0
+    - taking spectra from IMX
 - 2018-06-08 0.8.9
     - detector\_ccd/offset\_odd stubbed
     - fixed command de-dupping

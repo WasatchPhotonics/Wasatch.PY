@@ -53,9 +53,10 @@ class WasatchDevice(object):
         # 
         self.command_queue = multiprocessing.Queue() 
 
-        # a reasonable default
-        control_object = ControlObject("integration_time_ms", 10)
-        self.command_queue.put(control_object)
+        # a reasonable default (disabled while testing IMX)
+        #
+        # control_object = ControlObject("integration_time_ms", 10)
+        # self.command_queue.put(control_object)
 
         self.settings = SpectrometerSettings()
 
@@ -299,6 +300,11 @@ class WasatchDevice(object):
         # yes, allow settings to change in the midst of a long average; this way
         # they can turn off laser, disable averaging etc
         self.process_commands() 
+
+        # if we don't yet have an integration time, nothing to do
+        if self.settings.state.integration_time_ms <= 0:
+            log.debug("skipping acquire_data because no integration_time_ms")
+            return None
 
         averaging_enabled = (self.settings.state.scans_to_average > 1)
 

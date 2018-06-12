@@ -100,8 +100,8 @@ class FeatureIdentificationDevice(object):
         ########################################################################
 
         if self.is_arm():
-            self.settings.state.min_usb_interval_ms = 10
-            self.settings.state.max_usb_interval_ms = 10
+            self.settings.state.min_usb_interval_ms = 0
+            self.settings.state.max_usb_interval_ms = 0
 
         # overridden by EEPROM...do we need this?
         if self.is_ingaas():
@@ -355,15 +355,18 @@ class FeatureIdentificationDevice(object):
 
     def get_microcontroller_firmware_version(self):
         result = self.get_code(0xc0, label="GET_CODE_REVISION")
-        s = "%d.%d.%d.%d" % (result[3], result[2], result[1], result[0]) # MSB-LSB
-        self.settings.microcontroller_firmware_version = s
-        return s
+        version = "?.?.?.?"
+        if result is not None and len(result) >= 4:
+            version = "%d.%d.%d.%d" % (result[3], result[2], result[1], result[0]) # MSB-LSB
+        self.settings.microcontroller_firmware_version = version
+        return version
 
     def get_fpga_firmware_version(self):
         result = self.get_code(0xb4, label="GET_FPGA_REV")
         s = ""
-        for i in range(len(result)):
-            s += chr(result[i])
+        if result is not None:
+            for i in range(len(result)):
+                s += chr(result[i])
         self.settings.fpga_firmware_version = s
         return s
 
@@ -385,7 +388,9 @@ class FeatureIdentificationDevice(object):
             endpoints = [0x82, 0x86]
             block_len_bytes = 2048 # pixels * 2 / 2
         else:
-            raise Exception("Unsupported number of pixels: %d" % pixels)
+            log.warn("unusual number of pixels (%d)...guessing at endpoint" % pixels)
+            endpoints = [0x82]
+            block_len_bytes = pixels * 2
 
         self.wait_for_usb_available()
 
@@ -400,7 +405,11 @@ class FeatureIdentificationDevice(object):
             len(spectrum), endpoints, block_len_bytes, spectrum[0:9])
 
         if len(spectrum) != pixels:
-            raise Exception("get_line read wrong number of pixels (expected %d, read %d)" % (pixels, len(spectrum)))
+            log.error("get_line read wrong number of pixels (expected %d, read %d)", pixels, len(spectrum))
+            if len(spectrum) < pixels:
+                spectrum.extend([0] * (pixels - len(spectrum)))
+            else:
+                spectrum = spectrum[:-pixels]
 
         # For custom benches where the detector is essentially rotated
         # 180-deg from our typical orientation with regard to the grating
@@ -624,7 +633,7 @@ class FeatureIdentificationDevice(object):
         msb = 0
         buf = [0] * 8 # defined but not used
 
-        return self.send_code(0xbe, lsb, msb, value, label="SET_LASER_ENABLE")
+        return self.send_code(0xbe, lsb, msb, buf, label="SET_LASER_ENABLE")
 
     def set_laser_enable_ramp(self):
         SET_LASER_ENABLE          = 0xbe
@@ -804,14 +813,16 @@ class FeatureIdentificationDevice(object):
 
         # Change the pulse period to 100 us
         # MZ: this doesn't seem to agree with ENG-0001's comment about "square root"
-        result = self.send_code(0xc7, 100, 0, 100, label="SET_MOD_PERIOD (immediate)")
+        buf = [0] * 100
+        result = self.send_code(0xc7, wValue=100, wIndex=0, data_or_wLength=buf, label="SET_MOD_PERIOD (immediate)")
         if result is None:
             log.critical("Hardware Failure to send laser mod. pulse period")
             return False
 
         # Set the pulse width to the 0-100 percentage of power;
         # note we send value as wValue AND wLength_or_data
-        result = self.send_code(0xdb, value, 0, value, label="SET_LASER_MOD_PULSE_WIDTH (immediate)")
+        buf = [0] * max(8, value)
+        result = self.send_code(0xdb, wValue=value, wIndex=0, data_or_wLength=buf, label="SET_LASER_MOD_PULSE_WIDTH (immediate)")
         if result is None:
             log.critical("Hardware Failure to send pulse width")
             return False
@@ -950,6 +961,16 @@ class FeatureIdentificationDevice(object):
             log.debug("writing page %d at offset 0x%04x: %s", page, offset, self.settings.eeprom.write_buffers[page])
             self.send_code(0xa2, offset, 0, self.settings.eeprom.write_buffers[page])
 
+    def set_overrides(self, overrides):
+        log.debug("received overrides %s", overrides)
+        self.overrides = overrides
+        if self.overrides.startup is not None:
+            log.debug("applying startup overrides %s", self.overrides.startup)
+            for pair in self.overrides.startup:
+                log.debug("applying startup override: %s", pair)
+                self.apply_override(pair[0], pair[1])
+            log.debug("done applying startup overrides")
+
     def apply_override(self, setting, value):
         if not self.overrides or not self.overrides.has_override(setting):
             log.error("no override for %s", setting)
@@ -957,6 +978,10 @@ class FeatureIdentificationDevice(object):
 
         if not self.overrides.valid_value(setting, value):
             log.error("%s is not a valid value for the %s override", value, setting)
+            return
+
+        if setting == "integration_time_ms" and str(self.settings.state.integration_time_ms) == value:
+            log.debug("skipping duplicate setting (%s, %s)", setting, value)
             return
 
         # apparently it's a valid override setting and value...proceed
@@ -970,13 +995,21 @@ class FeatureIdentificationDevice(object):
         else:
             log.error("unsupported override configuration for %s %s", setting, value)
 
+        # store result of override...need a more scalable way to do this
+        if setting == "integration_time_ms":
+            self.settings.state.integration_time_ms = int(value)
+            log.debug("set settings.state.integration_time_ms to %d", self.settings.state.integration_time_ms)
+
     def apply_override_byte_strings(self, byte_strings):
         """ assumes 'bytes' is an array of strings, where each string is a 
             comma-delimited tuple like "2,0A,F0" or "DELAY_US,5" """
-        log.debug("sending %d byte strings over I2C", len(byte_strings))
+        strings = len(byte_strings)                
+        log.debug("sending %d byte strings over I2C", strings)
+        count = 0
         for s in byte_strings:
             if s[0] == "DELAY_US":
                 delay_us = int(s[1]) 
+                log.debug("override: sleeping %d us", delay_us)
                 sleep(delay_us * MICROSEC_TO_SEC)
                 continue
 
@@ -985,22 +1018,27 @@ class FeatureIdentificationDevice(object):
             # to handle message length in this case.
             buf = [0] * 8
             data = [int(b.strip(), 16) for b in s.split(',')]
-            for i in range(len(data)):
-                if i < len(buf):
-                    buf[i] = data[i]
-                else:
-                    buf.append(data[i])
-            if len(buf) > 64:
-                log.warn("unsure whether protocol supports payload of %d bytes", len(buf))
+
+            # the following was empirically determined from sonyConfigUSB.py
+            chip_dir   = data[0]
+            chip_addr  = data[1]
+            chip_value = data[2]
+
+            wIndex = (chip_addr << 8) | chip_dir
+            buf[0] = chip_value
+
+            log.debug("sending byte string %d of %d", count, strings)
             self.send_code(bRequest        = 0xff, 
                            wValue          = 0x11, 
-                           wIndex          = 0, 
+                           wIndex          = wIndex,
                            data_or_wLength = buf,
-                           dry_run         = True,
                            label           = "OVERRIDE_BYTE_STRINGS")
 
             if self.overrides.min_delay_us > 0:
                 sleep(self.overrides.min_delay_us * MICROSEC_TO_SEC)
+            count += 1
+
+        log.debug("done sending I2C byte string")
                 
     # implemented subset of WasatchDeviceWrapper.DEVICE_CONTROL_COMMANDS
     def write_setting(self, record):
@@ -1094,7 +1132,7 @@ class FeatureIdentificationDevice(object):
             self.write_eeprom()
 
         elif setting == "overrides":
-            self.overrides = value
+            self.set_overrides(value)
 
         else:
             log.critical("Unknown setting to write: %s", setting)

@@ -424,6 +424,10 @@ class WasatchDeviceWrapper(object):
                 # FileSpectrometer does this right now...hardware "can't" really, 
                 # because we use blocking calls, although we could probably add
                 # timeouts to break those blocks.
+                #
+                # Also leveraging this to delay taking spectra until an EXPLICIT
+                # integration time is set by the caller (could occur through "startup"
+                # overrides).
                 log.debug("continuous_poll: no Reading to be had")
             else:
                 if reading.spectrum is None:

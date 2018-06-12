@@ -40,6 +40,7 @@ class Overrides(object):
         self.pathname = pathname
 
         self.description = None
+        self.startup = None
         self.min_delay_us = 0
         self.settings = {}
 
@@ -72,10 +73,10 @@ class Overrides(object):
         with open(self.pathname) as infile:
             config = json.loads(infile.read())
             
-        k = "description"
-        if k in config:
-            self.description = config[k]
-            del(config[k])
+        for k in ["description", "startup"]:
+            if k in config:
+                setattr(self, k, config[k])
+                del(config[k])
 
         k = "min_delay_us"
         if k in config:
@@ -91,3 +92,4 @@ class Overrides(object):
                 self.settings[setting][value] = config[setting][value]
 
         log.debug("loaded overrides for settings: %s", sorted(self.settings.keys()))
+        log.debug("full overrides: %s", self.__dict__)
