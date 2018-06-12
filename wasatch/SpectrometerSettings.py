@@ -89,6 +89,17 @@ class SpectrometerSettings(object):
             log.debug("generated %d wavenumbers from %.2f to %.2f", 
                 len(self.wavenumbers), self.wavenumbers[0], self.wavenumbers[-1])
 
+    # probably a simpler way to do this...
+    def toJSON(self):
+        tmp = {}
+        for k in self.__dict__.keys():
+            v = getattr(self, k)
+            if isinstance(v, EEPROM) or isinstance(v, FPGAOptions) or isinstance(v, SpectrometerState):
+                tmp[k] = v.__dict__
+            else:
+                tmp[k] = v
+        return json.dumps(tmp, indent=4, sort_keys=True, default=str)
+                
     def dump(self):
         log.info("SpectrometerSettings:")
         log.info("  Microcontroller Firmware Version = %s", self.microcontroller_firmware_version)

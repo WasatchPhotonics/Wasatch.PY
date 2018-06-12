@@ -160,7 +160,7 @@ class Shell(object):
                     self.do_disconnected()
                     continue
 
-                print json.dumps(self.device.settings.__dict__, indent=4, sort_keys=True, default=str)
+                print self.device.settings.toJSON()
 
             elif command == "close" or command == "quit" or command == "exit":
                 if self.device:
