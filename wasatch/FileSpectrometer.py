@@ -149,6 +149,10 @@ class FileSpectrometer(object):
         os.rename(pathname + ".tmp", pathname)
         log.debug("wrote (%s) to %s", cmd, pathname)
 
+        # needed to enable acquire
+        if control_object.setting == "integration_time_ms":
+            self.settings.state.integration_time_ms = int(control_object.value)
+
     def get_line(self):
         pathname = None
         for filename in sorted(os.listdir(self.directory)):

@@ -302,6 +302,8 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2018-06-13 0.9.2
+    - internally track FileSpectrometer integration time state
 - 2018-06-12 0.9.1
     - fixed shell.py's "get\_config"
 - 2018-06-12 0.9.0
