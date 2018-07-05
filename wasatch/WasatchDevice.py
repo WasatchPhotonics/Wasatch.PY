@@ -329,7 +329,7 @@ class WasatchDevice(object):
                     # is no new spectrum to read.  And sometimes 2048-pixel SP spectrometers
                     # will be unable to stitch together a complete spectrum
                     #
-                    # log.debug("device.acquire_data: get_line None, retrying")
+                    log.debug("device.acquire_data: get_line None, retrying")
                     pass
                 else:
                     break

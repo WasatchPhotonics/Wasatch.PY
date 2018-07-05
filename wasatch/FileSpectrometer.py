@@ -163,6 +163,7 @@ class FileSpectrometer(object):
         if not pathname:
             return # no spectra to load...still "acquiring"
 
+        # read the spectrum
         spectrum = []
         with open(pathname, "r") as infile:
             for line in infile:
@@ -173,11 +174,13 @@ class FileSpectrometer(object):
                     y = values[0]
                 spectrum.append(int(y))
 
+        # now that we've read the spectrum, delete the file
         try:
             os.remove(pathname)
         except:
             log.debug("error deleting %s", pathname, exc_info=1)
 
+        # truncate or pad spectrum to match expected number of pixels
         pixels = len(spectrum)
         if pixels != self.settings.pixels():
             log.warn("Read spectrum of %d pixels from %s (expected %d per %s)", 
@@ -186,6 +189,9 @@ class FileSpectrometer(object):
                 spectrum.extend([0] * (self.settings.pixels() - pixels))
             else:
                 spectrum = spectrum[:-self.settings.pixels()]
+
+        # note that no normalization is applied; it is possible that the input 
+        # spectrum may include negative values, or values greater than 2^16 etc
 
         return spectrum
 

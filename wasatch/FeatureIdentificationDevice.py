@@ -422,6 +422,20 @@ class FeatureIdentificationDevice(object):
         if self.settings.state.invert_x_axis:
             spectrum.reverse()
 
+        if self.settings.state.graph_alternating_pixels:
+            # |x|x|x|x|x graph
+            # 0123456789 pixel
+            smoothed = []
+            for i in range(len(spectrum)):
+                if i % 2 == 0:
+                    smoothed.append(spectrum[i])
+                else:
+                    averaged = spectrum[i - 1]
+                    if i + 1 < len(spectrum):
+                        averaged = round((spectrum[i-1] + spectrum[i+1]) / 2.0, 0)
+                    smoothed.append(averaged)
+            spectrum = smoothed
+
         return spectrum
 
     def set_integration_time(self, ms):
@@ -1133,6 +1147,9 @@ class FeatureIdentificationDevice(object):
 
         elif setting == "overrides":
             self.set_overrides(value)
+
+        elif setting == "graph_alternating_pixels":
+            self.settings.state.graph_alternating_pixels = True if value else False
 
         else:
             log.critical("Unknown setting to write: %s", setting)

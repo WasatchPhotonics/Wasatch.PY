@@ -77,6 +77,9 @@ class SpectrometerState(object):
         self.laser_power_ramping_enabled = False
         self.laser_power_ramp_increments = 100
 
+        # pixel binning
+        self.graph_alternating_pixels = False
+
         ########################################################################
         # What about truly internal settings like last_applied_laser_power or 
         # detector_tec_setpoint_has_been_set?  It's okay for StrokerProtocolDevice,

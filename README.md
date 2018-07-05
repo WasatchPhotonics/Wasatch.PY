@@ -302,6 +302,8 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2018-07-05 0.9.3
+    - added graph\_alternating\_pixels
 - 2018-06-13 0.9.2
     - internally track FileSpectrometer integration time state
 - 2018-06-12 0.9.1
