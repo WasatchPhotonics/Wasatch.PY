@@ -56,17 +56,39 @@ class Overrides(object):
     def has_override(self, setting):
         return setting in self.settings
 
+    # for case where "15" is an override, but "15.0" is not
+    def normalized_value(self, setting, value):
+        if not self.has_override(setting):
+            return None
+
+        if str(value) in self.settings[setting]:
+            return value
+
+        if isinstance(value, float):
+            if value - int(value) == 0.0:
+                if str(int(value)) in self.settings[setting]:
+                    return int(value)
+
+        return None
+
     def valid_value(self, setting, value):
         if not self.has_override(setting):
             return False
 
-        return str(value) in self.settings[setting]
+        if str(value) in self.settings[setting]:
+            return True
+
+        if self.normalized_value(setting, value) is not None:
+            return True
+
+        return False
 
     def get_override(self, setting, value):
         if not self.valid_value(setting, value):
             return None
 
-        return self.settings[setting][str(value)]
+        normalized = self.normalized_value(setting, value)
+        return self.settings[setting][str(normalized)]
     
     def load(self):
         log.debug("loading %s", self.pathname)

@@ -228,6 +228,7 @@ class StrokerProtocolDevice(object):
         data = self.device.read(0x82, line_buffer, timeout=USB_TIMEOUT_MS)
         log.debug("Raw data: %s", data[0:9])
 
+        # Append the 2048 pixel data for just MTI produt id 0x0001
         if self.pid == 0x0001:
             data.extend(self.read_second_half())
 
@@ -237,14 +238,18 @@ class StrokerProtocolDevice(object):
             log.critical("Failure in data unpack: %s", exc)
             raise
 
+        # if we're in area scan mode, use first pixel as row index (leave pixel in spectrum)
+        area_scan_row_count = -1
+        if self.settings.state.area_scan_enabled:
+            area_scan_row_count = spectrum[0]
+
         if len(spectrum) != self.settings.pixels():
             log.critical("Read read %d pixels (expected %d)", len(spectrum), self.settings.pixels())
             return None
 
         log.debug("DONE   get line")
 
-        # Append the 2048 pixel data for just MTI produt id 0x0001
-        return spectrum
+        return (spectrum, area_scan_row_count)
 
     def read_second_half(self):
         """ Read from endpoint 86 of the 2048-pixel Hamamatsu detector in MTI units. """

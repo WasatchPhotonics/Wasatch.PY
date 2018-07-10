@@ -33,10 +33,11 @@ class WasatchDevice(object):
         Some of these methods are called from MainProcess, others by
         subprocess. """
 
-    def __init__(self, uid, bus_order=0):
+    def __init__(self, uid, bus_order=0, message_queue=None):
 
-        self.uid       = uid
-        self.bus_order = bus_order
+        self.uid           = uid
+        self.bus_order     = bus_order
+        self.message_queue = message_queue
 
         self.connected = False
 
@@ -50,13 +51,7 @@ class WasatchDevice(object):
         # directly?  Still, probably(?) not hurting anything.  May be leftover
         # from pre-WasatchDeviceWrapper days, when ENLIGHTEN had a blocking 
         # interface to the spectrometer.
-        # 
         self.command_queue = multiprocessing.Queue() 
-
-        # a reasonable default (disabled while testing IMX)
-        #
-        # control_object = ControlObject("integration_time_ms", 10)
-        # self.command_queue.put(control_object)
 
         self.settings = SpectrometerSettings()
 
@@ -167,7 +162,7 @@ class WasatchDevice(object):
             bus_pid = self.uid[7:]
             log.debug("connect_fid: Attempt connection to bus_pid %s (bus_order %d)", bus_pid, self.bus_order)
 
-            dev = FeatureIdentificationDevice(pid=bus_pid, bus_order=self.bus_order)
+            dev = FeatureIdentificationDevice(pid=bus_pid, bus_order=self.bus_order, message_queue=self.message_queue)
 
             try:
                 ok = dev.connect()
@@ -278,12 +273,9 @@ class WasatchDevice(object):
             # advance to next bad pixel
             i += 1
 
-    # MZ: This is akin to getSpectrum() in other drivers.  Can be called directly
-    #     in a blocking interface, or from subprocess in non-blocking queued architecture.
-    #     Note that subprocess.acquire_data() takes a common.acquisition_mode argument,
-    #     where this does not.
     def acquire_data(self):
-        """ Process all enqueued settings, then read actual data from the device.
+        """ Process all enqueued settings, then read actual data (spectrum and 
+            temperatures) from the device.
 
             Notes:
                 - we always return raw readings, even during scan averaging (.spectrum)
@@ -291,7 +283,6 @@ class WasatchDevice(object):
                   averaged "complete" INSTEAD OF the raw
                 - we always return temperatures for live GUI updates
                 - we always perform bad pixel correction
-
                 - currently returning INTEGRAL averages (including bad_pixel)
         """
 
@@ -322,7 +313,7 @@ class WasatchDevice(object):
         # collect next spectrum
         try:
             while True:
-                reading.spectrum = self.hardware.get_line()
+                (reading.spectrum, reading.area_scan_row_count)  = self.hardware.get_line()
                 if reading.spectrum is None:
                     # hardware devices (FID, SP) should never do this: for better or worse,
                     # they're blocked on a USB call.  FileSpectrometer can, though, if there

@@ -12,6 +12,11 @@ import re
 
 log = logging.getLogger(__name__)
 
+def remove_unicode(s):
+    if isinstance(s, unicode):
+        return s.encode('ascii', 'ignore')
+    return s
+
 def generate_wavelengths(pixels, c0, c1, c2, c3):
     wavelengths = []
     for x in range(pixels):

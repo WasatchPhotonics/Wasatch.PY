@@ -25,6 +25,7 @@ class Reading(object):
         self.failure                   = None
         self.averaged                  = False
         self.session_count             = 0
+        self.area_scan_row_count       = -1
 
     def dump(self):
         log.info("Reading:")
@@ -40,3 +41,4 @@ class Reading(object):
         log.info("  Failure:                %s", self.failure)
         log.info("  Averaged:               %s", self.averaged)
         log.info("  Session Count:          %d", self.session_count)
+        log.info("  Area Scan Row Count:    %d", self.area_scan_row_count)

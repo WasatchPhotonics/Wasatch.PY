@@ -16,9 +16,11 @@ from random import randint
 from time   import sleep
 
 from . import common
+from . import utils
 
 from SpectrometerSettings import SpectrometerSettings
 from SpectrometerState    import SpectrometerState
+from StatusMessage        import StatusMessage
 from Overrides            import Overrides
 from EEPROM               import EEPROM
 
@@ -33,12 +35,13 @@ class FeatureIdentificationDevice(object):
     # Lifecycle
     ############################################################################
 
-    def __init__(self, pid, bus_order=0):
+    def __init__(self, pid, bus_order=0, message_queue=None):
 
         log.debug("init %s", pid)
         self.vid = 0x24aa
         self.pid = int(pid, 16)
         self.bus_order = bus_order
+        self.message_queue = message_queue
 
         self.device = None
 
@@ -51,6 +54,7 @@ class FeatureIdentificationDevice(object):
         self.eeprom_backup = None
 
         self.overrides = None
+        self.last_override_value = {}
 
         ########################################################################
         # these are "driver state" within FeatureIdentificationDevice, and don't
@@ -330,7 +334,9 @@ class FeatureIdentificationDevice(object):
 
     def set_area_scan_enable(self, flag):
         value = 1 if flag else 0
-        self.send_code(0xe9, value, label="SET_AREA_SCAN_ENABLE")
+        # KLUDGE
+        if not "sig" in self.settings.eeprom.model.lower():
+            self.send_code(0xe9, value, label="SET_AREA_SCAN_ENABLE")
         self.settings.state.area_scan_enabled = flag
 
     def get_sensor_line_length(self):
@@ -411,11 +417,20 @@ class FeatureIdentificationDevice(object):
             else:
                 spectrum = spectrum[:-pixels]
 
+        # if we're in area scan mode, use first pixel as row index (leave pixel in spectrum)
+        area_scan_row_count = -1
+        if self.settings.state.area_scan_enabled:
+            area_scan_row_count = spectrum[0]
+
+            # override row counter to smooth data and avoid a weird peak/trough 
+            # which could affect other smoothing, normalization or min/max algos.
+            spectrum[0] = spectrum[1]
+
         # For custom benches where the detector is essentially rotated
         # 180-deg from our typical orientation with regard to the grating
-        # (e.g., red wavelengths are diffracted toward pixel 0, and blue
-        # wavelengths toward pixel 1023).  Note that this simply performs
-        # a horizontal flip of the vertically-binned 1-D spectra, and
+        # (e.g., on this spectrometer red wavelengths are diffracted toward 
+        # px0, and blue wavelengths toward px1023).  Note this simply performs
+        # a horizontal FLIP of the vertically-binned 1-D spectra, and
         # is NOT sufficient to perform a genuine 180-degree rotation of
         # 2-D imaging mode; if area scan is enabled, the user would likewise
         # need to reverse the display order of the rows.
@@ -436,7 +451,7 @@ class FeatureIdentificationDevice(object):
                     smoothed.append(averaged)
             spectrum = smoothed
 
-        return spectrum
+        return (spectrum, area_scan_row_count)
 
     def set_integration_time(self, ms):
         """ Send the updated integration time in a control message to the device. """
@@ -991,18 +1006,26 @@ class FeatureIdentificationDevice(object):
             return
 
         if not self.overrides.valid_value(setting, value):
-            log.error("%s is not a valid value for the %s override", value, setting)
+            log.error("[%s] is not a valid value for the %s override", value, setting)
             return
 
-        if setting == "integration_time_ms" and str(self.settings.state.integration_time_ms) == value:
-            log.debug("skipping duplicate setting (%s, %s)", setting, value)
-            return
+        if setting in self.last_override_value:
+            if str(value) == str(self.last_override_value[setting]):
+                log.debug("skipping duplicate setting (%s already is [%s])", setting, value)
+                return
+            else:
+                log.debug("previous override for %s was [%s] (now [%s])", setting, self.last_override_value[setting], value)
+        else:
+            log.debug("no previous override for %s found", setting)
+
+        log.debug("storing last override %s = [%s]", setting, str(value))
+        self.last_override_value[setting] = str(value)
 
         # apparently it's a valid override setting and value...proceed
-        log.debug("applying override for %s %s", setting, value)
+        log.debug("applying override for %s [%s]", setting, value)
         override = self.overrides.get_override(setting, value)
 
-        # Theoretically there could be many types of overrides. This is all
+        # Theoretically there could be many types of overrides. This is the only type
         # I've implemented for now.
         if "byte_strings" in override:
             self.apply_override_byte_strings(override["byte_strings"])
@@ -1012,19 +1035,31 @@ class FeatureIdentificationDevice(object):
         # store result of override...need a more scalable way to do this
         if setting == "integration_time_ms":
             self.settings.state.integration_time_ms = int(value)
-            log.debug("set settings.state.integration_time_ms to %d", self.settings.state.integration_time_ms)
+
+    def queue_message(self, setting, value):
+        if self.message_queue is None:
+            return
+
+        msg = StatusMessage(setting, value)
+        try:
+            self.message_queue.put_nowait(msg)
+        except:
+            log.error("failed to enqueue StatusMessage (%s, %s)", setting, value, exc_info=1)
 
     def apply_override_byte_strings(self, byte_strings):
         """ assumes 'bytes' is an array of strings, where each string is a 
             comma-delimited tuple like "2,0A,F0" or "DELAY_US,5" """
-        strings = len(byte_strings)                
-        log.debug("sending %d byte strings over I2C", strings)
+        string_count = len(byte_strings)                
+        log.debug("sending %d byte strings over I2C", string_count)
+        self.queue_message("progress_bar_max", string_count)
+
         count = 0
         for s in byte_strings:
             if s[0] == "DELAY_US":
                 delay_us = int(s[1]) 
                 log.debug("override: sleeping %d us", delay_us)
                 sleep(delay_us * MICROSEC_TO_SEC)
+                count += 1
                 continue
 
             # ARM seems to expect "at least" 8 bytes, so provide at least that 
@@ -1041,12 +1076,14 @@ class FeatureIdentificationDevice(object):
             wIndex = (chip_addr << 8) | chip_dir
             buf[0] = chip_value
 
-            log.debug("sending byte string %d of %d", count, strings)
+            log.debug("sending byte string %d of %d", count, string_count)
             self.send_code(bRequest        = 0xff, 
                            wValue          = 0x11, 
                            wIndex          = wIndex,
                            data_or_wLength = buf,
                            label           = "OVERRIDE_BYTE_STRINGS")
+
+            self.queue_message("progress_bar_value", count + 1)
 
             if self.overrides.min_delay_us > 0:
                 sleep(self.overrides.min_delay_us * MICROSEC_TO_SEC)

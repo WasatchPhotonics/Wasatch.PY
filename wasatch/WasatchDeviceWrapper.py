@@ -78,11 +78,13 @@ class WasatchDeviceWrapper(object):
         # self.manager = multiprocessing.Manager()
         # self.command_queue               = self.manager.Queue()
         # self.response_queue              = self.manager.Queue()
+        # self.message_queue               = self.manager.Queue()
         # self.spectrometer_settings_queue = self.manager.Queue()
 
-        self.command_queue    = multiprocessing.Queue()
-        self.response_queue   = multiprocessing.Queue()
-        self.spectrometer_settings_queue = multiprocessing.Queue()
+        self.spectrometer_settings_queue = multiprocessing.Queue(1)    # spectrometer -> GUI (SpectrometerSettings, one-time)
+        self.response_queue              = multiprocessing.Queue(1000) # spectrometer -> GUI (Readings)
+        self.message_queue               = multiprocessing.Queue(1000) # spectrometer -> GUI (StatusMessages)
+        self.command_queue               = multiprocessing.Queue(1000) # GUI -> spectrometer (ControlObjects)
 
         self.poller_wait  = 0.05    # MZ: update from hardware device at 20Hz
         self.closing      = False   # Don't permit new acquires during close
@@ -143,6 +145,7 @@ class WasatchDeviceWrapper(object):
                 self.command_queue, 
                 self.response_queue,
                 self.spectrometer_settings_queue,
+                self.message_queue,
                 log.getEffectiveLevel())
         log.debug("forking continuous_poll")
         self.poller = multiprocessing.Process(target=self.continuous_poll, args=args)
@@ -221,9 +224,26 @@ class WasatchDeviceWrapper(object):
 
         return True
 
+    def acquire_status_message(self):
+        """ Similar to acquire_data, this method is called by the Controller in
+            MainProcess to dequeue a StatusMessage from the spectrometer sub-
+            process, if one is available. """
+
+        if self.closing:
+            return None
+
+        try:
+            return self.message_queue.get_nowait()
+        except Queue.Empty:
+            return None
+
     def acquire_data(self, mode=None):
-        """ Don't use if queue.empty() for flow control on python 2.7 on
-            windows, as it will hang. Use the catch of the queue empty exception as
+        """ This method is called by the Controller in MainProcess.  It checks
+            the response_queue it shares with the subprocess to see if any
+            Reading objects have been queued from the spectrometer to the GUI.
+
+            Don't use 'if queue.empty()' for flow control on python 2.7 on
+            windows, as it will hang. Catch the Queue.Empty exception as
             shown below instead.
             
             It is the upstream interface's job to decide how to process the
@@ -322,6 +342,7 @@ class WasatchDeviceWrapper(object):
                         command_queue, 
                         response_queue, 
                         spectrometer_settings_queue,
+                        message_queue,
                         log_level):
 
         """ Continuously process with the simulated device. First setup
@@ -367,7 +388,7 @@ class WasatchDeviceWrapper(object):
         # Regardless, if anything goes wrong here, we may need to do more to
         # cleanup these processes, queues etc.
         try:
-            wasatch_device = WasatchDevice(uid, bus_order)
+            wasatch_device = WasatchDevice(uid, bus_order, message_queue)
         except:
             log.critical("continuous_poll: exception instantiating WasatchDevice", exc_info=1)
             return spectrometer_settings_queue.put(None, timeout=2)
@@ -392,8 +413,12 @@ class WasatchDeviceWrapper(object):
         # Read forever until the None poison pill is received
         log.debug("continuous_poll: entering loop")
         while True:
+
+            ####################################################################
+            # Relay downstream commands (GUI -> Spectrometer)
+            ####################################################################
+
             poison_pill = False
-            queue_empty = False
 
             # only keep the MOST RECENT of any given command (but retain order otherwise)
             dedupped = self.dedupe(command_queue)
@@ -412,6 +437,33 @@ class WasatchDeviceWrapper(object):
             if poison_pill:
                 log.debug("continuous_poll: Exit command queue (poison pill received)")
                 break
+
+            ####################################################################
+            # Relay upstream status messages (Spectrometer -> GUI)
+            ####################################################################
+
+            # # relay all pending StatusMessages back to the GUI
+            # while True:
+            #     msg = None
+            #     try:
+            #         # read next message off the in-process internal queue
+            #         msg = wasatch_device.message_queue.get_nowait()
+            #     except:
+            #         pass
+            #
+            #     if msg is None:
+            #         break
+            #
+            #     try:
+            #         # if we read a message, push it onto the inter-process external queue
+            #         message_queue.put_nowait(msg)
+            #     except:
+            #         log.error("Error enqueuing StatusMessage back to GUI: %s", msg, exc_info=1)
+            #         break
+
+            ####################################################################
+            # Relay one upstream reading (Spectrometer -> GUI)
+            ####################################################################
 
             try:
                 log.debug("continuous_poll: acquiring data")

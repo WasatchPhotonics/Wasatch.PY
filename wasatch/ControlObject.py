@@ -1,11 +1,13 @@
-import logging
-
-log = logging.getLogger(__name__)
-
 class ControlObject(object):
-    """ A simple abstraction containing a setting to control and the value to set. """
-    def __init__(self, setting=None, value=None):
-        super(ControlObject, self).__init__()
-        log.debug("%s ctor(%s, %s)", self.__class__.__name__, setting, value)
+    """ A class representing commands sent from ENLIGHTEN to the spectrometer.
+        
+        Essentially just a name-value pair of strings.  Compare to StatusMessage
+        as an outbound (spectrometer subprocess -> ENLIGHTEN) counterpart.
+
+        There is no enumeration of supported settings, but see 
+        FeatureIdentificationDevice.write_setting for a representative list.
+    """
+
+    def __init__(self, setting, value):
         self.setting = setting
         self.value = value
