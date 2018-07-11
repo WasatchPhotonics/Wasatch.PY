@@ -334,8 +334,7 @@ class FeatureIdentificationDevice(object):
 
     def set_area_scan_enable(self, flag):
         value = 1 if flag else 0
-        # KLUDGE
-        if not "sig" in self.settings.eeprom.model.lower():
+        if not self.settings.isIMX():
             self.send_code(0xe9, value, label="SET_AREA_SCAN_ENABLE")
         self.settings.state.area_scan_enabled = flag
 
@@ -1009,6 +1008,8 @@ class FeatureIdentificationDevice(object):
             log.error("[%s] is not a valid value for the %s override", value, setting)
             return
 
+        override = self.overrides.get_override(setting, value)
+
         if setting in self.last_override_value:
             if str(value) == str(self.last_override_value[setting]):
                 log.debug("skipping duplicate setting (%s already is [%s])", setting, value)
@@ -1022,11 +1023,15 @@ class FeatureIdentificationDevice(object):
         self.last_override_value[setting] = str(value)
 
         # apparently it's a valid override setting and value...proceed
-        log.debug("applying override for %s [%s]", setting, value)
-        override = self.overrides.get_override(setting, value)
+
+        # we're going to send an override, so perform comms initialization
+        if self.overrides.comms_init is not None and "byte_strings" in self.overrides.comms_init:
+            self.queue_message("marquee_info", "comms init")
+            self.apply_override_byte_strings(self.overrides.comms_init["byte_strings"])
 
         # Theoretically there could be many types of overrides. This is the only type
         # I've implemented for now.
+        self.queue_message("marquee_info", "overriding %s -> %s" % (setting, value))
         if "byte_strings" in override:
             self.apply_override_byte_strings(override["byte_strings"])
         else:
@@ -1076,7 +1081,7 @@ class FeatureIdentificationDevice(object):
             wIndex = (chip_addr << 8) | chip_dir
             buf[0] = chip_value
 
-            log.debug("sending byte string %d of %d", count, string_count)
+            log.debug("sending byte string %d of %d", count + 1, string_count)
             self.send_code(bRequest        = 0xff, 
                            wValue          = 0x11, 
                            wIndex          = wIndex,
@@ -1089,8 +1094,6 @@ class FeatureIdentificationDevice(object):
                 sleep(self.overrides.min_delay_us * MICROSEC_TO_SEC)
             count += 1
 
-        log.debug("done sending I2C byte string")
-                
     # implemented subset of WasatchDeviceWrapper.DEVICE_CONTROL_COMMANDS
     def write_setting(self, record):
         """ Perform the specified setting such as physically writing the laser

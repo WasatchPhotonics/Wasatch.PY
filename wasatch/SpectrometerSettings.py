@@ -58,6 +58,9 @@ class SpectrometerSettings(object):
 
     def pixels(self):
         return self.eeprom.active_pixels_horizontal
+
+    def isIMX(self):
+        return "imx" in self.eeprom.detector.lower()
     
     ############################################################################
     # methods

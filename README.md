@@ -302,6 +302,8 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2018-07-11 0.9.5
+    - added comms\_init
 - 2018-07-10 0.9.4
     - added StatusMessage
 - 2018-07-05 0.9.3

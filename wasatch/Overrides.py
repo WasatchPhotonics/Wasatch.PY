@@ -41,6 +41,7 @@ class Overrides(object):
 
         self.description = None
         self.startup = None
+        self.comms_init = None
         self.min_delay_us = 0
         self.settings = {}
 
@@ -95,7 +96,7 @@ class Overrides(object):
         with open(self.pathname) as infile:
             config = json.loads(infile.read())
             
-        for k in ["description", "startup"]:
+        for k in ["description", "startup", "comms_init"]:
             if k in config:
                 setattr(self, k, config[k])
                 del(config[k])
