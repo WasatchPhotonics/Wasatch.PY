@@ -16,4 +16,4 @@ clean:
 	@rm -rf doxygen     \
             doxygen.out \
             doxygen.err
-	@find . -name \*.pyc -exec rm -v {} \;
+	@find . -name \*.pyc -exec rm {} \;

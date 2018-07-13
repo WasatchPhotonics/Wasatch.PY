@@ -11,13 +11,12 @@
 ################################################################################
 
 read -p "Username: " USERNAME
-read -p "Version:  " VERSION 
 
-# render documentation (TODO: incorporate VERSION into rendered docs)
+# render documentation 
 make doc
 
 echo
 read -p "Press return to continue..." FOO
 
 # upload documentation
-rsync --archive doc/doxygen/html/ ${USERNAME}@wasatchphotonics.com:www/api/Wasatch.PY/
+rsync --archive doxygen/html/ ${USERNAME}@wasatchphotonics.com:www/api/Wasatch.PY/
