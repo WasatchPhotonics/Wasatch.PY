@@ -3,32 +3,32 @@ import logging
 
 log = logging.getLogger(__name__)
 
+##
+# Encapsulates (sort of) the set of PIDs associated with FeatureIdentificationDevice 
+# spectrometers.
 class DeviceListFID(object):
     def __init__(self):
         pass
 
+    ## Return the list of connected FeatureIdentificationDevices
     def get_all_vid_pids(self):
-        """ Return the full list of devices that match the vendor id. """
         VID = 0x24aa
         vid_pids = []
         for bus in usb.busses():
             for device in bus.devices:
-                vid_pid = self.device_match(device, VID)
+                vid_pid = self.device_match(device, )
                 if vid_pid:
                     vid_pids.append(vid_pid)
         return vid_pids
 
-    def device_match(self, device, vid):
-        """ Match vendor id and reject all non-feature identification devices. """
+    ## if the given device is FID, return a (0xAAAA, 0xBBBB) tuple
+    def device_match(self, device, vid=0x24aa):
         if device.idVendor != vid:
             return None
 
-        # only accept FID PID
-        if device.idProduct != 0x1000 and \
-           device.idProduct != 0x2000 and \
-           device.idProduct != 0x3000 and \
-           device.idProduct != 0x4000:
-               return None
+        # reject non-FID devices
+        if not device.idProduct in [ 0x1000, 0x2000, 0x3000, 0x4000 ]:
+            return None
 
         vid_pid = (hex(device.idVendor), hex(device.idProduct))
         return vid_pid

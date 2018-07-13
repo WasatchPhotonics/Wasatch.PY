@@ -1,13 +1,14 @@
-""" Custom logging setup and helper functions. This is based heavily on
-    http://plumberjack.blogspot.com/2010/09/using-logging-with-multiprocessing.html
-
-    The general approach is that the control portion of the application 
-    instantiates a MainLogger object below. This will create a separate process 
-    that looks for log events on a queue. Each process of the application then 
-    registers a queue handler, and writes its log events. The MainLogger loop 
-    will collect and write these log events to file and any other defined 
-    logging location.
-"""
+##
+# Custom logging setup and helper functions. 
+#
+# The general approach is that the control portion of the application 
+# instantiates a MainLogger object below. This will create a separate process 
+# that looks for log events on a queue. Each process of the application then 
+# registers a queue handler, and writes its log events. The MainLogger loop 
+# will collect and write these log events to file and any other defined 
+# logging location.
+#
+# @see http://plumberjack.blogspot.com/2010/09/using-logging-with-multiprocessing.html
 
 import os
 import sys
@@ -16,15 +17,16 @@ import logging
 import platform
 import multiprocessing
 
-################################################################################
+# ##############################################################################
 #                                                                              #
 #                    Semi-static, module-level functions                       #
 #                                                                              #
-################################################################################
+# ##############################################################################
 
+##
+# Determine the location to store the log file. Current directory
+# on Linux, or %PROGRAMDATA% on windows - usually C:\ProgramData 
 def get_location():
-    """ Determine the location to store the log file. Current directory
-        on Linux, or %PROGRAMDATA% on windows - usually c:\ProgramData """
 
     # For convenience, replace any dots with underscores to help windows know
     # it is a text file.
@@ -62,15 +64,16 @@ def get_location():
     # print("applog.get_location: pathname = %s" % pathname)
     return pathname
 
+##
+# Called at the beginning of every process, EXCEPT(?) the main process.
+# Adds a queue handler object to the root logger to be processed in the 
+# main listener.
+# 
+# Only on Windows though. Apparently Linux will pass the root logger 
+# amongst processes as expected, so if you add another queue handler you 
+# will get double log prints.
+#
 def process_log_configure(log_queue, log_level=logging.DEBUG):
-    """ Called at the beginning of every process, EXCEPT(?) the main process.
-        Adds a queue handler object to the root logger to be processed in the 
-        main listener.
-
-        Only on Windows though. Apparently Linux will pass the root logger 
-        amongst processes as expected, so if you add another queue handler you 
-        will get double log prints. """
-
     root_log = logging.getLogger()
     if "Windows" in platform.platform():
         queue_handler = QueueHandler(log_queue)
@@ -80,8 +83,8 @@ def process_log_configure(log_queue, log_level=logging.DEBUG):
     # MZ: how to log from the logger
     root_log.debug("applog.process_log_configure: process_id %s", os.getpid())
 
+## Mimic the capturelog style of just slurping the entire log file contents.
 def get_text_from_log():
-    """ Mimic the capturelog style of just slurping the entire log file contents. """
     log_text = ""
     with open(get_location()) as log_file:
         # MZ: why not just 'return log_file.read()'?
@@ -92,8 +95,8 @@ def get_text_from_log():
 def log_file_created():
     return os.path.exists(get_location())
 
+## Remove the specified log file and return True if succesful.
 def delete_log_file_if_exists():
-    """ Remove the specified log file and return True if succesful. """
     pathname = get_location()
 
     if os.path.exists(pathname):
@@ -104,14 +107,14 @@ def delete_log_file_if_exists():
         return False
     return True
 
-# MZ: do we need to call this from Controller or EnlightenApplication?
+##
+# Apparently, tests run in py.test will not remove the existing handlers 
+# as expected. This mainfests as hanging tests during py.test runs, or 
+# after non-termination hang of py.test after all tests report 
+# succesfully. Only on linux though, windows appears to Do What I Want. 
+# Use this function to close all of the log file handlers, including the 
+# QueueHandler custom objects.
 def explicit_log_close():
-    """ Apparently, tests run in py.test will not remove the existing handlers 
-        as expected. This mainfests as hanging tests during py.test runs, or 
-        after non-termination hang of py.test after all tests report 
-        succesfully. Only on linux though, windows appears to Do What I Want. 
-        Use this function to close all of the log file handlers, including the 
-        QueueHandler custom objects. """
     root_log = logging.getLogger()
     root_log.debug("applog.explicit_log_close: closing and removing all handlers")
     handlers = root_log.handlers[:]
@@ -119,19 +122,19 @@ def explicit_log_close():
         handler.close()
         root_log.removeHandler(handler)
 
-################################################################################
+# ##############################################################################
 #                                                                              #
 #                                QueueHandler                                  #
 #                                                                              #
-################################################################################
+# ##############################################################################
 
+##
+# Copied verbatim from PlumberJack (see above).  This is a logging handler 
+# which sends events to a multiprocessing queue.  
+# 
+# The plan is to add it to Python 3.2, but this can be copy pasted into
+# user code for use with earlier Python versions.
 class QueueHandler(logging.Handler):
-    """ Copied verbatim from PlumberJack (see above).  This is a logging handler 
-        which sends events to a multiprocessing queue.  
-
-        The plan is to add it to Python 3.2, but this can be copy pasted into
-        user code for use with earlier Python versions.  """
-
     def __init__(self, log_queue):
         """ Initialise an instance, using the passed queue. """
         logging.Handler.__init__(self)
@@ -150,11 +153,11 @@ class QueueHandler(logging.Handler):
         except:
             self.handleError(record)
 
-################################################################################
+# ##############################################################################
 #                                                                              #
 #                                MainLogger                                    #
 #                                                                              #
-################################################################################
+# ##############################################################################
 
 class MainLogger(object):
     FORMAT = '%(asctime)s %(processName)-10s %(name)s %(levelname)-8s %(message)s'
@@ -181,17 +184,17 @@ class MainLogger(object):
         root_log.setLevel(self.log_level)
         root_log.warning("Top level log configuration (%d handlers)", len(root_log.handlers))
 
+    ## @see https://stackoverflow.com/a/14058475
     def add_handler(self, fh):
-        """ see https://stackoverflow.com/a/14058475 """
         channel = logging.StreamHandler(fh)
         channel.setLevel(self.log_level)
         formatter = logging.Formatter(self.FORMAT)
         channel.setFormatter(formatter)
         self.root.addHandler(channel)
 
+    ## Setup file handler and command window stream handlers. Every log
+    #  message received on the queue handler will use these log configurers. 
     def listener_configurer(self):
-        """ Setup file handler and command window stream handlers. Every log
-            message received on the queue handler will use these log configurers. """
 
         pathname = get_location()
 
@@ -229,8 +232,8 @@ class MainLogger(object):
                 print >> sys.stderr, 'Whoops! Problem:'
                 traceback.print_exc(file=sys.stderr)
 
+    ## Wrapper to add a None poison pill to the listener process queue to
+    #  ensure it exits. 
     def close(self):
-        """ Wrapper to add a None poison pill to the listener process queue to
-            ensure it exits. """
         self.log_queue.put_nowait(None)
         self.listener.join()

@@ -3,17 +3,15 @@ import logging
 
 log = logging.getLogger(__name__)
 
+##
+# Encapsulates (sort of) the set of PIDs associated with StrokerProtocol
+# spectrometers.
 class DeviceListSP(object):
-    """ Create a list of vendor id, product id pairs of any device on the bus 
-        with the 0x24AA VID. Explicitly reject the newer feature identification 
-        devices. """
     def __init__(self):
         pass
 
+    ## Return the list of connected StrokerProtocol devices
     def get_all_vid_pids(self):
-        """ Return the full list of devices that match the vendor id. Explicitly 
-            reject the feature identification codes. """
-
         VID = 0x24aa
         vid_pids = []
         for bus in usb.busses():
@@ -24,18 +22,14 @@ class DeviceListSP(object):
 
         return vid_pids
 
-    def device_match(self, device, vid):
-        """ Match vendor id and rejectable feature identification devices. """
+    ## if the given device is SP, return a (0xAAAA, 0xBBBB) tuple
+    def device_match(self, device, vid=0x24aa):
         if device.idVendor != vid:
             return None
 
-        # reject any FID PID
-        if device.idProduct == 0x1000 or \
-           device.idProduct == 0x2000 or \
-           device.idProduct == 0x3000 or \
-           device.idProduct == 0x4000:
-               return None
+        # reject FID devices
+        if device.idProduct in [ 0x1000, 0x2000, 0x3000, 0x4000 ]:
+            return None
 
-        hex_pid = "0x%04x" % device.idProduct
-        vid_pid = (hex(device.idVendor), hex_pid)
+        vid_pid = (hex(device.idVendor), hex(device.idProduct))
         return vid_pid

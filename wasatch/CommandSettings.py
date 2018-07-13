@@ -2,8 +2,6 @@ import logging
 
 log = logging.getLogger(__name__)
 
-# used to validate I/O coming through shell.py
-# TODO: move to Setting class
 SETTINGS = {
     # EEPROM
     "adc_to_degC_coeffs":              { "datatype": "float[]" },
@@ -50,13 +48,17 @@ SETTINGS = {
     "reset_fpga":                      { "datatype": "void" },
 }
 
+##
+# This class enacapsulates information about the "ControlObject" settings
+# supported by WasatchDevice hardware classes (FID and SP).  These are
+# traditionally called "settings" when passing ControlObjects from ENLIGHTEN
+# down into Wasatch.PY via "settings queues", but are very different from
+# SpectrometerSettings (actual settings of the spectrometer, vs commands
+# being passed between processes). 
+#
+# We're not actually using this at the moment, but it would be a way to provide 
+# some automated data validation and type-checking on callers like wasatch-shell.py
 class CommandSettings(object):
-    """ This class enacapsulates information about the "ControlObject" settings
-        supported by WasatchDevice hardware classes (FID and SP).  These are
-        traditionally called "settings" when passing ControlObjects from ENLIGHTEN
-        down into Wasatch.PY via "settings queues", but are very different from
-        SpectrometerSettings (actual settings of the spectrometer, vs commands
-        being passed between processes). """
 
     def get_settings(self):
         return sorted(SETTINGS.keys())

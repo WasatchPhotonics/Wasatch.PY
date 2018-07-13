@@ -8,15 +8,13 @@ from usb import USBError
 
 log = logging.getLogger(__name__)
 
-################################################################################
+# ##############################################################################
 #                                                                              #
-#                                 WasatchBus                                   #
+#                                WasatchBus                                    #
 #                                                                              #
-################################################################################
+# ##############################################################################
 
 class WasatchBus(object):
-    """ Use Simulation and real hardware bus to populate a device list. """
-
     def __init__(self, 
             use_sim     = False,
             monitor_dir = None):
@@ -33,9 +31,8 @@ class WasatchBus(object):
         # iterate buses on creation
         self.update()
 
-    # called by Controller.update_connections
+    ## called by Controller.update_connections
     def update(self):
-        """ return a list of UIDs found on any bus """
         self.devices = []
 
         if self.simulation_bus:
@@ -47,15 +44,15 @@ class WasatchBus(object):
         if self.hardware_bus:
             self.devices.extend(self.hardware_bus.update())
 
-    # called by Controller.update_connections
+    ## called by Controller.update_connections
     def dump(self):
         log.debug("Bus list: %s", self.devices)
 
-################################################################################
+# ##############################################################################
 #                                                                              #
 #                                   Buses                                      #
 #                                                                              #
-################################################################################
+# ##############################################################################
 
 # The different bus classes don't use inheritance and don't follow a common ABC
 # or interface, but each should have an update() method, and each should have a 
@@ -66,11 +63,11 @@ class WasatchBus(object):
 # for MonitorBus).  The devices array can be empty, or the first element can
 # be "disconnected".
 
-################################################################################
+# ##############################################################################
 #                                                                              #
 #                                   FileBus                                    #
 #                                                                              #
-################################################################################
+# ##############################################################################
 
 class FileBus(object):
     def __init__(self, directory):
@@ -83,21 +80,19 @@ class FileBus(object):
             devices.append(self.directory)
         return devices
 
-################################################################################
+# ##############################################################################
 #                                                                              #
 #                                 HardwareBus                                  #
 #                                                                              #
-################################################################################
+# ##############################################################################
 
 class HardwareBus(object):
-    """ Use libusb to list available devices on the system wide libusb bus. """
 
     def __init__(self):
         self.backend_error_raised = False
         self.update()
 
     def update(self):
-        """ Return a list of actual devices found on system lib usb bus. """
         log.debug("Update hardware bus")
 
         devices = []
@@ -121,16 +116,16 @@ class HardwareBus(object):
 
         return devices
 
-################################################################################
+# ##############################################################################
 #                                                                              #
 #                                 SimulationBus                                #
 #                                                                              #
-################################################################################
+# ##############################################################################
 
+## Provide an interface to the ini file controlled simulation bus.  This
+#  indicates whether a simulated device is present on the simulated libusb
+#  bus.
 class SimulationBus(object):
-    """ Provide an interface to the ini file controlled simulation bus.  This
-        indicates whether a simulated device is present on the simulated libusb
-        bus. """
 
     def __init__(self, status=None):
         self.status = status
@@ -147,8 +142,8 @@ class SimulationBus(object):
 
         self.update()
 
+    ## Return a list of simulated devices, or actual devices found on system libusb bus.
     def dump(self):
-        """ Return a list of simulated devices, or actual devices found on system lib usb bus. """
         log.debug("Start of list status: %s", self.bus_type)
         self.update()
 
@@ -181,8 +176,8 @@ class SimulationBus(object):
 
         return self.devices
 
+    ## Open the ini file, and set all bus entries to connected.
     def set_all_connected(self):
-        """ Open the ini file, and set all bus entries to connected. """
         config = ConfigParser()
         config.read(self.filename)
 
@@ -194,8 +189,8 @@ class SimulationBus(object):
 
         self.update()
 
+    ## Open the ini file, and set all bus entries to disconnected. 
     def set_all_disconnected(self):
-        """ Open the ini file, and set all bus entries to disconnected. """
         config = ConfigParser()
         config.read(self.filename)
 

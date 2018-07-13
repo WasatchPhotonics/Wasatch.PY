@@ -1,9 +1,3 @@
-""" Higher level abstractions for devices and communication buses.  Allows for
-    the wrapping of simulation devices and real hardware devices simultaneously.
-
-    TODO: split into single-class files.
-"""
-
 import time
 import numpy
 import Queue
@@ -13,7 +7,6 @@ import multiprocessing
 from ConfigParser import ConfigParser
 
 from . import simulation_protocol
-from . import common
 from . import utils
 
 from FeatureIdentificationDevice import FeatureIdentificationDevice
@@ -27,17 +20,32 @@ from Reading                     import Reading
 
 log = logging.getLogger(__name__)
 
+## 
+# A WasatchDevice encapsulates and wraps a Wasatch spectrometer in a blocking
+# interface.  It will normally wrap one of the following:
+#
+# - a FeatureIdentificationDevice (modern FID spectrometer)
+# - a StrokerProtocolDevice (older SP-protocol spectrometer)
+# - a FileSpectrometer (filesystem gateway to virtual/simulated spectrometer)
+#
+# ENLIGHTEN does not instantiate WasatchDevices directly, but instead uses
+# a WasatchDeviceWrapper to access a single WasatchDevice in a single subprocess.
+# Other users of Wasatch.PY may of course instantiate a WasatchDevice directly,
+# and can consider it roughly equivalent (though differently structured) to a
+# WasatchNET.Spectrometer.  (Arguably wasatch.FeatureIdentificationDevice is the
+# closer analog to WasatchNET.Spectrometer, as Wasatch.NET does not have anything
+# like StrokerProtocol or FileSpectrometer.)
 class WasatchDevice(object):
-    """ Provide an interface to the actual libusb bus.  
 
-        Some of these methods are called from MainProcess, others by
-        subprocess. """
-
+    ## 
+    # @param uid            (VID, PID) or FileSpectrometer directory
+    # @param bus_order      integral USB bus sequence
+    # @param message_queue  if provided, used to send status back to caller
     def __init__(self, uid, bus_order=0, message_queue=None):
 
-        self.uid           = uid
-        self.bus_order     = bus_order
-        self.message_queue = message_queue
+        self.uid           = uid            
+        self.bus_order     = bus_order      
+        self.message_queue = message_queue 
 
         self.connected = False
 
@@ -59,20 +67,14 @@ class WasatchDevice(object):
         self.sum_count              = 0
         self.session_reading_count  = 0
 
-    ############################################################################
+    # ######################################################################## #
     #                                                                          #
     #                               Connection                                 #
     #                                                                          #
-    ############################################################################
+    # ######################################################################## #
 
+    ## Attempt low level connection to the device specified in init.  
     def connect(self):
-        """ Attempt low level connection to the device specified in init.  """
-        # if self.uid == "0x24aa:0x0512":
-        #     log.info("Connected to SimulationMevice")
-        #     self.hardware = simulation_protocol.SimulateMaterial()
-        #     self.connected = True
-        #     self.initialize_settings()
-        #     return True
 
         if ("/" in self.uid or "\\" in self.uid) and self.connect_file_spectrometer():
             log.info("connected to FileSpectrometer")
@@ -112,8 +114,8 @@ class WasatchDevice(object):
             self.hardware = dev
             return True
 
+    ## Given a specified universal identifier, attempt to connect to the device using stroker protocol.
     def connect_stroker_protocol(self):
-        """ Given a specified universal identifier, attempt to connect to the device using stroker protocol. """
         FID_list = ["0x1000", "0x2000", "0x3000", "0x4000"]
 
         if self.uid == None:
@@ -124,10 +126,9 @@ class WasatchDevice(object):
             log.debug("Compatible feature ID not found")
             return False
 
-        # MZ: what is self.uid?
         dev = None
         try:
-            bus_pid = self.uid[7:]
+            bus_pid = self.uid[7:] # assumes UID="0xXXXX:0xYYYY" and we want "0xYYYY"
             log.info("Attempt connection to: %s", bus_pid)
 
             dev = StrokerProtocolDevice(pid=bus_pid)
@@ -144,9 +145,8 @@ class WasatchDevice(object):
         log.info("Connected to StrokerProtocolDevice %s", self.uid)
         return True
 
+    ## Given a specified universal identifier, attempt to connect to the device using FID protocol. 
     def connect_feature_identification(self):
-        """ Given a specified universal identifier, attempt to connect to the
-            device using feature identification firmware. """
         FID_list = ["0x1000", "0x2000", "0x3000", "0x4000"]
 
         if self.uid == None:
@@ -208,13 +208,13 @@ class WasatchDevice(object):
         self.settings.update_wavecal()
         self.settings.dump()
 
-    ############################################################################
+    # ######################################################################## #
     #                                                                          #
     #                               Acquisition                                #
     #                                                                          #
-    ############################################################################
+    # ######################################################################## #
 
-    # Assumes bad_pixels is a sorted array (possibly empty)
+    ## Assumes bad_pixels is a sorted array (possibly empty)
     def correct_bad_pixels(self, spectrum):
 
         if not self.settings or not self.settings.eeprom or not self.settings.eeprom.bad_pixels:
@@ -273,18 +273,18 @@ class WasatchDevice(object):
             # advance to next bad pixel
             i += 1
 
+    ##
+    # Process all enqueued settings, then read actual data (spectrum and 
+    # temperatures) from the device.
+    #
+    # Notes:
+    #     - we always return raw readings, even during scan averaging (.spectrum)
+    #     - if averaging was enabled and we're complete, then we return the
+    #       averaged "complete" INSTEAD OF the raw
+    #     - we always return temperatures for live GUI updates
+    #     - we always perform bad pixel correction
+    #     - currently returning INTEGRAL averages (including bad_pixel)
     def acquire_data(self):
-        """ Process all enqueued settings, then read actual data (spectrum and 
-            temperatures) from the device.
-
-            Notes:
-                - we always return raw readings, even during scan averaging (.spectrum)
-                - if averaging was enabled and we're complete, then we return the
-                  averaged "complete" INSTEAD OF the raw
-                - we always return temperatures for live GUI updates
-                - we always perform bad pixel correction
-                - currently returning INTEGRAL averages (including bad_pixel)
-        """
 
         log.debug("Device acquire_data")
 
@@ -396,12 +396,12 @@ class WasatchDevice(object):
 
         return reading
 
-    # MZ: called by acquire_data, ergo subprocess 
+    ##
+    # Process every entry on the settings queue, writing each to the 
+    # device.
+    #
+    # Called by acquire_data, ergo subprocess 
     def process_commands(self):
-        """ Process every entry on the settings queue, write them to the
-            device. Failures when writing settings are collected by this
-            exception handler. """
-    
         control_object = "throwaway"
         while control_object != None:
             try:
@@ -415,9 +415,11 @@ class WasatchDevice(object):
                 log.critical("process_commands: error dequeuing or writing control object", exc_info=1)
                 raise
 
-    # called by subprocess.continuous_poll
+    ## 
+    # Add the specified setting and value to the local control queue. 
+    #
+    # Called by subprocess.continuous_poll
     def change_setting(self, setting, value):
-        """ Add the specified setting and value to the local control queue. """
         log.debug("WasatchDevice.change_setting: %s -> %s", setting, value)
         control_object = ControlObject(setting, value)
 

@@ -2,6 +2,7 @@ import logging
 
 log = logging.getLogger(__name__)
 
+##
 # volatile attributes (must persist here for multi-spectrometers)
 #
 # Note that these should generally not include READOUTS from the 
@@ -40,7 +41,7 @@ class SpectrometerState(object):
         # area scan mode
         self.area_scan_enabled = False
 
-        ########################################################################
+        # ######################################################################
         # What about "application state", which is never actually set in the
         # hardware?  Move these later to ".software" or ".processing" or whatever?
         #
@@ -49,7 +50,7 @@ class SpectrometerState(object):
         # retain state when "other" spectrometers have the foreground, and 
         # THEREFORE might as well be in here.  Wasatch.PY might as well make use 
         # of them.
-        ########################################################################
+        # ######################################################################
 
         # scan averaging
         self.scans_to_average = 1
@@ -80,7 +81,7 @@ class SpectrometerState(object):
         # pixel binning
         self.graph_alternating_pixels = False
 
-        ########################################################################
+        # ######################################################################
         # What about truly internal settings like last_applied_laser_power or 
         # detector_tec_setpoint_has_been_set?  It's okay for StrokerProtocolDevice,
         # FeatureIdentificationDevice and control.py to have "some" internal state.
@@ -89,7 +90,7 @@ class SpectrometerState(object):
         # implementation without copy-paste), OR if the information is actually
         # passed between files in some way (such that verification of internal
         # representation consistency reduces risk of bugs/errors).
-        ########################################################################
+        # ######################################################################
 
     def stringify_trigger_source(self):
         if self.trigger_source == self.TRIGGER_SOURCE_EXTERNAL:

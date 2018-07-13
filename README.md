@@ -302,6 +302,9 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2018-07-13 0.9.6
+    - added Doxyfile
+    - moved class/method docs to Doxygen format
 - 2018-07-11 0.9.5
     - added comms\_init
 - 2018-07-10 0.9.4

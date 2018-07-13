@@ -3,38 +3,40 @@ import json
 
 log = logging.getLogger(__name__)
 
+## 
+# A mechanism to override the normal FID commands sent to a USB device
+# with arbitrary binary data stored in an external JSON configuration file.
+#
+# @section theory Theory of Operation
+# 
+# Say we want to control an experimental spectrometer, which operates 
+# more-or-less like our standard units, except that a couple settings 
+# need to be handled uniquely.  
+# 
+# An elegant solution would be to give the new device a custom PID, then 
+# extend a new UniqueSpectrometer from FeatureIdentificationDevice and 
+# simply overload the custom behavior. And probably there will be cases 
+# where we want to do that.  Before going there, I'd really want to setup 
+# an ABC heirarchy over both FID and SP devices.
+# 
+# However, that approach means that any tweaking of the custom behavior
+# would have to be in Python source code. That means a new ENLIGHTEN 
+# installer would need to be built for each test. It also means the custom
+# code would presumably appear in Wasatch.PY, an open-source project.
+# 
+# So, another option is to simply provide an "overrides" framework which
+# allows the runtime user to point to an external JSON file containing the
+# custom opcodes and byte streams to be passed into the spectrometer. This
+# is less elegant and more error-prone, but it provides more power and
+# flexibility to the operator, all without requiring continuous minute 
+# changes to ENLIGHTEN or Wasatch.PY.
+# 
+# For this particular instance, we wanted to let the user take explicit 
+# control of setting the integration time of a custom sensor.  Two opcodes
+# are being provided in the firmware to read and write arbitrary octet 
+# strings over I2C.
+#
 class Overrides(object):
-    """
-        Theory of Operation
-        ===================
-
-        Say we want to control an experimental spectrometer, which operates 
-        more-or-less like our standard units, except that a couple settings 
-        need to be handled uniquely.  
-        
-        An elegant solution would be to give the new device a custom PID, then 
-        extend a new UniqueSpectrometer from FeatureIdentificationDevice and 
-        simply overload the custom behavior. And probably there will be cases 
-        where we want to do that.  Before going there, I'd really want to setup 
-        an ABC heirarchy over both FID and SP devices.
-
-        However, that approach means that any tweaking of the custom behavior
-        would have to be in Python source code. That means a new ENLIGHTEN 
-        installer would need to be built for each test. It also means the custom
-        code would presumably appear in Wasatch.PY, an open-source project.
-
-        So, another option is to simply provide an "overrides" framework which
-        allows the runtime user to point to an external JSON file containing the
-        custom opcodes and byte streams to be passed into the spectrometer. This
-        is less elegant and more error-prone, but it provides more power and
-        flexibility to the operator, all without requiring continuous minute 
-        changes to ENLIGHTEN or Wasatch.PY.
-
-        For this particular instance, we wanted to let the user take explicit 
-        control of setting the integration time of a custom sensor.  Two opcodes
-        are being provided in the firmware to read and write arbitrary octet 
-        strings over I2C.
-    """
     
     def __init__(self, pathname):
         self.pathname = pathname
@@ -56,21 +58,6 @@ class Overrides(object):
 
     def has_override(self, setting):
         return setting in self.settings
-
-    # for case where "15" is an override, but "15.0" is not
-    def normalized_value(self, setting, value):
-        if not self.has_override(setting):
-            return None
-
-        if str(value) in self.settings[setting]:
-            return value
-
-        if isinstance(value, float):
-            if value - int(value) == 0.0:
-                if str(int(value)) in self.settings[setting]:
-                    return int(value)
-
-        return None
 
     def valid_value(self, setting, value):
         if not self.has_override(setting):
@@ -116,3 +103,24 @@ class Overrides(object):
 
         log.debug("loaded overrides for settings: %s", sorted(self.settings.keys()))
         log.debug("full overrides: %s", self.__dict__)
+
+    # ##########################################################################
+    # Private methods
+    # ##########################################################################
+
+    ## for case where "15" is an override, but "15.0" is not
+    # @private
+    def normalized_value(self, setting, value):
+        if not self.has_override(setting):
+            return None
+
+        if str(value) in self.settings[setting]:
+            return value
+
+        if isinstance(value, float):
+            if value - int(value) == 0.0:
+                if str(int(value)) in self.settings[setting]:
+                    return int(value)
+
+        return None
+

@@ -7,7 +7,17 @@ import json
 
 log = logging.getLogger(__name__)
 
+##
+# This class encapsulates the post-read parsing, pre-write marshalling, and current
+# state of the 8-page EEPROM used to store non-volatile configuration data in Wasatch
+# Photonics spectrometers.  It is essential to keep this class synchronized (in naming,
+# datatype / datasize and sequence) with the ENG-0034 customer-facing documentation.
+#
+# This class is normally accessed as an attribute of SpectrometerSettings.
+#
+# @see ENG-0034
 class EEPROM(object):
+
     def __init__(self):
         self.model                       = None
         self.serial_number               = None
@@ -83,9 +93,13 @@ class EEPROM(object):
                           "roi_vertical_region_3_end",      
                           "roi_vertical_region_3_start" ]
 
+    ## whether the given field is normally editable by users via ENLIGHTEN
     def is_editable(self, name):
         return name.lower() in self.editable
 
+    ## 
+    # passed a temporary copy of another EEPROM object, copy-over any
+    # "editable" fields to this one
     def update_editable(self, new_eeprom):
         for field in self.editable:
             log.debug("Updating %s", field)
@@ -99,9 +113,12 @@ class EEPROM(object):
                 log.debug("  old: %s", old)
                 log.debug("  new: %s", getattr(self, field))
 
+    ## 
+    # given a set of the 6 buffers read from a spectrometer via USB,
+    # parse those into the approrpriate fields and datatypes
     def parse(self, buffers):
-        if len(buffers) != 6:
-            log.error("EEPROM.parse expects exactly 6 buffers")
+        if len(buffers) < 6:
+            log.error("EEPROM.parse expects at least 6 buffers")
             return
 
         # store these locally so self.unpack() can access them
@@ -110,115 +127,7 @@ class EEPROM(object):
         # unpack all the fields we know about
         self.read_eeprom()
 
-    # see https://docs.python.org/2/library/struct.html#format-characters
-    def read_eeprom(self):
-        self.revisions = []
-
-        for page in range(6):
-            self.revisions.append(self.unpack((page, 63,  1), "B"))
-
-        ########################################################################
-        # Page 0
-        ########################################################################
-
-        self.model                           = self.unpack((0,  0, 16), "s")
-        self.serial_number                   = self.unpack((0, 16, 16), "s")
-        self.baud_rate                       = self.unpack((0, 32,  4), "i")
-        self.has_cooling                     = self.unpack((0, 36,  1), "?")
-        self.has_battery                     = self.unpack((0, 37,  1), "?")
-        self.has_laser                       = self.unpack((0, 38,  1), "?")
-        self.excitation_nm                   = self.unpack((0, 39,  2), "H" if self.revisions[0] >= 3 else "h")
-        self.slit_size_um                    = self.unpack((0, 41,  2), "h")
-        if self.revisions[0] >= 3:
-            self.startup_integration_time_ms = self.unpack((0, 43,  2), "H")
-            self.startup_temp_degC           = self.unpack((0, 45,  2), "h")
-            self.startup_triggering_scheme   = self.unpack((0, 47,  1), "B")
-            self.detector_gain               = self.unpack((0, 48,  4), "f") # "even pixels" for InGaAs
-            self.detector_offset             = self.unpack((0, 52,  2), "h") # "even pixels" for InGaAs
-            self.detector_gain_odd           = self.unpack((0, 54,  4), "f") # InGaAs-only
-            self.detector_offset_odd         = self.unpack((0, 58,  2), "h") # InGaAs-only
-
-        ########################################################################
-        # Page 1
-        ########################################################################
-
-        self.wavelength_coeffs = []
-        self.wavelength_coeffs         .append(self.unpack((1,  0,  4), "f"))
-        self.wavelength_coeffs         .append(self.unpack((1,  4,  4), "f"))
-        self.wavelength_coeffs         .append(self.unpack((1,  8,  4), "f"))
-        self.wavelength_coeffs         .append(self.unpack((1, 12,  4), "f"))
-        self.degC_to_dac_coeffs = []
-        self.degC_to_dac_coeffs        .append(self.unpack((1, 16,  4), "f"))
-        self.degC_to_dac_coeffs        .append(self.unpack((1, 20,  4), "f"))
-        self.degC_to_dac_coeffs        .append(self.unpack((1, 24,  4), "f"))
-        self.adc_to_degC_coeffs = []
-        self.adc_to_degC_coeffs        .append(self.unpack((1, 32,  4), "f"))
-        self.adc_to_degC_coeffs        .append(self.unpack((1, 36,  4), "f"))
-        self.adc_to_degC_coeffs        .append(self.unpack((1, 40,  4), "f"))
-        self.max_temp_degC                   = self.unpack((1, 28,  2), "h")
-        self.min_temp_degC                   = self.unpack((1, 30,  2), "h")
-        self.tec_r298                        = self.unpack((1, 44,  2), "h")
-        self.tec_beta                        = self.unpack((1, 46,  2), "h")
-        self.calibration_date                = self.unpack((1, 48, 12), "s")
-        self.calibrated_by                   = self.unpack((1, 60,  3), "s")
-                                    
-        ########################################################################
-        # Page 2                    
-        ########################################################################
-
-        self.detector                        = self.unpack((2,  0, 16), "s")
-        self.active_pixels_horizontal        = self.unpack((2, 16,  2), "h")
-        self.active_pixels_vertical          = self.unpack((2, 19,  2), "h") # MZ: skipped 18
-        self.min_integration_time_ms         = self.unpack((2, 21,  2), "H")
-        self.max_integration_time_ms         = self.unpack((2, 23,  2), "H")
-        self.actual_horizontal               = self.unpack((2, 25,  2), "h")
-        self.roi_horizontal_start            = self.unpack((2, 27,  2), "h") # not currently used
-        self.roi_horizontal_end              = self.unpack((2, 29,  2), "h") # vvv
-        self.roi_vertical_region_1_start     = self.unpack((2, 31,  2), "h")
-        self.roi_vertical_region_1_end       = self.unpack((2, 33,  2), "h")
-        self.roi_vertical_region_2_start     = self.unpack((2, 35,  2), "h")
-        self.roi_vertical_region_2_end       = self.unpack((2, 37,  2), "h")
-        self.roi_vertical_region_3_start     = self.unpack((2, 39,  2), "h")
-        self.roi_vertical_region_3_end       = self.unpack((2, 41,  2), "h")
-        self.linearity_coeffs = []
-        self.linearity_coeffs          .append(self.unpack((2, 43,  4), "f")) # overloading for secondary ADC
-        self.linearity_coeffs          .append(self.unpack((2, 47,  4), "f"))
-        self.linearity_coeffs          .append(self.unpack((2, 51,  4), "f"))
-        self.linearity_coeffs          .append(self.unpack((2, 55,  4), "f"))
-        self.linearity_coeffs          .append(self.unpack((2, 59,  4), "f"))
-
-        ########################################################################
-        # Page 3
-        ########################################################################
-        
-        # WARNING - this conflicts with "Preview 1" of ENG-0034 Rev 3
-        self.laser_power_coeffs = []
-        self.laser_power_coeffs        .append(self.unpack((3, 12,  4), "f"))
-        self.laser_power_coeffs        .append(self.unpack((3, 16,  4), "f"))
-        self.laser_power_coeffs        .append(self.unpack((3, 20,  4), "f"))
-        self.laser_power_coeffs        .append(self.unpack((3, 24,  4), "f"))
-        self.max_laser_power_mW              = self.unpack((3, 28,  4), "f")
-        self.min_laser_power_mW              = self.unpack((3, 32,  4), "f")
-
-        ########################################################################
-        # Page 4
-        ########################################################################
-
-        self.user_data = self.buffers[4][:63]
-        self.user_text = self.printable(self.user_data)
-
-        ########################################################################
-        # Page 5
-        ########################################################################
-
-        bad = set()
-        for count in range(15):
-            pixel = self.unpack((5, count * 2, 2), "h")
-            if pixel != -1:
-                bad.add(pixel)
-        self.bad_pixels = list(bad)
-        self.bad_pixels.sort()
-
+    ## render the attributes of this object as a JSON string
     def json(self):
         tmp_buf  = self.buffers
         tmp_data = self.user_data
@@ -233,6 +142,7 @@ class EEPROM(object):
 
         return s
 
+    ## log this object
     def dump(self):
         log.info("EEPROM settings:")
         log.info("  Model:            %s", self.model)
@@ -282,6 +192,128 @@ class EEPROM(object):
         log.info("")
         log.info("  Bad Pixels:       %s", self.bad_pixels)
 
+    # ##########################################################################
+    #                                                                          #
+    #                             Private Methods                              #
+    #                                                                          #
+    # ##########################################################################
+
+    ## 
+    # Assuming a set of 6+ buffers have been passed in via parse(), actually
+    # unpack (deserialize / unmarshall) the binary data into the approriate
+    # fields and datatypes.
+    # 
+    # @see https://docs.python.org/2/library/struct.html#format-characters
+    def read_eeprom(self):
+        self.revisions = []
+
+        # populate the array of page "revisions" (version of each page)
+        for page in range(6):
+            self.revisions.append(self.unpack((page, 63,  1), "B")) # rev is a single byte
+
+        # ######################################################################
+        # Page 0
+        # ######################################################################
+
+        self.model                           = self.unpack((0,  0, 16), "s")
+        self.serial_number                   = self.unpack((0, 16, 16), "s")
+        self.baud_rate                       = self.unpack((0, 32,  4), "i")
+        self.has_cooling                     = self.unpack((0, 36,  1), "?")
+        self.has_battery                     = self.unpack((0, 37,  1), "?")
+        self.has_laser                       = self.unpack((0, 38,  1), "?")
+        self.excitation_nm                   = self.unpack((0, 39,  2), "H" if self.revisions[0] >= 3 else "h")
+        self.slit_size_um                    = self.unpack((0, 41,  2), "h")
+        if self.revisions[0] >= 3:
+            self.startup_integration_time_ms = self.unpack((0, 43,  2), "H")
+            self.startup_temp_degC           = self.unpack((0, 45,  2), "h")
+            self.startup_triggering_scheme   = self.unpack((0, 47,  1), "B")
+            self.detector_gain               = self.unpack((0, 48,  4), "f") # "even pixels" for InGaAs
+            self.detector_offset             = self.unpack((0, 52,  2), "h") # "even pixels" for InGaAs
+            self.detector_gain_odd           = self.unpack((0, 54,  4), "f") # InGaAs-only
+            self.detector_offset_odd         = self.unpack((0, 58,  2), "h") # InGaAs-only
+
+        # ######################################################################
+        # Page 1
+        # ######################################################################
+
+        self.wavelength_coeffs = []
+        self.wavelength_coeffs         .append(self.unpack((1,  0,  4), "f"))
+        self.wavelength_coeffs         .append(self.unpack((1,  4,  4), "f"))
+        self.wavelength_coeffs         .append(self.unpack((1,  8,  4), "f"))
+        self.wavelength_coeffs         .append(self.unpack((1, 12,  4), "f"))
+        self.degC_to_dac_coeffs = []
+        self.degC_to_dac_coeffs        .append(self.unpack((1, 16,  4), "f"))
+        self.degC_to_dac_coeffs        .append(self.unpack((1, 20,  4), "f"))
+        self.degC_to_dac_coeffs        .append(self.unpack((1, 24,  4), "f"))
+        self.adc_to_degC_coeffs = []
+        self.adc_to_degC_coeffs        .append(self.unpack((1, 32,  4), "f"))
+        self.adc_to_degC_coeffs        .append(self.unpack((1, 36,  4), "f"))
+        self.adc_to_degC_coeffs        .append(self.unpack((1, 40,  4), "f"))
+        self.max_temp_degC                   = self.unpack((1, 28,  2), "h")
+        self.min_temp_degC                   = self.unpack((1, 30,  2), "h")
+        self.tec_r298                        = self.unpack((1, 44,  2), "h")
+        self.tec_beta                        = self.unpack((1, 46,  2), "h")
+        self.calibration_date                = self.unpack((1, 48, 12), "s")
+        self.calibrated_by                   = self.unpack((1, 60,  3), "s")
+                                    
+        # ######################################################################
+        # Page 2                    
+        # ######################################################################
+
+        self.detector                        = self.unpack((2,  0, 16), "s")
+        self.active_pixels_horizontal        = self.unpack((2, 16,  2), "h")
+        self.active_pixels_vertical          = self.unpack((2, 19,  2), "h") # MZ: skipped 18
+        self.min_integration_time_ms         = self.unpack((2, 21,  2), "H")
+        self.max_integration_time_ms         = self.unpack((2, 23,  2), "H")
+        self.actual_horizontal               = self.unpack((2, 25,  2), "h")
+        self.roi_horizontal_start            = self.unpack((2, 27,  2), "h") # not currently used
+        self.roi_horizontal_end              = self.unpack((2, 29,  2), "h") # vvv
+        self.roi_vertical_region_1_start     = self.unpack((2, 31,  2), "h")
+        self.roi_vertical_region_1_end       = self.unpack((2, 33,  2), "h")
+        self.roi_vertical_region_2_start     = self.unpack((2, 35,  2), "h")
+        self.roi_vertical_region_2_end       = self.unpack((2, 37,  2), "h")
+        self.roi_vertical_region_3_start     = self.unpack((2, 39,  2), "h")
+        self.roi_vertical_region_3_end       = self.unpack((2, 41,  2), "h")
+        self.linearity_coeffs = []
+        self.linearity_coeffs          .append(self.unpack((2, 43,  4), "f")) # overloading for secondary ADC
+        self.linearity_coeffs          .append(self.unpack((2, 47,  4), "f"))
+        self.linearity_coeffs          .append(self.unpack((2, 51,  4), "f"))
+        self.linearity_coeffs          .append(self.unpack((2, 55,  4), "f"))
+        self.linearity_coeffs          .append(self.unpack((2, 59,  4), "f"))
+
+        # ######################################################################
+        # Page 3
+        # ######################################################################
+        
+        # WARNING - this conflicts with "Preview 1" of ENG-0034 Rev 3
+        self.laser_power_coeffs = []
+        self.laser_power_coeffs        .append(self.unpack((3, 12,  4), "f"))
+        self.laser_power_coeffs        .append(self.unpack((3, 16,  4), "f"))
+        self.laser_power_coeffs        .append(self.unpack((3, 20,  4), "f"))
+        self.laser_power_coeffs        .append(self.unpack((3, 24,  4), "f"))
+        self.max_laser_power_mW              = self.unpack((3, 28,  4), "f")
+        self.min_laser_power_mW              = self.unpack((3, 32,  4), "f")
+
+        # ######################################################################
+        # Page 4
+        # ######################################################################
+
+        self.user_data = self.buffers[4][:63]
+        self.user_text = self.printable(self.user_data)
+
+        # ######################################################################
+        # Page 5
+        # ######################################################################
+
+        bad = set()
+        for count in range(15):
+            pixel = self.unpack((5, count * 2, 2), "h")
+            if pixel != -1:
+                bad.add(pixel)
+        self.bad_pixels = list(bad)
+        self.bad_pixels.sort()
+
+    ## make a printable ASCII string out of possibly-binary data
     def printable(self, buf):
         s = ""
         for c in buf:
@@ -293,6 +325,11 @@ class EEPROM(object):
                 s += '.'
         return s
 
+    ## 
+    # Unpack a single field at a given buffer offset of the given datatype.
+    #
+    # @param address    a tuple of the form (buf, offset, len)
+    # @param data_type  see https://docs.python.org/2/library/struct.html#format-characters
     def unpack(self, address, data_type):
         page       = address[0]
         start_byte = address[1]
@@ -321,6 +358,12 @@ class EEPROM(object):
         log.debug("Unpacked [%s]: %s", data_type, unpack_result)
         return unpack_result
 
+    ## 
+    # Marshall or serialize a single field at a given buffer offset of the given datatype.
+    #
+    # @param address    a tuple of the form (buf, offset, len)
+    # @param data_type  see https://docs.python.org/2/library/struct.html#format-characters
+    # @param value      value to serialize
     def pack(self, address, data_type, value):
         page       = address[0]
         start_byte = address[1]
@@ -344,20 +387,25 @@ class EEPROM(object):
         log.debug("Packed (%d, %2d, %2d) '%s' value %s -> %s", 
             page, start_byte, length, data_type, value, buf[start_byte:end_byte])
 
+    ##
+    # Call this to populate an internal array of "write buffers" which may be written back
+    # to spectrometers.
     def generate_write_buffers(self):
         # stub-out 6 blank buffers
         self.write_buffers = []
         for page in range(6):
             self.write_buffers.append(array.array('B', [0] * 64))
 
-        # should apply LATEST page revision numbers per ENG-0034, but
+        # ideally we should apply LATEST page revision numbers per ENG-0034, but
         # for now maintain compatibility with StrokerConsole/ModelConfigurationFormat.cs
-        revs = { 0: 1,   # 3, 
-                 1: 1,   # 2, 
+        revs = { 0: 1,
+                 1: 1,
                  2: 2, 
-                 3: 255, # 2, 
+                 3: 255,
                  4: 1, 
                  5: 1 }
+
+        # copy the above revision numbers into the last byte of each buffer
         for page in revs.keys():
             self.write_buffers[page][63] = revs[page]
 
@@ -442,10 +490,13 @@ class EEPROM(object):
                 value = -1
             self.pack((5, i * 2, 2), "h", value)
 
-    ############################################################################
+    # ##########################################################################
     # Laser Power accessors...not sure these belong here
-    ############################################################################
+    # ##########################################################################
 
+    ##
+    # whether the EEPROM has positive max_laser_power_mW and appears to have 
+    # valid laser_power_coeffs
     def has_laser_power_calibration(self):
         if self.max_laser_power_mW <= 0:
             log.debug("has_laser_power_calibration: False (low max)")
@@ -463,6 +514,8 @@ class EEPROM(object):
         log.debug("has_laser_power_calibration: True")
         return True
 
+    ## convert the given laser output power from milliwatts to percentage
+    #  using the configured calibration
     def laser_power_mW_to_percent(self, mW):
         if not self.has_laser_power_calibration():
             return 0

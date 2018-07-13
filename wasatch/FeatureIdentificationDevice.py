@@ -1,9 +1,3 @@
-""" Interface wrapper around libusb and cypress drivers to show devices
-    compliant with the Wasatch Feature Identification Device (FID) protocol.
-
-    TODO: inherit from SpectrometerDevice or similar
-"""
-
 import datetime
 import logging
 import copy
@@ -29,12 +23,29 @@ log = logging.getLogger(__name__)
 USB_TIMEOUT_MS = 60000
 MICROSEC_TO_SEC = 0.000001
 
+##
+# This is the basic implementation of our FeatureIdentificationDevice (FID) 
+# spectrometer USB API as defined in ENG-0001.
+#
+# Compare this class to Wasatch.NET's Spectrometer.cs.
+#
+# This class is normally not accessed directly, but through the higher-level 
+# abstraction WasatchDevice (which can also wrap legacy StrokerProtocol spectrometers,
+# virtual FileSpectrometer devices etc).
+#
+# @todo inherit from SpectrometerDevice or similar
+# @see ENG-0001
 class FeatureIdentificationDevice(object):
 
-    ############################################################################
+    # ##########################################################################
     # Lifecycle
-    ############################################################################
+    # ##########################################################################
 
+    ##
+    # @param PID [in] USB Product ID
+    # @param bus_order [in] sequence on the USB chain
+    # @param message_queue [out] if provided, provides a queue for writing
+    #        StatusMessage objects back to the caller
     def __init__(self, pid, bus_order=0, message_queue=None):
 
         log.debug("init %s", pid)
@@ -56,10 +67,10 @@ class FeatureIdentificationDevice(object):
         self.overrides = None
         self.last_override_value = {}
 
-        ########################################################################
+        # ######################################################################
         # these are "driver state" within FeatureIdentificationDevice, and don't
         # really relate to the spectrometer hardware
-        ########################################################################
+        # ######################################################################
 
         self.detector_tec_setpoint_has_been_set = False
         self.last_applied_laser_power = 0.0 # last power level APPLIED to laser, either by turning off (0) or on (immediate or ramping)
@@ -99,9 +110,9 @@ class FeatureIdentificationDevice(object):
 
         self.device = device
 
-        ########################################################################
+        # ######################################################################
         # PID-specific settings
-        ########################################################################
+        # ######################################################################
 
         if self.is_arm():
             self.settings.state.min_usb_interval_ms = 0
@@ -144,9 +155,9 @@ class FeatureIdentificationDevice(object):
         # self.disconnect()
         pass
 
-    ############################################################################
+    # ##########################################################################
     # Utility Methods
-    ############################################################################
+    # ##########################################################################
 
     def is_arm(self):
         return self.pid == 0x4000
@@ -165,6 +176,7 @@ class FeatureIdentificationDevice(object):
                         sleep(0.001) # 1ms
             self.last_usb_timestamp = datetime.datetime.now()
 
+    ##
     # Note: some USB docs call this "bmRequest" for "bitmap" vs "byte", but it's
     #       definitely an octet.  And yes, the USB spec really does say "data_or_length".
     def send_code(self, bRequest, wValue=0, wIndex=0, data_or_wLength=None, label="", dry_run=False):
@@ -201,7 +213,8 @@ class FeatureIdentificationDevice(object):
             prefix, bRequest, wValue, wIndex, data_or_wLength, result)
         return result
 
-    # MZ: weird that so few calls to this function override the default wLength
+    ##
+    # @note weird that so few calls to this function override the default wLength
     def get_code(self, bRequest, wValue=0, wIndex=0, wLength=64, label=""):
         prefix = "" if not label else ("%s: " % label)
         result = None
@@ -220,13 +233,14 @@ class FeatureIdentificationDevice(object):
             prefix, bRequest, wValue, wIndex, result)
         return result
 
-    # note: doesn't relay wLength, so ALWAYS expects 64-byte response!
+    ##
+    # @note doesn't relay wLength, so ALWAYS expects 64-byte response!
     def get_upper_code(self, wValue, wIndex=0, label=""):
         return self.get_code(0xff, wValue, wIndex, label=label)
 
-    ############################################################################
+    # ##########################################################################
     # initialization
-    ############################################################################
+    # ##########################################################################
 
     def read_eeprom(self):
         buffers = []
@@ -234,6 +248,7 @@ class FeatureIdentificationDevice(object):
             buffers.append(self.get_upper_code(0x01, page, label="GET_MODEL_CONFIG(%d)" % page))
         self.settings.eeprom.parse(buffers)
 
+    ##
     # at least one linearity coeff is other than 0 or -1
     def has_linearity_coeffs(self):
         if self.settings.eeprom.linearity_coeffs:
@@ -250,9 +265,9 @@ class FeatureIdentificationDevice(object):
         word = buf[0] | (buf[1] << 8) # LSB-MSB
         self.settings.fpga_options.parse(word)
 
-    ############################################################################
+    # ##########################################################################
     # Accessors
-    ############################################################################
+    # ##########################################################################
 
     def get_integration_time(self):
         result = self.get_code(0xbf, label="GET_INTEGRATION_TIME")
@@ -265,13 +280,16 @@ class FeatureIdentificationDevice(object):
         self.settings.eeprom.detector_offset = word
         return self.send_code(0xb6, word, label="SET_DETECTOR_OFFSET")
 
+    ##
+    # Read the device stored gain.  Convert from binary "half-precision" float.
+    #
+    # - 1st byte (LSB) is binary encoded: 0 = 1/2, 1 = 1/4, 2 = 1/8 etc.
+    # - 2nd byte (MSB) is the part to the left of the decimal
+    # 
+    # On both sides, expanded exponents (fractional or otherwise) are summed.
+    #
+    # E.g., 231 dec == 0x01e7 == 1.90234375
     def get_detector_gain(self):
-        """ Read the device stored gain.  Convert from binary wasatch format.
-            1st byte is binary encoded: 0 = 1/2, 1 = 1/4, 2 = 1/8 etc.
-            2nd byte is the part to the left of the decimal
-            On both sides, expanded exponents (fractional or otherwise) are summed.
-            E.g., 231 dec == 0x01e7 == 1.90234375
-        """
         result = self.get_code(0xc5, label="GET_DETECTOR_GAIN")
 
         lsb = result[0] # LSB-MSB
@@ -283,40 +301,41 @@ class FeatureIdentificationDevice(object):
 
         return gain
 
+    ##
+    # Re-implementation for required gain settings with S10141
+    # sensor. These comments are from the C DLL for the SDK - also see
+    # control.py for details.
+    #
+    # 201205171534 nharrington:
+    # Are you getting strange results even though you write what
+    # appears to be the correct 2-byte integer data (first byte being
+    # the binary encoding?) It looks like the value gets sent to the
+    # device correctly, but is stored incorrectly (maybe).
+    #
+    # For example, if you run 'get_detector_gain' on the device:
+    #
+    #   C-00130   gain is 1.421875  1064  G9214
+    #   WP-00108  gain is 1.296875  830-C S10141
+    #   WP-00132  gain is 1.296875  638-R S11511
+    #   WP-00134  gain is 1.296875  638-A S11511
+    #   WP-00222  gain is 1.296875  VIS   S11511
+    #
+    # In practice, what this means is you will pass 1.9 as the gain
+    # setting into this function. It will transform it to the value 487
+    # according to the shifted gain algorithm below. The CCD will change
+    # dynamic range. Reading back the gain will still say 1.296875. This
+    # has been tested with WP-00108 on 20170602
+    #
+    # If you write 1.9 to C-00130, you get 1.296875 back, which seems to
+    # imply that only the default gain is set differently with the G9214
+    # sensor.
+    #
+    # To see more confusion: Start: WP-00154
+    # Get gain value: 1.296875
+    # Start enlighten, set gain to 3.0
+    # Get gain again: 1.296875
+    # Why does it not change?
     def set_detector_gain(self, gain):
-        """ Re-implementation for required gain settings with S10141
-            sensor. These comments are from the C DLL for the SDK - also see
-            control.py for details.
-
-            // 201205171534 nharrington
-            // Are you getting strange results even though you write what
-            // appears to be the correct 2-byte integer data (first byte being
-            // the binary encoding?) It looks like the value gets sent to the
-            // device correctly, but is stored incorrectly (maybe).
-
-            For example, if you run 'get_detector_gain' on the device:
-            C-00130   gain is 1.421875  1064  G9214
-            WP-00108  gain is 1.296875  830-C S10141
-            WP-00132  gain is 1.296875  638-R S11511
-            WP-00134  gain is 1.296875  638-A S11511
-            WP-00222  gain is 1.296875  VIS   S11511
-
-            In practice, what this means is you will pass 1.9 as the gain
-            setting into this function. It will transform it to the value 487
-            according to the shifted gain algorithm below. The CCD will change
-            dynamic range. Reading back the gain will still say 1.296875. This
-            has been tested with WP-00108 on 20170602
-
-            If you write 1.9 to C-00130, you get 1.296875 back, which seems to
-            imply that only the default gain is set differently with the G9214
-            sensor.
-
-            To see more confusion: Start: WP-00154
-            Get gain value: 1.296875
-            Start enlighten, set gain to 3.0
-            Get gain again: 1.296875
-            Why does it not change?
-        """
 
         if round(gain, 2) == 1.90:
             log.warn("legacy spectrometers don't like gain being re-set to default 1.90...ignoring")
@@ -338,9 +357,8 @@ class FeatureIdentificationDevice(object):
             self.send_code(0xe9, value, label="SET_AREA_SCAN_ENABLE")
         self.settings.state.area_scan_enabled = flag
 
+    ## The line length is encoded as a LSB-MSB ushort, such that 0x0004 = 1024 pixels
     def get_sensor_line_length(self):
-        """ The line length is encoded as a LSB-MSB ushort, such that 0x0004 =
-            1024 pixels """
         result = self.get_upper_code(0x03, label="GET_LINE_LENGTH")
         value = result[0] | result[1] << 8 # LSB-MSB
         if value != self.settings.eeprom.active_pixels_horizontal:
@@ -375,9 +393,8 @@ class FeatureIdentificationDevice(object):
         self.settings.fpga_firmware_version = s
         return s
 
+    ## send "acquire", then immediately read the bulk endpoint(s).
     def get_line(self):
-        """ getSpectrum: send "acquire", then immediately read the bulk endpoint. """
-
         # Only send the CCD_GET_IMAGE (internal trigger) if external trigger is disabled (default)
         log.debug("get_line: requesting spectrum")
         if self.settings.state.trigger_source == SpectrometerState.TRIGGER_SOURCE_INTERNAL:
@@ -467,9 +484,9 @@ class FeatureIdentificationDevice(object):
         self.settings.state.integration_time_ms = ms
         return result
 
-    ############################################################################
+    # ##########################################################################
     # Temperature
-    ############################################################################
+    # ##########################################################################
 
     def select_adc(self, n):
         log.debug("select_adc -> %d", n)
@@ -510,8 +527,9 @@ class FeatureIdentificationDevice(object):
             raise Exception("Unable to read laser temperature")
         return result[0] + (result[1] << 8) # LSB-MSB
 
+    ##
+    # @note laser doesn't use EEPROM coeffs at all
     def get_laser_temperature_degC(self, raw=-1):
-        """ reminder, laser doesn't use EEPROM coeffs at all """
         if raw < 0:
             raw = self.get_laser_temperature_raw()
 
@@ -558,11 +576,12 @@ class FeatureIdentificationDevice(object):
         log.debug("Detector temperature: %.2f deg C (0x%04x raw)" % (degC, raw))
         return degC
 
+    ##
+    # Attempt to set the CCD cooler setpoint. Verify that it is within an
+    # acceptable range. Ideally this is to prevent condensation and other
+    # issues. This value is a default and is hugely dependent on the
+    # environmental conditions.
     def set_detector_tec_setpoint_degC(self, degC):
-        """ Attempt to set the CCD cooler setpoint. Verify that it is within an
-            acceptable range. Ideally this is to prevent condensation and other
-            issues. This value is a default and is hugely dependent on the
-            environmental conditions. """
         if not self.settings.eeprom.has_cooling:
             log.error("unable to control TEC: EEPROM reports no cooling")
             return
@@ -620,12 +639,13 @@ class FeatureIdentificationDevice(object):
         self.send_code(0xd2, lsb, msb, buf, label="SET_CCD_TRIGGER_SOURCE")
         self.settings.state.trigger_source = value
 
+    ##
+    # CF_SELECT is configured using bit 2 of the FPGA configuration register
+    # 0x12.  This bit can be set using vendor commands 0xEB to SET and 0xEC
+    # to GET.  Note that the set command is expecting a 5-byte unsigned
+    # value, the highest byte of which we pass as part of an 8-byte buffer.
+    # Not sure why.
     def set_high_gain_mode_enable(self, flag):
-        # CF_SELECT is configured using bit 2 of the FPGA configuration register
-        # 0x12.  This bit can be set using vendor commands 0xEB to SET and 0xEC
-        # to GET.  Note that the set command is expecting a 5-byte unsigned
-        # value, the highest byte of which we pass as part of an 8-byte buffer.
-        # Not sure why.
         log.debug("Set high gain mode: %s", flag)
 
         msb = 0
@@ -740,7 +760,8 @@ class FeatureIdentificationDevice(object):
             perc)
         self.set_laser_power_perc(perc)
 
-    # TODO: support floating-point value, as we have a 12-bit ADC and can provide
+    ##
+    # @todo support floating-point value, as we have a 12-bit ADC and can provide
     # a bit more precision than 100 discrete steps (goal to support 0.1 - .125% resolution)
     def set_laser_power_perc(self, value_in):
         if not self.settings.eeprom.has_laser:
@@ -760,72 +781,73 @@ class FeatureIdentificationDevice(object):
             # otherwise, set the power level more abruptly
             self.set_laser_power_perc_immediate(value)
 
-    # when we're not ramping laser power, this is a separate action that sets the
+    ##
+    # When we're not ramping laser power, this is a separate action that sets the
     # laser power level (modulated pulse width) which will be used next time the
-    # laser is turned on (or changed immediately, if the laser is already enabled)
+    # laser is turned on (or changed immediately, if the laser is already enabled).
+    # Laser power is determined by a combination of the pulse width,
+    # period and modulation being enabled. There are many combinations of
+    # these values that will produce a given percentage of the total laser
+    # power through pulse width modulation. There is no 'get laser power'
+    # control message on the device.
+    #
+    # Some of the goals of Enlighten are for it to be stable, and a reason
+    # we have sales. During spectrometer builds, it was discovered that
+    # the laser power settings were not implemented. During the
+    # implementation process, it was discovered that the laser modulation,
+    # pulse period and pulse width commands do not conform to
+    # specification. Where you can set integration time 100 ms with the
+    # command:
+    #
+    # device.ctrl_transfer(bRequestType=device_to_host,
+    #                      bmRequest=0xDB,
+    #                      wValue=100,
+    #                      wIndex=0,
+    #                      data_or_wLength=0)
+    #
+    # The laser pulse period must be set where the wValue and
+    # data_or_wLength parameters are equal. So if you wanted a pulse
+    # period of 100, you must specify the value in both places:
+    #
+    # ...
+    #                      wValue=100,
+    #                      data_or_wLength=100)
+    # ...
+    #
+    # This in turn implies that the legacy firmware has a long masked
+    # issue when reading the value to update from the data_or_wLength
+    # parameter instead of the wValue field. This is only accurate for the
+    # laser modulation related functions.
+    #
+    # This is backed up by the Dash v3 StrokerControl DLL implementation.
+    # It was discovered that the StrokerControl DLL sets the wValue and
+    # data or wLength parameters to the same value at every control
+    # message write.
+    #
+    # The exciting takeaway here is that Enlighten is stable enough.
+    # Turning the laser on with the data or wLength parameter not set
+    # correctly will cause a hardware failure and complete device lockup
+    # requiring a power cycle.
+    #
+    # fid:
+    #     CRITICAL Hardware Failure FID Send Code Problem with
+    #              ctrl transfer: [Errno None] 11
+    #
+    # Unlike Dash which may lockup and require killing the application,
+    # Enlighten does not lock up. The Enlighten code base has now been
+    # used to unmask an issue that has been lurking with our legacy
+    # firmware for close to 6 years. We've detected this out of
+    # specification area of the code before it can adversely impact a
+    # customer. """
+    #
+    # As long as laser power is modulated using a period of 100us,
+    # with a necessarily-integral pulse width of 1-99us, then it's
+    # not physically possible to support fractional power levels.
+    #
+    # @todo talk to Jason about changing modulation PERIOD to longer
+    #     value (200us? 400? 1000?), OR whether pulse WIDTH can be
+    #     in smaller unit (500ns? 100ns?)
     def set_laser_power_perc_immediate(self, value):
-        """ Laser power is determined by a combination of the pulse width,
-            period and modulation being enabled. There are many combinations of
-            these values that will produce a given percentage of the total laser
-            power through pulse width modulation. There is no 'get laser power'
-            control message on the device.
-
-            Some of the goals of Enlighten are for it to be stable, and a reason
-            we have sales. During spectrometer builds, it was discovered that
-            the laser power settings were not implemented. During the
-            implementation process, it was discovered that the laser modulation,
-            pulse period and pulse width commands do not conform to
-            specification. Where you can set integration time 100 ms with the
-            command:
-
-            device.ctrl_transfer(bRequestType=device_to_host,
-                                 bmRequest=0xDB,
-                                 wValue=100,
-                                 wIndex=0,
-                                 data_or_wLength=0)
-
-            The laser pulse period must be set where the wValue and
-            data_or_wLength parameters are equal. So if you wanted a pulse
-            period of 100, you must specify the value in both places:
-
-            ...
-                                 wValue=100,
-                                 data_or_wLength=100)
-            ...
-
-            This in turn implies that the legacy firmware has a long masked
-            issue when reading the value to update from the data_or_wLength
-            parameter instead of the wValue field. This is only accurate for the
-            laser modulation related functions.
-
-            This is backed up by the Dash v3 StrokerControl DLL implementation.
-            It was discovered that the StrokerControl DLL sets the wValue and
-            data or wLength parameters to the same value at every control
-            message write.
-
-            The exciting takeaway here is that Enlighten is stable enough.
-            Turning the laser on with the data or wLength parameter not set
-            correctly will cause a hardware failure and complete device lockup
-            requiring a power cycle.
-
-            fid:
-                CRITICAL Hardware Failure FID Send Code Problem with
-                         ctrl transfer: [Errno None] 11
-
-            Unlike Dash which may lockup and require killing the application,
-            Enlighten does not lock up. The Enlighten code base has now been
-            used to unmask an issue that has been lurking with our legacy
-            firmware for close to 6 years. We've detected this out of
-            specification area of the code before it can adversely impact a
-            customer. """
-
-        # MZ: as long as laser power is modulated using a period of 100us,
-        #     with a necessarily-integral pulse width of 1-99us, then it's
-        #     not physically possible to support fractional power levels.
-        # TODO: talk to Jason about changing modulation PERIOD to longer
-        #     value (200us? 400? 1000?), OR whether pulse WIDTH can be
-        #     in smaller unit (500ns? 100ns?)
-
         # don't want anything weird when passing over USB
         value = int(max(0, min(100, round(value))))
 
@@ -886,7 +908,8 @@ class FeatureIdentificationDevice(object):
         log.debug("fid: sleeping 3sec")
         sleep(3)
 
-    # never used, provided for OEM?
+    ##
+    # @note never used, provided for OEM
     def get_laser_temperature_setpoint_raw(self):
         if not self.settings.eeprom.has_laser:
             log.error("unable to control laser: EEPROM reports no laser installed")
@@ -895,23 +918,31 @@ class FeatureIdentificationDevice(object):
         result = self.get_code(0xe8, label="GET_LASER_TEMP_SETPOINT")
         return result[0]
 
-    # MZ: ENG-0001 says this should be sent LSB first (little-endian), but I don't believe them
+    ##
+    # @note ENG-0001 says this should be sent LSB first (little-endian), but I don't believe them
     def set_laser_temperature_setpoint_raw(self, value):
         log.debug("Send laser temperature setpoint raw: %d", value)
         return self.send_code(0xe7, value, label="SET_LASER_TEMP_SETPOINT")
 
-    # never called by ENLIGHTEN - provided for OEMs
+    ##
+    # Read the trigger source setting from the device. 
+    #
+    # - 0 = internal
+    # - 1 = external
+    #
+    # Use caution when interpreting the larger behavior of
+    # the device as ARM and FX2 implementations differ as of 2017-08-02
+    #
+    # @note never called by ENLIGHTEN - provided for OEMs
     def get_ccd_trigger_source(self):
-        """ Read the trigger source setting from the device. 0=internal,
-            1=external. Use caution when interpreting the larger behavior of
-            the device as ARM and FX2 implementations differ as of 2017-08-02 """
 
         result = self.get_code(0xd3, label="GET_CCD_TRIGGER_SOURCE")
         value = result[0]
         self.settings.state.trigger_source = value
         return value
 
-    # move string-to-enum converter to AppLog
+    ##
+    # @todo move string-to-enum converter to AppLog
     def set_log_level(self, s):
         lvl = logging.DEBUG if s == "DEBUG" else logging.INFO
         log.info("fid.set_log_level: setting to %s", lvl)
@@ -1051,9 +1082,10 @@ class FeatureIdentificationDevice(object):
         except:
             log.error("failed to enqueue StatusMessage (%s, %s)", setting, value, exc_info=1)
 
+    ## 
+    # assumes 'bytes' is an array of strings, where each string is a 
+    # comma-delimited tuple like "2,0A,F0" or "DELAY_US,5" 
     def apply_override_byte_strings(self, byte_strings):
-        """ assumes 'bytes' is an array of strings, where each string is a 
-            comma-delimited tuple like "2,0A,F0" or "DELAY_US,5" """
         string_count = len(byte_strings)                
         log.debug("sending %d byte strings over I2C", string_count)
         self.queue_message("progress_bar_max", string_count)
@@ -1094,10 +1126,12 @@ class FeatureIdentificationDevice(object):
                 sleep(self.overrides.min_delay_us * MICROSEC_TO_SEC)
             count += 1
 
+    ##
+    # Perform the specified setting such as physically writing the laser
+    # on, changing the integration time, turning the cooler on, etc. 
+    #
     # implemented subset of WasatchDeviceWrapper.DEVICE_CONTROL_COMMANDS
     def write_setting(self, record):
-        """ Perform the specified setting such as physically writing the laser
-            on, changing the integration time, turning the cooler on, etc. """
 
         setting = record.setting
         value   = record.value

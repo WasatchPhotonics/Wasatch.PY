@@ -3,10 +3,11 @@ import logging
 
 log = logging.getLogger(__name__)
 
+## 
+# A single set of data read from a device. This includes spectrum,
+# temperature, gain, offset, etc. Essentially a snapshot of the device
+# state in time. 
 class Reading(object):
-    """ A single set of data read from a device. This includes spectrum,
-        temperature, gain, offset, etc. Essentially a snapshot of the device
-        state in time. """
 
     def __init__(self):
         self.timestamp = datetime.datetime.now()

@@ -18,6 +18,11 @@ LASER_CONTROL_MODULATION        = 0
 LASER_CONTROL_TRANSITION_POINTS = 1
 LASER_CONTROL_RAMPING           = 2
 
+##
+# Encapsulate the set of options used to compile the FPGA code
+# in the firmware of the connected spectrometer.  
+#
+# This class is normally accessed as an attribute of SpectrometerSettings.
 class FPGAOptions(object):
 
     def __init__(self):
@@ -30,16 +35,20 @@ class FPGAOptions(object):
         self.has_actual_integ_time       = False
         self.has_horiz_binning           = False
 
+    ## 
+    # Parse the given 32-bit words according to the following representation:
+    #
+    # @code
+    # bits 0-2: 0000 0000 0000 0111 IntegrationTimeResolution
+    # bit  3-5: 0000 0000 0011 1000 DataHeader
+    # bit    6: 0000 0000 0100 0000 HasCFSelect
+    # bit  7-8: 0000 0001 1000 0000 LaserType
+    # bit 9-11: 0000 1110 0000 0000 LaserControl
+    # bit   12: 0001 0000 0000 0000 HasAreaScan
+    # bit   13: 0010 0000 0000 0000 HasActualIntegTime
+    # bit   14: 0100 0000 0000 0000 HasHorizBinning
+    # @endcode
     def parse(self, word):
-        # bits 0-2: 0000 0000 0000 0111 IntegrationTimeResolution
-        # bit  3-5: 0000 0000 0011 1000 DataHeader
-        # bit    6: 0000 0000 0100 0000 HasCFSelect
-        # bit  7-8: 0000 0001 1000 0000 LaserType
-        # bit 9-11: 0000 1110 0000 0000 LaserControl
-        # bit   12: 0001 0000 0000 0000 HasAreaScan
-        # bit   13: 0010 0000 0000 0000 HasActualIntegTime
-        # bit   14: 0100 0000 0000 0000 HasHorizBinning
-
         self.integration_time_resolution = (word & 0x0007)
         self.data_header                 = (word & 0x0038) >> 3
         self.has_cf_select               = (word & 0x0040) != 0
@@ -51,6 +60,7 @@ class FPGAOptions(object):
 
         self.dump()
 
+    ## log the parsed values
     def dump(self):
         log.debug("FPGA Compilation Options:")
         log.debug("  integration time resolution = %s", self.stringify_resolution())

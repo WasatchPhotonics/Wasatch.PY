@@ -1,8 +1,8 @@
-################################################################################
+# ##############################################################################
 #                                                                              #
 #                                   utils.py                                   #
 #                                                                              #
-################################################################################
+# ##############################################################################
 
 import logging
 import numpy
@@ -12,11 +12,13 @@ import re
 
 log = logging.getLogger(__name__)
 
+## convert unicode string to ascii
 def remove_unicode(s):
     if isinstance(s, unicode):
         return s.encode('ascii', 'ignore')
     return s
 
+## expand 3rd-order wavelength polynomial into array of wavelengths
 def generate_wavelengths(pixels, c0, c1, c2, c3):
     wavelengths = []
     for x in range(pixels):
@@ -27,6 +29,8 @@ def generate_wavelengths(pixels, c0, c1, c2, c3):
         wavelengths.append(wavelength)
     return wavelengths            
 
+## convert wavelengths into Raman shifts in 1/cm wavenumbers from the given 
+#  excitation wavelength
 def generate_wavenumbers(excitation, wavelengths):
     wavenumbers = []
     if not wavelengths or excitation < 1:
@@ -40,13 +44,18 @@ def generate_wavenumbers(excitation, wavelengths):
             wavenumbers.append(0)
     return wavenumbers
 
-# http://stackoverflow.com/questions/14313510/how-to-calculate-moving-average-using-numpy
-# NOTE: this trims the ends of the array!  len(a) > len(moving_average(a, n))
+##
+# compute a moving average on array 'a' of width 'n'
+#
+# @note this trims the ends of the array!  len(a) > len(moving_average(a, n))
+# @see http://stackoverflow.com/questions/14313510/how-to-calculate-moving-average-using-numpy
 def moving_average(a, n):
     ret = numpy.cumsum(a, dtype=float)
     ret[n:] = ret[n:] - ret[:-n]
     return ret[n - 1:] / n 
 
+##
+# apply a boxcar convolution of the given half_width to input array 'a'
 def apply_boxcar(a, half_width):
     if a is None:
         return None
@@ -58,6 +67,7 @@ def apply_boxcar(a, half_width):
                          moving_average(a, half_width * 2 + 1), 
                          a[-half_width:])).ravel()
 
+## similar to Perl's Data::Dumper
 def dump(foo, indent=0):
     spc  = '  ' * indent
     spc1 = '  ' * (indent + 1)
@@ -90,12 +100,16 @@ def dump(foo, indent=0):
 
     return s
 
+## given a destination object and a source dictionary, update any existing 
+#  attributes of the destination object from like-named keys in the source 
+#  dictionary
 def update_obj_from_dict(dest_obj, src_dict):
     for k in sorted(dest_obj.__dict__.keys()):
         if k in src_dict:
             log.debug("%s -> %s", k, src_dict[k])
             setattr(dest_obj, k, src_dict[k])
 
+## convenience wrapper to load a JSON file
 def load_json(pathname):
     try:
         with open(pathname) as infile:
@@ -103,6 +117,7 @@ def load_json(pathname):
     except:
         log.error("unable to load %s", pathname, exc_info=1)
 
+## iterate down a directory, returning pathnames that match the given pattern
 def get_pathnames_from_directory(rootdir, pattern=None, recursive=False):
     pathnames = []
     log.debug("searching %s matching %s with recursive %s", rootdir, pattern, recursive)
@@ -131,7 +146,12 @@ def get_pathnames_from_directory(rootdir, pattern=None, recursive=False):
     log.debug("returning %s", pathnames)
     return pathnames
 
-# probably a numpy shortcut for this
+##
+# Given a spectrum (array 'a'), with an x_axis, a 'center' along that x_axis, and
+# an allowed 'tolerance' (in same units as the x_axis), find the local maxima
+# within 'tolerance' of 'center'.
+#
+# @note probably a numpy shortcut for this
 def find_local_maxima(a, x_axis, center, tolerance=0):
     log.debug("find_local_maxima: center %.2f (tolerance %.2f)", center, tolerance)
     # generate subset of array within tolerance of center
@@ -170,6 +190,10 @@ def find_local_maxima(a, x_axis, center, tolerance=0):
 
     return (best_y_value, best_x_value, best_x_index)
 
+##
+# Given a spectrum and an x_axis, find the indexes of the left and right
+# 'feet' of the peak centered on x_index.  Internally apply then given boxcar
+# for added smoothing.
 def find_peak_feet_indices(spectrum, x_axis, x_index, boxcar_half_width=0):
     if boxcar_half_width:
         smoothed = apply_boxcar(spectrum, boxcar_half_width)
@@ -190,6 +214,9 @@ def find_peak_feet_indices(spectrum, x_axis, x_index, boxcar_half_width=0):
 
     return (left_index, right_index)
 
+## integrate the 'area under the curve' for the given spectrum and x_axis,
+#  using the peak centered on x_axis, with optional smoothing given the
+#  boxcar width.
 def area_under_peak(spectrum, x_axis, x_index, boxcar_half_width=0):
     # find left and right "feet" of the peak
     (left_index, right_index) = find_peak_feet_indices(

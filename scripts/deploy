@@ -1,0 +1,23 @@
+#!/bin/bash
+################################################################################
+#                                  deploy                                      #
+################################################################################
+#                                                                              #
+#  DESCRIPTION:  Quick script to consistently and reliably upload releases     #
+#                to our website.                                               #
+#                                                                              #
+#  AUTHOR:       Mark Zieg <mzieg@wasatchphotonics.com>                        #
+#                                                                              #
+################################################################################
+
+read -p "Username: " USERNAME
+read -p "Version:  " VERSION 
+
+# render documentation (TODO: incorporate VERSION into rendered docs)
+make doc
+
+echo
+read -p "Press return to continue..." FOO
+
+# upload documentation
+rsync --archive doc/doxygen/html/ ${USERNAME}@wasatchphotonics.com:www/api/Wasatch.PY/

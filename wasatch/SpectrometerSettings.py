@@ -8,6 +8,10 @@ from EEPROM            import EEPROM
 
 log = logging.getLogger(__name__)
 
+## 
+# Encapsulate a spectrometer's state, including compiled firmware (FPGAOptions), 
+# non-volatile configuration (EEPROM) and volatile state (SpectrometerState).
+#
 # This class serves two goals:
 #
 # 1. A picklable object that can be passed between the spectrometer process and 
@@ -52,9 +56,9 @@ class SpectrometerSettings(object):
             utils.update_obj_from_dict(self.eeprom, obj['EEPROM'])
             self.update_wavecal()
 
-    ############################################################################
+    # ##########################################################################
     # accessors
-    ############################################################################
+    # ##########################################################################
 
     def pixels(self):
         return self.eeprom.active_pixels_horizontal
@@ -62,9 +66,9 @@ class SpectrometerSettings(object):
     def isIMX(self):
         return "imx" in self.eeprom.detector.lower()
     
-    ############################################################################
+    # ##########################################################################
     # methods
-    ############################################################################
+    # ##########################################################################
 
     def update_wavecal(self, coeffs=None):
         if coeffs is None:
