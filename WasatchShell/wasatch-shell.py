@@ -51,7 +51,7 @@ def printHelp():
         CONNECTION_CHECK, SCRIPT_VERSION, GET_LASER_TEMP, 
         GET_PHOTODIODE, GET_PHOTODIODE_MW, SET_LSI_MW, 
         SET_TEMP_SETPOINT_DEGC, GET_TEMP_DEGC, GET_CONFIG_JSON,
-        HAS_PHOTODIODE_CALIBRATION
+        HAS_PHOTODIODE_CALIBRATION, AUTO_BALANCE
 
     The following getters are also available:""" % SCRIPT_VERSION
     print sorted(getters.keys())
@@ -100,22 +100,34 @@ def data_poll():
         pass
 
 def setIntTime(time):
+    global integration_time_ms
     print(Test_Set(0xb2, 0xbf, time, 6))      # Set integration time
+    integration_time_ms = time
+    logging.debug("integration_time_ms -> %d", time)
 
-def getSpectrum():
+def getSpectrum(quiet=True):
     startAcquisition()
-    getData()
+    return getData(quiet=quiet)
 
 def startAcquisition():
     Test_Set(0xad, 0, 0, 0)      # Set acquisition
 
-def getData():
+def getData(quiet=True):
     data_poll()
     Data = dev.read(0x82, PIXEL_COUNT * 2)
+
+    spectrum = []
     for j in range (0, int((PIXEL_COUNT * 2)/32), 1):
         for i in range (0, 31, 2):
-            print(Data[j*32+i+1]*256+Data[j*32+i])
-    logging.debug("returned %d pixels", PIXEL_COUNT)
+            spectrum.append(Data[j*32+i+1]*256+Data[j*32+i])
+    logging.debug("returned %d pixels", len(spectrum))
+
+    if quiet:
+        return spectrum
+    else:
+        for pixel in spectrum:
+            print(pixel)
+        logging.debug("getSpectrum: max = %d", get_max(spectrum))
 
 def Open_Spectrometers():
     logging.debug("in open spectrometers")
@@ -143,11 +155,14 @@ def setLSI(period, width):
         return
 
     if(Test_Set(0xc7, 0xcb, period, 5)):        # SET_MOD_PERIOD
+        logging.debug("laser_pulse_period -> %d", period)
         print(Test_Set(0xdb, 0xdc, width, 5))   # SET_LASER_MOD_PULSE_WIDTH
+        logging.debug("laser_pulse_width -> %d", width)
     else:
         print(False)
 
 def setLaserPowerMW(requestedMW):
+    global laser_power_mW
     coeffs = eeprom.laser_power_coeffs
     mW = min(eeprom.max_laser_power_mW, max(eeprom.min_laser_power_mW, requestedMW))
 
@@ -161,6 +176,9 @@ def setLaserPowerMW(requestedMW):
     tenth_percent = int(max(0, min(MAX_TENTHS, round(perc * 10))))
     setLSI(MAX_TENTHS, tenth_percent)
 
+    laser_power_mW = mW
+    logging.debug("laser_power_mW -> %d", mW)
+
 def getConfig(index):
     logging.debug("getting config with index " + str(index))
     buf = dev.ctrl_transfer(DEVICE_TO_HOST, 0xff, 1, index, 64, TIMEOUT_MS)
@@ -172,11 +190,13 @@ def getConfig(index):
 def setLightSourceEnable(enable):
     if enable:
         if Test_Set(0xbd, 0xe3, 1, 1):          # SET_LASER_MOD_ENABLED
-            return Test_Set(0xbe, 0xe2, 1, 1)   # SET_LASER_ENABLED
+            enabled = Test_Set(0xbe, 0xe2, 1, 1)   # SET_LASER_ENABLED
         else:
-            return False
+            enabled = False
     else:
-        return Test_Set(0xbe, 0xe2, 0, 1)
+        enabled = Test_Set(0xbe, 0xe2, 0, 1)
+    logging.debug("laser_enabled -> %s", enabled)
+    return enabled
 
 def setTECEnable(enable):
     if(enable):
@@ -284,6 +304,78 @@ def Load_EEPROM():
 
 ################################################################################
 #                                                                              #
+#                             Balance Acquisitions                             #
+#                                                                              #
+################################################################################
+
+def autoBalance(mode, wavenumber, intensity, threshold):
+    global balance_mode, balance_wavenumber, balance_intensity, balance_threshold
+
+    balance_wavenumber = wavenumber
+    balance_intensity = max(0, min(65000, intensity))
+    balance_threshold = max(0, min(15000, threshold))
+
+    mode = mode.upper().strip()
+    if mode not in ['INTEGRATION', 'LASER', 'LASER_THEN_INTEGRATION']:
+        msg = "Error: unsupported balance mode [%s]" % mode
+        logging.error(msg)
+        print msg
+        return
+
+    balance_mode = mode
+
+    if mode == "INTEGRATION":
+        autoBalanceIntegration()
+    if mode == "LASER":
+        autoBalanceLaser()
+    if mode == "LASER_THEN_INTEGRATION":
+        autoBalanceLaser()
+        autoBalanceIntegration()
+
+def autoBalanceIntegration():
+    overshoot_count = 0
+    while True:
+        spectrum = getSpectrum()
+        peak = get_max(spectrum)
+        delta = abs(peak - balance_intensity)
+
+        # exit case
+        if delta <= balance_threshold:
+            print "Ok integration_time_ms %d, laser_power_mW %d" % (integration_time_ms, laser_power_mW)
+            return
+
+        logging.debug("BalanceAcquisition: peak %d, integration_time_ms %d, laser_power_mW %d" % (peak, integration_time_ms, laser_power_mW))
+
+        # adjust
+        if peak > balance_intensity:
+            new_integ = int(integration_time_ms / 2)
+            overshoot_count += 1
+        else:
+            new_integ = int(1.0 * integration_time_ms * balance_intensity / peak)
+
+        # round
+        new_integ = max(10, min(5000, new_integ))
+
+        if overshoot_count > 5:
+            logging.error("BalanceAcquisition: too many overshoots")
+            print "ERROR: failed to balance acquisition"
+            return
+
+        logging.debug("BalanceAcquisition: new_integ = %d", new_integ)
+        setIntTime(new_integ)
+
+# trying not to add Numpy, etc dependencies
+def get_max(spectrum):
+    if spectrum is None:
+        return 0
+    peak = spectrum[0]
+    for pixel in spectrum:
+        if pixel > peak:
+            peak = pixel
+    return peak
+
+################################################################################
+#                                                                              #
 #                                  main()                                      #
 #                                                                              #
 ################################################################################
@@ -304,6 +396,14 @@ logging.info("wasatch-shell version %s invoked" % SCRIPT_VERSION)
 dev = None
 eeprom = None
 getters = initializeGetters()
+
+balance_intensity   = 45000
+balance_threshold   =  2000 
+balance_wavenumber  =  1000
+balance_mode        = "INTEGRATION"
+laser_power_mW      = 0
+integration_time_ms = 0
+
 try:
     while True:
         logging.debug("waiting for command")
@@ -336,7 +436,7 @@ try:
         elif command == "SETINTTIME":
             setIntTime(int(sys.stdin.readline()))
         elif(command == "GETSPECTRUM"):
-            getSpectrum()
+            getSpectrum(quiet=False)
         elif command == "STARTACQUISITION":
             startAcquisition()
         elif command == "GETDATA":
@@ -353,7 +453,7 @@ try:
             getConfig(int(sys.stdin.readline()))
         elif command == "GET_CONFIG_JSON":
             print eeprom.json()
-        elif command == "SETLSE":
+        elif command == "SETLSE" or command.startswith("SET_LASER_ENABLE"):
             print setLightSourceEnable(int(sys.stdin.readline()))
         elif command == "SETTECE":
             setTECEnable(int(sys.stdin.readline()))
@@ -418,6 +518,12 @@ try:
 
         elif command == "GET_LASER_TEMP":
             print getLaserTemp()
+
+        elif command == "AUTO_BALANCE":
+            autoBalance(mode=sys.stdin.readline(),
+                        wavenumber=int(sys.stdin.readline()),
+                        intensity=int(sys.stdin.readline()), 
+                        threshold=int(sys.stdin.readline()))
 
         elif command == "HELP": 
             printHelp()

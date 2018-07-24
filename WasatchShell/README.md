@@ -64,6 +64,8 @@ can be freely updated from that source.
 
 # Version History
 
+- 07-24-2018 1.0.7
+    - added auto\_balance
 - 05-31-2018 1.0.6
     - changed laser power granularity to 0.1%
 - 05-30-2018 1.0.5

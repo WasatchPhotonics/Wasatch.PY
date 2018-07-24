@@ -9,7 +9,6 @@ import usb.util
 from random import randint
 from time   import sleep
 
-from . import common
 from . import utils
 
 from SpectrometerSettings import SpectrometerSettings
