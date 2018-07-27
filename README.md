@@ -302,6 +302,10 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2018-07-13 0.9.7
+    - converted WasatchShell into a wrapper over Wasatch.PY
+    - added numerous getters
+    - added BalanceAcquisition
 - 2018-07-13 0.9.6
     - added Doxyfile
     - moved class/method docs to Doxygen format

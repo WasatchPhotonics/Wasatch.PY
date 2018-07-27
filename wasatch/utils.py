@@ -261,3 +261,11 @@ def peak_height_above_background(spectrum, x_axis, x_index, boxcar_half_width=0)
     log.debug("peak_height_above_background:   relative height: %.2f", height)
 
     return (height, width_wn, width_px)
+
+def find_nearest_index(L, value):
+    a = numpy.asarray(L)
+    return (numpy.abs(a - value)).argmin()
+    
+def find_nearest_value(L, value):
+    i = find_nearest_index(L, value)
+    return L[i]

@@ -208,7 +208,7 @@ class FileSpectrometer(object):
     def get_fpga_firmware_version(self):
         pass
 
-    def get_integration_time(self):
+    def get_integration_time_ms(self):
         pass
 
     def get_detector_gain(self):

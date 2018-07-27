@@ -12,6 +12,7 @@ from . import utils
 from FeatureIdentificationDevice import FeatureIdentificationDevice
 from StrokerProtocolDevice       import StrokerProtocolDevice
 from SpectrometerSettings        import SpectrometerSettings
+from BalanceAcquisition          import BalanceAcquisition
 from SpectrometerState           import SpectrometerState
 from FileSpectrometer            import FileSpectrometer
 from ControlObject               import ControlObject
@@ -193,7 +194,7 @@ class WasatchDevice(object):
         # FileSpectrometer) - we probably need an ABC for this
         self.hardware.get_microcontroller_firmware_version()
         self.hardware.get_fpga_firmware_version()
-        self.hardware.get_integration_time()
+        self.hardware.get_integration_time_ms()
         self.hardware.get_detector_gain()
 
         # could read the defaults for these ss.state volatiles from FID/SP too:
@@ -414,6 +415,22 @@ class WasatchDevice(object):
             except Exception as exc:
                 log.critical("process_commands: error dequeuing or writing control object", exc_info=1)
                 raise
+
+    # ######################################################################## #
+    #                                                                          #
+    #                             BalanceAcquisition                           #
+    #                                                                          #
+    # ######################################################################## #
+
+    def balance_acquisition(self, mode=None, intensity=45000, threshold=2500, pixel=None):
+        balancer = BalanceAcquisition(mode, intensity, threshold, pixel, self) 
+        balancer.balance()
+
+    # ######################################################################## #
+    #                                                                          #
+    #                             Hardware Control                             #
+    #                                                                          #
+    # ######################################################################## #
 
     ## 
     # Add the specified setting and value to the local control queue. 

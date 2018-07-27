@@ -185,7 +185,7 @@ class SimulateMaterial(object):
     def get_standard_software_code(self):
         return self.software_code
 
-    def get_integration_time(self):
+    def get_integration_time_ms(self):
         return self.integration
 
     def get_fpga_revision(self):

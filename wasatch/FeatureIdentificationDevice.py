@@ -212,9 +212,8 @@ class FeatureIdentificationDevice(object):
             prefix, bRequest, wValue, wIndex, data_or_wLength, result)
         return result
 
-    ##
-    # @note weird that so few calls to this function override the default wLength
-    def get_code(self, bRequest, wValue=0, wIndex=0, wLength=64, label=""):
+    ## @note weird that so few calls to this function override the default wLength
+    def get_code(self, bRequest, wValue=0, wIndex=0, wLength=64, label="", msb_len=None, lsb_len=None):
         prefix = "" if not label else ("%s: " % label)
         result = None
         try:
@@ -230,12 +229,23 @@ class FeatureIdentificationDevice(object):
 
         log.debug("%sget_code: request 0x%02x value 0x%04x index 0x%04x = [%s]",
             prefix, bRequest, wValue, wIndex, result)
-        return result
 
-    ##
-    # @note doesn't relay wLength, so ALWAYS expects 64-byte response!
-    def get_upper_code(self, wValue, wIndex=0, label=""):
-        return self.get_code(0xff, wValue, wIndex, label=label)
+        # demarshall or return raw array
+        value = 0
+        if msb_len is not None:
+            for i in range(msb_len):
+                value = value << 8 | result[i]
+            return value                    
+        elif lsb_len is not None:
+            for i in range(lsb_len):
+                value = (result[i] << (8 * i)) | value
+            return value
+        else:
+            return result
+
+    ## @note doesn't relay wLength, so ALWAYS expects 64-byte response!
+    def get_upper_code(self, wValue, wIndex=0, label="", msb_len=None, lsb_len=None):
+        return self.get_code(0xff, wValue, wIndex, label=label, msb_len=msb_len, lsb_len=lsb_len)
 
     # ##########################################################################
     # initialization
@@ -257,22 +267,17 @@ class FeatureIdentificationDevice(object):
         return False
 
     def read_fpga_compilation_options(self):
-        buf = self.get_upper_code(0x04, label="READ_COMPILATION_OPTIONS")
-        if buf is None or len(buf) < 2:
-            log.error("fpga_opts: can't parse response: %s", buf)
-            return
-        word = buf[0] | (buf[1] << 8) # LSB-MSB
+        word = self.get_upper_code(0x04, label="READ_COMPILATION_OPTIONS", lsb_len=2)
         self.settings.fpga_options.parse(word)
 
     # ##########################################################################
     # Accessors
     # ##########################################################################
 
-    def get_integration_time(self):
-        result = self.get_code(0xbf, label="GET_INTEGRATION_TIME")
-        curr_time = (result[2] << 32) | (result[1] << 16) | result[0] # MSB-LSB
-        self.settings.state.integration_time_ms = curr_time
-        return curr_time
+    def get_integration_time_ms(self):
+        ms = self.get_code(0xbf, label="GET_INTEGRATION_TIME_MS", lsb_len=3)
+        self.settings.state.integration_time_ms = ms
+        return ms
 
     def set_detector_offset(self, value):
         word = int(value) & 0xffff
@@ -358,19 +363,17 @@ class FeatureIdentificationDevice(object):
 
     ## The line length is encoded as a LSB-MSB ushort, such that 0x0004 = 1024 pixels
     def get_sensor_line_length(self):
-        result = self.get_upper_code(0x03, label="GET_LINE_LENGTH")
-        value = result[0] | result[1] << 8 # LSB-MSB
+        value = self.get_upper_code(0x03, label="GET_LINE_LENGTH", lsb_len=2)
         if value != self.settings.eeprom.active_pixels_horizontal:
             log.error("GET_LINE_LENGTH opcode result %d != EEPROM active_pixels_horizontal %d (using opcode)",
                 value, self.settings.eeprom.active_pixels_horizontal)
             # MZ: change eeprom value?
         return value
 
-    def get_laser_availability(self):
-        result = self.get_upper_code(0x08, label="OPT_LASER")
-        available = result[0] != 0
+    def get_opt_has_laser(self):
+        available = (0 != self.get_upper_code(0x08, label="GET_OPT_HAS_LASER", msb_len=1))
         if available != self.settings.eeprom.has_laser:
-            log.error("OPT_LASER opcode result %s != EEPROM has_laser %s (using opcode)",
+            log.error("OPT_HAS_LASER opcode result %s != EEPROM has_laser %s (using opcode)",
                 value, self.settings.eeprom.has_laser)
             # MZ: change eeprom value?
         return available
@@ -468,18 +471,18 @@ class FeatureIdentificationDevice(object):
 
         return (spectrum, area_scan_row_count)
 
-    def set_integration_time(self, ms):
-        """ Send the updated integration time in a control message to the device. """
+    ## Send the updated integration time in a control message to the device
+    def set_integration_time_ms(self, ms):
 
         if ms < self.settings.eeprom.min_integration_time_ms or ms > self.settings.eeprom.max_integration_time_ms:
-            log.error("fid.set_integration_time: %d ms outside range (%d ms, %d ms)",
+            log.error("fid.set_integration_time_ms: %d ms outside range (%d ms, %d ms)",
                 ms, self.settings.eeprom.min_integration_time_ms, self.settings.eeprom.max_integration_time_ms)
-            return
+            return False
 
         lsw = (ms % 65536) & 0xffff
         msw = (ms / 65536) & 0xffff
 
-        result = self.send_code(0xB2, lsw, msw, label="SET_INTEGRATION_TIME")
+        result = self.send_code(0xB2, lsw, msw, label="SET_INTEGRATION_TIME_MS")
         self.settings.state.integration_time_ms = ms
         return result
 
@@ -489,7 +492,11 @@ class FeatureIdentificationDevice(object):
 
     def select_adc(self, n):
         log.debug("select_adc -> %d", n)
-        self.send_code(0xed, n, label="SELECT_LASER")
+        self.send_code(0xed, n, label="SELECT_ADC")
+
+        # perform throwaway stabilization read
+        self.get_code(0xd5, wLength=2, label="GET_ADC (throwaway)")
+
         self.settings.state.selected_adc = n
 
     def get_secondary_adc_calibrated(self, raw=None):
@@ -510,21 +517,23 @@ class FeatureIdentificationDevice(object):
         return calibrated
 
     def get_secondary_adc_raw(self):
-        result = self.get_code(0xd5, wLength=2, label="GET_ADC")
-        value = 0
-        if result is not None and len(result) == 2:
-            # We could validate to 12-bit here if desired
-            value = result[0] | (result[1] << 8) # LSB-MSB
-        else:
-            log.error("Error reading secondary ADC")
+        # flip to secondary ADC if needed
+        if self.settings.state.selected_adc != 1:
+            self.select_adc(1)
+
+        value = self.get_code(0xd5, wLength=2, label="GET_ADC", lsb_len=2) & 0xfff
         log.debug("secondary_adc_raw: 0x%04x", value)
         return value
 
     def get_laser_temperature_raw(self):
+        # flip to primary ADC if needed
+        if self.settings.state.selected_adc != 0:
+            self.select_adc(0)
+
         result = self.get_code(0xd5, wLength=2, label="GET_ADC")
         if not result:
             raise Exception("Unable to read laser temperature")
-        return result[0] + (result[1] << 8) # LSB-MSB
+        return (result[0] + (result[1] << 8)) & 0xfff # LSB-MSB, 12-bit
 
     ##
     # @note laser doesn't use EEPROM coeffs at all
@@ -560,10 +569,7 @@ class FeatureIdentificationDevice(object):
         return degC
 
     def get_detector_temperature_raw(self):
-        result = self.get_code(0xd7, label="GET_CCD_TEMP")
-        if not result:
-            raise Exception("Unable to read detector temperature")
-        return result[1] + (result[0] << 8) # MSB-LSB
+        return self.get_code(0xd7, label="GET_CCD_TEMP", msb_len=2)
 
     def get_detector_temperature_degC(self, raw=-1):
         if raw < 0:
@@ -583,7 +589,7 @@ class FeatureIdentificationDevice(object):
     def set_detector_tec_setpoint_degC(self, degC):
         if not self.settings.eeprom.has_cooling:
             log.error("unable to control TEC: EEPROM reports no cooling")
-            return
+            return False
 
         if degC < self.settings.eeprom.min_temp_degC:
             log.critical("set_detector_tec_setpoint_degC: setpoint %f below min %f", degC, self.settings.eeprom.min_temp_degC)
@@ -604,15 +610,16 @@ class FeatureIdentificationDevice(object):
             raw = 0xfff
 
         log.info("Set CCD TEC Setpoint: %.2f deg C (raw ADC 0x%04x)", degC, raw)
-        self.send_code(0xd8, raw, label="SET_CCD_TEMP_SETPOINT")
-        self.detector_tec_setpoint_has_been_set = True
-        self.settings.state.tec_setpoint_degC = degC
-        return True
+        ok = self.send_code(0xd8, raw, label="SET_CCD_TEMP_SETPOINT")
+        if ok:
+            self.detector_tec_setpoint_has_been_set = True
+            self.settings.state.tec_setpoint_degC = degC
+        return ok
 
     def set_tec_enable(self, flag):
         if not self.settings.eeprom.has_cooling:
             log.error("unable to control TEC: EEPROM reports no cooling")
-            return
+            return False
 
         value = 1 if flag else 0
 
@@ -621,22 +628,25 @@ class FeatureIdentificationDevice(object):
             self.set_detector_tec_setpoint_degC(self.settings.eeprom.min_temp_degC)
 
         log.debug("Send CCD TEC enable: %s", value)
-        self.send_code(0xd6, value, label="SET_CCD_TEC_ENABLE")
-        self.settings.state.tec_enabled = flag
+        ok = self.send_code(0xd6, value, label="SET_CCD_TEC_ENABLE")
+        if ok:
+            self.settings.state.tec_enabled = flag
+        return ok
 
     def set_ccd_trigger_source(self, value):
         # Don't send the opcode on ARM. See issue #2 on WasatchUSB project
         if self.is_arm():
-            return
+            return False
 
         msb = 0
         lsb = value
         buf = [0] * 8
 
         # MZ: this is weird...we're sending the buffer on an FX2-only command
-
-        self.send_code(0xd2, lsb, msb, buf, label="SET_CCD_TRIGGER_SOURCE")
-        self.settings.state.trigger_source = value
+        ok = self.send_code(0xd2, lsb, msb, buf, label="SET_CCD_TRIGGER_SOURCE")
+        if ok: 
+            self.settings.state.trigger_source = value
+        return ok
 
     ##
     # CF_SELECT is configured using bit 2 of the FPGA configuration register
@@ -656,7 +666,7 @@ class FeatureIdentificationDevice(object):
     def set_laser_enable(self, flag):
         if not self.settings.eeprom.has_laser:
             log.error("unable to control laser: EEPROM reports no laser installed")
-            return
+            return False
 
         # perhaps ARM doesn't like the laser enabled before laser power is configured?
         if self.next_applied_laser_power is None:
@@ -667,6 +677,7 @@ class FeatureIdentificationDevice(object):
             self.set_laser_enable_ramp()
         else:
             self.set_laser_enable_immediate(flag)
+        return True
 
     def set_laser_enable_immediate(self, flag):
         value = 1 if flag else 0
@@ -746,7 +757,7 @@ class FeatureIdentificationDevice(object):
     def set_laser_power_mW(self, mW_in):
         if not self.settings.eeprom.has_laser_power_calibration():
             log.error("EEPROM doesn't have laser power calibration")
-            return
+            return False
 
         mW = min(self.settings.eeprom.max_laser_power_mW, max(self.settings.eeprom.min_laser_power_mW, mW_in))
 
@@ -757,7 +768,7 @@ class FeatureIdentificationDevice(object):
             mW_in,
             mW,
             perc)
-        self.set_laser_power_perc(perc)
+        return self.set_laser_power_perc(perc)
 
     ##
     # @todo support floating-point value, as we have a 12-bit ADC and can provide
@@ -765,20 +776,21 @@ class FeatureIdentificationDevice(object):
     def set_laser_power_perc(self, value_in):
         if not self.settings.eeprom.has_laser:
             log.error("unable to control laser: EEPROM reports no laser installed")
-            return
+            return False
 
         # if the laser is already engaged and we're using ramping, then ramp to
         # the new level
         value = float(max(0, min(100, value_in)))
         self.settings.state.laser_power = value
+        self.settings.state.laser_power_in_mW = False
         log.debug("set_laser_power_perc: range (0, 100), requested %.2f, applying %.2f", value_in, value)
 
         if self.settings.state.laser_power_ramping_enabled and self.settings.state.laser_enabled:
             self.next_applied_laser_power = value
-            self.set_laser_enable_ramp()
+            return self.set_laser_enable_ramp()
         else:
             # otherwise, set the power level more abruptly
-            self.set_laser_power_perc_immediate(value)
+            return self.set_laser_power_perc_immediate(value)
 
     ##
     # When we're not ramping laser power, this is a separate action that sets the
@@ -934,11 +946,91 @@ class FeatureIdentificationDevice(object):
     #
     # @note never called by ENLIGHTEN - provided for OEMs
     def get_ccd_trigger_source(self):
-
-        result = self.get_code(0xd3, label="GET_CCD_TRIGGER_SOURCE")
-        value = result[0]
+        value = self.get_code(0xd3, label="GET_CCD_TRIGGER_SOURCE", msb_len=1)
         self.settings.state.trigger_source = value
         return value
+
+    # ##########################################################################
+    # newly added for wasatch-shell
+    # ##########################################################################
+
+    def get_tec_enabled(self):
+        if not self.settings.eeprom.has_cooling:
+            log.error("unable to control TEC: EEPROM reports no cooling")
+            return False
+        return self.get_code(0xda, label="GET_CCD_TEC_ENABLE", msb_len=1)
+        
+    def get_actual_frames(self):
+        return self.get_code(0xe4, label="GET_ACTUAL_FRAMES", lsb_len=2)
+
+    def get_actual_integration_time(self):
+        return self.get_code(0xdf, label="GET_ACTUAL_INTEGRATION_TIME", lsb_len=3)
+
+    def get_detector_offset(self):
+        return self.get_code(0xc4, label="GET_DETECTOR_OFFSET", lsb_len=2) # LSB is a guess
+
+    def get_ccd_sensing_threshold(self):
+        return self.get_code(0xd1, label="GET_CCD_SENSING_THRESHOLD", lsb_len=2)
+
+    def get_ccd_threshold_sensing_mode(self):
+        return self.get_code(0xcf, label="GET_CCD_THRESHOLD_SENSING_MODE", msb_len=1)
+
+    def get_external_trigger_output(self):
+        return self.get_code(0xe1, label="GET_EXTERNAL_TRIGGER_OUTPUT", msb_len=1)
+
+    def get_interlock(self):
+        return self.get_code(0xef, label="GET_INTERLOCK", msb_len=1)
+
+    def get_laser_enabled(self):
+        return self.get_code(0xe2, label="GET_LASER_ENABLED", msb_len=1)
+        
+    def get_link_laser_mod_to_integration_time(self):
+        return self.get_code(0xde, label="GET_LINK_LASER_MOD_TO_INTEGRATION_TIME", msb_len=1)
+
+    def get_laser_mod_enabled(self):
+        return self.get_code(0xe3, label="GET_LASER_MOD_ENABLED", msb_len=1)
+
+    def get_laser_mod_pulse_width(self):
+        return self.get_code(0xdc, label="GET_LASER_MOD_PULSE_WIDTH", lsb_len=5)
+
+    def get_laser_mod_duration(self):
+        return self.get_code(0xc3, label="GET_LASER_MOD_DURATION", lsb_len=5)
+
+    def get_laser_mod_period(self):
+        return self.get_code(0xcb, label="GET_LASER_MOD_PERIOD", lsb_len=5)
+
+    def get_laser_mod_pulse_delay(self): 
+        return self.get_code(0xca, label="GET_LASER_MOD_PULSE_DELAY", lsb_len=5)
+
+    def get_selected_adc(self):
+        return self.get_code(0xee, label="GET_SELECTED_ADC", msb_len=1)
+
+    def get_vr_continuous_ccd(self):
+        return self.get_code(0xcc, label="GET_VR_CONTINUOUS_CCD", msb_len=1)
+
+    def get_vr_num_frames(self):
+        return self.get_code(0xcd, label="GET_VR_NUM_FRAMES", msb_len=1)
+
+    def get_opt_actual_integration_time(self):
+        return self.get_upper_code(0x0b, label="GET_OPT_ACT_INT_TIME", msb_len=1)
+
+    def get_opt_area_scan(self):
+        return self.get_upper_code(0x0a, label="GET_OPT_AREA_SCAN", msb_len=1)
+        
+    def get_opt_cf_select(self):
+        return self.get_upper_code(0x07, label="GET_OPT_CF_SELECT", msb_len=1)
+
+    def get_opt_data_header_tab(self):
+        return self.get_upper_code(0x06, label="GET_OPT_DATA_HEADER_TAB", msb_len=1)
+
+    def get_opt_horizontal_binning(self):
+        return self.get_upper_code(0x0c, label="GET_OPT_HORIZONTAL_BINNING", msb_len=1)
+        
+    def get_opt_integration_time_resolution(self):
+        return self.get_upper_code(0x05, label="GET_OPT_INTEGRATION_TIME_RESOLUTION", msb_len=1)
+
+    def get_opt_laser_control(self):
+        return self.get_upper_code(0x09, label="GET_OPT_LASER_CONTROL", msb_len=1)
 
     ##
     # @todo move string-to-enum converter to AppLog
@@ -1144,7 +1236,7 @@ class FeatureIdentificationDevice(object):
             self.set_laser_enable(True if value else False)
 
         elif setting == "integration_time_ms":
-            self.set_integration_time(int(round(value)))
+            self.set_integration_time_ms(int(round(value)))
 
         elif setting == "detector_tec_setpoint_degC":
             self.set_detector_tec_setpoint_degC(int(round(value)))

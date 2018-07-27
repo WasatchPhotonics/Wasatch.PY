@@ -154,7 +154,7 @@ class StrokerProtocolDevice(object):
                 raise
 
     ## Read the integration time stored on the device. 
-    def get_integration_time(self):
+    def get_integration_time_ms(self):
         result = self.get_code(0xBF)
 
         curr_time = (result[2] * 0x10000) + (result[1] * 0x100) + result[0]
@@ -257,14 +257,14 @@ class StrokerProtocolDevice(object):
     ## Mustard Tree PID=0x0001 class devices have a hard-coded integration time
     #  resolution of 10ms; e.g. if you set a value of 500, you will get a 5
     #  second integration.
-    def set_integration_time(self, value):
+    def set_integration_time_ms(self, value):
         self.settings.state.integration_time_ms = value
 
         if self.pid == 1:
             log.debug("scaled Mustard Tree integration time by 0.1")
             value = int(value / 10)
 
-        return self.send_code(0xB2, value, label="SET_INTEGRATION_TIME")
+        return self.send_code(0xB2, value, label="SET_INTEGRATION_TIME_MS")
 
     # ##########################################################################
     # Temperature
@@ -525,7 +525,7 @@ class StrokerProtocolDevice(object):
             self.set_laser_enable(True if record.value else False)
 
         elif record.setting == "integration_time_ms":
-            self.set_integration_time(int(record.value))
+            self.set_integration_time_ms(int(record.value))
 
         elif record.setting == "detector_tec_setpoint_degC":
             self.set_tec_setpoint_degC(int(record.value))

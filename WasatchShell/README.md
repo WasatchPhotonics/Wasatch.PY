@@ -1,69 +1,32 @@
 # Overview
 
-Before there was Wasatch.PY (the open-source back-end of ENLIGHTEN), there was
-"wasatch-shell.py", a simple Python script allowing an ASCII request-response 
-control of spectrometers through STDIN / STDOUT pipes.
-
-This script is not recommended for production use in new development, but is a 
-simple and useful demonstration of how to enable and query various functions,
-as well as perform quick tests from the command-line.
-
-Note that the local copy of EEPROM.py is snapshot of ../wasatch/EEPROM.py, and 
-can be freely updated from that source.
+This script is a simple interactive wrapper over Wasatch.PY, providing
+command-line access to most functions including simple acquisitions.
 
 # Sample Execution
 
     $ ./wasatch-shell.py
-    help
-
-    open
-
-    setinttime
-    100
-
-    # set laser to 70% power
-    setlsi
-    100
-    70
-
-    # enable laser
-    setlse
+    wp> help
+    ...
+    wp> open
     1
-
-    # confirm laser firing
-    get_laser
-
-    # set laser to 50mW
-    set_lsi_mw
-    50
-
-    # confirm laser output power
-    get_photodiode_mw
+    wp> set_integration_time_ms 100
+    wp> set_laser_power_perc 70
+    wp> set_laser_enable on
+    wp> get_laser_enabled
+    1
+    wp> get_secondary_adc_calibrated
     49.1342855427
-
-    # read laser temperature
-    get_laser_temp
-
-    # read secondary adc
-    get_photodiode
-    1152
-
-    startacquisition
-
-    getspectrum
-
-    # disable laser
-    setlse
-    0
-
-    # confirm laser disengaged
-    get_laser
-
-    # shutdown
-    close
+    wp> get_laser_temperature_degc
+    wp> get_spectrum
+    wp> get_spectrum_pretty
+    wp> get_spectrum_save foo.csv
+    wp> quit
 
 # Version History
 
+- 07-27-2018 2.0.0
+    - changed to a wrapper over Wasatch.PY
 - 07-24-2018 1.0.7
     - added auto\_balance
 - 05-31-2018 1.0.6

@@ -3,550 +3,416 @@
 #                               wasatch-shell.py                               #
 ################################################################################
 #                                                                              #
-#  DESCRIPTION:  A simple interactive shell allowing the caller to control     #
-#                a spectrometer via a blocking ASCII request-response          #
-#                pattern from 'expect' or similar.                             #
+#  DESCRIPTION:  An interactive wrapper over a wasatch.WasatchDevice.          #
 #                                                                              #
 #  EXAMPLE:      $ ./wasatch-shell.py [--logfile path]                         #
 #                  open                                                        #
-#                  setinttime                                                  #
+#                  set_integration_time_ms                                     #
 #                  100                                                         #
-#                  startacquisition                                            #
-#                  getspectrum                                                 #
+#                  get_spectrum                                                #
 #                  close                                                       #
 #                                                                              #
 ################################################################################
 
-import usb.core
 import argparse
 import logging
 import sys
 import os
+import re
 
-from EEPROM import EEPROM
+import wasatch
 
-# constants
-SCRIPT_VERSION = "1.0.6"
-HOST_TO_DEVICE = 0x40
-DEVICE_TO_HOST = 0xC0
-BUFFER_SIZE    = 8
-ZZ             = [0] * BUFFER_SIZE
-TIMEOUT_MS     = 1000
-PIXEL_COUNT    = 1024
+from wasatch import utils
+from wasatch.WasatchBus         import WasatchBus
+from wasatch.WasatchDevice      import WasatchDevice
+from wasatch.BalanceAcquisition import BalanceAcquisition
 
-################################################################################
-# Utility Functions
-################################################################################
+VERSION = "2.0.0"
 
-def printHelp():
-    print """
-    Version: %s
-    The following commands are supported:
+log = logging.getLogger(__name__)
 
-        OPEN, CLOSE, SETINTTIME, GETSPECTRUM, STARTACQUISITION,
-        GETDATA, GETTEMP, SETLSI, GETCONFIG, SETLSE, SETTECE,
-        GETTEMPSET, SETTEMPSET, GET_INTEGRATION_TIME, GET_CCD_GAIN,
-        GET_LASER_RAMPING_MODE, GET_HORIZ_BINNING, SELECT_LASER,
-        CUSTOMSET, CUSTOMGET, CUSTOMGET12, CUSTOMGET3, 
-        CONNECTION_CHECK, SCRIPT_VERSION, GET_LASER_TEMP, 
-        GET_PHOTODIODE, GET_PHOTODIODE_MW, SET_LSI_MW, 
-        SET_TEMP_SETPOINT_DEGC, GET_TEMP_DEGC, GET_CONFIG_JSON,
-        HAS_PHOTODIODE_CALIBRATION, AUTO_BALANCE
-
-    The following getters are also available:""" % SCRIPT_VERSION
-    print sorted(getters.keys())
-
-def Get_Value(Command, ByteCount, wValue=0, wIndex=0, raw=False):
-    RetVal = 0
-    if Command == 0:
-        return 0
-    RetArray = dev.ctrl_transfer(DEVICE_TO_HOST, Command, wValue, wIndex, ByteCount, TIMEOUT_MS)
-    if raw:
-        return RetArray
-    for i in range (0, ByteCount):
-        RetVal = RetVal * 256 + RetArray[ByteCount - i - 1]
-    return RetVal
-
-def Get_Value_12bit(Command):
-    RetVal = 0
-    if Command == 0:
-        return 0
-    RetArray = dev.ctrl_transfer(DEVICE_TO_HOST, Command, 0, 0, 2, TIMEOUT_MS)
-    RetVal = RetArray[0] * 256 + RetArray[1];
-    return RetVal
-
-def Test_Set(SetCommand, GetCommand, SetValue, RetLen):
-    SetValueHigh = (SetValue >> 16) & 0xffff
-    SetValueLow  =  SetValue        & 0xffff
+class WasatchShell(object):
     
-    Ret = dev.ctrl_transfer(HOST_TO_DEVICE, SetCommand, SetValueLow, int(SetValueHigh), ZZ, TIMEOUT_MS)
-    if BUFFER_SIZE != Ret:
-        logging.debug('Set {0:x}    Fail'.format(SetCommand))
-        return False
-    else:
-        RetValue = Get_Value(GetCommand, RetLen)
-        if RetValue is not None and SetValue == RetValue:
-            return True
-        else:
-            logging.debug('Get {0:x} Failure. Txd:0x{1:x} Rxd:0x{2:x}'.format(GetCommand, SetValue, RetValue))
-            return False
+    def __init__(self):
+        self.device = None
 
-################################################################################
-# Spectrometer Features
-################################################################################
+        # process command-line options
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--logfile", default="wasatch.log", help="where to write log messages")
+        parser.add_argument("--log-level", type=str, default="INFO", help="logging level [DEBUG,INFO,WARNING,ERROR,CRITICAL]")
+        self.args = parser.parse_args()
 
-def data_poll():
-    while Get_Value(0xd4, 4) == 0:
-        pass
+        # configure logging
+        logging.basicConfig(filename=self.args.logfile, 
+                            level=logging.DEBUG, 
+                            format='%(asctime)s.%(msecs)03d %(name)s %(levelname)-8s %(message)s', 
+                            datefmt='%m/%d/%Y %I:%M:%S')
 
-def setIntTime(time):
-    global integration_time_ms
-    print(Test_Set(0xb2, 0xbf, time, 6))      # Set integration time
-    integration_time_ms = time
-    logging.debug("integration_time_ms -> %d", time)
+        # pass-through calls to any of these gettors (note names are lowercased)
+        self.gettors = {}
+        for func_name in [ 
+            "get_actual_frames",
+            "get_actual_integration_time",
+            "get_ccd_sensing_threshold",
+            "get_ccd_threshold_sensing_mode",
+            "get_ccd_trigger_source",
+            "get_detector_gain",
+            "get_detector_offset",
+            "get_detector_temperature_degC",
+            "get_detector_temperature_raw",
+            "get_external_trigger_output",
+            "get_fpga_firmware_version",
+            "get_integration_time_ms",
+            "get_interlock",
+            "get_laser_enabled",
+            "get_laser_mod_duration",
+            "get_laser_mod_enabled",
+            "get_laser_mod_period",
+            "get_laser_mod_pulse_delay",
+            "get_laser_mod_pulse_width",
+            "get_laser_temperature_degC",
+            "get_laser_temperature_raw",
+            "get_link_laser_mod_to_integration_time",
+            "get_microcontroller_firmware_version",
+            "get_opt_actual_integration_time",
+            "get_opt_area_scan",
+            "get_opt_cf_select",
+            "get_opt_data_header_tab",
+            "get_opt_horizontal_binning",
+            "get_opt_integration_time_resolution",
+            "get_opt_has_laser",
+            "get_opt_laser_control",
+            "get_secondary_adc_calibrated",
+            "get_secondary_adc_raw",
+            "get_selected_adc",
+            "get_sensor_line_length",
+            "get_tec_enabled",
+            "get_tec_enabled",
+            "get_vr_continuous_ccd",
+            "get_vr_num_frames" ]:
+            self.gettors[func_name.lower()] = func_name
 
-def getSpectrum(quiet=True):
-    startAcquisition()
-    return getData(quiet=quiet)
+    # ##############################################################################
+    # Utility Functions
+    # ##############################################################################
 
-def startAcquisition():
-    Test_Set(0xad, 0, 0, 0)      # Set acquisition
+    def usage(self):
+        print "Version: %s" % VERSION
+        print """The following commands are supported:
+        help                           - this screen
+        version                        - program and library versions
+                                       
+        open                           - initialize connected spectrometer
+        close                          - exit program (synonyms 'exit', 'quit')
+                                       
+        set_integration_time_ms        - takes integer argument
+        set_laser_power_mw             - takes float argument
+        set_laser_enable               - takes bool argument (on/off, true/false, 1/0)
+        set_tec_enable                 - takes bool argument
+        set_detector_tec_setpoint_degc - takes float argument
 
-def getData(quiet=True):
-    data_poll()
-    Data = dev.read(0x82, PIXEL_COUNT * 2)
+        balance_acquisition            - takes mode [integ, laser, laser_and_integ], 
+                                            intensity, threshold, x, unit [px, nm, cm]
 
-    spectrum = []
-    for j in range (0, int((PIXEL_COUNT * 2)/32), 1):
-        for i in range (0, 31, 2):
-            spectrum.append(Data[j*32+i+1]*256+Data[j*32+i])
-    logging.debug("returned %d pixels", len(spectrum))
+        get_spectrum                   - print received spectrum
+        get_spectrum_pretty            - graph received spectrum
+        get_spectrum_save              - save spectrum to filename as CSV
+        get_config_json                - return EEPROM as JSON string
+        get_all                        - calls all gettors
+        """
+        print "The following gettors are also available:"
+        for k in sorted(self.gettors.keys()):
+            print "        %s" % k
 
-    if quiet:
-        return spectrum
-    else:
-        for pixel in spectrum:
-            print(pixel)
-        logging.debug("getSpectrum: max = %d", get_max(spectrum))
+    def disconnected(self):
+        self.display("ERROR: no device connected")
 
-def Open_Spectrometers():
-    logging.debug("in open spectrometers")
-    dev = usb.core.find(idVendor=0x24aa, idProduct=0x1000)
-    logging.debug("opened spectrometer")
-    print(dev.bNumConfigurations)
+    def parse_result(self, result):
+        return "1" if result else "0"
 
-    return dev
+    def get_next(self, tok):
+        if not tok:
+            line = sys.stdin.readline().strip().lower()
+            for s in line.split():
+                tok.append(s)
+        return tok.pop(0)
 
-def getTemp():
-    return Get_Value_12bit(0xd7)
+    def read_bool(self, tok):
+        s = self.get_next(tok)
+        return re.match("1|true|yes|on", s.lower())
 
-def getTempDegC():
-    raw = getTemp()
-    coeffs = eeprom.adc_to_degC_coeffs
-    degC = coeffs[0] \
-         + coeffs[1] * raw \
-         + coeffs[2] * raw * raw
-    return degC
-    
-def setLSI(period, width):
-    if width > period:
-        logging.error("setLSI: width %d exceeded period %d", width, period)
-        print False
-        return
+    def read_int(self, tok):
+        return int(self.get_next(tok))
 
-    if(Test_Set(0xc7, 0xcb, period, 5)):        # SET_MOD_PERIOD
-        logging.debug("laser_pulse_period -> %d", period)
-        print(Test_Set(0xdb, 0xdc, width, 5))   # SET_LASER_MOD_PULSE_WIDTH
-        logging.debug("laser_pulse_width -> %d", width)
-    else:
-        print(False)
+    def read_float(self, tok):
+        return float(self.get_next(tok))
 
-def setLaserPowerMW(requestedMW):
-    global laser_power_mW
-    coeffs = eeprom.laser_power_coeffs
-    mW = min(eeprom.max_laser_power_mW, max(eeprom.min_laser_power_mW, requestedMW))
-
-    # note: the laser_power_coeffs convert mW to percent, not tenth_percent
-    perc = coeffs[0] \
-         + coeffs[1] * mW \
-         + coeffs[2] * mW * mW \
-         + coeffs[3] * mW * mW * mW
-
-    MAX_TENTHS = 1000
-    tenth_percent = int(max(0, min(MAX_TENTHS, round(perc * 10))))
-    setLSI(MAX_TENTHS, tenth_percent)
-
-    laser_power_mW = mW
-    logging.debug("laser_power_mW -> %d", mW)
-
-def getConfig(index):
-    logging.debug("getting config with index " + str(index))
-    buf = dev.ctrl_transfer(DEVICE_TO_HOST, 0xff, 1, index, 64, TIMEOUT_MS)
-    logging.debug("config: " + str(buf))
-    for b in buf:
-        #logging.debug("b: " + str(b))
-        print(str(b))
-
-def setLightSourceEnable(enable):
-    if enable:
-        if Test_Set(0xbd, 0xe3, 1, 1):          # SET_LASER_MOD_ENABLED
-            enabled = Test_Set(0xbe, 0xe2, 1, 1)   # SET_LASER_ENABLED
-        else:
-            enabled = False
-    else:
-        enabled = Test_Set(0xbe, 0xe2, 0, 1)
-    logging.debug("laser_enabled -> %s", enabled)
-    return enabled
-
-def setTECEnable(enable):
-    if(enable):
-        print(Test_Set(0xd6, 0xda, 1, 1))
-    else:
-        print(Test_Set(0xd6, 0xda, 0, 1))
-
-def getTempSetPoint():
-    RetArray = dev.ctrl_transfer(DEVICE_TO_HOST, 0xd9, 0,0, 2, TIMEOUT_MS)
-    RetVal = RetArray[0] + RetArray[1] * 256;
-    print(RetVal)
-
-def setTempSetPoint(val):
-    return Test_Set(0xd8, 0xd9, val, 2)
-
-def setTempSetPointDegC(requestedDegC):
-    degC = max(eeprom.min_temp_degC, min(eeprom.max_temp_degC, requestedDegC))
-    coeffs = eeprom.degC_to_dac_coeffs
-    raw = coeffs[0] \
-        + coeffs[1] * degC \
-        + coeffs[2] * degC * degC
-    raw = int(max(0, min(0xfff, raw)))
-    return setTempSetPoint(raw)
-
-def getIntegrationTime():
-    RetArray = dev.ctrl_transfer(DEVICE_TO_HOST, 0xbf, 0,0, 6, TIMEOUT_MS)
-    RetVal = RetArray[0] + RetArray[1] * 256 + RetArray[2] * 65536;
-    print(RetVal)
-
-def getCCDGain():
-    RetArray = dev.ctrl_transfer(DEVICE_TO_HOST, 0xc5, 0,0, 2, TIMEOUT_MS)
-    RetVal = RetArray[1] + RetArray[0] / 256.0;
-    print(RetVal)
-
-def getLaserTemp():
-    Test_Set(0xed, 0xee, 0, 1)  # select the primary ADC
-    Get_Value(0xd5, 2)          # throwaway read
-    return Get_Value(0xd5, 2)    # stable read
-
-def getPhotodiode():
-    Test_Set(0xed, 0xee, 1, 1)  # select the secondary ADC
-    Get_Value(0xd5, 2)          # throwaway read
-    return Get_Value(0xd5, 2)   # stable read
-
-def getPhotodiodeMW():
-    raw = getPhotodiode()
-    coeffs = eeprom.linearity_coeffs
-    mW = coeffs[0] \
-       + coeffs[1] * raw \
-       + coeffs[2] * raw * raw \
-       + coeffs[3] * raw * raw * raw
-    return mW
-
-def hasPhotodiodeCalibration():
-    coeffs = eeprom.linearity_coeffs
-    for i in range(4):
-        if coeffs[i] != 0.0 and coeffs[i] != -1:
-            return 1
-    return 0
-
-def initializeGetters():
-    getters = {}
-    getters["GETTECENABLE"]                             = (0xda, 1)
-    getters["GET_ACTUAL_FRAMES"]                        = (0xe4, 2)
-    getters["GET_ACTUAL_INTEGRATION_TIME"]              = (0xdf, 6)
-    getters["GET_CCD_OFFSET"]                           = (0xc4, 2)
-    getters["GET_CCD_SENSING_THRESHOLD"]                = (0xd1, 2)
-    getters["GET_CCD_THRESHOLD_SENSING_MODE"]           = (0xcf, 1)
-    getters["GET_CCD_TRIGGER_SOURCE"]                   = (0xd3, 1)
-    getters["GET_CODE_REVISION"]                        = (0xc0, 4)
-    getters["GET_EXTERNAL_TRIGGER_OUTPUT"]              = (0xe1, 1)
-    getters["GET_FPGA_REV"]                             = (0xb4, 7)
-    getters["GET_INTERLOCK"]                            = (0xef, 1)
-    getters["GET_LASER"]                                = (0xe2, 1)
-    getters["GET_LASER_MOD"]                            = (0xe3, 1)
-    getters["GET_LASER_MOD_PULSE_WIDTH"]                = (0xdc, 5)
-    getters["GET_LASER_TEMP_SETPOINT"]                  = (0xe8, 6)
-    getters["GET_LINK_LASER_MOD_TO_INTEGRATION_TIME"]   = (0xde, 1)
-    getters["GET_MOD_DURATION"]                         = (0xc3, 5)
-    getters["GET_MOD_PERIOD"]                           = (0xcb, 5)
-    getters["GET_MOD_PULSE_DELAY"]                      = (0xc4, 2)
-    getters["GET_SELECTED_LASER"]                       = (0xee, 1)
-    getters["VR_GET_CONTINUOUS_CCD"]                    = (0xcc, 1)
-    getters["VR_GET_NUM_FRAMES"]                        = (0xcd, 1)
-    getters["GET_LINE_LENGTH"]                          = (0xff, 2, 0x03)
-    getters["OPT_ACT_INT_TIME"]                         = (0xff, 1, 0x0b)
-    getters["OPT_AREA_SCAN"]                            = (0xff, 1, 0x0a)
-    getters["OPT_CF_SELECT"]                            = (0xff, 1, 0x07)
-    getters["OPT_DATA_HDR_TAB"]                         = (0xff, 1, 0x06)
-    getters["OPT_HORIZONTAL_BINNING"]                   = (0xff, 1, 0x0c)
-    getters["OPT_INT_TIME_RES"]                         = (0xff, 1, 0x05)
-    getters["OPT_LASER"]                                = (0xff, 1, 0x08)
-    getters["OPT_LASER_CONTROL"]                        = (0xff, 1, 0x09)
-    getters["READ_COMPILATION_OPTIONS"]                 = (0xff, 2, 0x04)
-    return getters
-
-def Load_EEPROM():
-    global eeprom
-    eeprom = EEPROM()
-    buffers = []
-    for page in range(6):
-        buffers.append(Get_Value(0xff, 64, 0x01, wIndex=page, raw=True))
-    eeprom.parse(buffers)
-    eeprom.dump()
-
-################################################################################
-#                                                                              #
-#                             Balance Acquisitions                             #
-#                                                                              #
-################################################################################
-
-def autoBalance(mode, wavenumber, intensity, threshold):
-    global balance_mode, balance_wavenumber, balance_intensity, balance_threshold
-
-    balance_wavenumber = wavenumber
-    balance_intensity = max(0, min(65000, intensity))
-    balance_threshold = max(0, min(15000, threshold))
-
-    mode = mode.upper().strip()
-    if mode not in ['INTEGRATION', 'LASER', 'LASER_THEN_INTEGRATION']:
-        msg = "Error: unsupported balance mode [%s]" % mode
-        logging.error(msg)
+    def display(self, msg):
+        log.info(msg)
         print msg
-        return
 
-    balance_mode = mode
+    # ##############################################################################
+    # command loop
+    # ##############################################################################
 
-    if mode == "INTEGRATION":
-        autoBalanceIntegration()
-    if mode == "LASER":
-        autoBalanceLaser()
-    if mode == "LASER_THEN_INTEGRATION":
-        autoBalanceLaser()
-        autoBalanceIntegration()
-
-def autoBalanceIntegration():
-    overshoot_count = 0
-    while True:
-        spectrum = getSpectrum()
-        peak = get_max(spectrum)
-        delta = abs(peak - balance_intensity)
-
-        # exit case
-        if delta <= balance_threshold:
-            print "Ok integration_time_ms %d, laser_power_mW %d" % (integration_time_ms, laser_power_mW)
-            return
-
-        logging.debug("BalanceAcquisition: peak %d, integration_time_ms %d, laser_power_mW %d" % (peak, integration_time_ms, laser_power_mW))
-
-        # adjust
-        if peak > balance_intensity:
-            new_integ = int(integration_time_ms / 2)
-            overshoot_count += 1
-        else:
-            new_integ = int(1.0 * integration_time_ms * balance_intensity / peak)
-
-        # round
-        new_integ = max(10, min(5000, new_integ))
-
-        if overshoot_count > 5:
-            logging.error("BalanceAcquisition: too many overshoots")
-            print "ERROR: failed to balance acquisition"
-            return
-
-        logging.debug("BalanceAcquisition: new_integ = %d", new_integ)
-        setIntTime(new_integ)
-
-# trying not to add Numpy, etc dependencies
-def get_max(spectrum):
-    if spectrum is None:
-        return 0
-    peak = spectrum[0]
-    for pixel in spectrum:
-        if pixel > peak:
-            peak = pixel
-    return peak
-
-################################################################################
-#                                                                              #
-#                                  main()                                      #
-#                                                                              #
-################################################################################
-
-# process command-line options
-parser = argparse.ArgumentParser()
-parser.add_argument("--logfile", default="wasatch.log")
-args = parser.parse_args()
-
-# configure logging
-logging.basicConfig(filename=args.logfile, 
-                    level=logging.DEBUG, 
-                    format='%(asctime)s.%(msecs)03d %(message)s', 
-                    datefmt='%m/%d/%Y %I:%M:%S')
-logging.info("-" * 80)
-logging.info("wasatch-shell version %s invoked" % SCRIPT_VERSION)
-
-dev = None
-eeprom = None
-getters = initializeGetters()
-
-balance_intensity   = 45000
-balance_threshold   =  2000 
-balance_wavenumber  =  1000
-balance_mode        = "INTEGRATION"
-laser_power_mW      = 0
-integration_time_ms = 0
-
-try:
-    while True:
-        logging.debug("waiting for command")
-        command = sys.stdin.readline().strip().upper()
-        logging.debug("received command: " + command);
-
-        # ignore comments
-        if command.startswith('#') or len(command) == 0:
-            pass
-
-        elif command in getters:
-            args = getters[command]
-            if len(args) == 2:
-                print Get_Value(args[0], args[1])
-            else:
-                print Get_Value(args[0], args[1], args[2])
-            
-        elif command == "OPEN":
-            try:
-                dev = Open_Spectrometers()
-                Load_EEPROM()
-            except Exception as e:
-                logging.error(e, exc_info=1)
-                print(0)
-                break
-
-        elif command == "CLOSE":
-            break
-
-        elif command == "SETINTTIME":
-            setIntTime(int(sys.stdin.readline()))
-        elif(command == "GETSPECTRUM"):
-            getSpectrum(quiet=False)
-        elif command == "STARTACQUISITION":
-            startAcquisition()
-        elif command == "GETDATA":
-            getData()
-        elif command == "GETTEMP":
-            print getTemp()
-        elif command == "GET_TEMP_DEGC":
-            print getTempDegC()
-        elif command == "SETLSI":
-            setLSI(int(sys.stdin.readline()), int(sys.stdin.readline()))
-        elif command == "SET_LSI_MW":
-            setLaserPowerMW(requestedMW=float(sys.stdin.readline()))
-        elif command == "GETCONFIG":
-            getConfig(int(sys.stdin.readline()))
-        elif command == "GET_CONFIG_JSON":
-            print eeprom.json()
-        elif command == "SETLSE" or command.startswith("SET_LASER_ENABLE"):
-            print setLightSourceEnable(int(sys.stdin.readline()))
-        elif command == "SETTECE":
-            setTECEnable(int(sys.stdin.readline()))
-        elif command == "GETTEMPSET":
-            getTempSetPoint()
-        elif command == "SETTEMPSET":
-            print setTempSetPoint(int(sys.stdin.readline()))
-        elif command == "SET_TEMP_SETPOINT_DEGC":
-            print setTempSetPointDegC(float(sys.stdin.readline()))
-        elif command == "GET_INTEGRATION_TIME":  # MZ: some have underbars, some don't...?
-            getIntegrationTime()
-        elif command == "GET_CCD_GAIN":
-            getCCDGain()
-        elif command == "GET_LASER_RAMPING_MODE":
-            if Get_Value(0xff, 1, 0x09) == 2:
-                print(Get_Value(0xea, 1))
-            else:
-                print(0)
-        elif command == "GET_HORIZ_BINNING":
-            if Get_Value(0xff, 1, 0x0c) == 1:
-                print(Get_Value(0xbc, 1))
-            else:
-                print(0)
-
-        elif command == "CUSTOMSET":
-            print(Test_Set(int(sys.stdin.readline(), 16), 
-                           int(sys.stdin.readline(), 16), 
-                           int(sys.stdin.readline(), 16), 
-                           int(sys.stdin.readline(), 16)))
-
-        elif command == "CUSTOMGET":
-            print(Get_Value(int(sys.stdin.readline(), 16), 
-                            int(sys.stdin.readline(), 16)))
-
-        elif command == "CUSTOMGET12":
-            print(Get_Value_12bit(int(sys.stdin.readline(), 16)))
-            
-        elif command == "CUSTOMGET3":
-            print(Get_Value(int(sys.stdin.readline(), 16), 
-                            int(sys.stdin.readline(), 16), 
-                            int(sys.stdin.readline(), 16)))
-
-        elif command == "CONNECTION_CHECK":
-            try:
-                Get_Value(0xe3, 1) # GET_LASER_MOD_ENABLED
-                print(True)
-            except Exception as e:
-                print(False)
-
-        # MZ: added
-        elif command == "SELECT_LASER":
-            print(Test_Set(0xed, 0xee, int(sys.stdin.readline(), 16), 1))
-
-        elif command == "GET_PHOTODIODE":
-            print getPhotodiode()
-
-        elif command == "GET_PHOTODIODE_MW":
-            print getPhotodiodeMW()
-
-        elif command == "HAS_PHOTODIODE_CALIBRATION":
-            print hasPhotodiodeCalibration()
-
-        elif command == "GET_LASER_TEMP":
-            print getLaserTemp()
-
-        elif command == "AUTO_BALANCE":
-            autoBalance(mode=sys.stdin.readline(),
-                        wavenumber=int(sys.stdin.readline()),
-                        intensity=int(sys.stdin.readline()), 
-                        threshold=int(sys.stdin.readline()))
-
-        elif command == "HELP": 
-            printHelp()
-
-        elif command == "SCRIPT_VERSION":
-            print(SCRIPT_VERSION)
-
-        else:
-            logging.debug("Unknown command: " + str(command))
-            break
+    def run(self):
+        self.display("-" * 80)
+        self.display("wasatch-shell version %s invoked (Wasatch.PY %s)" % (VERSION, wasatch.version))
 
         try:
-            sys.stdout.flush()
-        except:
-            logging.error("caller has closed stdout...exiting")
-            break
+            while True:
+                sys.stdout.write("wp> ")
+                line = sys.stdin.readline().strip().lower()
+                log.debug("received: " + line);
 
-    # disable the laser if connected
-    if dev is not None:
-        setLightSourceEnable(0)
+                # ignore comments
+                if line.startswith('#') or len(line) == 0:
+                    continue
 
-except Exception as e:
-    logging.error(e, exc_info=1)
-    raise
+                # tokenize
+                tok = line.split()
+                command = tok.pop(0)
 
-logging.info("wasatch-shell exiting")
+                # these commands always work
+                if command == "help":
+                    self.usage()
+                    continue
+
+                elif command == "version":
+                    self.display("WasatchShell version: %s" % VERSION)
+                    self.display("Wasatch.PY   version: %s" % wasatch.version)
+                    continue
+
+                if re.match("close|quit|exit", command):
+                    break
+
+                # these commands work if currently closed
+                if self.device is None:
+                    if command == "open":
+                        self.display("1" if self.open() else "0")
+                    else:
+                        self.display("ERROR: must open spectrometer first")
+
+                else:
+                    # anything past this point assumes spectrometer already open
+
+                    # pass-through gettors
+                    if command in self.gettors:
+                        func_name = self.gettors[command]
+                        value = getattr(self.device.hardware, func_name)()
+                        if isinstance(value, bool):
+                            self.display(1 if value else 0)
+                        else:
+                            self.display(value)
+                        
+                    # special processing for these
+                    elif command == "get_spectrum":
+                        self.get_spectrum()
+
+                    elif command == "get_spectrum_pretty":
+                        self.get_spectrum_pretty()
+
+                    elif command == "get_spectrum_save":
+                        self.get_spectrum_save(tok)
+
+                    elif command == "get_config_json":
+                        self.display(self.device.settings.eeprom.json())
+
+                    elif command == "get_all":
+                        self.get_all()
+
+                    # currently these are the only setters implemented
+                    elif command == "set_integration_time_ms":
+                        self.device.hardware.set_integration_time_ms(self.read_int(tok))
+                        self.display(1)
+
+                    elif command == "set_laser_power_mw":
+                        self.device.hardware.set_laser_power_mW(self.read_float(tok))
+                        self.display(1)
+
+                    elif command == "set_laser_enable":
+                        self.device.hardware.set_laser_enable(self.read_bool(tok))
+                        self.display(1)
+
+                    elif command == "set_tec_enable":
+                        self.device.hardware.set_tec_enable(self.read_bool(tok))
+                        self.display(1)
+
+                    elif command == "set_detector_tec_setpoint_degc":
+                        self.device.hardware.set_detector_tec_setpoint_degC(self.read_float(tok))
+                        self.display(1)
+
+                    elif command == "balance_acquisition":
+                        self.balance_acquisition(tok)
+
+                    else:
+                        self.display("ERROR: unknown command: " + command)
+
+                # whatever happend, flush stdout
+                try:
+                    sys.stdout.flush()
+                except:
+                    self.display("ERROR: caller has closed stdout...exiting")
+                    break
+
+        except Exception as e:
+            log.error(e, exc_info=1)
+            raise
+
+        # disable the laser if connected
+        if self.device is not None:
+            self.device.hardware.set_laser_enable(False)
+            self.device.disconnect()
+            self.device = None
+
+        log.info("wasatch-shell exiting")
+
+    ## 
+    # If the current device is disconnected, and there is a new device, 
+    # attempt to connect to it. """
+    def open(self):
+        # if we're already connected, nevermind
+        if self.device is not None:
+            return False
+
+        # lazy-load a USB bus
+        log.debug("instantiating WasatchBus")
+        bus = WasatchBus()
+        if not bus.devices:
+            self.display("No Wasatch USB spectrometers found.")
+            return False
+
+        log.debug("open: trying to connect to new device on bus 1")
+        uid = bus.devices[0]
+        device = WasatchDevice(uid)
+
+        ok = device.connect()
+        if not ok: 
+            log.critical("open: can't connect to device on bus 1")
+            return
+
+        log.info("open: device connected")
+        self.device = device
+
+        # validate gettors (in case this is used against a StrokerProtocol unit, for instance)
+        for func_name in self.gettors.keys():
+            if not hasattr(device.hardware, self.gettors[func_name]):
+                self.display("WARNING: gettor %s (%s) not found in device" % (func_name, self.gettors[func_name]))
+                del self.gettors[func_name]
+
+        # default to minimum integration time
+        self.device.hardware.set_integration_time_ms(self.device.settings.eeprom.min_integration_time_ms)
+
+        return True
+
+    def get_spectrum(self):
+        reading = self.device.acquire_data()
+        if reading is None or reading.spectrum is None:
+            return self.display("ERROR: get_spectrum failed")
+        log.debug("received %d pixels", len(reading.spectrum))
+        for pixel in reading.spectrum:
+            print pixel
+
+    def get_spectrum_save(self, tok):
+        reading = self.device.acquire_data()
+        if reading is None or reading.spectrum is None:
+            return self.display("ERROR: get_spectrum failed")
+
+        filename = tok[0] if tok[0] else datetime.datetime.now().strftime("%Y%m%d-%H%M%S.csv")
+        with open(filename, "w") as outfile:
+            for i in range(self.device.settings.pixels()):
+                outfile.write("%d,%.2f" % (i, self.device.settings.wavelengths[i]))
+                if self.device.settings.wavenumbers:
+                    outfile.write(",%.2f" % self.device.settings.wavenumbers[i])
+                outfile.write(",%d\n" % reading.spectrum[i])
+
+    def get_spectrum_pretty(self):
+        reading = self.device.acquire_data()
+        if reading is None or reading.spectrum is None:
+            return self.display("ERROR: get_spectrum failed")
+        spectrum = reading.spectrum
+
+        # histogram into bins
+        spectral_min = min(spectrum)
+        spectral_max = max(spectrum)
+        avg = 1.0 * sum(spectrum) / len(spectrum)
+        cols = 80
+        bins = [0] * cols
+        for i in range(len(spectrum)):
+            col = int(1.0 * cols * i / len(spectrum))
+            bins[col] += spectrum[i] - spectral_min
+
+        # display histogram
+        bin_hi = max(bins)
+        height = 24
+        for row in range(height - 1, -1, -1):
+            s = "| "
+            for col in range(cols):
+                s += "*" if bins[col] >= (1.0 * row / height) * bin_hi else " "
+            self.display(s)
+
+        self.display("+" + "-" * cols)
+        self.display("  Min: %8.2f  Max: %8.2f  Mean: %8.2f  (passband %.2f, %.2fnm)" % (
+            spectral_min, spectral_max, avg, self.device.settings.wavelengths[0], self.device.settings.wavelengths[-1]))
+
+    def balance_acquisition(self, tok):
+        unit = "px"
+        x_value = None
+        threshold = 2500
+        intensity = 45000
+        mode = "integration"
+        
+        if len(tok) > 5:
+            return self.display("ERROR: balance takes mode [integ, laser, laser_and_integ], intensity, threshold, x-value, unit [px, nm, cm]")
+
+        if len(tok) == 5:
+            s = tok[4].strip().lower()
+            if re.match('(px|cm|nm)$', s):
+                unit = s
+            else:
+                return self.display("ERROR: invalid unit " + s)
+        
+        if len(tok) >= 4:
+            x_value = float(tok[3])
+
+        if len(tok) >= 3:
+            threshold = float(tok[2])
+
+        if len(tok) >= 2:
+            intensity = float(tok[1])
+
+        if len(tok) >= 1:
+            mode = tok[0]
+
+        if x_value is not None:
+            if unit == "px":
+                pixel = int(x_value)
+            elif unit == "nm":
+                pixel = utils.find_nearest_index(self.device.settings.wavelengths, x_value)
+            elif unit == "cm" and self.device.settings.wavenumbers:
+                pixel = utils.find_nearest_index(self.device.settings.wavenumbers, x_value)
+            else:
+                return self.display("ERROR: can't determine pixel from %s %s" % (x_value, unit))
+
+        if self.device.balance_acquisition(mode, intensity, threshold, pixel):
+            self.display("Ok integration_time_ms %s laser_power %s %s" % (
+                self.device.settings.state.integration_time_ms,
+                self.device.settings.state.laser_power, 
+               "mW" if self.device.settings.state.laser_power_in_mW else "percent"))
+
+    def get_all(self):
+        for command in sorted(self.gettors):
+            func_name = self.gettors[command]
+            value = getattr(self.device.hardware, func_name)()
+            if isinstance(value, bool):
+                value = 1 if value else 0
+            self.display("%-40s: %s" % (command, value))
+
+# ##############################################################################
+# main()
+# ##############################################################################
+
+shell = None
+if __name__ == "__main__":
+    shell = WasatchShell()
+    shell.run()
