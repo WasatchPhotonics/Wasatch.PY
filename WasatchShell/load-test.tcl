@@ -4,25 +4,27 @@
 ################################################################################
 # 
 #  DESCRIPTION:  Allows user to "hammer" the spectrometer with a repeatable 
-#                pattern of operations in an arbitrarily complex or heavity
+#                pattern of operations in an arbitrarily complex or heavy
 #                load in order to ferret-out any underlying communication 
-#                issues which only emit under conditions of heavy duress.
+#                issues which only emit under conditions of duress.
 #
 #  INVOCATION:   $ ./load-test.tcl [outer_loops] [inner_loops}
 #                  (value <= 0 means run indefinitely)
 #
 #  NOTES:        The script is written using TCL's "expect" engine; see
-#                https://www.tcl.tk/man/expect5.31/expect.1.html
+#                https://en.wikipedia.org/wiki/Expect
 #
 ################################################################################
 
+# constants
 set script_name "./wasatch-shell.py"
-set max_outer_loop 5
-set max_inner_loop 10
 set prompt "wp>"
+set success "1\r"
 set timeout 1
 
 # process cmd-line arguments
+set max_outer_loop 5
+set max_inner_loop 10
 if { [llength $argv] > 0 } {
     set max_outer_loop [lindex $argv 0]
     if { [llength $argv] > 1 } {
@@ -30,17 +32,16 @@ if { [llength $argv] > 0 } {
     }
 }
 
-puts [format "outer loops: %d" $max_outer_loop]
-puts [format "inner loops: %d" $max_inner_loop]
-
-# this is the script we're going to be testing
+# run the wasatch-shell script
 spawn $script_name
 
+# confirm the script launches correctly
 expect "wasatch-shell version"
 expect $prompt
 
+# open the spectrometer
 send -- "open\r"
-expect "1\r"
+expect $success
 expect $prompt
 
 puts "\rSuccessfully enumerated spectrometer"
@@ -58,23 +59,23 @@ for {set outer_loop 0} {$max_outer_loop <= 0 || $outer_loop < $max_outer_loop} {
     expect $prompt
 
     send -- "set_integration_time_ms 100\r"
-    expect "1\r"
+    expect $success
     expect $prompt
 
     send -- "set_detector_tec_setpoint_degc 10\r"
-    expect "1\r"
+    expect $success
     expect $prompt
 
     send -- "set_tec_enable on\r"
-    expect "1\r"
+    expect $success
     expect $prompt
 
     send -- "set_laser_power_mw 70\r"
-    expect "1\r"
+    expect $success
     expect $prompt
 
     send -- "set_laser_enable on\r"
-    expect "1\r"
+    expect $success
     expect $prompt
 
     for {set inner_loop 0} {$max_inner_loop <= 0 || $inner_loop < $max_inner_loop} {incr inner_loop 1} {
@@ -82,7 +83,7 @@ for {set outer_loop 0} {$max_outer_loop <= 0 || $outer_loop < $max_outer_loop} {
         expect $prompt
 
         send -- "get_tec_enabled\r"
-        expect "1\r"
+        expect $success
         expect $prompt
 
         send -- "get_integration_time_ms\r"
@@ -115,11 +116,11 @@ for {set outer_loop 0} {$max_outer_loop <= 0 || $outer_loop < $max_outer_loop} {
         expect $prompt
 
         send -- "get_laser_enabled\r"
-        expect "1\r"
+        expect $success
         expect $prompt
 
         send -- "get_laser_mod_enabled\r"
-        expect "1\r"
+        expect $success
         expect $prompt
 
         send -- "get_laser_power_ramping_enabled\r"
@@ -147,11 +148,11 @@ for {set outer_loop 0} {$max_outer_loop <= 0 || $outer_loop < $max_outer_loop} {
     }
 
     send -- "set_tec_enable off\r"
-    expect "1\r"
+    expect $success
     expect $prompt
 
     send -- "set_laser_enable off\r"
-    expect "1\r"
+    expect $success
     expect $prompt
 }
 
