@@ -673,11 +673,17 @@ class FeatureIdentificationDevice(object):
             self.set_laser_power_perc(100.0)
 
         self.settings.state.laser_enabled = flag
-        if flag and self.settings.state.laser_power_ramping_enabled:
+        if flag and self.get_laser_power_ramping_enabled():
             self.set_laser_enable_ramp()
         else:
             self.set_laser_enable_immediate(flag)
         return True
+
+    def set_laser_power_ramping_enable(self, flag):
+        self.settings.state.laser_power_ramping_enabled = flag
+
+    def get_laser_power_ramping_enabled(self):
+        return self.settings.state.laser_power_ramping_enabled
 
     def set_laser_enable_immediate(self, flag):
         value = 1 if flag else 0
@@ -785,7 +791,7 @@ class FeatureIdentificationDevice(object):
         self.settings.state.laser_power_in_mW = False
         log.debug("set_laser_power_perc: range (0, 100), requested %.2f, applying %.2f", value_in, value)
 
-        if self.settings.state.laser_power_ramping_enabled and self.settings.state.laser_enabled:
+        if self.get_laser_power_ramping_enabled() and self.settings.state.laser_enabled:
             self.next_applied_laser_power = value
             return self.set_laser_enable_ramp()
         else:
@@ -963,8 +969,8 @@ class FeatureIdentificationDevice(object):
     def get_actual_frames(self):
         return self.get_code(0xe4, label="GET_ACTUAL_FRAMES", lsb_len=2)
 
-    def get_actual_integration_time(self):
-        return self.get_code(0xdf, label="GET_ACTUAL_INTEGRATION_TIME", lsb_len=3)
+    def get_actual_integration_time_us(self):
+        return self.get_code(0xdf, label="GET_ACTUAL_INTEGRATION_TIME_US", lsb_len=3)
 
     def get_detector_offset(self):
         return self.get_code(0xc4, label="GET_DETECTOR_OFFSET", lsb_len=2) # LSB is a guess
@@ -1292,8 +1298,8 @@ class FeatureIdentificationDevice(object):
         elif setting == "invert_x_axis":
             self.settings.state.invert_x_axis = True if value else False
 
-        elif setting == "laser_power_ramping_enabled":
-            self.settings.state.laser_power_ramping_enabled = True if value else False
+        elif setting == "laser_power_ramping_enable":
+            self.set_laser_power_ramping_enable(True if value else False)
 
         elif setting == "laser_power_ramp_increments":
             self.settings.state.laser_power_ramp_increments = int(value)

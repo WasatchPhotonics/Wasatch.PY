@@ -52,7 +52,7 @@ class WasatchShell(object):
         self.gettors = {}
         for func_name in [ 
             "get_actual_frames",
-            "get_actual_integration_time",
+            "get_actual_integration_time_us",
             "get_ccd_sensing_threshold",
             "get_ccd_threshold_sensing_mode",
             "get_ccd_trigger_source",
@@ -70,6 +70,7 @@ class WasatchShell(object):
             "get_laser_mod_period",
             "get_laser_mod_pulse_delay",
             "get_laser_mod_pulse_width",
+            "get_laser_power_ramping_enabled",
             "get_laser_temperature_degC",
             "get_laser_temperature_raw",
             "get_link_laser_mod_to_integration_time",
@@ -104,10 +105,12 @@ class WasatchShell(object):
                                        
         open                           - initialize connected spectrometer
         close                          - exit program (synonyms 'exit', 'quit')
+        connection_check               - confirm communication
                                        
         set_integration_time_ms        - takes integer argument
-        set_laser_power_mw             - takes float argument
         set_laser_enable               - takes bool argument (on/off, true/false, 1/0)
+        set_laser_power_mw             - takes float argument
+        set_laser_power_ramping_enable - gradually ramp laser power in software
         set_tec_enable                 - takes bool argument
         set_detector_tec_setpoint_degc - takes float argument
 
@@ -198,12 +201,7 @@ class WasatchShell(object):
 
                     # pass-through gettors
                     if command in self.gettors:
-                        func_name = self.gettors[command]
-                        value = getattr(self.device.hardware, func_name)()
-                        if isinstance(value, bool):
-                            self.display(1 if value else 0)
-                        else:
-                            self.display(value)
+                        self.run_gettor(command)
                         
                     # special processing for these
                     elif command == "get_spectrum":
@@ -220,6 +218,9 @@ class WasatchShell(object):
 
                     elif command == "get_all":
                         self.get_all()
+
+                    elif command == "connection_check":
+                        self.run_gettor("get_integration_time_ms")
 
                     # currently these are the only setters implemented
                     elif command == "set_integration_time_ms":
@@ -241,6 +242,9 @@ class WasatchShell(object):
                     elif command == "set_detector_tec_setpoint_degc":
                         self.device.hardware.set_detector_tec_setpoint_degC(self.read_float(tok))
                         self.display(1)
+
+                    elif command == "set_laser_power_ramping_enable":
+                        self.device.hardware.set_laser_power_ramping_enable(self.read_bool(tok))
 
                     elif command == "balance_acquisition":
                         self.balance_acquisition(tok)
@@ -304,6 +308,14 @@ class WasatchShell(object):
         self.device.hardware.set_integration_time_ms(self.device.settings.eeprom.min_integration_time_ms)
 
         return True
+
+    def run_gettor(self, command):
+        func_name = self.gettors[command]
+        value = getattr(self.device.hardware, func_name)()
+        if isinstance(value, bool):
+            self.display(1 if value else 0)
+        else:
+            self.display(value)
 
     def get_spectrum(self):
         reading = self.device.acquire_data()
