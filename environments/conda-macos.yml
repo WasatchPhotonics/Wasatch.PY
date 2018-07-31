@@ -12,3 +12,4 @@ dependencies:
   - pygtail==0.7.0
   - pyusb==1.0.0
   - requests==2.13.0
+  - pexpect==4.6.0

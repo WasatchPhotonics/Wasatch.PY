@@ -302,6 +302,8 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2018-07-31 0.9.9
+    - added dependency on pexpect for testing
 - 2018-07-31 0.9.8
     - added utils.interpolate\_array
 - 2018-07-13 0.9.7
