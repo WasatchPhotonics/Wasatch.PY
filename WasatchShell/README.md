@@ -81,6 +81,8 @@ multi-process pipeline used by ENLIGHTEN.
 
 # Version History
 
+- 07-31-2018 2.0.2
+    - added set\_interpolated\_x\_axis\_cm
 - 07-27-2018 2.0.1
     - added load-test.tcl
 - 07-27-2018 2.0.0

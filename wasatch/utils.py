@@ -269,3 +269,8 @@ def find_nearest_index(L, value):
 def find_nearest_value(L, value):
     i = find_nearest_index(L, value)
     return L[i]
+
+def interpolate_array(spectrum, old_axis, new_axis):
+    if not spectrum or not old_axis or not new_axis or len(spectrum) != len(old_axis) or len(new_axis) < 1:
+        return null
+    return numpy.interp(new_axis, old_axis, spectrum)

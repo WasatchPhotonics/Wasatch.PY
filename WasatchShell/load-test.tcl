@@ -8,7 +8,7 @@
 #                load in order to ferret-out any underlying communication 
 #                issues which only emit under conditions of duress.
 #
-#  INVOCATION:   $ ./load-test.tcl [outer_loops] [inner_loops}
+#  INVOCATION:   $ ./load-test.tcl [outer_loop_count] [inner_loop_count]
 #                  (value <= 0 means run indefinitely)
 #
 #  NOTES:        The script is written using TCL's "expect" engine; see

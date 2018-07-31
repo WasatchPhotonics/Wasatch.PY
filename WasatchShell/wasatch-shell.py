@@ -35,6 +35,7 @@ class WasatchShell(object):
     
     def __init__(self):
         self.device = None
+        self.interpolated_x_axis_cm = None
 
         # process command-line options
         parser = argparse.ArgumentParser()
@@ -114,6 +115,7 @@ class WasatchShell(object):
         set_tec_enable                 - takes bool argument
         set_detector_tec_setpoint_degc - takes float argument
 
+        set_interpolated_x_axis_cm     - takes start, end, incr (zero incr to disable)
         balance_acquisition            - takes mode [integ, laser, laser_and_integ], 
                                             intensity, threshold, x, unit [px, nm, cm]
 
@@ -205,7 +207,7 @@ class WasatchShell(object):
                         
                     # special processing for these
                     elif command == "get_spectrum":
-                        self.get_spectrum()
+                        self.get_spectrum(quiet=False)
 
                     elif command == "get_spectrum_pretty":
                         self.get_spectrum_pretty()
@@ -249,6 +251,10 @@ class WasatchShell(object):
                     elif command == "balance_acquisition":
                         self.balance_acquisition(tok)
 
+                    elif command == "set_interpolated_x_axis_cm":
+                        self.set_interpolated_x_axis_cm(start = self.read_float(tok),
+                                                        end   = self.read_float(tok),
+                                                        incr  = self.read_float(tok))
                     else:
                         self.display("ERROR: unknown command: " + command)
 
@@ -317,18 +323,47 @@ class WasatchShell(object):
         else:
             self.display(value)
 
-    def get_spectrum(self):
+    def get_spectrum(self, quiet=True):
         reading = self.device.acquire_data()
         if reading is None or reading.spectrum is None:
-            return self.display("ERROR: get_spectrum failed")
-        log.debug("received %d pixels", len(reading.spectrum))
-        for pixel in reading.spectrum:
+            self.display("ERROR: get_spectrum failed")
+            return
+        spectrum = reading.spectrum
+
+        log.debug("received %d pixels", len(spectrum))
+
+        # Note: we only do the interpolation if printing the spectrum
+        # back to the user.  Currently _save() and _pretty() do not use
+        # the interpolated x_axis, nor do they use wavenumbers at all.
+        if quiet:
+            return spectrum
+
+        if self.interpolated_x_axis_cm is None:
+            for pixel in spectrum:
+                print pixel
+            return
+
+        self.print_interpolated_spectrum(spectrum)
+
+    def print_interpolated_spectrum(self, spectrum):
+        if self.interpolated_x_axis_cm is None:
+            return
+
+        if self.device.settings.wavenumbers is None:
+            log.error("can't interpolate without wavenumbers")
+            return
+
+        interpolated = utils.interpolate_array(
+            spectrum, self.device.settings.wavenumbers, self.interpolated_x_axis_cm)
+
+        for pixel in interpolated:
             print pixel
 
+    # does not use interpolated_x_axis_cm
     def get_spectrum_save(self, tok):
-        reading = self.device.acquire_data()
-        if reading is None or reading.spectrum is None:
-            return self.display("ERROR: get_spectrum failed")
+        spectrum = self.get_spectrum()
+        if spectrum is None:
+            return 
 
         filename = tok[0] if tok[0] else datetime.datetime.now().strftime("%Y%m%d-%H%M%S.csv")
         with open(filename, "w") as outfile:
@@ -336,13 +371,13 @@ class WasatchShell(object):
                 outfile.write("%d,%.2f" % (i, self.device.settings.wavelengths[i]))
                 if self.device.settings.wavenumbers:
                     outfile.write(",%.2f" % self.device.settings.wavenumbers[i])
-                outfile.write(",%d\n" % reading.spectrum[i])
+                outfile.write(",%d\n" % spectrum[i])
 
+    # does not use interpolated_x_axis_cm
     def get_spectrum_pretty(self):
-        reading = self.device.acquire_data()
-        if reading is None or reading.spectrum is None:
-            return self.display("ERROR: get_spectrum failed")
-        spectrum = reading.spectrum
+        spectrum = self.get_spectrum()
+        if spectrum is None:
+            return 
 
         # histogram into bins
         spectral_min = min(spectrum)
@@ -366,6 +401,21 @@ class WasatchShell(object):
         self.display("+" + "-" * cols)
         self.display("  Min: %8.2f  Max: %8.2f  Mean: %8.2f  (passband %.2f, %.2fnm)" % (
             spectral_min, spectral_max, avg, self.device.settings.wavelengths[0], self.device.settings.wavelengths[-1]))
+
+    def set_interpolated_x_axis_cm(self, start, end, incr):
+        if incr == 0:
+            self.interpolated_x_axis_cm = None
+            self.display(0)
+            return
+
+        axis = []
+        x = start
+        while x <= end:
+            axis.append(x)
+            x += incr
+
+        self.interpolated_x_axis_cm = axis
+        self.display(1)
 
     def balance_acquisition(self, tok):
         unit = "px"

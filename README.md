@@ -302,6 +302,8 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2018-07-31 0.9.8
+    - added utils.interpolate\_array
 - 2018-07-13 0.9.7
     - converted WasatchShell into a wrapper over Wasatch.PY
     - added numerous getters
