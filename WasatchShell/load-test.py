@@ -14,6 +14,7 @@
 ################################################################################
 
 import argparse
+import platform
 import pexpect
 import time
 import sys
@@ -22,7 +23,7 @@ import sys
 # constants
 ################################################################################
 
-script_name = "./wasatch-shell.py"
+script_name = "./wasatch-shell.py --log-level debug"
 prompt = "wp>"
 success = "1\r"
 
@@ -40,7 +41,11 @@ args = parser.parse_args()
 ################################################################################
 
 # spawn the shell process
-child = pexpect.spawn(script_name, timeout=1)
+if platform.system().lower() == "windows":
+    # see https://pexpect.readthedocs.io/en/stable/api/popen_spawn.html#pexpect.popen_spawn.PopenSpawn
+    child = pexpect.popen_spawn.PopenSpawn(script_name, timeout=1)
+else:
+    child = pexpect.spawn(script_name, timeout=1)
 
 # confirm the script launches correctly
 child.expect("wasatch-shell version")
@@ -60,8 +65,6 @@ print "Successfully enumerated spectrometer"
 # run the test iterations
 ################################################################################
 
-print "Beginning load-test of %d passes, each of %d iterations" % (args.outer_loop, args.inner_loop)
-
 outer_loop = 0
 while True:
     if args.outer_loop > 0:
@@ -69,8 +72,7 @@ while True:
             break
         outer_loop += 1
 
-    print "-" * 80
-    print "Beginning pass %d of %d\n" % (outer_loop, args.outer_loop)
+    print "Pass %d of %d" % (outer_loop, args.outer_loop)
     time.sleep(2)
 
     child.sendline("get_config_json")
@@ -98,6 +100,8 @@ while True:
     child.expect(prompt)
 
     for inner_loop in range(args.inner_loop):
+        print "  Iteration %d of %d" % (inner_loop, args.inner_loop)
+        
         child.sendline("get_detector_temperature_degc")
         child.expect(prompt)
 

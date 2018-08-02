@@ -492,12 +492,9 @@ class FeatureIdentificationDevice(object):
 
     def select_adc(self, n):
         log.debug("select_adc -> %d", n)
-        self.send_code(0xed, n, label="SELECT_ADC")
-
-        # perform throwaway stabilization read
-        self.get_code(0xd5, wLength=2, label="GET_ADC (throwaway)")
-
         self.settings.state.selected_adc = n
+        self.send_code(0xed, n, label="SELECT_ADC")
+        self.get_code(0xd5, wLength=2, label="GET_ADC (throwaway)")
 
     def get_secondary_adc_calibrated(self, raw=None):
         if not self.has_linearity_coeffs():
@@ -518,7 +515,7 @@ class FeatureIdentificationDevice(object):
 
     def get_secondary_adc_raw(self):
         # flip to secondary ADC if needed
-        if self.settings.state.selected_adc != 1:
+        if self.settings.state.selected_adc is None or self.settings.state.selected_adc != 1:
             self.select_adc(1)
 
         value = self.get_code(0xd5, wLength=2, label="GET_ADC", lsb_len=2) & 0xfff
@@ -527,7 +524,7 @@ class FeatureIdentificationDevice(object):
 
     def get_laser_temperature_raw(self):
         # flip to primary ADC if needed
-        if self.settings.state.selected_adc != 0:
+        if self.settings.state.selected_adc is None or self.settings.state.selected_adc != 0:
             self.select_adc(0)
 
         result = self.get_code(0xd5, wLength=2, label="GET_ADC")
@@ -1009,7 +1006,11 @@ class FeatureIdentificationDevice(object):
         return self.get_code(0xca, label="GET_LASER_MOD_PULSE_DELAY", lsb_len=5)
 
     def get_selected_adc(self):
-        return self.get_code(0xee, label="GET_SELECTED_ADC", msb_len=1)
+        value = self.get_code(0xee, label="GET_SELECTED_ADC", msb_len=1)
+        if self.settings.state.selected_adc != value:
+            log.error("GET_SELECTED_ADC %d != state.selected_adc %d", value, self.settings.state.selected_adc)
+            self.settings.state.selected_adc = value
+        return value
 
     def get_vr_continuous_ccd(self):
         return self.get_code(0xcc, label="GET_VR_CONTINUOUS_CCD", msb_len=1)

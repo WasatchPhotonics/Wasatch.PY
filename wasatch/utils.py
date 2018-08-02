@@ -4,6 +4,7 @@
 #                                                                              #
 # ##############################################################################
 
+import datetime
 import logging
 import numpy
 import json
@@ -270,7 +271,42 @@ def find_nearest_value(L, value):
     i = find_nearest_index(L, value)
     return L[i]
 
+## 
+# Interpolate the passed spectrum over a fixed x-axis (e.g. integral wavelengths
+# or wavenumbers).
 def interpolate_array(spectrum, old_axis, new_axis):
     if not spectrum or not old_axis or not new_axis or len(spectrum) != len(old_axis) or len(new_axis) < 1:
         return null
     return numpy.interp(new_axis, old_axis, spectrum)
+
+## render a spectrum as ASCII-art
+def ascii_spectrum(spectrum, rows, cols, x_axis, x_unit):
+    spectral_min = min(spectrum)
+    spectral_max = max(spectrum)
+    spectral_avg = 1.0 * sum(spectrum) / len(spectrum)
+
+    # histogram into bins
+    bins = [0] * cols
+    for i in range(len(spectrum)):
+        col = int(1.0 * cols * i / len(spectrum))
+        bins[col] += spectrum[i] - spectral_min
+
+    # render histogram
+    lines = []
+    bin_hi = max(bins)
+    for row in range(rows - 1, -1, -1):
+        s = "| "
+        for col in range(cols):
+            s += "*" if bins[col] >= (1.0 * row / rows) * bin_hi else " "
+        lines.append(s)
+
+    # graph footer
+    lines.append("+" + "-" * cols)
+    lines.append("  Min: %8.2f  Max: %8.2f  Mean: %8.2f  (range %.2f, %.2f%s)" % (
+        spectral_min, spectral_max, spectral_avg, 
+        x_axis[0], x_axis[-1], x_unit))
+
+    return lines
+
+def timestamp():
+    return datetime.datetime.now().strftime("%Y%m%d-%H%M%S")

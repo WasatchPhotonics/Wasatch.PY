@@ -15,6 +15,7 @@
 ################################################################################
 
 import argparse
+import readline
 import logging
 import sys
 import os
@@ -27,7 +28,7 @@ from wasatch.WasatchBus         import WasatchBus
 from wasatch.WasatchDevice      import WasatchDevice
 from wasatch.BalanceAcquisition import BalanceAcquisition
 
-VERSION = "2.0.0"
+VERSION = "2.0.2"
 
 log = logging.getLogger(__name__)
 
@@ -39,15 +40,11 @@ class WasatchShell(object):
 
         # process command-line options
         parser = argparse.ArgumentParser()
-        parser.add_argument("--logfile", default="wasatch.log", help="where to write log messages")
-        parser.add_argument("--log-level", type=str, default="INFO", help="logging level [DEBUG,INFO,WARNING,ERROR,CRITICAL]")
+        parser.add_argument("--logfile", help="where to write log messages")
+        parser.add_argument("--log-level", type=str, default="info", help="logging level", choices=['debug', 'info', 'warning', 'error', 'critical'])
         self.args = parser.parse_args()
 
-        # configure logging
-        logging.basicConfig(filename=self.args.logfile, 
-                            level=logging.DEBUG, 
-                            format='%(asctime)s.%(msecs)03d %(name)s %(levelname)-8s %(message)s', 
-                            datefmt='%m/%d/%Y %I:%M:%S')
+        self.configure_logging()
 
         # pass-through calls to any of these gettors (note names are lowercased)
         self.gettors = {}
@@ -137,7 +134,9 @@ class WasatchShell(object):
 
     def get_next(self, tok):
         if not tok:
-            line = sys.stdin.readline().strip().lower()
+            line = raw_input().strip()
+            log.info("<< %s", line)
+            line = line.lower()
             for s in line.split():
                 tok.append(s)
         return tok.pop(0)
@@ -153,8 +152,14 @@ class WasatchShell(object):
         return float(self.get_next(tok))
 
     def display(self, msg):
-        log.info(msg)
+        log.info(">> %s", msg)
         print msg
+
+    def configure_logging(self):
+        logging.basicConfig(filename=(self.args.logfile if self.args.logfile else ("wasatch-%s.log" % utils.timestamp())),
+                            level=self.args.log_level.upper(),
+                            format='%(asctime)s.%(msecs)03d %(name)s %(levelname)-8s %(message)s', 
+                            datefmt='%m/%d/%Y %I:%M:%S')
 
     # ##############################################################################
     # command loop
@@ -166,13 +171,14 @@ class WasatchShell(object):
 
         try:
             while True:
-                sys.stdout.write("wp> ")
-                line = sys.stdin.readline().strip().lower()
-                log.debug("received: " + line);
+                line = raw_input('wp> ').strip()
 
                 # ignore comments
                 if line.startswith('#') or len(line) == 0:
                     continue
+
+                log.info("<< %s", line)
+                line = line.lower()
 
                 # tokenize
                 tok = line.split()
@@ -332,34 +338,17 @@ class WasatchShell(object):
 
         log.debug("received %d pixels", len(spectrum))
 
-        # Note: we only do the interpolation if printing the spectrum
-        # back to the user.  Currently _save() and _pretty() do not use
-        # the interpolated x_axis, nor do they use wavenumbers at all.
+        if self.interpolated_x_axis_cm and self.device.settings.wavenumbers:
+            spectrum = utils.interpolate_array(spectrum, 
+                                               self.device.settings.wavenumbers, 
+                                               self.interpolated_x_axis_cm)
+
         if quiet:
             return spectrum
-
-        if self.interpolated_x_axis_cm is None:
+        else:
             for pixel in spectrum:
                 print pixel
-            return
 
-        self.print_interpolated_spectrum(spectrum)
-
-    def print_interpolated_spectrum(self, spectrum):
-        if self.interpolated_x_axis_cm is None:
-            return
-
-        if self.device.settings.wavenumbers is None:
-            log.error("can't interpolate without wavenumbers")
-            return
-
-        interpolated = utils.interpolate_array(
-            spectrum, self.device.settings.wavenumbers, self.interpolated_x_axis_cm)
-
-        for pixel in interpolated:
-            print pixel
-
-    # does not use interpolated_x_axis_cm
     def get_spectrum_save(self, tok):
         spectrum = self.get_spectrum()
         if spectrum is None:
@@ -367,40 +356,30 @@ class WasatchShell(object):
 
         filename = tok[0] if tok[0] else datetime.datetime.now().strftime("%Y%m%d-%H%M%S.csv")
         with open(filename, "w") as outfile:
-            for i in range(self.device.settings.pixels()):
-                outfile.write("%d,%.2f" % (i, self.device.settings.wavelengths[i]))
-                if self.device.settings.wavenumbers:
-                    outfile.write(",%.2f" % self.device.settings.wavenumbers[i])
-                outfile.write(",%d\n" % spectrum[i])
+            for i in range(len(spectrum)):
+                if self.interpolated_x_axis_cm:
+                    x = self.interpolated_x_axis_cm[i]
+                elif self.device.settings.wavenumbers:
+                    x = self.device.settings.wavenumbers[i]
+                else:
+                    x = self.device.settings.wavelengths[i]
+                outfile.write("%.2f,%d\n" % (x, spectrum[i]))
 
-    # does not use interpolated_x_axis_cm
     def get_spectrum_pretty(self):
         spectrum = self.get_spectrum()
         if spectrum is None:
             return 
 
-        # histogram into bins
-        spectral_min = min(spectrum)
-        spectral_max = max(spectrum)
-        avg = 1.0 * sum(spectrum) / len(spectrum)
-        cols = 80
-        bins = [0] * cols
-        for i in range(len(spectrum)):
-            col = int(1.0 * cols * i / len(spectrum))
-            bins[col] += spectrum[i] - spectral_min
+        if self.interpolated_x_axis_cm:
+            x_axis = self.interpolated_x_axis_cm
+            x_unit = "cm-1"
+        else:
+            x_axis = self.device.settings.wavelengths
+            x_unit = "nm"
 
-        # display histogram
-        bin_hi = max(bins)
-        height = 24
-        for row in range(height - 1, -1, -1):
-            s = "| "
-            for col in range(cols):
-                s += "*" if bins[col] >= (1.0 * row / height) * bin_hi else " "
-            self.display(s)
-
-        self.display("+" + "-" * cols)
-        self.display("  Min: %8.2f  Max: %8.2f  Mean: %8.2f  (passband %.2f, %.2fnm)" % (
-            spectral_min, spectral_max, avg, self.device.settings.wavelengths[0], self.device.settings.wavelengths[-1]))
+        lines = utils.ascii_spectrum(spectrum=spectrum, rows=24, cols=80, x_axis=x_axis, x_unit=x_unit)
+        for line in lines:
+            self.display(line)
 
     def set_interpolated_x_axis_cm(self, start, end, incr):
         if incr == 0:

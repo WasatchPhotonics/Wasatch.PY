@@ -14,6 +14,9 @@
 #  NOTES:        The script is written using TCL's "expect" engine; see
 #                https://en.wikipedia.org/wiki/Expect
 #
+#  STATUS:       THIS SCRIPT IS LARGELY DEPRECATED, AND PROVIDED FOR HISTORICAL 
+#                INTEREST.  (Hard to find cmd-line 'expect' shells for Win)
+#
 ################################################################################
 
 # constants

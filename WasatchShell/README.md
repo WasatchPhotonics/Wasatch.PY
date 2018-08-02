@@ -23,6 +23,12 @@ command-line access to most functions including simple acquisitions.
     wp> get_spectrum_save foo.csv
     wp> quit
 
+# Terminal I/O
+
+WasatchShell uses GNU Readline, so you can create a 
+[~/.inputrc file](https://www.gnu.org/software/bash/manual/html_node/Readline-Init-File.html)
+to enable 'vi' history searching, etc.
+
 # Changes from 1.0
 
 WasatchShell 1.x was a standalone script which did not use the rest of 
@@ -81,8 +87,11 @@ multi-process pipeline used by ENLIGHTEN.
 
 # Version History
 
-- 07-31-2018 2.0.x
-    - migrating load-test.tcl to load-test.py for Windows
+- 08-02-2018 2.0.2
+    - added GNU readline support
+    - allowed saving of interpolated spectra
+- 07-31-2018 2.0.1
+    - migrated load-test.tcl to load-test.py for Windows
 - 07-31-2018 2.0.2
     - added set\_interpolated\_x\_axis\_cm
 - 07-27-2018 2.0.1
