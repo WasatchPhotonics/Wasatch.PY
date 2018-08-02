@@ -19,20 +19,21 @@ import pexpect
 import time
 import sys
 
+from pexpect.popen_spawn import PopenSpawn
+
 ################################################################################
 # constants
 ################################################################################
 
-script_name = "./wasatch-shell.py --log-level debug"
 prompt = "wp>"
-success = "1\r"
+success = "1"
 
 ################################################################################
 # command-line arguments
 ################################################################################
 
 parser = argparse.ArgumentParser(description="Load test of Wasatch.PY function calls")
-parser.add_argument("--outer-loop", type=int, default=5,  help="outer loop count (0 for inf)")
+parser.add_argument("--outer-loop", type=int, default=1,  help="outer loop count (0 for inf)") # MZ was 5
 parser.add_argument("--inner-loop", type=int, default=10, help="inner loop count")
 args = parser.parse_args()
 
@@ -41,11 +42,8 @@ args = parser.parse_args()
 ################################################################################
 
 # spawn the shell process
-if platform.system().lower() == "windows":
-    # see https://pexpect.readthedocs.io/en/stable/api/popen_spawn.html#pexpect.popen_spawn.PopenSpawn
-    child = pexpect.popen_spawn.PopenSpawn(script_name, timeout=1)
-else:
-    child = pexpect.spawn(script_name, timeout=1)
+logfile = open("load-test.log", "w")
+child = PopenSpawn("python -u ./wasatch-shell.py --log-level debug", logfile=logfile, timeout=5)
 
 # confirm the script launches correctly
 child.expect("wasatch-shell version")
@@ -54,11 +52,12 @@ child.expect(prompt)
 # open the spectrometer
 child.sendline("open")
 try:
-    child.expect("1\r")
+    child.expect(success)
     child.expect(prompt)
 except pexpect.exceptions.TIMEOUT:
     print "ERROR: No spectrometers found"
     sys.exit(1)
+
 print "Successfully enumerated spectrometer"
 
 ################################################################################

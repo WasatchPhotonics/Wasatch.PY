@@ -117,7 +117,7 @@ class SpectrometerState(object):
         log.info("  Laser Enabled:          %s", self.laser_enabled)
         log.info("  Laser Power:            %.2f", self.laser_power)
         log.info("  Laser Temp Setpoint:    0x%04x", self.laser_temperature_setpoint_raw)
-        log.info("  Selected ADC:           %d", self.selected_adc)
+        log.info("  Selected ADC:           %s", self.selected_adc)
         log.info("  Trigger Source:         %s", self.stringify_trigger_source())
         log.info("  Area Scan Enabled:      %s", self.area_scan_enabled)
         log.info("  Scans to Average:       %d", self.scans_to_average)

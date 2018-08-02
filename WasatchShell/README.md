@@ -90,6 +90,7 @@ multi-process pipeline used by ENLIGHTEN.
 - 08-02-2018 2.0.2
     - added GNU readline support
     - allowed saving of interpolated spectra
+    - fixed on Windows (Git Cmd shell)
 - 07-31-2018 2.0.1
     - migrated load-test.tcl to load-test.py for Windows
 - 07-31-2018 2.0.2

@@ -14,6 +14,7 @@
 #                                                                              #
 ################################################################################
 
+import platform
 import argparse
 import readline
 import logging
@@ -132,9 +133,13 @@ class WasatchShell(object):
     def parse_result(self, result):
         return "1" if result else "0"
 
+    ## encapsulating in case any platforms don't like GNU readline
+    def get_line(self, prompt):
+        return raw_input(prompt).strip()
+
     def get_next(self, tok):
         if not tok:
-            line = raw_input().strip()
+            line = self.get_line()
             log.info("<< %s", line)
             line = line.lower()
             for s in line.split():
@@ -154,6 +159,7 @@ class WasatchShell(object):
     def display(self, msg):
         log.info(">> %s", msg)
         print msg
+        sys.stdout.flush()
 
     def configure_logging(self):
         logging.basicConfig(filename=(self.args.logfile if self.args.logfile else ("wasatch-%s.log" % utils.timestamp())),
@@ -171,7 +177,7 @@ class WasatchShell(object):
 
         try:
             while True:
-                line = raw_input('wp> ').strip()
+                line = self.get_line('wp> ')
 
                 # ignore comments
                 if line.startswith('#') or len(line) == 0:

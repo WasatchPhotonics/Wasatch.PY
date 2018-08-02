@@ -17,5 +17,6 @@ dependencies:
   - pyusb==1.0.0
   - requests==2.13.0
   - pexpect==4.6.0
+  - pyreadline==2.1.0
 
 prefix: !!python/unicode 'C:\Miniconda\envs\wasatch'
