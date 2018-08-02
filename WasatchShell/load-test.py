@@ -33,7 +33,7 @@ success = "1"
 ################################################################################
 
 parser = argparse.ArgumentParser(description="Load test of Wasatch.PY function calls")
-parser.add_argument("--outer-loop", type=int, default=1,  help="outer loop count (0 for inf)") # MZ was 5
+parser.add_argument("--outer-loop", type=int, default=5,  help="outer loop count (0 for inf)")
 parser.add_argument("--inner-loop", type=int, default=10, help="inner loop count")
 args = parser.parse_args()
 
@@ -69,7 +69,7 @@ while True:
     if args.outer_loop > 0:
         if outer_loop >= args.outer_loop:
             break
-        outer_loop += 1
+    outer_loop += 1
 
     print "Pass %d of %d" % (outer_loop, args.outer_loop)
     time.sleep(2)

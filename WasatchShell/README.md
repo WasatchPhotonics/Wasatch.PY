@@ -1,9 +1,7 @@
 # Overview
 
-This script is a simple interactive wrapper over Wasatch.PY, providing
+wasatch-shell.py is a simple interactive wrapper over Wasatch.PY, providing
 command-line access to most functions including simple acquisitions.
-
-# Sample Execution
 
     $ ./wasatch-shell.py
     wp> help
@@ -18,10 +16,24 @@ command-line access to most functions including simple acquisitions.
     wp> get_secondary_adc_calibrated
     49.1342855427
     wp> get_laser_temperature_degc
+    10.1309717125
     wp> get_spectrum
+     ...
     wp> get_spectrum_pretty
+     ...
     wp> get_spectrum_save foo.csv
     wp> quit
+
+load-test.py is a wrapper over wasatch-shell.py which bulk-streams a long series
+of commands at the driver, forcing the spectrometer through a heavy sequence of
+operations in order to find any USB or communication weaknesses in the driver and
+firmware implementation under stress.
+
+    $ ./load-test.py 100 50
+    Pass 1 of 100
+      Iteration 1 of 50
+      Iteration 2 of 50
+      ...
 
 # Terminal I/O
 
