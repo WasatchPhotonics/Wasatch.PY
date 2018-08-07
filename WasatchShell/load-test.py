@@ -13,9 +13,12 @@
 #
 ################################################################################
 
+import traceback
 import argparse
 import platform
+import datetime
 import pexpect
+import random
 import time
 import sys
 
@@ -27,6 +30,7 @@ from pexpect.popen_spawn import PopenSpawn
 
 prompt = "wp>"
 success = "1"
+max_failures = 10
 
 ################################################################################
 # command-line arguments
@@ -35,14 +39,19 @@ success = "1"
 parser = argparse.ArgumentParser(description="Load test of Wasatch.PY function calls")
 parser.add_argument("--outer-loop", type=int, default=5,  help="outer loop count (0 for inf)")
 parser.add_argument("--inner-loop", type=int, default=10, help="inner loop count")
+parser.add_argument("--seed", type=int, default=None, help="Monte Carlo seed")
 args = parser.parse_args()
 
 ################################################################################
 # initialize test
 ################################################################################
 
-# spawn the shell process
+# configure logging
 logfile = open("load-test.log", "w")
+logfile.write("settings: outer_loop %d, inner_loop %d, seed %s\n" % (args.outer_loop, args.inner_loop, args.seed))
+random.seed(args.seed)
+
+# spawn the shell process
 child = PopenSpawn("python -u ./wasatch-shell.py --log-level debug", logfile=logfile, timeout=5)
 
 # confirm the script launches correctly
@@ -65,118 +74,138 @@ print "Successfully enumerated spectrometer"
 ################################################################################
 
 outer_loop = 0
+failure_count = 0
 while True:
     if args.outer_loop > 0:
         if outer_loop >= args.outer_loop:
             break
     outer_loop += 1
 
-    print "Pass %d of %d" % (outer_loop, args.outer_loop)
-    time.sleep(2)
+    # pick random draws for this pass
+    integration_time_ms = random.randrange(10, 250)
+    detector_tec_setpoint_degc = random.randrange(10, 15)
+    laser_power_mw = random.randrange(10, 90)
 
-    child.sendline("get_config_json")
-    child.expect("wavelength_coeffs")
-    child.expect(prompt)
+    msg = "Pass %d of %d (time %s, integration_time_ms %d, detector_tec_setpoint_degc %d, laser_power_mw %d)" % (
+        outer_loop, args.outer_loop, datetime.datetime.now(), integration_time_ms, detector_tec_setpoint_degc, laser_power_mw)
+    logfile.write(msg + "\n")
+    print msg
 
-    child.sendline("set_integration_time_ms 100")
-    child.expect(success)
-    child.expect(prompt)
+    # time.sleep(2)
 
-    child.sendline("set_detector_tec_setpoint_degc 10")
-    child.expect(success)
-    child.expect(prompt)
-
-    child.sendline("set_tec_enable on")
-    child.expect(success)
-    child.expect(prompt)
-
-    child.sendline("set_laser_power_mw 70")
-    child.expect(success)
-    child.expect(prompt)
-
-    child.sendline("set_laser_enable on")
-    child.expect(success)
-    child.expect(prompt)
-
-    for inner_loop in range(args.inner_loop):
-        print "  Iteration %d of %d" % (inner_loop, args.inner_loop)
-        
-        child.sendline("get_detector_temperature_degc")
+    # loop over failures
+    try:
+        child.sendline("get_config_json")
+        child.expect("wavelength_coeffs")
         child.expect(prompt)
 
-        child.sendline("get_tec_enabled")
+        child.sendline("set_integration_time_ms %d" % integration_time_ms)
         child.expect(success)
         child.expect(prompt)
 
-        child.sendline("get_integration_time_ms")
-        child.expect("100")
-        child.expect(prompt)
-
-        child.sendline("get_laser_mod_duration")
-        child.expect(prompt)
-
-        child.sendline("get_laser_mod_pulse_delay")
-        child.expect(prompt)
-
-        child.sendline("get_laser_mod_period")
-        child.expect("100")
-        child.expect(prompt)
-
-        child.sendline("get_laser_temperature_degc")
-        child.expect(prompt)
-
-        child.sendline("get_actual_frames")
-        child.expect(prompt)
-
-        child.sendline("get_laser_mod_pulse_width")
-        child.expect(prompt)
-
-        child.sendline("get_actual_integration_time_us")
-        child.expect(prompt)
-
-        child.sendline("get_external_trigger_output")
-        child.expect(prompt)
-
-        child.sendline("get_laser_enabled")
+        child.sendline("set_detector_tec_setpoint_degc %d" % detector_tec_setpoint_degc)
         child.expect(success)
         child.expect(prompt)
 
-        child.sendline("get_laser_mod_enabled")
+        child.sendline("set_tec_enable on")
         child.expect(success)
         child.expect(prompt)
 
-        child.sendline("get_laser_power_ramping_enabled")
+        child.sendline("set_laser_power_mw %d" % laser_power_mw)
+        child.expect(success)
         child.expect(prompt)
 
-        child.sendline("get_vr_num_frames")
+        child.sendline("set_laser_enable on")
+        child.expect(success)
         child.expect(prompt)
 
-        child.sendline("get_spectrum")
+        for inner_loop in range(args.inner_loop):
+            print "  Iteration %d of %d" % (inner_loop, args.inner_loop)
+            
+            child.sendline("get_detector_temperature_degc")
+            child.expect(prompt)
+
+            child.sendline("get_tec_enabled")
+            child.expect(success)
+            child.expect(prompt)
+
+            child.sendline("get_integration_time_ms")
+            child.expect(str(integration_time_ms))
+            child.expect(prompt)
+
+            child.sendline("get_laser_mod_duration")
+            child.expect(prompt)
+
+            child.sendline("get_laser_mod_pulse_delay")
+            child.expect(prompt)
+
+            child.sendline("get_laser_mod_period")
+            child.expect("100")
+            child.expect(prompt)
+
+            child.sendline("get_laser_temperature_degc")
+            child.expect(prompt)
+
+            child.sendline("get_actual_frames")
+            child.expect(prompt)
+
+            child.sendline("get_laser_mod_pulse_width")
+            child.expect(prompt)
+
+            child.sendline("get_actual_integration_time_us")
+            child.expect(prompt)
+
+            child.sendline("get_external_trigger_output")
+            child.expect(prompt)
+
+            child.sendline("get_laser_enabled")
+            child.expect(success)
+            child.expect(prompt)
+
+            child.sendline("get_laser_mod_enabled")
+            child.expect(success)
+            child.expect(prompt)
+
+            child.sendline("get_laser_power_ramping_enabled")
+            child.expect(prompt)
+
+            child.sendline("get_vr_num_frames")
+            child.expect(prompt)
+
+            child.sendline("get_spectrum")
+            child.expect(prompt)
+
+            child.sendline("get_laser_temperature_degc")
+            child.expect(prompt)
+
+            child.sendline("get_selected_adc")
+            child.expect("0")
+            child.expect(prompt)
+
+            child.sendline("get_secondary_adc_calibrated")
+            child.expect(prompt)
+
+            child.sendline("get_selected_adc")
+            child.expect("1")
+            child.expect(prompt)
+
+        child.sendline("set_tec_enable off")
+        child.expect(success)
         child.expect(prompt)
 
-        child.sendline("get_laser_temperature_degc")
+        child.sendline("set_laser_enable off")
+        child.expect(success)
         child.expect(prompt)
 
-        child.sendline("get_selected_adc")
-        child.expect("0")
-        child.expect(prompt)
-
-        child.sendline("get_secondary_adc_calibrated")
-        child.expect(prompt)
-
-        child.sendline("get_selected_adc")
-        child.expect("1")
-        child.expect(prompt)
-
-    child.sendline("set_tec_enable off")
-    child.expect(success)
-    child.expect(prompt)
-
-    child.sendline("set_laser_enable off")
-    child.expect(success)
-    child.expect(prompt)
+    except Exception as ex:
+        failure_count += 1
+        logfile.write("load-test error (outer_loop %d, inner_loop %d, time %s): %s" % (outer_loop, inner_loop, datetime.datetime.now(), ex))
+        logfile.write(traceback.format_exc())
+        if failure_count > max_failures:
+            print "too many failures, quitting"
+            break
 
 child.sendline("close")
 child.expect(pexpect.EOF)
 
-print "All tests completed."
+print "All tests completed (%d errors)" % failure_count

@@ -301,7 +301,7 @@ def ascii_spectrum(spectrum, rows, cols, x_axis, x_unit):
         lines.append(s)
 
     # graph footer
-    lines.append("+" + "-" * cols)
+    lines.append("+-" + "-" * cols)
     lines.append("  Min: %8.2f  Max: %8.2f  Mean: %8.2f  (range %.2f, %.2f%s)" % (
         spectral_min, spectral_max, spectral_avg, 
         x_axis[0], x_axis[-1], x_unit))

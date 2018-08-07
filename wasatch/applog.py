@@ -32,6 +32,7 @@ def get_location():
     # it is a text file.
     module_name = __name__.replace(".", "_") # "wasatch.applog" -> "wasatch_applog"
     filename = "%s.txt" % module_name        # "wasatch_applog.txt"
+    # consider "%s-%s.log" % (module_name, utils.timestamp())
 
     if "Linux" in platform.platform():
         return filename
@@ -83,7 +84,11 @@ def process_log_configure(log_queue, log_level=logging.DEBUG):
     # MZ: how to log from the logger
     root_log.debug("applog.process_log_configure: process_id %s", os.getpid())
 
-## Mimic the capturelog style of just slurping the entire log file contents.
+## 
+# Mimic the capturelog style of just slurping the entire log file contents.
+#
+# MZ: if we're just interested in the 'tail' of the log, this will be horribly
+# inefficient for memory as the log file grows!
 def get_text_from_log():
     log_text = ""
     with open(get_location()) as log_file:
@@ -199,7 +204,7 @@ class MainLogger(object):
         pathname = get_location()
 
         root_logger = logging.getLogger()
-        fh = logging.FileHandler(pathname, 'w') # Overwrite previous run
+        fh = logging.FileHandler(pathname, 'w') # Overwrite previous run (does not append!)
         formatter = logging.Formatter(self.FORMAT)
         fh.setFormatter(formatter)
         root_logger.addHandler(fh)
