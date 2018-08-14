@@ -275,8 +275,8 @@ class WasatchDevice(object):
             i += 1
 
     def correct_ingaas_gain_and_offset(self, reading):
-        #if not self.settings.is_InGaAs():
-        #    return
+        if not self.settings.is_InGaAs():
+            return
 
         # if even and odd pixels have the same settings, there's no point in doing anything
         if self.settings.eeprom.detector_gain_odd   == self.settings.eeprom.detector_gain and \
