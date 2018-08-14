@@ -274,6 +274,32 @@ class WasatchDevice(object):
             # advance to next bad pixel
             i += 1
 
+    def correct_ingaas_gain_and_offset(self, reading):
+        #if not self.settings.is_InGaAs():
+        #    return
+
+        # if even and odd pixels have the same settings, there's no point in doing anything
+        if self.settings.eeprom.detector_gain_odd   == self.settings.eeprom.detector_gain and \
+           self.settings.eeprom.detector_offset_odd == self.settings.eeprom.detector_offset:
+            return
+
+        log.debug("rescaling InGaAs odd pixels from even gain %.2f, offset %d to odd gain %.2f, offset %d",
+            self.settings.eeprom.detector_gain, 
+            self.settings.eeprom.detector_offset, 
+            self.settings.eeprom.detector_gain_odd, 
+            self.settings.eeprom.detector_offset_odd)
+
+        # iterate over the ODD pixels of the spectrum
+        spectrum = reading.spectrum
+        for i in range(1, len(spectrum), 2):
+            # back-out even gain and offset
+            old = float(spectrum[i])
+            raw = (old - self.settings.eeprom.detector_offset) / self.settings.eeprom.detector_gain
+            new = (raw * self.settings.eeprom.detector_gain_odd) + self.settings.eeprom.detector_offset_odd
+            spectrum[i] = round(new)
+
+            log.debug("pixel %4d: old %.2f raw %.2f new %.2f", old, raw, new)
+
     ##
     # Process all enqueued settings, then read actual data (spectrum and 
     # temperatures) from the device.
@@ -327,6 +353,13 @@ class WasatchDevice(object):
                     break
 
             log.debug("device.acquire_data: got %s ...", reading.spectrum[0:9])
+        except Exception as exc:
+            log.critical("Error reading hardware data", exc_info=1)
+            reading.failure = str(exc)
+
+        if not reading.failure:
+            # InGaAs even/odd kludge
+            self.correct_ingaas_gain_and_offset(reading)
 
             # bad pixel correction
             if self.settings.state.bad_pixel_mode == SpectrometerState.BAD_PIXEL_MODE_AVERAGE:
@@ -345,9 +378,6 @@ class WasatchDevice(object):
                 self.sum_count += 1
                 log.debug("device.acquire_data: summed_spectra : %s ...", self.summed_spectra[0:9])
 
-        except Exception as exc:
-            log.critical("Error reading hardware data", exc_info=1)
-            reading.failure = str(exc)
 
         # count spectra
         self.session_reading_count += 1

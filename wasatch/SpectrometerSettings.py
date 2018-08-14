@@ -1,6 +1,7 @@
-import json
-import utils
 import logging
+import utils
+import json
+import re
 
 from SpectrometerState import SpectrometerState
 from FPGAOptions       import FPGAOptions
@@ -95,6 +96,13 @@ class SpectrometerSettings(object):
             self.wavenumbers = utils.generate_wavenumbers(self.eeprom.excitation_nm, self.wavelengths)
             log.debug("generated %d wavenumbers from %.2f to %.2f", 
                 len(self.wavenumbers), self.wavenumbers[0], self.wavenumbers[-1])
+
+    def is_InGaAs(self):
+        if re.match('ingaas|g9214', self.eeprom.detector.lower()):
+            return True
+        elif self.fpga_options.has_cf_select:
+            return True
+        return False
 
     # probably a simpler way to do this...
     def toJSON(self):

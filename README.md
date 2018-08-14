@@ -302,6 +302,8 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2018-08-14 0.9.10
+    - InGaAs offset/gain processing in software
 - 2018-07-31 0.9.9
     - added dependency on pexpect for testing
 - 2018-07-31 0.9.8

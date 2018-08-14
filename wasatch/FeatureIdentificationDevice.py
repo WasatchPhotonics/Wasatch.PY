@@ -233,10 +233,12 @@ class FeatureIdentificationDevice(object):
         # demarshall or return raw array
         value = 0
         if msb_len is not None:
+            # this will barf if result is None
             for i in range(msb_len):
                 value = value << 8 | result[i]
             return value                    
         elif lsb_len is not None:
+            # this will barf if result is None
             for i in range(lsb_len):
                 value = (result[i] << (8 * i)) | value
             return value
@@ -527,10 +529,11 @@ class FeatureIdentificationDevice(object):
         if self.settings.state.selected_adc is None or self.settings.state.selected_adc != 0:
             self.select_adc(0)
 
-        result = self.get_code(0xd5, wLength=2, label="GET_ADC")
+        # Yes, this is little-endian, reverse of get_detector_temperature_raw
+        result = self.get_code(0xd5, wLength=2, label="GET_ADC", lsb_len=2)
         if not result:
             raise Exception("Unable to read laser temperature")
-        return (result[0] + (result[1] << 8)) & 0xfff # LSB-MSB, 12-bit
+        return result & 0xfff
 
     ##
     # @note laser doesn't use EEPROM coeffs at all
@@ -548,16 +551,16 @@ class FeatureIdentificationDevice(object):
 
         degC = -99
         try:
-            voltage    = 2.5 * raw / 4096.0;
-            resistance = 21450.0 * voltage / (2.5 - voltage);
+            voltage    = 2.5 * raw / 4096.0
+            resistance = 21450.0 * voltage / (2.5 - voltage)
 
             if resistance < 0:
                 log.error("get_laser_temperature_degC: can't compute degC: raw = 0x%04x, voltage = %f, resistance = %f", raw, voltage, resistance)
                 return -99
 
-            logVal     = math.log(resistance / 10000.0);
-            insideMain = logVal + 3977.0 / (25 + 273.0);
-            degC       = 3977.0 / insideMain - 273.0;
+            logVal     = math.log(resistance / 10000.0)
+            insideMain = logVal + 3977.0 / (25 + 273.0)
+            degC       = 3977.0 / insideMain - 273.0
 
             log.debug("Laser temperature: %.2f deg C (0x%04x raw)" % (degC, raw))
         except:
@@ -566,6 +569,7 @@ class FeatureIdentificationDevice(object):
         return degC
 
     def get_detector_temperature_raw(self):
+        # Yes, this is big-endian, reverse of get_laser_temperature_raw
         return self.get_code(0xd7, label="GET_CCD_TEMP", msb_len=2)
 
     def get_detector_temperature_degC(self, raw=-1):
@@ -600,18 +604,17 @@ class FeatureIdentificationDevice(object):
                       + self.settings.eeprom.degC_to_dac_coeffs[1] * degC
                       + self.settings.eeprom.degC_to_dac_coeffs[2] * degC * degC))
 
-        # constrain to 12-bit DAC (big-endian)
-        if (raw < 0):
-            raw = 0
-        if (raw > 0xfff):
-            raw = 0xfff
+        # ROUND (don't mask) to 12-bit DAC 
+        raw = max(0, min(raw, 0xfff))
 
         log.info("Set CCD TEC Setpoint: %.2f deg C (raw ADC 0x%04x)", degC, raw)
-        ok = self.send_code(0xd8, raw, label="SET_CCD_TEMP_SETPOINT")
-        if ok:
-            self.detector_tec_setpoint_has_been_set = True
-            self.settings.state.tec_setpoint_degC = degC
+        ok = self.send_code(0xd8, raw, label="SET_DETECTOR_TEC_SETPOINT")
+        self.settings.state.tec_setpoint_degC = degC
+        self.detector_tec_setpoint_has_been_set = True
         return ok
+
+    def get_dac(self, dacIndex=0):
+        return self.get_code(0xd9, wIndex=dacIndex, label="GET_DAC", lsb_len=2)
 
     def set_tec_enable(self, flag):
         if not self.settings.eeprom.has_cooling:
@@ -624,8 +627,8 @@ class FeatureIdentificationDevice(object):
             log.debug("defaulting TEC setpoint to min %s", self.settings.eeprom.min_temp_degC)
             self.set_detector_tec_setpoint_degC(self.settings.eeprom.min_temp_degC)
 
-        log.debug("Send CCD TEC enable: %s", value)
-        ok = self.send_code(0xd6, value, label="SET_CCD_TEC_ENABLE")
+        log.debug("Send detector TEC enable: %s", value)
+        ok = self.send_code(0xd6, value, label="SET_DETECTOR_TEC_ENABLE")
         if ok:
             self.settings.state.tec_enabled = flag
         return ok
@@ -929,14 +932,12 @@ class FeatureIdentificationDevice(object):
             log.error("unable to control laser: EEPROM reports no laser installed")
             return 0
 
-        result = self.get_code(0xe8, label="GET_LASER_TEMP_SETPOINT")
+        result = self.get_code(0xe8, label="GET_LASER_TEC_SETPOINT")
         return result[0]
 
-    ##
-    # @note ENG-0001 says this should be sent LSB first (little-endian), but I don't believe them
     def set_laser_temperature_setpoint_raw(self, value):
         log.debug("Send laser temperature setpoint raw: %d", value)
-        return self.send_code(0xe7, value, label="SET_LASER_TEMP_SETPOINT")
+        return self.send_code(0xe7, value, label="SET_LASER_TEC_SETPOINT")
 
     ##
     # Read the trigger source setting from the device. 
@@ -1012,6 +1013,21 @@ class FeatureIdentificationDevice(object):
             self.settings.state.selected_adc = value
         return value
 
+    # not tested
+    def set_trigger_delay(self, half_us):
+        if not self.is_arm():
+            return log.error("SET_TRIGGER_DELAY only supported on ARM")
+        lsw = half_us & 0xffff
+        msb = (half_us >> 16) & 0xff
+        return self.send_code(0xaa, wValue=lsw, wIndex=msb, label="SET_TRIGGER_DELAY")
+
+    # not tested
+    def get_trigger_delay(self):
+        if not self.is_arm():
+            log.error("GET_TRIGGER_DELAY only supported on ARM")
+            return -1
+        return self.get_code(0xe4, label="GET_TRIGGER_DELAY", lsb_len=3) # not sure about LSB
+
     def get_vr_continuous_ccd(self):
         return self.get_code(0xcc, label="GET_VR_CONTINUOUS_CCD", msb_len=1)
 
@@ -1072,6 +1088,9 @@ class FeatureIdentificationDevice(object):
 
         return True
 
+    ## 
+    # Given a (serial_number, EEPROM) pair, update this process's "session" 
+    # EEPROM with just the EDITABLE fields of the passed EEPROM.
     def update_session_eeprom(self, pair):
         if not self.validate_eeprom(pair):
             return
@@ -1083,6 +1102,9 @@ class FeatureIdentificationDevice(object):
 
         self.settings.eeprom.update_editable(pair[1])
 
+    ## 
+    # Given a (serial_number, EEPROM) pair, replace this process's "session" 
+    # EEPROM with the passed EEPROM.
     def replace_session_eeprom(self, pair):
         if not self.validate_eeprom(pair):
             return
@@ -1094,6 +1116,7 @@ class FeatureIdentificationDevice(object):
 
         self.settings.eeprom = pair[1]
 
+    ## Actually store the current session EEPROM fields to the spectrometer.
     def write_eeprom(self):
         if not self.eeprom_backup:
             log.critical("expected to update or replace EEPROM object before write command")

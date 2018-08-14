@@ -55,6 +55,7 @@ class WasatchShell(object):
             "get_ccd_sensing_threshold",
             "get_ccd_threshold_sensing_mode",
             "get_ccd_trigger_source",
+            "get_dac",
             "get_detector_gain",
             "get_detector_offset",
             "get_detector_temperature_degC",
@@ -88,6 +89,7 @@ class WasatchShell(object):
             "get_sensor_line_length",
             "get_tec_enabled",
             "get_tec_enabled",
+            "get_trigger_delay",
             "get_vr_continuous_ccd",
             "get_vr_num_frames" ]:
             self.gettors[func_name.lower()] = func_name
