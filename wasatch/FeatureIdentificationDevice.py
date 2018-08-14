@@ -286,6 +286,10 @@ class FeatureIdentificationDevice(object):
         self.settings.eeprom.detector_offset = word
         return self.send_code(0xb6, word, label="SET_DETECTOR_OFFSET")
 
+    def set_detector_offset_odd(self, n):
+        n = int(n) & 0xffff
+        self.settings.eeprom.detector_offset_odd = n
+
     ##
     # Read the device stored gain.  Convert from binary "half-precision" float.
     #
@@ -356,6 +360,9 @@ class FeatureIdentificationDevice(object):
         log.debug("Send Detector Gain: 0x%04x (%s)", raw, gain)
         self.send_code(0xb7, raw, label="SET_DETECTOR_GAIN")
         self.settings.eeprom.detector_gain = gain
+
+    def set_detector_gain_odd(self, n):
+        self.settings.eeprom.detector_gain_odd = n
 
     def set_area_scan_enable(self, flag):
         value = 1 if flag else 0
@@ -1291,6 +1298,12 @@ class FeatureIdentificationDevice(object):
 
         elif setting == "detector_offset":
             self.set_detector_offset(int(round(value)))
+
+        elif setting == "detector_gain_odd":
+            self.set_detector_gain_odd(float(value))
+
+        elif setting == "detector_offset_odd":
+            self.set_detector_offset_odd(int(round(value)))
 
         elif setting == "high_gain_mode_enable":
             self.set_high_gain_mode_enable(True if value else False)

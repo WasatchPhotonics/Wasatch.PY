@@ -298,7 +298,7 @@ class WasatchDevice(object):
             new = (raw * self.settings.eeprom.detector_gain_odd) + self.settings.eeprom.detector_offset_odd
             spectrum[i] = round(new)
 
-            log.debug("pixel %4d: old %.2f raw %.2f new %.2f", old, raw, new)
+            # log.debug("pixel %4d: old %.2f raw %.2f new %.2f", i, old, raw, new)
 
     ##
     # Process all enqueued settings, then read actual data (spectrum and 

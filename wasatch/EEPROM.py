@@ -223,6 +223,10 @@ class EEPROM(object):
         self.has_laser                       = self.unpack((0, 38,  1), "?")
         self.excitation_nm                   = self.unpack((0, 39,  2), "H" if self.revisions[0] >= 3 else "h")
         self.slit_size_um                    = self.unpack((0, 41,  2), "h")
+
+        # NOTE: the new InGaAs detector gain/offset won't be usable from 
+        #       EEPROM until we start bumping production spectrometers to
+        #       EEPROM Page 0 Revision 3!
         if self.revisions[0] >= 3:
             self.startup_integration_time_ms = self.unpack((0, 43,  2), "H")
             self.startup_temp_degC           = self.unpack((0, 45,  2), "h")
