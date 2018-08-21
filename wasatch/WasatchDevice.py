@@ -275,6 +275,7 @@ class WasatchDevice(object):
             i += 1
 
     def correct_ingaas_gain_and_offset(self, reading):
+        #if False and not self.settings.is_InGaAs():
         if not self.settings.is_InGaAs():
             return
 
@@ -296,9 +297,11 @@ class WasatchDevice(object):
             old = float(spectrum[i])
             raw = (old - self.settings.eeprom.detector_offset) / self.settings.eeprom.detector_gain
             new = (raw * self.settings.eeprom.detector_gain_odd) + self.settings.eeprom.detector_offset_odd
-            spectrum[i] = round(new)
+            clean = round(max(0, min(new, 65535)))
+            spectrum[i] = clean
 
-            # log.debug("pixel %4d: old %.2f raw %.2f new %.2f", i, old, raw, new)
+            if i < 5:
+                log.debug("  pixel %4d: old %.2f raw %.2f new %.2f clean %5d", i, old, raw, new, clean)
 
     ##
     # Process all enqueued settings, then read actual data (spectrum and 
@@ -323,6 +326,7 @@ class WasatchDevice(object):
         if self.settings.state.integration_time_ms <= 0:
             log.debug("skipping acquire_data because no integration_time_ms")
             return None
+        log.debug("performing acquire_data because integration_time_ms = %d", self.settings.state.integration_time_ms)
 
         averaging_enabled = (self.settings.state.scans_to_average > 1)
 

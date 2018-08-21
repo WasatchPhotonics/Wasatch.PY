@@ -278,7 +278,13 @@ class FeatureIdentificationDevice(object):
 
     def get_integration_time_ms(self):
         ms = self.get_code(0xbf, label="GET_INTEGRATION_TIME_MS", lsb_len=3)
-        self.settings.state.integration_time_ms = ms
+
+        if self.settings.state.integration_time_ms > 0:
+            log.debug("GET_INTEGRATION_TIME_MS: now %d", ms)
+            self.settings.state.integration_time_ms = ms
+        else:
+            log.debug("declining to initialize session integration_time_ms from spectrometer")
+
         return ms
 
     def set_detector_offset(self, value):
@@ -492,6 +498,7 @@ class FeatureIdentificationDevice(object):
         msw = (ms / 65536) & 0xffff
 
         result = self.send_code(0xB2, lsw, msw, label="SET_INTEGRATION_TIME_MS")
+        log.debug("SET_INTEGRATION_TIME_MS: now %d", ms)
         self.settings.state.integration_time_ms = ms
         return result
 
@@ -1146,7 +1153,8 @@ class FeatureIdentificationDevice(object):
             DATA_START = 0x3c00
             offset = DATA_START + page * 64
             log.debug("writing page %d at offset 0x%04x: %s", page, offset, self.settings.eeprom.write_buffers[page])
-            self.send_code(0xa2, offset, 0, self.settings.eeprom.write_buffers[page])
+            # note that "offset" (which is essentially an index) is nonetheless passed as value
+            self.send_code(0xa2, wValue=offset, wIndex=0, data_or_wLength=self.settings.eeprom.write_buffers[page])
 
     def set_overrides(self, overrides):
         log.debug("received overrides %s", overrides)
@@ -1198,6 +1206,7 @@ class FeatureIdentificationDevice(object):
 
         # store result of override...need a more scalable way to do this
         if setting == "integration_time_ms":
+            log.debug("integration_time_ms: now %d (apply_override)", int(value))
             self.settings.state.integration_time_ms = int(value)
 
     def queue_message(self, setting, value):
