@@ -1,5 +1,6 @@
 import datetime
 import logging
+import random
 import copy
 import math
 import usb
@@ -75,6 +76,10 @@ class FeatureIdentificationDevice(object):
         self.last_applied_laser_power = 0.0 # last power level APPLIED to laser, either by turning off (0) or on (immediate or ramping)
         self.next_applied_laser_power = None # power level to be applied NEXT time the laser is enabled (immediate or ramping)
 
+        self.raise_exceptions = False
+        self.random_errors = False
+        self.random_error_perc = 0.001   # 0.1%
+
     def connect(self):
         """ Attempt to connect to the specified device. Log any failures and
             return False if there is a problem, otherwise return True. If
@@ -139,7 +144,7 @@ class FeatureIdentificationDevice(object):
             raise
         return True
 
-    def schedule_disconnect(self):
+    def schedule_disconnect(self, exc):
         # Not doing this right now, because it's not clear that all
         #
         #   "USBError: [Errno None] libusb0-dll:err [control_msg] sending
@@ -152,7 +157,11 @@ class FeatureIdentificationDevice(object):
 
         # log.critical("Due to hardware error, attempting reconnection")
         # self.disconnect()
-        pass
+        if self.raise_exceptions:
+            log.critical("schedule_disconnect: raising exception")
+            raise exc
+        else:
+            log.error("ignoring exception")
 
     # ##########################################################################
     # Utility Methods
@@ -175,6 +184,13 @@ class FeatureIdentificationDevice(object):
                         sleep(0.001) # 1ms
             self.last_usb_timestamp = datetime.datetime.now()
 
+    def check_for_random_error(self):
+        if self.random_errors and random.random() <= self.random_error_perc:
+            log.critical("Randomly-injected error")
+            self.schedule_disconnect(Exception("Randomly-injected error"))
+            return True
+        return False
+
     ##
     # Note: some USB docs call this "bmRequest" for "bitmap" vs "byte", but it's
     #       definitely an octet.  And yes, the USB spec really does say "data_or_length".
@@ -196,6 +212,9 @@ class FeatureIdentificationDevice(object):
         if dry_run:
             return True
 
+        if self.check_for_random_error():
+            return False
+
         try:
             self.wait_for_usb_available()
             result = self.device.ctrl_transfer(0x40,     # HOST_TO_DEVICE
@@ -205,7 +224,7 @@ class FeatureIdentificationDevice(object):
                                                data_or_wLength) # add TIMEOUT_MS parameter?
         except Exception as exc:
             log.critical("Hardware Failure FID Send Code Problem with ctrl transfer", exc_info=1)
-            self.schedule_disconnect()
+            self.schedule_disconnect(exc)
 
         log.debug("%sSend Raw result: [%s]", prefix, result)
         log.debug("%ssend_code: request 0x%02x value 0x%04x index 0x%04x data/len %s: result %s",
@@ -216,6 +235,10 @@ class FeatureIdentificationDevice(object):
     def get_code(self, bRequest, wValue=0, wIndex=0, wLength=64, label="", msb_len=None, lsb_len=None):
         prefix = "" if not label else ("%s: " % label)
         result = None
+
+        if self.check_for_random_error():
+            return False
+
         try:
             self.wait_for_usb_available()
             result = self.device.ctrl_transfer(0xc0,        # DEVICE_TO_HOST
@@ -225,7 +248,7 @@ class FeatureIdentificationDevice(object):
                                                wLength)
         except Exception as exc:
             log.critical("Hardware Failure FID Get Code Problem with ctrl transfer", exc_info=1)
-            self.schedule_disconnect()
+            self.schedule_disconnect(exc)
 
         log.debug("%sget_code: request 0x%02x value 0x%04x index 0x%04x = [%s]",
             prefix, bRequest, wValue, wIndex, result)
@@ -1367,6 +1390,9 @@ class FeatureIdentificationDevice(object):
 
         elif setting == "graph_alternating_pixels":
             self.settings.state.graph_alternating_pixels = True if value else False
+
+        elif setting == "raise_exceptions":
+            self.raise_exceptions = True if value else False
 
         else:
             log.critical("Unknown setting to write: %s", setting)

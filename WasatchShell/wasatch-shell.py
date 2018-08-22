@@ -18,6 +18,7 @@ import platform
 import argparse
 import readline
 import logging
+import time
 import sys
 import os
 import re
@@ -29,7 +30,7 @@ from wasatch.WasatchBus         import WasatchBus
 from wasatch.WasatchDevice      import WasatchDevice
 from wasatch.BalanceAcquisition import BalanceAcquisition
 
-VERSION = "2.0.2"
+VERSION = "2.0.3"
 
 log = logging.getLogger(__name__)
 
@@ -213,64 +214,80 @@ class WasatchShell(object):
                         self.display("ERROR: must open spectrometer first")
 
                 else:
-                    # anything past this point assumes spectrometer already open
+                    try:
+                        # anything past this point assumes spectrometer already open
 
-                    # pass-through gettors
-                    if command in self.gettors:
-                        self.run_gettor(command)
+                        # pass-through gettors
+                        if command in self.gettors:
+                            self.run_gettor(command)
+                            
+                        # special processing for these
+                        elif command == "get_spectrum":
+                            self.get_spectrum(quiet=False)
+
+                        elif command == "get_spectrum_pretty":
+                            self.get_spectrum_pretty()
+
+                        elif command == "get_spectrum_save":
+                            self.get_spectrum_save(tok)
+
+                        elif command == "get_config_json":
+                            self.display(self.device.settings.eeprom.json())
+
+                        elif command == "get_all":
+                            self.get_all()
+
+                        elif command == "connection_check":
+                            self.run_gettor("get_integration_time_ms")
+
+                        # currently these are the only setters implemented
+                        elif command == "set_integration_time_ms":
+                            self.device.hardware.set_integration_time_ms(self.read_int(tok))
+                            self.display(1)
+
+                        elif command == "set_laser_power_mw":
+                            self.device.hardware.set_laser_power_mW(self.read_float(tok))
+                            self.display(1)
+
+                        elif command == "set_laser_enable":
+                            self.device.hardware.set_laser_enable(self.read_bool(tok))
+                            self.display(1)
+
+                        elif command == "set_tec_enable":
+                            self.device.hardware.set_tec_enable(self.read_bool(tok))
+                            self.display(1)
+
+                        elif command == "set_detector_tec_setpoint_degc":
+                            self.device.hardware.set_detector_tec_setpoint_degC(self.read_float(tok))
+                            self.display(1)
+
+                        elif command == "set_laser_power_ramping_enable":
+                            self.device.hardware.set_laser_power_ramping_enable(self.read_bool(tok))
+
+                        elif command == "balance_acquisition":
+                            self.balance_acquisition(tok)
+
+                        elif command == "set_interpolated_x_axis_cm":
+                            self.set_interpolated_x_axis_cm(start = self.read_float(tok),
+                                                            end   = self.read_float(tok),
+                                                            incr  = self.read_float(tok))
+                        else:
+                            self.display("ERROR: unknown command: " + command)
+                    except Exception as ex:
+                        log.critical("caught exception")
+                        log.info("disconnecting")
+                        self.device.disconnect()
+                        self.device = None
+
+                        log.info("sleeping 5sec")
+                        time.sleep(5.100)
                         
-                    # special processing for these
-                    elif command == "get_spectrum":
-                        self.get_spectrum(quiet=False)
-
-                    elif command == "get_spectrum_pretty":
-                        self.get_spectrum_pretty()
-
-                    elif command == "get_spectrum_save":
-                        self.get_spectrum_save(tok)
-
-                    elif command == "get_config_json":
-                        self.display(self.device.settings.eeprom.json())
-
-                    elif command == "get_all":
-                        self.get_all()
-
-                    elif command == "connection_check":
-                        self.run_gettor("get_integration_time_ms")
-
-                    # currently these are the only setters implemented
-                    elif command == "set_integration_time_ms":
-                        self.device.hardware.set_integration_time_ms(self.read_int(tok))
-                        self.display(1)
-
-                    elif command == "set_laser_power_mw":
-                        self.device.hardware.set_laser_power_mW(self.read_float(tok))
-                        self.display(1)
-
-                    elif command == "set_laser_enable":
-                        self.device.hardware.set_laser_enable(self.read_bool(tok))
-                        self.display(1)
-
-                    elif command == "set_tec_enable":
-                        self.device.hardware.set_tec_enable(self.read_bool(tok))
-                        self.display(1)
-
-                    elif command == "set_detector_tec_setpoint_degc":
-                        self.device.hardware.set_detector_tec_setpoint_degC(self.read_float(tok))
-                        self.display(1)
-
-                    elif command == "set_laser_power_ramping_enable":
-                        self.device.hardware.set_laser_power_ramping_enable(self.read_bool(tok))
-
-                    elif command == "balance_acquisition":
-                        self.balance_acquisition(tok)
-
-                    elif command == "set_interpolated_x_axis_cm":
-                        self.set_interpolated_x_axis_cm(start = self.read_float(tok),
-                                                        end   = self.read_float(tok),
-                                                        incr  = self.read_float(tok))
-                    else:
-                        self.display("ERROR: unknown command: " + command)
+                        log.info("re-opening")
+                        if self.open():
+                            log.info("successfully re-opened")
+                        else:
+                            log.error("could not re-open...giving up")
+                            break
 
                 # whatever happend, flush stdout
                 try:
@@ -317,6 +334,12 @@ class WasatchShell(object):
 
         log.info("open: device connected")
         self.device = device
+
+        # enable exceptions
+        self.device.hardware.raise_exceptions = True
+
+        # throw random errors
+        # self.device.hardware.random_errors = True
 
         # validate gettors (in case this is used against a StrokerProtocol unit, for instance)
         for func_name in self.gettors.keys():

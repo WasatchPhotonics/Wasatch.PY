@@ -302,6 +302,8 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2018-08-22 0.9.11
+    - improved exception handling
 - 2018-08-14 0.9.10
     - InGaAs offset/gain processing in software
 - 2018-07-31 0.9.9

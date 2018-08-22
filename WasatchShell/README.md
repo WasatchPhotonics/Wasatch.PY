@@ -99,6 +99,8 @@ multi-process pipeline used by ENLIGHTEN.
 
 # Version History
 
+- 08-22-2018 2.0.3
+    - improved exception handling
 - 08-02-2018 2.0.2
     - added GNU readline support
     - allowed saving of interpolated spectra
