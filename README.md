@@ -302,6 +302,8 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2018-09-25 0.9.12
+    - ARM triggering
 - 2018-08-22 0.9.11
     - improved exception handling
 - 2018-08-14 0.9.10

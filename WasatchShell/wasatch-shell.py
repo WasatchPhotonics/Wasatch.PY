@@ -115,6 +115,7 @@ class WasatchShell(object):
         set_laser_power_ramping_enable - gradually ramp laser power in software
         set_tec_enable                 - takes bool argument
         set_detector_tec_setpoint_degc - takes float argument
+        set_detector_offset            - override the "offset" added to pixel readings
 
         set_interpolated_x_axis_cm     - takes start, end, incr (zero incr to disable)
         balance_acquisition            - takes mode [integ, laser, laser_and_integ], 
@@ -263,6 +264,9 @@ class WasatchShell(object):
 
                         elif command == "set_laser_power_ramping_enable":
                             self.device.hardware.set_laser_power_ramping_enable(self.read_bool(tok))
+
+                        elif command == "set_detector_offset":
+                            self.device.hardware.set_detector_offset(self.read_int(tok))
 
                         elif command == "balance_acquisition":
                             self.balance_acquisition(tok)

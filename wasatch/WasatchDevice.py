@@ -382,7 +382,6 @@ class WasatchDevice(object):
                 self.sum_count += 1
                 log.debug("device.acquire_data: summed_spectra : %s ...", self.summed_spectra[0:9])
 
-
         # count spectra
         self.session_reading_count += 1
         reading.session_count = self.session_reading_count

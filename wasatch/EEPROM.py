@@ -152,7 +152,7 @@ class EEPROM(object):
         log.info("  Has Battery:      %s", self.has_battery)
         log.info("  Has Laser:        %s", self.has_laser)
         log.info("  Excitation:       %s nm", self.excitation_nm)
-        log.info("  Slit size:    :   %s um", self.slit_size_um)
+        log.info("  Slit size:        %s um", self.slit_size_um)
         log.info("  Start Integ Time: %d ms", self.startup_integration_time_ms)
         log.info("  Start Temp:       %d degC", self.startup_temp_degC)
         log.info("  Start Triggering: 0x%02x", self.startup_triggering_scheme)

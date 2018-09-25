@@ -20,7 +20,6 @@ from EEPROM               import EEPROM
 
 log = logging.getLogger(__name__)
 
-USB_TIMEOUT_MS = 60000
 MICROSEC_TO_SEC = 0.000001
 
 ##
@@ -435,10 +434,10 @@ class FeatureIdentificationDevice(object):
 
     ## send "acquire", then immediately read the bulk endpoint(s).
     def get_line(self):
-        # Only send the CCD_GET_IMAGE (internal trigger) if external trigger is disabled (default)
+        # Only send ACQUIRE (internal SW trigger) if external HW trigger is disabled (the default)
         log.debug("get_line: requesting spectrum")
         if self.settings.state.trigger_source == SpectrometerState.TRIGGER_SOURCE_INTERNAL:
-            result = self.send_code(0xad, data_or_wLength="00000000", label="ACQUIRE_CCD")
+            result = self.send_code(0xad, data_or_wLength="00000000", label="ACQUIRE_SPECTRUM")
 
         # regardless of pixel count, assume uint16
         pixels = self.settings.pixels()
@@ -457,10 +456,27 @@ class FeatureIdentificationDevice(object):
         self.wait_for_usb_available()
 
         spectrum = []
+        timeout_ms = self.settings.state.integration_time_ms * 2 + 100
         for endpoint in endpoints:
-            log.debug("waiting for %d bytes", block_len_bytes)
-            data = self.device.read(endpoint, block_len_bytes, timeout=USB_TIMEOUT_MS)
-            subspectrum = [i + 256 * j for i, j in zip(data[::2], data[1::2])] # LSB-MSB
+
+            data = None 
+            while data is None:
+                try:
+                    log.debug("waiting for %d bytes (timeout %dms)", block_len_bytes, timeout_ms)
+                    data = self.device.read(endpoint, block_len_bytes, timeout=timeout_ms)
+                except Exception as exc:
+                    if self.settings.state.trigger_source == SpectrometerState.TRIGGER_SOURCE_EXTERNAL:
+                        # we don't know how long we'll have to wait for the trigger, so
+                        # just loop and hope
+                        log.debug("still waiting for external trigger")
+                    else:        
+                        raise exc
+
+            # This is a convoluted way to iterate across the received bytes in 'data' as 
+            # two interleaved arrays, both only processing alternating bytes, but one (i) 
+            # starting at zero (even bytes) and the other (j) starting at 1 (odd bytes).
+            subspectrum = [(i | (j << 8)) for i, j in zip(data[::2], data[1::2])] # LSB-MSB
+
             spectrum.extend(subspectrum)
 
         log.debug("get_line: pixels %d, endpoints %s, block %d, spectrum %s ...", 
@@ -493,17 +509,20 @@ class FeatureIdentificationDevice(object):
         if self.settings.state.invert_x_axis:
             spectrum.reverse()
 
+        # When integrating new sensors, sometimes we want to only look at even-
+        # numbered pixels to flatten-out irregularities in Bayer filters or InGaAs 
+        # arrays.  However, we don't want to disrupt the expected pixel-count, so 
+        # just average-over the odd pixels.
         if self.settings.state.graph_alternating_pixels:
-            # |x|x|x|x|x graph
-            # 0123456789 pixel
             smoothed = []
             for i in range(len(spectrum)):
                 if i % 2 == 0:
                     smoothed.append(spectrum[i])
                 else:
-                    averaged = spectrum[i - 1]
                     if i + 1 < len(spectrum):
-                        averaged = round((spectrum[i-1] + spectrum[i+1]) / 2.0, 0)
+                        averaged = int(round((spectrum[i-1] + spectrum[i+1]) / 2.0, 0))
+                    else:
+                        averaged = spectrum[i - 1]
                     smoothed.append(averaged)
             spectrum = smoothed
 
@@ -671,6 +690,9 @@ class FeatureIdentificationDevice(object):
         return ok
 
     def set_ccd_trigger_source(self, value):
+        self.settings.state.trigger_source = value
+        log.debug("trigger_source now %s", value)
+
         # Don't send the opcode on ARM. See issue #2 on WasatchUSB project
         if self.is_arm():
             return False
@@ -680,10 +702,7 @@ class FeatureIdentificationDevice(object):
         buf = [0] * 8
 
         # MZ: this is weird...we're sending the buffer on an FX2-only command
-        ok = self.send_code(0xd2, lsb, msb, buf, label="SET_CCD_TRIGGER_SOURCE")
-        if ok: 
-            self.settings.state.trigger_source = value
-        return ok
+        return self.send_code(0xd2, lsb, msb, buf, label="SET_CCD_TRIGGER_SOURCE")
 
     ##
     # CF_SELECT is configured using bit 2 of the FPGA configuration register
@@ -1008,7 +1027,7 @@ class FeatureIdentificationDevice(object):
         return self.get_code(0xdf, label="GET_ACTUAL_INTEGRATION_TIME_US", lsb_len=3)
 
     def get_detector_offset(self):
-        return self.get_code(0xc4, label="GET_DETECTOR_OFFSET", lsb_len=2) # LSB is a guess
+        return self.get_code(0xc4, label="GET_DETECTOR_OFFSET", lsb_len=2) 
 
     def get_ccd_sensing_threshold(self):
         return self.get_code(0xd1, label="GET_CCD_SENSING_THRESHOLD", lsb_len=2)
