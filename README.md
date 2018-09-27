@@ -302,6 +302,8 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2018-09-27 0.9.13
+    - fixed demo.py
 - 2018-09-25 0.9.12
     - ARM triggering
 - 2018-08-22 0.9.11

@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import os
 import re
 import sys
@@ -126,7 +128,7 @@ class WasatchDemo(object):
         log.info("Wasatch.PY %s Demo", wasatch.version)
 
         # apply initial settings
-        self.device.change_setting("integration", self.args.integration_time_ms)
+        self.device.change_setting("integration_time_ms", self.args.integration_time_ms)
         self.device.change_setting("scans_to_average", self.args.scans_to_average)
         self.device.change_setting("detector_tec_enable", "1")
 
