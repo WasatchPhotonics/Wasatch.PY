@@ -134,8 +134,12 @@ class WasatchDemo(object):
 
         # initialize outfile if one was specified
         if self.args.outfile:
-            self.outfile = open(self.args.outfile, "w")
-            self.outfile.write("time,temp,%s\n" % ",".join(format(x, ".2f") for x in self.device.wavelengths))
+            try:
+                self.outfile = open(self.args.outfile, "w")
+                self.outfile.write("time,temp,%s\n" % ",".join(format(x, ".2f") for x in self.device.settings.wavelengths))
+            except:
+                log.error("Error initializing %s", self.args.outfile)
+                self.outfile = None
 
         # read spectra until user presses Control-Break
         while not self.exiting:

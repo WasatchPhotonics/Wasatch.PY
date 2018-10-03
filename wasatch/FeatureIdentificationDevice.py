@@ -437,7 +437,7 @@ class FeatureIdentificationDevice(object):
         # Only send ACQUIRE (internal SW trigger) if external HW trigger is disabled (the default)
         log.debug("get_line: requesting spectrum")
         if self.settings.state.trigger_source == SpectrometerState.TRIGGER_SOURCE_INTERNAL:
-            result = self.send_code(0xad, data_or_wLength="00000000", label="ACQUIRE_SPECTRUM")
+            self.send_code(0xad, data_or_wLength="00000000", label="ACQUIRE_SPECTRUM")
 
         # regardless of pixel count, assume uint16
         pixels = self.settings.pixels()
@@ -689,7 +689,22 @@ class FeatureIdentificationDevice(object):
             self.settings.state.tec_enabled = flag
         return ok
 
-    def set_ccd_trigger_source(self, value):
+    ##
+    # Set the source for incoming acquisition triggers.  
+    #
+    # @param value either 0 for "internal" or 1 for "external"
+    #
+    # With internal triggering (the default), the spectrometer expects the
+    # USB host to explicitly send a START_ACQUISITION (ACQUIRE) opcode to 
+    # begin each integration.  In external triggering, the spectrometer 
+    # waits for the rising edge on a signal connected to a pin on the OEM
+    # accessory connector.
+    #
+    # Technically on ARM, the microcontroller is continuously monitoring
+    # both the external pin and listening for internal software opcodes.
+    # On the FX2 you need to explicitly place the microcontroller into
+    # external triggering mode to avail the feature.
+    def set_trigger_source(self, value):
         self.settings.state.trigger_source = value
         log.debug("trigger_source now %s", value)
 
@@ -702,7 +717,7 @@ class FeatureIdentificationDevice(object):
         buf = [0] * 8
 
         # MZ: this is weird...we're sending the buffer on an FX2-only command
-        return self.send_code(0xd2, lsb, msb, buf, label="SET_CCD_TRIGGER_SOURCE")
+        return self.send_code(0xd2, lsb, msb, buf, label="SET_TRIGGER_SOURCE")
 
     ##
     # CF_SELECT is configured using bit 2 of the FPGA configuration register
@@ -1360,7 +1375,7 @@ class FeatureIdentificationDevice(object):
             self.set_high_gain_mode_enable(True if value else False)
 
         elif setting == "trigger_source":
-            self.set_ccd_trigger_source(int(value))
+            self.set_trigger_source(int(value))
 
         elif setting == "scans_to_average":
             self.settings.state.scans_to_average = int(value)
