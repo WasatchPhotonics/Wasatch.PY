@@ -47,15 +47,16 @@ class WasatchDemo(object):
 
     def parse_args(self, argv):
         parser = argparse.ArgumentParser(description="Simple demo to acquire spectra from command-line interface")
-        parser.add_argument("-l", "--log-level",           type=str, default="INFO", help="logging level [DEBUG,INFO,WARNING,ERROR,CRITICAL]")
-        parser.add_argument("-o", "--bus-order",           type=int, default=0,      help="usb device ordinal to connect")
-        parser.add_argument("-i", "--integration-time-ms", type=int, default=10,     help="integration time (ms, default 10)")
-        parser.add_argument("-s", "--scans-to-average",    type=int, default=1,      help="scans to average (default 1)")
-        parser.add_argument("-w", "--boxcar-half-width",   type=int, default=0,      help="boxcar half-width (default 0)")
-        parser.add_argument("-d", "--delay-ms",            type=int, default=1000,   help="delay between integrations (ms, default 1000)")
-        parser.add_argument("-f", "--outfile",             type=str, default=None,   help="output filename (e.g. path/to/spectra.csv)")
-        parser.add_argument("-m", "--max",                 type=int, default=0,      help="max spectra to acquire (default 0, unlimited)")
-        parser.add_argument("-b", "--non-blocking",        action="store_true",      help="non-blocking USB interface")
+        parser.add_argument("--log-level",           type=str, default="INFO", help="logging level [DEBUG,INFO,WARNING,ERROR,CRITICAL]")
+        parser.add_argument("--bus-order",           type=int, default=0,      help="usb device ordinal to connect")
+        parser.add_argument("--integration-time-ms", type=int, default=10,     help="integration time (ms, default 10)")
+        parser.add_argument("--scans-to-average",    type=int, default=1,      help="scans to average (default 1)")
+        parser.add_argument("--boxcar-half-width",   type=int, default=0,      help="boxcar half-width (default 0)")
+        parser.add_argument("--delay-ms",            type=int, default=1000,   help="delay between integrations (ms, default 1000)")
+        parser.add_argument("--outfile",             type=str, default=None,   help="output filename (e.g. path/to/spectra.csv)")
+        parser.add_argument("--max",                 type=int, default=0,      help="max spectra to acquire (default 0, unlimited)")
+        parser.add_argument("--non-blocking",        action="store_true",      help="non-blocking USB interface")
+        parser.add_argument("--ascii-art",           action="store_true",      help="graph spectra in ASCII")
 
         # parse argv into dict
         args = parser.parse_args(argv[1:])
@@ -111,7 +112,7 @@ class WasatchDemo(object):
             log.critical("connect: can't connect to device on bus 1")
             return
 
-        log.info("connect: device connected")
+        log.debug("connect: device connected")
 
         self.device = device
         self.reading_count = 0
@@ -148,7 +149,7 @@ class WasatchDemo(object):
             end_time = datetime.datetime.now()
 
             if self.args.max > 0 and self.reading_count >= self.args.max:
-                log.info("max spectra reached, exiting")
+                log.debug("max spectra reached, exiting")
                 self.exiting = True
             else:
                 # compute how much longer we should wait before the next reading
@@ -162,7 +163,7 @@ class WasatchDemo(object):
                         log.critical("WasatchDemo.run sleep() caught an exception", exc_info=1)
                         self.exiting = True
 
-        log.info("WasatchDemo.run exiting")
+        log.debug("WasatchDemo.run exiting")
 
     def attempt_reading(self):
         try:
@@ -205,16 +206,19 @@ class WasatchDemo(object):
         else:
             spectrum = reading.spectrum
 
-        spectrum_min = numpy.amin(spectrum)
-        spectrum_max = numpy.amax(spectrum)
-        spectrum_avg = numpy.mean(spectrum)
+        if self.args.ascii_art:
+            print "\n".join(wasatch.utils.ascii_spectrum(spectrum, rows=20, cols=80, x_axis=self.device.settings.wavelengths, x_unit="nm"))
+        else:
+            spectrum_min = numpy.amin(spectrum)
+            spectrum_max = numpy.amax(spectrum)
+            spectrum_avg = numpy.mean(spectrum)
 
-        log.info("Reading: %4d  Detector: %5.2f degC  Min: %8.2f  Max: %8.2f  Avg: %8.2f",
-            self.reading_count,
-            reading.detector_temperature_degC,
-            spectrum_min,
-            spectrum_max,
-            spectrum_avg)
+            print "Reading: %4d  Detector: %5.2f degC  Min: %8.2f  Max: %8.2f  Avg: %8.2f" % (
+                self.reading_count,
+                reading.detector_temperature_degC,
+                spectrum_min,
+                spectrum_max,
+                spectrum_avg)
 
         if self.outfile:
             self.outfile.write("%s,%.2f,%s\n" % (datetime.datetime.now(),
@@ -238,7 +242,7 @@ def clean_shutdown():
         if demo.logger:
             log.debug("closing logger")
             demo.logger.close()
-    log.info("Exiting")
+    log.debug("Exiting")
     sys.exit(0)
 
 demo = None
@@ -249,7 +253,7 @@ if __name__ == "__main__":
     if demo.connect():
         # Note that on Windows, Control-Break (SIGBREAK) differs from 
         # Control-C (SIGINT); see https://stackoverflow.com/a/1364199
-        log.info("Press Control-Break to interrupt...")
+        log.debug("Press Control-Break to interrupt...")
         demo.run()
 
     clean_shutdown()
