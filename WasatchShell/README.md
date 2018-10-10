@@ -3,6 +3,7 @@
 wasatch-shell.py is a simple interactive wrapper over Wasatch.PY, providing
 command-line access to most functions including simple acquisitions.
 
+    $ set PYTHONPATH=..     # note absence of quotation marks!
     $ ./wasatch-shell.py
     wp> help
     ...
