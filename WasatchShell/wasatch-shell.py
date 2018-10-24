@@ -30,7 +30,7 @@ from wasatch.WasatchBus         import WasatchBus
 from wasatch.WasatchDevice      import WasatchDevice
 from wasatch.BalanceAcquisition import BalanceAcquisition
 
-VERSION = "2.0.3"
+VERSION = "2.0.4"
 
 log = logging.getLogger(__name__)
 
@@ -92,7 +92,8 @@ class WasatchShell(object):
             "get_tec_enabled",
             "get_trigger_delay",
             "get_vr_continuous_ccd",
-            "get_vr_num_frames" ]:
+            "get_vr_num_frames",
+            "has_linearity_coeffs"]:
             self.gettors[func_name.lower()] = func_name
 
     # ##############################################################################

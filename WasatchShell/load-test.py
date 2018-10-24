@@ -21,6 +21,7 @@ import pexpect
 import random
 import time
 import sys
+import re
 
 from pexpect.popen_spawn import PopenSpawn
 
@@ -68,6 +69,10 @@ except pexpect.exceptions.TIMEOUT:
     sys.exit(1)
 
 print "Successfully enumerated spectrometer"
+
+child.sendline("has_linearity_coeffs")
+child.expect(prompt)
+has_linearity_coeffs = re.match("1", child.before)
 
 ################################################################################
 # run the test iterations
@@ -182,12 +187,13 @@ while True:
             child.expect("0")
             child.expect(prompt)
 
-            child.sendline("get_secondary_adc_calibrated")
-            child.expect(prompt)
+            if has_linearity_coeffs:
+                child.sendline("get_secondary_adc_calibrated")
+                child.expect(prompt)
 
-            child.sendline("get_selected_adc")
-            child.expect("1")
-            child.expect(prompt)
+                child.sendline("get_selected_adc")
+                child.expect("1")
+                child.expect(prompt)
 
         child.sendline("set_tec_enable off")
         child.expect(success)

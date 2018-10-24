@@ -100,6 +100,8 @@ multi-process pipeline used by ENLIGHTEN.
 
 # Version History
 
+- 10-24-2018 2.0.4
+    - added has_linearity_coeffs
 - 08-22-2018 2.0.3
     - improved exception handling
 - 08-02-2018 2.0.2
