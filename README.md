@@ -302,7 +302,9 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
-- 2018-10-03 0.9.15
+- 2018-11-27 0.9.16
+    - bugfixes
+- 2018-11-27 0.9.15
     - changed detector\_offset to SInt16
     - added SpectrometerState.free\_running\_mode, .acquisition\_laser\_trigger\_enable, .acquisition\_laser\_trigger\_delay\_ms
     - added "acquire" device command (letting ENLIGHTEN trigger individual acquisitions)

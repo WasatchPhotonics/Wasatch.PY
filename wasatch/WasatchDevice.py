@@ -354,7 +354,8 @@ class WasatchDevice(object):
         # for now I'm putting this delay here, so it will be exactly the same
         # (given sleep()'s precision) for each acquisition.  For true precision
         # this should all go into the firmware anyway.
-        if self.settings.state.acquisition_laser_trigger_enable and not self.settings.state.free_running_mode:
+        auto_enable_laser = self.settings.state.acquisition_laser_trigger_enable and not self.settings.state.free_running_mode
+        if auto_enable_laser:
             self.hardware.set_laser_enable(True)
             time.sleep(self.settings.state.acquisition_laser_trigger_delay_ms / 1000.0)
 
@@ -390,7 +391,7 @@ class WasatchDevice(object):
             reading.failure = str(exc)
 
         # Batch Collection
-        if self.settings.state.acquisition_laser_trigger_enable:
+        if auto_enable_laser:
             self.hardware.set_laser_enable(False)
 
         if not reading.failure:

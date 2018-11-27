@@ -314,9 +314,9 @@ class FeatureIdentificationDevice(object):
         self.settings.eeprom.detector_offset = word
         return self.send_code(0xb6, word, label="SET_DETECTOR_OFFSET")
 
-    def set_detector_offset_odd(self, n):
+    def set_detector_offset_odd(self, value):
         word = max(-32768, min(32767, int(value))) # clamp to Int16
-        self.settings.eeprom.detector_offset_odd = n
+        self.settings.eeprom.detector_offset_odd = word
         log.debug("SET_DETECTOR_OFFSET_ODD NOT IMPLEMENTED: %d", word)
 
     ##
