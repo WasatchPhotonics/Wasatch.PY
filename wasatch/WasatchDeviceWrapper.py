@@ -443,6 +443,11 @@ class WasatchDeviceWrapper(object):
                         poison_pill = True
                     else:
                         log.debug("continuous_poll: Processing command queue: %s", record.setting)
+
+                        # basically, this simply moves each de-dupped command from 
+                        # WasatchDeviceWrapper.command_queue to WasatchDevice.command_queue,
+                        # where it gets read during the next call to 
+                        # WasatchDevice.acquire_data.
                         wasatch_device.change_setting(record.setting, record.value)
             else:
                 log.debug("continuous_poll: Command queue empty")

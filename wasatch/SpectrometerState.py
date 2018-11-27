@@ -81,6 +81,11 @@ class SpectrometerState(object):
         # pixel binning
         self.graph_alternating_pixels = False
 
+        # Batch Collection
+        self.free_running_mode = True
+        self.acquisition_laser_trigger_enable = False
+        self.acquisition_laser_trigger_delay_ms = 0
+
         # ######################################################################
         # What about truly internal settings like last_applied_laser_power or 
         # detector_tec_setpoint_has_been_set?  It's okay for StrokerProtocolDevice,

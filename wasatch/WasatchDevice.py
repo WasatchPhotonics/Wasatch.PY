@@ -306,6 +306,32 @@ class WasatchDevice(object):
     ##
     # Process all enqueued settings, then read actual data (spectrum and 
     # temperatures) from the device.
+    def acquire_data(self):
+
+        log.debug("Device acquire_data")
+
+        # yes, allow settings to change in the midst of a long average; this way
+        # they can turn off laser, disable averaging etc
+        needs_acquisition = self.process_commands() 
+
+        if not (needs_acquisition or self.settings.state.free_running_mode):
+            return None
+
+        # if we don't yet have an integration time, nothing to do
+        if self.settings.state.integration_time_ms <= 0:
+            log.debug("skipping acquire_data because no integration_time_ms")
+            return None
+
+        # note that right now, all we return are Readings (encapsulating both
+        # spectra and temperatures).  If we disable spectra (turn off 
+        # free_running_mode), then ENLIGHTEN stops receiving temperatures as 
+        # well.  In the future perhaps we should return multiple object types 
+        # (Acquisitions, Temperatures, etc)
+        return self.acquire_spectrum()
+
+    ##
+    # Called directly by acquire_data, above.  Encapsulates the act of acquisition
+    # from the decision-making of whether same is needed.
     #
     # Notes:
     #     - we always return raw readings, even during scan averaging (.spectrum)
@@ -314,21 +340,23 @@ class WasatchDevice(object):
     #     - we always return temperatures for live GUI updates
     #     - we always perform bad pixel correction
     #     - currently returning INTEGRAL averages (including bad_pixel)
-    def acquire_data(self):
-
-        log.debug("Device acquire_data")
-
-        # yes, allow settings to change in the midst of a long average; this way
-        # they can turn off laser, disable averaging etc
-        self.process_commands() 
-
-        # if we don't yet have an integration time, nothing to do
-        if self.settings.state.integration_time_ms <= 0:
-            log.debug("skipping acquire_data because no integration_time_ms")
-            return None
-        log.debug("performing acquire_data because integration_time_ms = %d", self.settings.state.integration_time_ms)
-
+    def acquire_spectrum(self):
         averaging_enabled = (self.settings.state.scans_to_average > 1)
+
+        # for Batch Collection
+        #
+        # We could move this up into ENLIGHTEN.BatchCollection: have it enable
+        # the laser, wait a bit, and then send the "acquire" command.  But since
+        # WasatchDeviceWrapper.continuous_poll ticks at its own interval, that
+        # would introduce timing interference, and different acquisitions would
+        # realistically end up with different warm-up times for lasers (all "at
+        # least" the configured time, but some longer than others).  Instead,
+        # for now I'm putting this delay here, so it will be exactly the same
+        # (given sleep()'s precision) for each acquisition.  For true precision
+        # this should all go into the firmware anyway.
+        if self.settings.state.acquisition_laser_trigger_enable and not self.settings.state.free_running_mode:
+            self.hardware.set_laser_enable(True)
+            time.sleep(self.settings.state.acquisition_laser_trigger_delay_ms / 1000.0)
 
         # start a new reading
         reading = Reading()
@@ -341,7 +369,7 @@ class WasatchDevice(object):
         reading.laser_power         = self.settings.state.laser_power
         reading.laser_power_in_mW   = self.settings.state.laser_power_in_mW
 
-        # collect next spectrum
+        # collect next spectrum (ON)
         try:
             while True:
                 (reading.spectrum, reading.area_scan_row_count)  = self.hardware.get_line()
@@ -360,6 +388,10 @@ class WasatchDevice(object):
         except Exception as exc:
             log.critical("Error reading hardware data", exc_info=1)
             reading.failure = str(exc)
+
+        # Batch Collection
+        if self.settings.state.acquisition_laser_trigger_enable:
+            self.hardware.set_laser_enable(False)
 
         if not reading.failure:
             # InGaAs even/odd kludge
@@ -431,23 +463,35 @@ class WasatchDevice(object):
         return reading
 
     ##
-    # Process every entry on the settings queue, writing each to the 
-    # device.
+    # Process every entry on the settings queue, writing each to the device.  As 
+    # long as these were inserted by WasatchDeviceWrapper.continuous_poll, they 
+    # should be already de-dupped.
+    #
+    # I'm not sure where this is going, but I need a way to trigger acquisitions
+    # through software.  An initial cautious approach is to make this function
+    # return True if a queued command requested an acquisition.
     #
     # Called by acquire_data, ergo subprocess 
     def process_commands(self):
         control_object = "throwaway"
+        retval = False
         while control_object != None:
             try:
                 control_object = self.command_queue.get_nowait()
                 log.debug("process_commands: %s -> %s", control_object.setting, control_object.value)
-                self.hardware.write_setting(control_object)
+
+                # is this a command used by WasatchDevice itself, and not
+                # passed down to FeatureIdentificationDevice?
+                if control_object.setting == "acquire":
+                    retval = True
+                else:
+                    self.hardware.write_setting(control_object)
             except Queue.Empty:
-                log.debug("process_commands: queue empty")
-                control_object = None
+                break
             except Exception as exc:
                 log.critical("process_commands: error dequeuing or writing control object", exc_info=1)
                 raise
+        return retval
 
     # ######################################################################## #
     #                                                                          #

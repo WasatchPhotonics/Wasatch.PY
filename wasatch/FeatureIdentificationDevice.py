@@ -310,13 +310,14 @@ class FeatureIdentificationDevice(object):
         return ms
 
     def set_detector_offset(self, value):
-        word = int(value) & 0xffff
+        word = max(-32768, min(32767, int(value))) # clamp to Int16
         self.settings.eeprom.detector_offset = word
         return self.send_code(0xb6, word, label="SET_DETECTOR_OFFSET")
 
     def set_detector_offset_odd(self, n):
-        n = int(n) & 0xffff
+        word = max(-32768, min(32767, int(value))) # clamp to Int16
         self.settings.eeprom.detector_offset_odd = n
+        log.debug("SET_DETECTOR_OFFSET_ODD NOT IMPLEMENTED: %d", word)
 
     ##
     # Read the device stored gain.  Convert from binary "half-precision" float.
@@ -1427,6 +1428,15 @@ class FeatureIdentificationDevice(object):
 
         elif setting == "raise_exceptions":
             self.raise_exceptions = True if value else False
+
+        elif setting == "free_running_mode":
+            self.settings.state.free_running_mode = True if value else False
+
+        elif setting == "acquisition_laser_trigger_enable":
+            self.settings.state.acquisition_laser_trigger_enable = True if value else False
+
+        elif setting == "acquisition_laser_trigger_delay_ms":
+            self.settings.state.acquisition_laser_trigger_delay_ms = int(value)
 
         else:
             log.critical("Unknown setting to write: %s", setting)
