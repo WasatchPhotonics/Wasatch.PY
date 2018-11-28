@@ -1,5 +1,5 @@
 # Wasatch.PY version number
-version = "0.9.16"
+version = "0.9.17"
 
 __all__ = [ 
     "WasatchBus", 

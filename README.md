@@ -302,6 +302,8 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2018-11-28 0.9.17
+    - fixed scan averaging in non-free-running mode
 - 2018-11-27 0.9.16
     - bugfixes
 - 2018-11-27 0.9.15
