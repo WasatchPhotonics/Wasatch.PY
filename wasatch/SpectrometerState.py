@@ -41,6 +41,12 @@ class SpectrometerState(object):
         # area scan mode
         self.area_scan_enabled = False
 
+        # battery
+        self.battery_percentage = 0.0
+        self.battery_charging = False
+        self.battery_timestamp = None
+        self.battery_raw = None        
+
         # ######################################################################
         # What about "application state", which is never actually set in the
         # hardware?  Move these later to ".software" or ".processing" or whatever?

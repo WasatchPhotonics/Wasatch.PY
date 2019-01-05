@@ -2,6 +2,7 @@ import time
 import numpy
 import Queue
 import logging
+import datetime
 import multiprocessing
 
 from ConfigParser import ConfigParser
@@ -481,6 +482,13 @@ class WasatchDevice(object):
                 self.hardware.select_adc(0)
             except Exception as exc:
                 log.debug("Error reading secondary ADC", exc_info=1)
+
+        # read battery every 10sec
+        if self.settings.eeprom.has_battery:
+            if self.settings.state.battery_timestamp is None or (datetime.datetime.now() >= self.settings.state.battery_timestamp + datetime.timedelta(seconds=10)):
+                reading.battery_percentage = self.hardware.get_battery_percentage()
+                reading.battery_charging = self.hardware.get_battery_charging()
+                log.debug("battery: level %.2f%% (%s)", reading.battery_percentage, "charging" if reading.battery_charging else "not charging")
 
         return reading
 

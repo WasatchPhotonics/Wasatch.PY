@@ -302,6 +302,9 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2018-01-04 0.9.18
+    - updated EEPROM field definitions to latest draft of ENG-0034 Rev 4
+    - added battery support
 - 2018-11-28 0.9.17
     - fixed scan averaging in non-free-running mode
 - 2018-11-27 0.9.16

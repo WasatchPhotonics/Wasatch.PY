@@ -204,12 +204,14 @@ class EEPROM(object):
     # fields and datatypes.
     # 
     # @see https://docs.python.org/2/library/struct.html#format-characters
+    # (capitals are unsigned)
     def read_eeprom(self):
         self.revisions = []
 
         # populate the array of page "revisions" (version of each page)
         for page in range(6):
             self.revisions.append(self.unpack((page, 63,  1), "B")) # rev is a single byte
+        self.format = self.revisions[0]
 
         # ######################################################################
         # Page 0
@@ -217,19 +219,19 @@ class EEPROM(object):
 
         self.model                           = self.unpack((0,  0, 16), "s")
         self.serial_number                   = self.unpack((0, 16, 16), "s")
-        self.baud_rate                       = self.unpack((0, 32,  4), "i")
+        self.baud_rate                       = self.unpack((0, 32,  4), "I")
         self.has_cooling                     = self.unpack((0, 36,  1), "?")
         self.has_battery                     = self.unpack((0, 37,  1), "?")
         self.has_laser                       = self.unpack((0, 38,  1), "?")
-        self.excitation_nm                   = self.unpack((0, 39,  2), "H" if self.revisions[0] >= 3 else "h")
-        self.slit_size_um                    = self.unpack((0, 41,  2), "h")
+        self.excitation_nm                   = self.unpack((0, 39,  2), "H" if self.format >= 3 else "h")
+        self.slit_size_um                    = self.unpack((0, 41,  2), "H" if self.format >= 4 else "h")
 
         # NOTE: the new InGaAs detector gain/offset won't be usable from 
         #       EEPROM until we start bumping production spectrometers to
         #       EEPROM Page 0 Revision 3!
         if self.revisions[0] >= 3:
             self.startup_integration_time_ms = self.unpack((0, 43,  2), "H")
-            self.startup_temp_degC           = self.unpack((0, 45,  2), "h")
+            self.startup_temp_degC           = self.unpack((0, 45,  2), "H" if self.format >= 4 else "h")
             self.startup_triggering_scheme   = self.unpack((0, 47,  1), "B")
             self.detector_gain               = self.unpack((0, 48,  4), "f") # "even pixels" for InGaAs
             self.detector_offset             = self.unpack((0, 52,  2), "h") # "even pixels" for InGaAs
@@ -266,18 +268,18 @@ class EEPROM(object):
 
         self.detector                        = self.unpack((2,  0, 16), "s")
         self.active_pixels_horizontal        = self.unpack((2, 16,  2), "h")
-        self.active_pixels_vertical          = self.unpack((2, 19,  2), "h") # MZ: skipped 18
+        self.active_pixels_vertical          = self.unpack((2, 19,  2), "H" if self.format >= 4 else "h")
         self.min_integration_time_ms         = self.unpack((2, 21,  2), "H")
         self.max_integration_time_ms         = self.unpack((2, 23,  2), "H")
-        self.actual_horizontal               = self.unpack((2, 25,  2), "h")
-        self.roi_horizontal_start            = self.unpack((2, 27,  2), "h") # not currently used
-        self.roi_horizontal_end              = self.unpack((2, 29,  2), "h") # vvv
-        self.roi_vertical_region_1_start     = self.unpack((2, 31,  2), "h")
-        self.roi_vertical_region_1_end       = self.unpack((2, 33,  2), "h")
-        self.roi_vertical_region_2_start     = self.unpack((2, 35,  2), "h")
-        self.roi_vertical_region_2_end       = self.unpack((2, 37,  2), "h")
-        self.roi_vertical_region_3_start     = self.unpack((2, 39,  2), "h")
-        self.roi_vertical_region_3_end       = self.unpack((2, 41,  2), "h")
+        self.actual_horizontal               = self.unpack((2, 25,  2), "H" if self.format >= 4 else "h")
+        self.roi_horizontal_start            = self.unpack((2, 27,  2), "H" if self.format >= 4 else "h")
+        self.roi_horizontal_end              = self.unpack((2, 29,  2), "H" if self.format >= 4 else "h")
+        self.roi_vertical_region_1_start     = self.unpack((2, 31,  2), "H" if self.format >= 4 else "h")
+        self.roi_vertical_region_1_end       = self.unpack((2, 33,  2), "H" if self.format >= 4 else "h")
+        self.roi_vertical_region_2_start     = self.unpack((2, 35,  2), "H" if self.format >= 4 else "h")
+        self.roi_vertical_region_2_end       = self.unpack((2, 37,  2), "H" if self.format >= 4 else "h")
+        self.roi_vertical_region_3_start     = self.unpack((2, 39,  2), "H" if self.format >= 4 else "h")
+        self.roi_vertical_region_3_end       = self.unpack((2, 41,  2), "H" if self.format >= 4 else "h")
         self.linearity_coeffs = []
         self.linearity_coeffs          .append(self.unpack((2, 43,  4), "f")) # overloading for secondary ADC
         self.linearity_coeffs          .append(self.unpack((2, 47,  4), "f"))
@@ -289,7 +291,6 @@ class EEPROM(object):
         # Page 3
         # ######################################################################
         
-        # WARNING - this conflicts with "Preview 1" of ENG-0034 Rev 3
         self.laser_power_coeffs = []
         self.laser_power_coeffs        .append(self.unpack((3, 12,  4), "f"))
         self.laser_power_coeffs        .append(self.unpack((3, 16,  4), "f"))
@@ -297,6 +298,7 @@ class EEPROM(object):
         self.laser_power_coeffs        .append(self.unpack((3, 24,  4), "f"))
         self.max_laser_power_mW              = self.unpack((3, 28,  4), "f")
         self.min_laser_power_mW              = self.unpack((3, 32,  4), "f")
+        self.excitation_nm_float             = self.unpack((3, 36,  4), "f")
 
         # ######################################################################
         # Page 4
@@ -416,12 +418,12 @@ class EEPROM(object):
         # Page 0
         self.pack((0,  0, 16), "s", self.model                       )
         self.pack((0, 16, 16), "s", self.serial_number               )
-        self.pack((0, 32,  4), "i", self.baud_rate                   )
+        self.pack((0, 32,  4), "I", self.baud_rate                   )
         self.pack((0, 36,  1), "?", self.has_cooling                 )
         self.pack((0, 37,  1), "?", self.has_battery                 )
         self.pack((0, 38,  1), "?", self.has_laser                   )
-        self.pack((0, 39,  2), "h", self.excitation_nm               )
-        self.pack((0, 41,  2), "h", self.slit_size_um                )
+        self.pack((0, 39,  2), "H", self.excitation_nm               )
+        self.pack((0, 41,  2), "H", self.slit_size_um                )
         self.pack((0, 43,  2), "H", self.startup_integration_time_ms )
         self.pack((0, 45,  2), "h", self.startup_temp_degC           )
         self.pack((0, 47,  1), "B", self.startup_triggering_scheme   )
@@ -450,19 +452,20 @@ class EEPROM(object):
                                     
         # Page 2                    
         self.pack((2,  0, 16), "s", self.detector                    )
-        self.pack((2, 16,  2), "h", self.active_pixels_horizontal    )
-        self.pack((2, 19,  2), "h", self.active_pixels_vertical      )
+        self.pack((2, 16,  2), "H", self.active_pixels_horizontal    )
+        #        skip 18
+        self.pack((2, 19,  2), "H", self.active_pixels_vertical      )
         self.pack((2, 21,  2), "H", self.min_integration_time_ms     )
         self.pack((2, 23,  2), "H", self.max_integration_time_ms     )
-        self.pack((2, 25,  2), "h", self.actual_horizontal           )
-        self.pack((2, 27,  2), "h", self.roi_horizontal_start        )
-        self.pack((2, 29,  2), "h", self.roi_horizontal_end          )
-        self.pack((2, 31,  2), "h", self.roi_vertical_region_1_start )
-        self.pack((2, 33,  2), "h", self.roi_vertical_region_1_end   )
-        self.pack((2, 35,  2), "h", self.roi_vertical_region_2_start )
-        self.pack((2, 37,  2), "h", self.roi_vertical_region_2_end   )
-        self.pack((2, 39,  2), "h", self.roi_vertical_region_3_start )
-        self.pack((2, 41,  2), "h", self.roi_vertical_region_3_end   )
+        self.pack((2, 25,  2), "H", self.actual_horizontal           )
+        self.pack((2, 27,  2), "H", self.roi_horizontal_start        )
+        self.pack((2, 29,  2), "H", self.roi_horizontal_end          )
+        self.pack((2, 31,  2), "H", self.roi_vertical_region_1_start )
+        self.pack((2, 33,  2), "H", self.roi_vertical_region_1_end   )
+        self.pack((2, 35,  2), "H", self.roi_vertical_region_2_start )
+        self.pack((2, 37,  2), "H", self.roi_vertical_region_2_end   )
+        self.pack((2, 39,  2), "H", self.roi_vertical_region_3_start )
+        self.pack((2, 41,  2), "H", self.roi_vertical_region_3_end   )
         self.pack((2, 43,  4), "f", self.linearity_coeffs[0]         )
         self.pack((2, 47,  4), "f", self.linearity_coeffs[1]         )
         self.pack((2, 51,  4), "f", self.linearity_coeffs[2]         )

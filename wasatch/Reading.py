@@ -27,6 +27,8 @@ class Reading(object):
         self.averaged                  = False
         self.session_count             = 0
         self.area_scan_row_count       = -1
+        self.battery_percentage        = None
+        self.battery_charging          = None
 
     def dump(self):
         log.info("Reading:")
@@ -43,3 +45,4 @@ class Reading(object):
         log.info("  Averaged:               %s", self.averaged)
         log.info("  Session Count:          %d", self.session_count)
         log.info("  Area Scan Row Count:    %d", self.area_scan_row_count)
+        log.info("  Battery:                %.2f%% (%s)", self.battery_percentage, "charging" if self.battery_charging else "not charging")

@@ -2,8 +2,12 @@ help:
 	@echo "Supported targets:"
 	@echo "  doc    (render Doxygen)"
 	@echo "  clean  (delete artifacts)"
+	@echo "  cloc   (count SLOC)"
 
-.PHONY: doc clean
+.PHONY: doc clean cloc
+
+cloc:
+	@cloc --include-lang=Python .
 
 doc:
 	@echo "Rendering Doxygen..."

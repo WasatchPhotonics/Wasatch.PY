@@ -298,6 +298,31 @@ class FeatureIdentificationDevice(object):
     # Accessors
     # ##########################################################################
 
+    ## cache values for 1sec
+    def get_battery_state_raw(self):
+        now = datetime.datetime.now()
+        if (self.settings.state.battery_timestamp is not None and now < self.settings.state.battery_timestamp + datetime.timedelta(seconds=1)):
+            return self.settings.state.battery_raw
+
+        self.settings.state.battery_timestamp = now
+        self.settings.state.battery_raw = self.get_upper_code(0x13, label="GET_BATTERY_STATE", msb_len=3)
+
+        log.debug("battery_state_raw: 0x%06x", self.settings.state.battery_raw)
+        return self.settings.state.battery_raw 
+
+    def get_battery_percentage(self):
+        word = self.get_battery_state_raw()
+        lsb = (word >> 16) & 0xff
+        msb = (word >>  8) & 0xff
+        perc = msb + (1.0 * lsb / 256.0)
+        log.debug("battery_perc: %.2f%%", perc)
+        return perc
+
+    def get_battery_charging(self):
+        word = self.get_battery_state_raw()
+        charging = (0 != (word & 0xff))
+        return charging
+
     def get_integration_time_ms(self):
         ms = self.get_code(0xbf, label="GET_INTEGRATION_TIME_MS", lsb_len=3)
 
@@ -322,7 +347,7 @@ class FeatureIdentificationDevice(object):
     ##
     # Read the device stored gain.  Convert from binary "half-precision" float.
     #
-    # - 1st byte (LSB) is binary encoded: 0 = 1/2, 1 = 1/4, 2 = 1/8 etc.
+    # - 1st byte (LSB) is binary encoded: bit 0 = 1/2, 1 = 1/4, 2 = 1/8 etc.
     # - 2nd byte (MSB) is the part to the left of the decimal
     # 
     # On both sides, expanded exponents (fractional or otherwise) are summed.
@@ -589,7 +614,8 @@ class FeatureIdentificationDevice(object):
         # Yes, this is little-endian, reverse of get_detector_temperature_raw
         result = self.get_code(0xd5, wLength=2, label="GET_ADC", lsb_len=2)
         if not result:
-            raise Exception("Unable to read laser temperature")
+            log.debug("Unable to read laser temperature")
+            return 0
         return result & 0xfff
 
     ##
