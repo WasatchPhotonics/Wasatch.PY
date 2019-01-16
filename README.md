@@ -302,6 +302,9 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2019-01-16 1.0.0
+    - added UUID for tracking multiple spectrometers
+    - deprecated StrokerProtocol devices
 - 2018-01-04 0.9.18
     - updated EEPROM field definitions to latest draft of ENG-0034 Rev 4
     - added battery support

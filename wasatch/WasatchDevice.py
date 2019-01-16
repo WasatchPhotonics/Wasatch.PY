@@ -11,7 +11,6 @@ from . import simulation_protocol
 from . import utils
 
 from FeatureIdentificationDevice import FeatureIdentificationDevice
-from StrokerProtocolDevice       import StrokerProtocolDevice
 from SpectrometerSettings        import SpectrometerSettings
 from BalanceAcquisition          import BalanceAcquisition
 from SpectrometerState           import SpectrometerState
@@ -22,12 +21,11 @@ from Reading                     import Reading
 
 log = logging.getLogger(__name__)
 
-## 
+##
 # A WasatchDevice encapsulates and wraps a Wasatch spectrometer in a blocking
 # interface.  It will normally wrap one of the following:
 #
 # - a FeatureIdentificationDevice (modern FID spectrometer)
-# - a StrokerProtocolDevice (older SP-protocol spectrometer)
 # - a FileSpectrometer (filesystem gateway to virtual/simulated spectrometer)
 #
 # ENLIGHTEN does not instantiate WasatchDevices directly, but instead uses
@@ -36,32 +34,32 @@ log = logging.getLogger(__name__)
 # and can consider it roughly equivalent (though differently structured) to a
 # WasatchNET.Spectrometer.  (Arguably wasatch.FeatureIdentificationDevice is the
 # closer analog to WasatchNET.Spectrometer, as Wasatch.NET does not have anything
-# like StrokerProtocol or FileSpectrometer.)
+# like FileSpectrometer.)
 class WasatchDevice(object):
 
-    ## 
-    # @param uid            (VID, PID) or FileSpectrometer directory
+    ##
+    # @param uuid           (VID:PID:order) ("0x24aa:0x1000:0") or FileSpectrometer directory ("/path/to/foo")
     # @param bus_order      integral USB bus sequence
     # @param message_queue  if provided, used to send status back to caller
-    def __init__(self, uid, bus_order=0, message_queue=None):
+    def __init__(self, uuid, bus_order=0, message_queue=None):
 
-        self.uid           = uid            
-        self.bus_order     = bus_order      
-        self.message_queue = message_queue 
+        self.uuid          = uuid
+        self.bus_order     = bus_order
+        self.message_queue = message_queue
 
         self.connected = False
 
-        # Receives ENLIGHTEN's 'change settings' commands in the spectrometer 
+        # Receives ENLIGHTEN's 'change settings' commands in the spectrometer
         # process. It's not clear why we're using a multiprocessing.Queue inside
         # WasatchDevice (all the multiprocessing communications are encapsulated
         # within WasatchDeviceWrapper), or in fact why WasatchDevice.command_queue
-        # is needed at all -- we already have WasatchDeviceWrapper.command_queue, 
-        # which is already deduped within continuous_poll(), so why not just have 
+        # is needed at all -- we already have WasatchDeviceWrapper.command_queue,
+        # which is already deduped within continuous_poll(), so why not just have
         # continuous_poll call WasatchDevice.hardware.write_setting(control_obj)
         # directly?  Still, probably(?) not hurting anything.  May be leftover
-        # from pre-WasatchDeviceWrapper days, when ENLIGHTEN had a blocking 
+        # from pre-WasatchDeviceWrapper days, when ENLIGHTEN had a blocking
         # interface to the spectrometer.
-        self.command_queue = multiprocessing.Queue() 
+        self.command_queue = multiprocessing.Queue()
 
         self.settings = SpectrometerSettings()
 
@@ -75,10 +73,10 @@ class WasatchDevice(object):
     #                                                                          #
     # ######################################################################## #
 
-    ## Attempt low level connection to the device specified in init.  
+    ## Attempt low level connection to the device specified in init.
     def connect(self):
 
-        if ("/" in self.uid or "\\" in self.uid) and self.connect_file_spectrometer():
+        if ("/" in self.uuid or "\\" in self.uuid) and self.connect_file_spectrometer():
             log.info("connected to FileSpectrometer")
             self.connected = True
             self.initialize_settings()
@@ -86,12 +84,6 @@ class WasatchDevice(object):
 
         if self.connect_feature_identification():
             log.info("Connected to FeatureIdentificationDevice")
-            self.connected = True
-            self.initialize_settings()
-            return True
-
-        if self.connect_stroker_protocol():
-            log.info("Connected to StrokerProtocolDevice")
             self.connected = True
             self.initialize_settings()
             return True
@@ -111,60 +103,44 @@ class WasatchDevice(object):
         return True
 
     def connect_file_spectrometer(self):
-        dev = FileSpectrometer(self.uid)
+        dev = FileSpectrometer(self.uuid)
         if dev.connect():
             self.hardware = dev
             return True
 
-    ## Given a specified universal identifier, attempt to connect to the device using stroker protocol.
-    def connect_stroker_protocol(self):
-        FID_list = ["0x1000", "0x2000", "0x3000", "0x4000"]
-
-        if self.uid == None:
-            log.debug("No specified UID for stroker protocol connect")
-            return False
-
-        if any(fid in self.uid for fid in FID_list):
-            log.debug("Compatible feature ID not found")
-            return False
-
-        dev = None
-        try:
-            bus_pid = self.uid[7:] # assumes UID="0xXXXX:0xYYYY" and we want "0xYYYY"
-            log.info("Attempt connection to: %s", bus_pid)
-
-            dev = StrokerProtocolDevice(pid=bus_pid)
-            result = dev.connect()
-            if result != True:
-                log.critical("Low level failure in device connect")
-                return False
-            self.hardware = dev
-
-        except Exception as exc:
-            log.critical("Problem connecting to: %s", self.uid, exc_info=1)
-            return False
-
-        log.info("Connected to StrokerProtocolDevice %s", self.uid)
-        return True
-
-    ## Given a specified universal identifier, attempt to connect to the device using FID protocol. 
+    ## Given a specified universal identifier, attempt to connect to the device using FID protocol.
     def connect_feature_identification(self):
-        FID_list = ["0x1000", "0x2000", "0x3000", "0x4000"]
 
-        if self.uid == None:
-            log.debug("No specified UID for feature id connect")
+        # TODO: merge with the list in DeviceListFID
+        FID_list = ["0x1000", "0x2000", "0x4000"]
+
+        if self.uuid == None:
+            log.debug("No specified UUID for feature id connect")
             return False
 
-        if not any(fid in self.uid for fid in FID_list):
-            log.debug("Compatible feature ID not found")
+        # check to see if valid FID PID
+        uuid_pid_str   =     self.uuid.split(":")[1]
+        uuid_pid_order = int(self.uuid.split(":")[2])
+        uuid_vid_order = int(self.uuid.split(":")[3])
+
+        if not uuid_pid_str in FID_list:
+            log.debug("connect_feature_identification: UUID %s PID %s not in FID list %s", self.uuid, uuid_pid_str, FID_list)
             return False
+
+        # whether or not we're filtering based on bus_order (that is, whether or
+        # not we're intending to only instantiate a single spectrometer), we need
+        # to extract the pidOrder from the UUID so we can connect to it.
+
+        # optionally filter on bus_order
+        if self.bus_order is not None:
+            if self.bus_order != uuid_vid_order:
+                log.debug("connect_feature_identification: UUID %s vidOrder %d != requested bus_order %d", self.uuid, uuid_vid_order, self.bus_order)
+                return False
 
         dev = None
         try:
-            bus_pid = self.uid[7:]
-            log.debug("connect_fid: Attempt connection to bus_pid %s (bus_order %d)", bus_pid, self.bus_order)
-
-            dev = FeatureIdentificationDevice(pid=bus_pid, bus_order=self.bus_order, message_queue=self.message_queue)
+            log.debug("connect_fid: Attempt connection to UUID %s pid %s pid_order %d", self.uuid, uuid_pid_str, uuid_pid_order)
+            dev = FeatureIdentificationDevice(uuid=self.uuid, message_queue=self.message_queue)
 
             try:
                 ok = dev.connect()
@@ -179,10 +155,10 @@ class WasatchDevice(object):
             self.hardware = dev
 
         except Exception as exc:
-            log.critical("Problem connecting to: %s", self.uid, exc_info=1)
+            log.critical("Problem connecting to: %s", self.uuid, exc_info=1)
             return False
 
-        log.info("Connected to FeatureIdentificationDevice %s", self.uid)
+        log.info("Connected to FeatureIdentificationDevice %s", self.uuid)
         return True
 
     def initialize_settings(self):
@@ -286,9 +262,9 @@ class WasatchDevice(object):
             return
 
         log.debug("rescaling InGaAs odd pixels from even gain %.2f, offset %d to odd gain %.2f, offset %d",
-            self.settings.eeprom.detector_gain, 
-            self.settings.eeprom.detector_offset, 
-            self.settings.eeprom.detector_gain_odd, 
+            self.settings.eeprom.detector_gain,
+            self.settings.eeprom.detector_offset,
+            self.settings.eeprom.detector_gain_odd,
             self.settings.eeprom.detector_offset_odd)
 
         # iterate over the ODD pixels of the spectrum
@@ -305,15 +281,15 @@ class WasatchDevice(object):
                 log.debug("  pixel %4d: old %.2f raw %.2f new %.2f clean %5d", i, old, raw, new, clean)
 
     ##
-    # Process all enqueued settings, then read actual data (spectrum and 
+    # Process all enqueued settings, then read actual data (spectrum and
     # temperatures) from the device.
     def acquire_data(self):
 
         log.debug("Device acquire_data")
 
-        # process queued commands, and find out if we've been asked to read a 
+        # process queued commands, and find out if we've been asked to read a
         # spectrum
-        needs_acquisition = self.process_commands() 
+        needs_acquisition = self.process_commands()
         if not (needs_acquisition or self.settings.state.free_running_mode):
             return None
 
@@ -323,9 +299,9 @@ class WasatchDevice(object):
             return None
 
         # note that right now, all we return are Readings (encapsulating both
-        # spectra and temperatures).  If we disable spectra (turn off 
-        # free_running_mode), then ENLIGHTEN stops receiving temperatures as 
-        # well.  In the future perhaps we should return multiple object types 
+        # spectra and temperatures).  If we disable spectra (turn off
+        # free_running_mode), then ENLIGHTEN stops receiving temperatures as
+        # well.  In the future perhaps we should return multiple object types
         # (Acquisitions, Temperatures, etc)
         return self.acquire_spectrum()
 
@@ -345,11 +321,11 @@ class WasatchDevice(object):
     # WasatchDeviceWrapper, even mid-averaging partial reports.  Originally
     # this allowed ENLIGHTEN to display a light-gray trace line showing the
     # pre-averaged spectra as they were collected, rather than waiting on the
-    # long averaged updates.  This can also allow the temperature and 
+    # long averaged updates.  This can also allow the temperature and
     # metadata readings to continue to update during long averaged collections.
     #
     # However, this doesn't work well if we're not in free-running mode: in
-    # that case, we really need to collect and return the whole averaged 
+    # that case, we really need to collect and return the whole averaged
     # spectrum when the acquisition is triggered.
     def acquire_spectrum(self):
         averaging_enabled = (self.settings.state.scans_to_average > 1)
@@ -381,7 +357,7 @@ class WasatchDevice(object):
         for loop_index in range(0, loop_count):
 
             # start a new reading
-            reading = Reading()
+            reading = Reading(self.uuid)
 
             # TODO...just include a copy of SpectrometerState? something to think about
             # That would actually provide a reason to roll all the temperature etc readouts
@@ -462,7 +438,7 @@ class WasatchDevice(object):
             except Exception as exc:
                 log.debug("Error reading detector temperature", exc_info=1)
 
-        # only read laser temperature if we have a laser (how do we determine this for StrokerProtocol?)
+        # only read laser temperature if we have a laser 
         if self.settings.eeprom.has_laser:
             try:
                 count = 2 if self.settings.state.secondary_adc_enabled else 1
@@ -493,15 +469,15 @@ class WasatchDevice(object):
         return reading
 
     ##
-    # Process every entry on the settings queue, writing each to the device.  As 
-    # long as these were inserted by WasatchDeviceWrapper.continuous_poll, they 
+    # Process every entry on the settings queue, writing each to the device.  As
+    # long as these were inserted by WasatchDeviceWrapper.continuous_poll, they
     # should be already de-dupped.
     #
     # I'm not sure where this is going, but I need a way to trigger acquisitions
     # through software.  An initial cautious approach is to make this function
     # return True if a queued command requested an acquisition.
     #
-    # Called by acquire_data, ergo subprocess 
+    # Called by acquire_data, ergo subprocess
     def process_commands(self):
         control_object = "throwaway"
         retval = False
@@ -530,7 +506,7 @@ class WasatchDevice(object):
     # ######################################################################## #
 
     def balance_acquisition(self, mode=None, intensity=45000, threshold=2500, pixel=None):
-        balancer = BalanceAcquisition(mode, intensity, threshold, pixel, self) 
+        balancer = BalanceAcquisition(mode, intensity, threshold, pixel, self)
         balancer.balance()
 
     # ######################################################################## #
@@ -539,8 +515,8 @@ class WasatchDevice(object):
     #                                                                          #
     # ######################################################################## #
 
-    ## 
-    # Add the specified setting and value to the local control queue. 
+    ##
+    # Add the specified setting and value to the local control queue.
     #
     # Called by subprocess.continuous_poll
     def change_setting(self, setting, value):

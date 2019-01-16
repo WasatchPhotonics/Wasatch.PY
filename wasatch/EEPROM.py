@@ -497,29 +497,53 @@ class EEPROM(object):
                 value = -1
             self.pack((5, i * 2, 2), "h", value)
 
-    # ##########################################################################
-    # Laser Power accessors...not sure these belong here
-    # ##########################################################################
 
-    ##
-    # whether the EEPROM has positive max_laser_power_mW and appears to have 
-    # valid laser_power_coeffs
-    def has_laser_power_calibration(self):
-        if self.max_laser_power_mW <= 0:
-            log.debug("has_laser_power_calibration: False (low max)")
+    ## can be used as a sanity-check for any set of coefficients
+    def coeffs_look_valid(self, coeffs, count=None):
+
+        if coeffs is None:
             return False
 
-        if self.laser_power_coeffs is None or len(self.laser_power_coeffs) < 4:
-            log.debug("has_laser_power_calibration: False (missing coeffs)")
+        if count is not None and len(coeffs) != count:
             return False
 
-        for c in self.laser_power_coeffs:
+        # check for [0, 1, 0...] default pattern
+        all_default = True
+        for i in range(len(coeffs)):
+            c = coeffs[i]
             if math.isnan(c):
-                log.debug("has_laser_power_calibration: False (NaN)")
+                return False # always invalid
+            if i == 1:
+                if c != 1.0:
+                    all_default = False
+                    break
+            else:
+                if c != 0.0:
+                    all_default = False
+                    break
+        if all_default:
+            return false
+
+        # check for constants (all negative, all zero, etc)
+        for const in [-1.0, 0.0]:
+            all_const = True
+            for c in coeffs:
+                if c != const:
+                    all_const = False
+                    break
+            if all_const:
                 return False
 
-        log.debug("has_laser_power_calibration: True")
         return True
+
+    # ##########################################################################
+    # Laser Power convenience accessors
+    # ##########################################################################
+
+    def has_laser_power_calibration(self):
+        if self.max_laser_power_mW <= 0:
+            return False
+        return self.coeffs_look_valid(self.laser_power_coeffs, count=4)
 
     ## convert the given laser output power from milliwatts to percentage
     #  using the configured calibration

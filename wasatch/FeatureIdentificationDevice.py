@@ -41,17 +41,16 @@ class FeatureIdentificationDevice(object):
     # ##########################################################################
 
     ##
-    # @param PID [in] USB Product ID
-    # @param bus_order [in] sequence on the USB chain
+    # @param uuid [in] device UUID ("0x24aa:0x1000:0:0")
     # @param message_queue [out] if provided, provides a queue for writing
     #        StatusMessage objects back to the caller
-    def __init__(self, pid, bus_order=0, message_queue=None):
-
-        log.debug("init %s", pid)
-        self.vid = 0x24aa
-        self.pid = int(pid, 16)
-        self.bus_order = bus_order
+    def __init__(self, uuid, message_queue=None):
+        self.uuid = uuid
         self.message_queue = message_queue
+
+        self.vid       = 0x24aa
+        self.pid       = int(uuid.split(":")[1], 16)
+        self.pid_order = int(uuid.split(":")[2])
 
         self.device = None
 
@@ -60,7 +59,7 @@ class FeatureIdentificationDevice(object):
         self.laser_temperature_invalid = False
         self.ccd_temperature_invalid = False
 
-        self.settings = SpectrometerSettings()
+        self.settings = SpectrometerSettings(uuid)
         self.eeprom_backup = None
 
         self.overrides = None
@@ -79,24 +78,25 @@ class FeatureIdentificationDevice(object):
         self.random_errors = False
         self.random_error_perc = 0.001   # 0.1%
 
+    ## 
+    # Attempt to connect to the specified device. Log any failures and
+    # return False if there is a problem, otherwise return True.
     def connect(self):
-        """ Attempt to connect to the specified device. Log any failures and
-            return False if there is a problem, otherwise return True. If
-            you try and connect to them in order, iterating on a failure, it
-            will cause them to drop from the other Enlighten instance. """
 
+        # Generate a fresh listing of USB devices with the requested VID and PID.
+        # We want the "pid_order"th entry, if there is one.
+        #
         # MZ: this causes a problem in non-blocking mode (WasatchDeviceWrapper) on MacOS
         devices = usb.core.find(find_all=True, idVendor=self.vid, idProduct=self.pid)
 
-        dev_list = list(devices)
+        dev_list = list(devices) # convert from array?
+        if self.pid_order > len(dev_list):
+            log.critical("FID.connect: requested pid_order %d > dev_list size %d", self.pid_order, len(dev_list))
+            return False
 
-        if self.bus_order != 0:
-            log.warn("Non standard bus order: %s", self.bus_order)
-
-        device = dev_list[self.bus_order]
-
+        device = dev_list[self.pid_order]
         if device is None:
-            log.critical("Can't find: %s, %s", self.vid, self.pid)
+            log.critical("FID.connect: can't find vid 0x%04x, pid 0x%04x at pid_order %d", self.vid, self.pid, self.pid_order)
             return False
 
         try:
@@ -418,6 +418,7 @@ class FeatureIdentificationDevice(object):
     def set_detector_gain_odd(self, n):
         self.settings.eeprom.detector_gain_odd = n
 
+    ## Should this be 0xeb? (no, that's CF_SELECT).
     def set_area_scan_enable(self, flag):
         value = 1 if flag else 0
         if not self.settings.isIMX():

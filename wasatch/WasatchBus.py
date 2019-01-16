@@ -2,7 +2,6 @@ import logging
 import os
 
 from DeviceListFID import DeviceListFID
-from DeviceListSP  import DeviceListSP
 
 from usb import USBError
 
@@ -14,96 +13,85 @@ log = logging.getLogger(__name__)
 #                                                                              #
 # ##############################################################################
 
+##
+# The different bus classes don't use inheritance and don't follow a common ABC
+# or interface, but each should have an update() method, and each should have a 
+# 'uuids' array (TODO: USE INHERITANCE!) 
+#
+# 'uuids' should be an array of strings, where the values are meaningful to 
+# that particular bus ("VID:PID:n" (e.g. "0x24aa:0x1000:0") for USBBus, or
+# "/foo/bar" for MonitorBus).  The uuids array can be empty (or probably None), 
+# or the first element can be "disconnected".
+#
+# Earlier versions of Wasatch.PY / ENLIGHTEN only used VID:PID for USBBus,
+# which prevented the keys from being unique when multiple spectrometers were 
+# plugged in.  ENLIGHTEN 3.4+ requires that all device keys be unique to support
+# parallel device operation.
+#
+# I am borrowing the term "UUID" from the BLE world to indiciate a unique device
+# indicator, but these are certainly not necessarily formatted as BLE UUIDs.
+# Also to be clear, the UUID simply refers to the connection, and will change
+# if the devices are plugged into different USB ports, or in a different order,
+# or the user reboots or whatever.  
 class WasatchBus(object):
     def __init__(self, 
             use_sim     = False,
             monitor_dir = None):
 
-        self.use_sim     = use_sim
         self.monitor_dir = monitor_dir
 
-        self.devices = []
+        self.uuids = []
 
-        self.simulation_bus = SimulationBus() if self.use_sim else None
-        self.file_bus = FileBus(self.monitor_dir) if self.monitor_dir else None
-        self.hardware_bus = HardwareBus()
+        self.file_bus = None
+        self.usb_bus = None
+
+        if self.monitor_dir:
+            self.file_bus = FileBus(self.monitor_dir) 
+        else:
+            self.usb_bus = USBBus()
 
         # iterate buses on creation
         self.update()
 
     ## called by Controller.update_connections
     def update(self):
-        self.devices = []
-
-        if self.simulation_bus:
-            self.devices.extend(self.simulation_bus.update())
+        self.uuids = []
 
         if self.file_bus:
-            self.devices.extend(self.file_bus.update())
+            self.uuids.extend(self.file_bus.update())
 
-        if self.hardware_bus:
-            self.devices.extend(self.hardware_bus.update())
+        if self.usb_bus:
+            self.uuids.extend(self.usb_bus.update())
 
     ## called by Controller.update_connections
     def dump(self):
-        log.debug("Bus list: %s", self.devices)
+        log.debug("WasatchBus.dump: %s", self.uuids)
 
 # ##############################################################################
 #                                                                              #
-#                                   Buses                                      #
+#                                    USBBus                                    #
+#                               (file private)                                 #
 #                                                                              #
 # ##############################################################################
 
-# The different bus classes don't use inheritance and don't follow a common ABC
-# or interface, but each should have an update() method, and each should have a 
-# 'devices' array.  
-#
-# 'devices' should be an array of strings, where the values are meaningful to 
-# that particular bus ("VID:PID" for HardwareBus or SimulationBus, "/foo/bar" 
-# for MonitorBus).  The devices array can be empty, or the first element can
-# be "disconnected".
-
-# ##############################################################################
-#                                                                              #
-#                                   FileBus                                    #
-#                                                                              #
-# ##############################################################################
-
-class FileBus(object):
-    def __init__(self, directory):
-        self.directory = directory
-        self.configfile = os.path.join(self.directory, "spectrometer.json")
-
-    def update(self):
-        devices = []
-        if os.access(self.directory, os.W_OK) and os.path.isfile(self.configfile):
-            devices.append(self.directory)
-        return devices
-
-# ##############################################################################
-#                                                                              #
-#                                 HardwareBus                                  #
-#                                                                              #
-# ##############################################################################
-
-class HardwareBus(object):
+class USBBus(object):
 
     def __init__(self):
         self.backend_error_raised = False
         self.update()
 
+    ## Return a list of connected USB device keys, in the format
+    # "VID:PID:order:pidOrder", e.g. [ "0x24aa:0x1000:0:0", "0x24aa:0x4000:1:0", "0x24aa:0x1000:2:1" ]
     def update(self):
-        log.debug("Update hardware bus")
+        log.debug("USBBus.update: instantiating DeviceListFID")
+        lister = DeviceListFID()
 
-        devices = []
-
+        uuids = []
         try:
-            for item in DeviceListFID().get_all_vid_pids():
-                devices.append("%s:%s" % (item[0], item[1]))
-
-            for item in DeviceListSP().get_all_vid_pids():
-                devices.append("%s:%s" % (item[0], item[1]))
-
+            log.debug("USBBus.update: calling DeviceListFID.get_usb_discovery_recs")
+            recs = lister.get_usb_discovery_recs()
+            for rec in recs:
+                uuids.append(rec.get_uuid())
         except USBError:
             # MZ: this seems to happen when I run from Git Bash shell
             #     (resolved on MacOS with 'brew install libusb')
@@ -114,90 +102,24 @@ class HardwareBus(object):
         except Exception:
             log.critical("LIBUSB error", exc_info=1)
 
-        return devices
+        return uuids 
 
 # ##############################################################################
 #                                                                              #
-#                                 SimulationBus                                #
+#                                   FileBus                                    #
+#                               (file private)                                 #
 #                                                                              #
 # ##############################################################################
 
-## Provide an interface to the ini file controlled simulation bus.  This
-#  indicates whether a simulated device is present on the simulated libusb
-#  bus.
-class SimulationBus(object):
-
-    def __init__(self, status=None):
-        self.status = status
-        self.filename = "enlighten/assets/example_data/simulated_bus.ini"
-        self.devices = []
-
-        if self.status == "all_connected":
-            log.info("Set all devices connected")
-            self.set_all_connected()
-
-        elif self.status == "all_disconnected":
-            log.warn("Disconnect all devices")
-            self.set_all_disconnected()
-
-        self.update()
-
-    ## Return a list of simulated devices, or actual devices found on system libusb bus.
-    def dump(self):
-        log.debug("Start of list status: %s", self.bus_type)
-        self.update()
-
-        # MZ: hardcode
-        if self.devices and self.devices[0] != "disconnected":
-            conn = ["0x24aa", "0x1000"]
-        else:
-            conn = []
-
-        log.info("Simulation BUS: [] FID BUS: %s" % conn)
+class FileBus(object):
+    def __init__(self, directory):
+        super(B, self).__init__()
+        self.directory = directory
+        self.configfile = os.path.join(self.directory, "spectrometer.json")
 
     def update(self):
-        """ Open the ini file, update the class attributes with the status of each device. """
-        if not os.path.isfile(self.filename):
-            log.error("SimulationBus.update: %s not found", self.filename)
-            return
+        uuids = []
+        if os.access(self.directory, os.W_OK) and os.path.isfile(self.configfile):
+            uuids.append(self.directory)
+        return uuids 
 
-        # Read from the file
-        config = ConfigParser()
-        config.read(self.filename)
-        log.debug("SimulationBus.update: loaded %s", self.filename)
-
-        # look at the returned dict
-        # MZ: consider if config.has_section("LIBUSB_BUS"):
-        self.devices = []
-
-        self.devices.append(config.get('LIBUSB_BUS', 'device_001'))
-        self.devices.append(config.get('LIBUSB_BUS', 'device_002'))
-        self.devices.append(config.get('LIBUSB_BUS', 'device_003'))
-
-        return self.devices
-
-    ## Open the ini file, and set all bus entries to connected.
-    def set_all_connected(self):
-        config = ConfigParser()
-        config.read(self.filename)
-
-        config.set("LIBUSB_BUS", "device_001", "0x24aa:0x0512")
-        config.set("LIBUSB_BUS", "device_002", "0x24aa:0x1024")
-        config.set("LIBUSB_BUS", "device_003", "0x24aa:0x2048")
-        with open(self.filename, "wb") as config_file:
-            config.write(config_file)
-
-        self.update()
-
-    ## Open the ini file, and set all bus entries to disconnected. 
-    def set_all_disconnected(self):
-        config = ConfigParser()
-        config.read(self.filename)
-
-        config.set("LIBUSB_BUS", "device_001", "disconnected")
-        config.set("LIBUSB_BUS", "device_002", "disconnected")
-        config.set("LIBUSB_BUS", "device_003", "disconnected")
-        with open(self.filename, "wb") as config_file:
-            config.write(config_file)
-
-        self.update()

@@ -24,7 +24,10 @@ log = logging.getLogger(__name__)
 #
 class SpectrometerSettings(object):
 
-    def __init__(self):
+    def __init__(self, uuid=None):
+        # populate this if the settings came from a real device
+        self.uuid = uuid
+
         # volatile state
         self.state = SpectrometerState()
 
@@ -117,6 +120,7 @@ class SpectrometerSettings(object):
                 
     def dump(self):
         log.info("SpectrometerSettings:")
+        log.info("  UUID = %s", self.uuid)
         log.info("  Microcontroller Firmware Version = %s", self.microcontroller_firmware_version)
         log.info("  FPGA Firmware Version = %s", self.fpga_firmware_version)
 

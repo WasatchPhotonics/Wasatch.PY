@@ -47,6 +47,7 @@ class FPGAOptions(object):
     # bit   12: 0001 0000 0000 0000 HasAreaScan
     # bit   13: 0010 0000 0000 0000 HasActualIntegTime
     # bit   14: 0100 0000 0000 0000 HasHorizBinning
+    # bit   15: 1000 0000 0000 0000 Reserved
     # @endcode
     def parse(self, word):
         self.integration_time_resolution = (word & 0x0007)

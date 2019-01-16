@@ -9,18 +9,18 @@ log = logging.getLogger(__name__)
 # state in time. 
 class Reading(object):
 
-    def __init__(self):
+    def __init__(self, uuid):
+        self.uuid = uuid
         self.timestamp = datetime.datetime.now()
 
-        # MZ: hardcode
-        self.spectrum                  = [0] * 1024
-        self.laser_temperature_raw     = 0 # TODO: make this None
+        self.spectrum                  = None
+        self.laser_temperature_raw     = 0 
         self.laser_temperature_degC    = 0
         self.detector_temperature_raw  = 0
         self.detector_temperature_degC = 0
         self.secondary_adc_raw         = None
         self.secondary_adc_calibrated  = None
-        self.laser_status              = None   # make this laser_enabled
+        self.laser_status              = None   # TODO: make this laser_enabled
         self.laser_power               = 0      
         self.laser_power_in_mW         = False
         self.failure                   = None
@@ -32,7 +32,9 @@ class Reading(object):
 
     def dump(self):
         log.info("Reading:")
-        log.info("  Spectrum:               %s", self.spectrum[:5])
+        log.info("  Timestamp:              %s", self.timestamp)
+        log.info("  UUID:                   %s", self.uuid)
+        log.info("  Spectrum:               %s", self.spectrum[:max(5, len(self.spectrum))] if self.spectrum else None)
         log.info("  Laser Temp Raw:         0x%04x", self.laser_temperature_raw)
         log.info("  Laser Temp DegC:        %.2f", self.laser_temperature_degC)
         log.info("  Detector Temp Raw:      0x%04x", self.detector_temperature_raw)

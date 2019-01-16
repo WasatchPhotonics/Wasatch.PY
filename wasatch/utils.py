@@ -121,7 +121,7 @@ def load_json(pathname):
 ## iterate down a directory, returning pathnames that match the given pattern
 def get_pathnames_from_directory(rootdir, pattern=None, recursive=False):
     pathnames = []
-    log.debug("searching %s matching %s with recursive %s", rootdir, pattern, recursive)
+    # log.debug("searching %s matching %s with recursive %s", rootdir, pattern, recursive)
     if recursive:
         for (directory, dirnames, filenames) in walk(rootdir):
             for filename in filenames:
@@ -130,7 +130,8 @@ def get_pathnames_from_directory(rootdir, pattern=None, recursive=False):
                     if re.search(pattern, filename):
                         pathnames.append(pathname)
                     else:
-                        log.debug("%s does not match %s", pathname, pattern)
+                        # log.debug("%s does not match %s", pathname, pattern)
+                        pass
                 else:
                     pathnames.append(pathname)
     else:
@@ -141,10 +142,11 @@ def get_pathnames_from_directory(rootdir, pattern=None, recursive=False):
                     if re.search(pattern, filename):
                         pathnames.append(pathname)
                     else:
-                        log.debug("%s does not match %s", pathname, pattern)
+                        # log.debug("%s does not match %s", pathname, pattern)
+                        pass
                 else:
                     pathnames.append(pathname)
-    log.debug("returning %s", pathnames)
+    # log.debug("returning %s", pathnames)
     return pathnames
 
 ##
@@ -154,7 +156,7 @@ def get_pathnames_from_directory(rootdir, pattern=None, recursive=False):
 #
 # @note probably a numpy shortcut for this
 def find_local_maxima(a, x_axis, center, tolerance=0):
-    log.debug("find_local_maxima: center %.2f (tolerance %.2f)", center, tolerance)
+    # log.debug("find_local_maxima: center %.2f (tolerance %.2f)", center, tolerance)
     # generate subset of array within tolerance of center
     x = []
     y = []
@@ -166,8 +168,8 @@ def find_local_maxima(a, x_axis, center, tolerance=0):
             x.append(x_value)
             y.append(a[i])
 
-    log.debug("  range x: %s", x)
-    log.debug("  range y: %s", y)
+    # log.debug("  range x: %s", x)
+    # log.debug("  range y: %s", y)
     
     if not x:
         raise("no points within %s of %s" % (tolerance, center))
@@ -185,9 +187,9 @@ def find_local_maxima(a, x_axis, center, tolerance=0):
     # no point with linear interpolation, as it would only go "down"
     # (could do Gaussian / polynomial fit)
 
-    log.debug("  best_x_index: %d", best_x_index)
-    log.debug("  best_x_value: %.2f", best_x_value)
-    log.debug("  best_y_value: %.2f", best_y_value)
+    # log.debug("  best_x_index: %d", best_x_index)
+    # log.debug("  best_x_value: %.2f", best_x_value)
+    # log.debug("  best_y_value: %.2f", best_y_value)
 
     return (best_y_value, best_x_value, best_x_index)
 
@@ -310,3 +312,11 @@ def ascii_spectrum(spectrum, rows, cols, x_axis, x_unit):
 
 def timestamp():
     return datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+
+def truthy(flag):
+    if flag is None:
+        return False
+    elif hasattr(flag, "__len__"): # lists, arrays, Numpy
+        return flag.__len__ > 0
+    else:
+        return flag
