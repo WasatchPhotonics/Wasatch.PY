@@ -1,6 +1,7 @@
 import logging
 import utils
 import json
+import math
 import re
 
 from SpectrometerState import SpectrometerState
@@ -67,6 +68,22 @@ class SpectrometerSettings(object):
     def pixels(self):
         return self.eeprom.active_pixels_horizontal
 
+    def excitation(self):
+        old = self.eeprom.excitation_nm
+        new = self.eeprom.excitation_nm_float
+
+        # if 'new' looks corrupt or not populated, use old
+        if new is None or math.isnan(new):
+            return old
+
+        # if 'new' looks like a reasonable value, use it
+        if 200 <= new and new <= 2500:
+            return new
+
+        # if 'new' looks bizarrely out-of-range, use old
+        log.debug("excitation wavelength %f outside (200, 2500) - suspect corrupt EEPROM, using %f", new, old)
+        return old
+
     def isIMX(self):
         return "imx" in self.eeprom.detector.lower()
     
@@ -95,8 +112,12 @@ class SpectrometerSettings(object):
         log.debug("generated %d wavelengths from %.2f to %.2f", 
             len(self.wavelengths), self.wavelengths[0], self.wavelengths[-1])
 
-        if self.eeprom.excitation_nm > 0:
-            self.wavenumbers = utils.generate_wavenumbers(self.eeprom.excitation_nm, self.wavelengths)
+        # keep legacy excitation in sync with floating-point
+        if self.excitation() > 0:
+            self.eeprom.excitation_nm = float(round(self.excitation(), 0))
+
+        if self.excitation() > 0:
+            self.wavenumbers = utils.generate_wavenumbers(self.excitation(), self.wavelengths)
             log.debug("generated %d wavenumbers from %.2f to %.2f", 
                 len(self.wavenumbers), self.wavenumbers[0], self.wavenumbers[-1])
 

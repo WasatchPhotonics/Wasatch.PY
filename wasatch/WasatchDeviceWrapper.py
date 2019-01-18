@@ -313,8 +313,8 @@ class WasatchDeviceWrapper(object):
     def acquire_data(self, mode=None):
 
         if self.closing:
-            log.debug("WasatchDeviceWrapper.acquire_data: closing")
-            return None
+            log.critical("WasatchDeviceWrapper.acquire_data: closing (sending poison-pill upstream)")
+            return False
 
         # ENLIGHTEN "default" - if we're doing scan averaging, take either
         #
@@ -345,7 +345,8 @@ class WasatchDeviceWrapper(object):
             reading = self.response_queue.get_nowait()
             log.debug("acquire_data: read Reading %d (qsize %d)", reading.session_count, qsize)
         except Queue.Empty:
-            pass
+            log.debug("acquire_data: no data, sending True upstream as KEEPALIVE")
+            return True 
 
         return reading
 
@@ -534,23 +535,23 @@ class WasatchDeviceWrapper(object):
                 # overrides).
                 log.debug("continuous_poll: no Reading to be had")
             else:
-                if reading.spectrum is None:
-                    log.debug("continuous_poll: sending Reading %d back to GUI process (no spectrum)", reading.session_count)
-                else:
-                    log.debug("continuous_poll: sending Reading %d back to GUI process (%s)", reading.session_count, reading.spectrum[0:5])
-                args.response_queue.put(reading, timeout=1)
-
                 if reading.failure is not None:
                     log.critical("continuous_poll: Hardware level ERROR")
                     break
 
+                if reading.spectrum is not None:
+                    log.debug("continuous_poll: sending Reading %d back to GUI process (%s)", reading.session_count, reading.spectrum[0:5])
+                    args.response_queue.put(reading, timeout=1)
+
             # only poll hardware at 20Hz
+            log.debug("continuous_poll: sleeping %d", self.poller_wait)
             time.sleep(self.poller_wait)
 
         # send poison-pill upstream to Controller, then quit
-        args.response_queue.put(None, timeout=5)
+        log.critical("sending poison-pill upstream to controller")
+        args.response_queue.put(False, timeout=5)
 
-        # log.info("continuous_poll: done")
+        log.critical("continuous_poll: done")
         sys.exit()
 
     def dedupe(self, q):

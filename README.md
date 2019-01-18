@@ -302,6 +302,9 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2019-01-18 1.0.1
+    - better support for hotplug / unplug events (poison pill updates)
+    - added SpectrometerSettings.excitation()
 - 2019-01-16 1.0.0
     - added UUID for tracking multiple spectrometers
     - deprecated StrokerProtocol devices

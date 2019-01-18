@@ -25,7 +25,8 @@ class EEPROM(object):
         self.has_cooling                 = False
         self.has_battery                 = False
         self.has_laser                   = False
-        self.excitation_nm               = 0.0  # None is weird for a float
+        self.excitation_nm               = 0.0
+        self.excitation_nm_float         = 0.0
         self.slit_size_um                = 0
         self.startup_integration_time_ms = 10
         self.startup_temp_degC           = 10
@@ -75,6 +76,7 @@ class EEPROM(object):
         self.write_buffers = []
 
         self.editable = [ "excitation_nm",
+                          "excitation_nm_float",
                           "detector_gain",
                           "detector_offset",
                           "detector_gain_odd",
@@ -152,6 +154,7 @@ class EEPROM(object):
         log.info("  Has Battery:      %s", self.has_battery)
         log.info("  Has Laser:        %s", self.has_laser)
         log.info("  Excitation:       %s nm", self.excitation_nm)
+        log.info("  Excitation (f):   %.2f nm", self.excitation_nm_float)
         log.info("  Slit size:        %s um", self.slit_size_um)
         log.info("  Start Integ Time: %d ms", self.startup_integration_time_ms)
         log.info("  Start Temp:       %d degC", self.startup_temp_degC)
@@ -300,6 +303,9 @@ class EEPROM(object):
         self.min_laser_power_mW              = self.unpack((3, 32,  4), "f")
         self.excitation_nm_float             = self.unpack((3, 36,  4), "f")
 
+        if self.format < 4:
+            self.excitation_nm_float = self.excitation_nm
+
         # ######################################################################
         # Page 4
         # ######################################################################
@@ -422,7 +428,7 @@ class EEPROM(object):
         self.pack((0, 36,  1), "?", self.has_cooling                 )
         self.pack((0, 37,  1), "?", self.has_battery                 )
         self.pack((0, 38,  1), "?", self.has_laser                   )
-        self.pack((0, 39,  2), "H", self.excitation_nm               )
+        self.pack((0, 39,  2), "H", int(round(self.excitation_nm, 0)))
         self.pack((0, 41,  2), "H", self.slit_size_um                )
         self.pack((0, 43,  2), "H", self.startup_integration_time_ms )
         self.pack((0, 45,  2), "h", self.startup_temp_degC           )
@@ -479,6 +485,7 @@ class EEPROM(object):
         self.pack((3, 24,  4), "f", self.laser_power_coeffs[3])
         self.pack((3, 28,  4), "f", self.max_laser_power_mW)
         self.pack((3, 32,  4), "f", self.min_laser_power_mW)
+        self.pack((3, 36,  4), "f", self.excitation_nm_float)
 
         # Page 4
         self.pack((4,  0, 63), "s", self.user_text)
