@@ -359,6 +359,9 @@ class WasatchDeviceWrapper(object):
             try:
                 reading = self.response_queue.get_nowait()
                 if reading:
+                    if isinstance(reading, bool):
+                        log.critical("get_final_item: read Reading %s", reading)
+                        return reading
                     log.debug("get_final_item: read Reading %d", reading.session_count)
             except Queue.Empty:
                 break

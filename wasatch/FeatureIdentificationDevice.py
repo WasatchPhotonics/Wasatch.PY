@@ -77,6 +77,7 @@ class FeatureIdentificationDevice(object):
         self.raise_exceptions = False
         self.random_errors = False
         self.random_error_perc = 0.001   # 0.1%
+        self.shutdown_requested = False
 
     ## 
     # Attempt to connect to the specified device. Log any failures and
@@ -160,7 +161,8 @@ class FeatureIdentificationDevice(object):
             log.critical("schedule_disconnect: raising exception")
             raise exc
         else:
-            log.error("ignoring exception")
+            log.error("requesting shutdown")
+            self.shutdown_requested = True
 
     # ##########################################################################
     # Utility Methods
@@ -248,9 +250,15 @@ class FeatureIdentificationDevice(object):
         except Exception as exc:
             log.critical("Hardware Failure FID Get Code Problem with ctrl transfer", exc_info=1)
             self.schedule_disconnect(exc)
+            return None
 
         log.debug("%sget_code: request 0x%02x value 0x%04x index 0x%04x = [%s]",
             prefix, bRequest, wValue, wIndex, result)
+
+        if result is None:
+            log.critical("get_code[%s, %s]: received null", label, self.uuid)
+            self.schedule_disconnect(exc)
+            return None
 
         # demarshall or return raw array
         value = 0
@@ -625,6 +633,9 @@ class FeatureIdentificationDevice(object):
         if raw < 0:
             raw = self.get_laser_temperature_raw()
 
+        if raw is None:
+            return None
+
         if raw > 0xfff:
             log.error("get_laser_temperature_degC: read raw value 0x%04x (greater than 12 bit)", raw)
             return -99
@@ -659,6 +670,9 @@ class FeatureIdentificationDevice(object):
     def get_detector_temperature_degC(self, raw=-1):
         if raw < 0:
             raw = self.get_detector_temperature_raw()
+
+        if raw is None:
+            return None
 
         degC = self.settings.eeprom.adc_to_degC_coeffs[0]             \
              + self.settings.eeprom.adc_to_degC_coeffs[1] * raw       \

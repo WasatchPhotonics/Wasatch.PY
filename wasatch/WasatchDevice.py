@@ -287,6 +287,10 @@ class WasatchDevice(object):
 
         log.debug("Device acquire_data")
 
+        if self.hardware.shutdown_requested:
+            log.critical("Device requested shutdown")
+            return False # poison pill
+
         # process queued commands, and find out if we've been asked to read a
         # spectrum
         needs_acquisition = self.process_commands()
@@ -431,12 +435,14 @@ class WasatchDevice(object):
             self.hardware.set_laser_enable(False)
 
         # read detector temperature if applicable (should we do this for Ambient as well?)
-        if True or self.settings.eeprom.has_cooling:
+        if self.settings.eeprom.has_cooling:
             try:
                 reading.detector_temperature_raw  = self.hardware.get_detector_temperature_raw()
                 reading.detector_temperature_degC = self.hardware.get_detector_temperature_degC(reading.detector_temperature_raw)
             except Exception as exc:
                 log.debug("Error reading detector temperature", exc_info=1)
+            if reading.detector_temperature_raw is None:
+                return reading
 
         # only read laser temperature if we have a laser 
         if self.settings.eeprom.has_laser:
@@ -462,6 +468,7 @@ class WasatchDevice(object):
         # read battery every 10sec
         if self.settings.eeprom.has_battery:
             if self.settings.state.battery_timestamp is None or (datetime.datetime.now() >= self.settings.state.battery_timestamp + datetime.timedelta(seconds=10)):
+                reading.battery_raw = self.hardware.get_battery_state_raw()
                 reading.battery_percentage = self.hardware.get_battery_percentage()
                 reading.battery_charging = self.hardware.get_battery_charging()
                 log.debug("battery: level %.2f%% (%s)", reading.battery_percentage, "charging" if reading.battery_charging else "not charging")

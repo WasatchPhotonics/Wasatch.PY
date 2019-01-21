@@ -27,6 +27,7 @@ class Reading(object):
         self.averaged                  = False
         self.session_count             = 0
         self.area_scan_row_count       = -1
+        self.battery_raw               = None
         self.battery_percentage        = None
         self.battery_charging          = None
 

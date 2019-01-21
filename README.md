@@ -302,6 +302,8 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2019-01-21 1.0.2
+    - improved hotplug support
 - 2019-01-18 1.0.1
     - better support for hotplug / unplug events (poison pill updates)
     - added SpectrometerSettings.excitation()
