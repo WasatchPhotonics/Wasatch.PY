@@ -134,7 +134,7 @@ def get_pathnames_from_directory(rootdir, pattern=None, recursive=False):
                         pass
                 else:
                     pathnames.append(pathname)
-    else:
+    elif os.path.isdir(rootdir):
         for filename in os.listdir(rootdir):
             pathname = os.path.join(rootdir, filename)
             if os.path.isfile(pathname):
