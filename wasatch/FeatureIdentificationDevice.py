@@ -472,7 +472,7 @@ class FeatureIdentificationDevice(object):
         # Only send ACQUIRE (internal SW trigger) if external HW trigger is disabled (the default)
         log.debug("get_line: requesting spectrum")
         if self.settings.state.trigger_source == SpectrometerState.TRIGGER_SOURCE_INTERNAL:
-            self.send_code(0xad, data_or_wLength="00000000", label="ACQUIRE_SPECTRUM")
+            self.send_code(0xad, label="ACQUIRE_SPECTRUM")
 
         # regardless of pixel count, assume uint16
         pixels = self.settings.pixels()
@@ -628,7 +628,25 @@ class FeatureIdentificationDevice(object):
         return result & 0xfff
 
     ##
-    # @note laser doesn't use EEPROM coeffs at all
+    # Laser temperature conversion doesn't use EEPROM coeffs at all.
+    # Most Wasatch Raman systems use an IPS Wavelength-Stabilized TO-56
+    # laser, which internally uses a Betatherm 10K3CG3 thermistor.
+    #
+    # @see https://www.ipslasers.com/data-sheets/SM-TO-56-Data-Sheet-IPS.pdf
+    #
+    # The official conversion from thermistor resistance (in ohms) to degC is:
+    #
+    # 1 / (   C1 
+    #       + C2 * ln(ohms) 
+    #       + C3 * pow(ln(ohms), 3)
+    #     ) 
+    # - 273.15
+    #
+    # Where: C1 = 0.00113
+    #        C2 = 0.000234
+    #        C3 = 8.78e-8
+    #
+    # @param raw    the value read from the thermistor's 12-bit ADC
     def get_laser_temperature_degC(self, raw=-1):
         if raw < 0:
             raw = self.get_laser_temperature_raw()
@@ -644,14 +662,15 @@ class FeatureIdentificationDevice(object):
         if raw == 0:
             return 0
 
-        degC = -99
+        degC = 0
         try:
-            voltage    = 2.5 * raw / 4096.0
-            resistance = 21450.0 * voltage / (2.5 - voltage)
+            voltage    = 2.5 * raw / 4096
+            resistance = 21450.0 * voltage / (2.5 - voltage) # LB confirms
 
             if resistance < 0:
-                log.error("get_laser_temperature_degC: can't compute degC: raw = 0x%04x, voltage = %f, resistance = %f", raw, voltage, resistance)
-                return -99
+                log.error("get_laser_temperature_degC: can't compute degC: raw = 0x%04x, voltage = %f, resistance = %f", 
+                    raw, voltage, resistance)
+                return 0
 
             logVal     = math.log(resistance / 10000.0)
             insideMain = logVal + 3977.0 / (25 + 273.0)
@@ -1095,8 +1114,11 @@ class FeatureIdentificationDevice(object):
     def get_external_trigger_output(self):
         return self.get_code(0xe1, label="GET_EXTERNAL_TRIGGER_OUTPUT", msb_len=1)
 
-    def get_interlock(self):
-        return self.get_code(0xef, label="GET_INTERLOCK", msb_len=1)
+    def get_laser_interlock(self):
+        if self.is_arm():
+            log.error("GET_LASER_INTERLOCK not supported on ARM")
+            return false
+        return self.get_code(0xef, label="GET_LASER_INTERLOCK", msb_len=1)
 
     def get_laser_enabled(self):
         return self.get_code(0xe2, label="GET_LASER_ENABLED", msb_len=1)

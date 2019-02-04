@@ -302,6 +302,9 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2019-02-04 1.0.3
+    - fixed demo.py
+    - renamed get\_interlock to get\_laser\_interlock
 - 2019-01-21 1.0.2
     - improved hotplug support
 - 2019-01-18 1.0.1

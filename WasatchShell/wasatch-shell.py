@@ -64,7 +64,7 @@ class WasatchShell(object):
             "get_external_trigger_output",
             "get_fpga_firmware_version",
             "get_integration_time_ms",
-            "get_interlock",
+            "get_laser_interlock",
             "get_laser_enabled",
             "get_laser_mod_duration",
             "get_laser_mod_enabled",

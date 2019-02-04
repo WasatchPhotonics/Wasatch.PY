@@ -1,4 +1,20 @@
 #!/usr/bin/env python
+################################################################################
+#                                   demo.py                                    #
+################################################################################
+#                                                                              #
+#  DESCRIPTION:  Simple cmd-line demo to confirm that Wasatch.PY is working    #
+#                and can connect to and control a spectrometer.                #
+#                                                                              #
+#  ENVIRONMENT:  (if using Miniconda2)                                         #
+#                $ rm -f environment.yml                                       #
+#                $ ln -s environments/conda-linux.yml                          #
+#                $ conda env create -n wasatch                                 #
+#                $ conda activate wasatch                                      #
+#  INVOCATION:                                                                 #
+#                $ python -u demo.py                                           #
+#                                                                              #
+################################################################################
 
 import os
 import re
@@ -55,7 +71,7 @@ class WasatchDemo(object):
         parser.add_argument("--delay-ms",            type=int, default=1000,   help="delay between integrations (ms, default 1000)")
         parser.add_argument("--outfile",             type=str, default=None,   help="output filename (e.g. path/to/spectra.csv)")
         parser.add_argument("--max",                 type=int, default=0,      help="max spectra to acquire (default 0, unlimited)")
-        parser.add_argument("--non-blocking",        action="store_true",      help="non-blocking USB interface")
+        parser.add_argument("--non-blocking",        action="store_true",      help="non-blocking USB interface (WasatchDeviceWrapper instead of WasatchDevice)")
         parser.add_argument("--ascii-art",           action="store_true",      help="graph spectra in ASCII")
 
         # parse argv into dict
@@ -88,24 +104,24 @@ class WasatchDemo(object):
             log.debug("instantiating WasatchBus")
             self.bus = WasatchBus(use_sim = False)
 
-        if not self.bus.devices:
+        if not self.bus.uuids:
             print("No Wasatch USB spectrometers found.")
             return 
 
         log.debug("connect: trying to connect to new device on bus 1")
-        uid = self.bus.devices[0]
+        uuid = self.bus.uuids[0]
 
         if self.args.non_blocking:
             # this is still buggy on MacOS
             log.debug("instantiating WasatchDeviceWrapper (non-blocking)")
             device = WasatchDeviceWrapper(
-                uid=uid,
-                bus_order=self.args.bus_order,
-                log_queue=self.logger.log_queue,
-                log_level=self.args.log_level)
+                uuid      = uuid,
+                bus_order = self.args.bus_order,
+                log_queue = self.logger.log_queue,
+                log_level = self.args.log_level)
         else:
             log.debug("instantiating WasatchDevice (blocking)")
-            device = WasatchDevice(uid, bus_order=self.args.bus_order)
+            device = WasatchDevice(uuid, bus_order=self.args.bus_order)
 
         ok = device.connect()
         if not ok:
