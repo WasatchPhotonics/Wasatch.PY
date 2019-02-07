@@ -302,6 +302,10 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2019-02-07 1.0.4
+    - added default\_detector\_setpoint\_degC
+    - tweaked auto-laser behavior
+    - default to DEBUG logging until initialized
 - 2019-02-04 1.0.3
     - fixed demo.py
     - renamed get\_interlock to get\_laser\_interlock

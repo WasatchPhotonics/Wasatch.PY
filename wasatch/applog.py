@@ -79,7 +79,8 @@ def process_log_configure(log_queue, log_level=logging.DEBUG):
     if "Windows" in platform.platform():
         queue_handler = QueueHandler(log_queue)
         root_log.addHandler(queue_handler)
-        root_log.setLevel(log_level)
+
+    root_log.setLevel(log_level)
 
     # MZ: how to log from the logger
     root_log.debug("applog.process_log_configure: process_id %s", os.getpid())

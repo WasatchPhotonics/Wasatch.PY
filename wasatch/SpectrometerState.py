@@ -22,7 +22,7 @@ class SpectrometerState(object):
         self.integration_time_ms = 0
 
         # TEC
-        self.tec_setpoint_degC = 15
+        self.tec_setpoint_degC = 15 # that's a very strange default...
         self.tec_enabled = False
 
         # high gain mode (InGaAs only)

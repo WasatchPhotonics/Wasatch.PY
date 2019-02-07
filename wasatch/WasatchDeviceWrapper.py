@@ -183,7 +183,7 @@ class WasatchDeviceWrapper(object):
         subprocessArgs = SubprocessArgs(
             uuid                        = self.uuid, 
             bus_order                   = self.bus_order,
-            log_level                   = log.getEffectiveLevel(),
+            log_level                   = self.log_level, # log.getEffectiveLevel(),
 
             # the all-important message queues
             log_queue                   = self.log_queue,                     #          subprocess --> log
@@ -426,10 +426,12 @@ class WasatchDeviceWrapper(object):
     def continuous_poll(self, args):
 
         # We have just forked into a new process, so the first thing is to
-        # configure logging for this process.
-        applog.process_log_configure(args.log_queue, args.log_level)
+        # configure logging for this process.  Although we've been passed-in
+        # args.log_level, let's start with DEBUG so we can always capture
+        # connect() activity.
+        applog.process_log_configure(args.log_queue, logging.DEBUG)
 
-        log.info("continuous_poll: start (uuid %s, bus_order %s)", args.uuid, args.bus_order)
+        log.info("continuous_poll: start (uuid %s, bus_order %s, log_level %s)", args.uuid, args.bus_order, args.log_level)
 
         # The second thing we do is actually instantiate a WasatchDevice.  Note
         # that for multi-process apps like ENLIGHTEN which use WasatchDeviceWrapper,
@@ -483,6 +485,9 @@ class WasatchDeviceWrapper(object):
 
         # Read forever until the None poison pill is received
         log.debug("continuous_poll: entering loop")
+        
+        log.debug("resetting commanded log_level %s", args.log_level)
+        logging.getLogger().setLevel(args.log_level)
         while True:
 
             # ##################################################################
