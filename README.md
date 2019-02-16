@@ -302,6 +302,9 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2019-02-16 1.0.4
+    - disabled EEPROM range-checks on integration time
+    - added default\_detector\_setpoint\_degC
 - 2019-02-04 1.0.3
     - fixed demo.py
     - renamed get\_interlock to get\_laser\_interlock
