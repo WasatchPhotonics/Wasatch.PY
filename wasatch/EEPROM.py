@@ -32,9 +32,9 @@ class EEPROM(object):
         self.excitation_nm               = 0.0
         self.excitation_nm_float         = 0.0
         self.slit_size_um                = 0
-        self.startup_integration_time_ms = 10
-        self.startup_temp_degC           = 10
-        self.startup_triggering_scheme   = 0
+        self.startup_integration_time_ms = None
+        self.startup_temp_degC           = None
+        self.startup_triggering_scheme   = None
         self.detector_gain               = 1.9
         self.detector_offset             = 0
         self.detector_gain_odd           = 1.9
@@ -43,8 +43,8 @@ class EEPROM(object):
         self.wavelength_coeffs           = []
         self.degC_to_dac_coeffs          = []
         self.adc_to_degC_coeffs          = []
-        self.max_temp_degC               = 20
-        self.min_temp_degC               = 10
+        self.max_temp_degC               = 20 # interesting
+        self.min_temp_degC               = 10 #    defaults
         self.tec_r298                    = 0
         self.tec_beta                    = 0
         self.calibration_date            = None
@@ -75,8 +75,8 @@ class EEPROM(object):
 
         self.bad_pixels                  = [] # should be set, not list
                                          
+        self.format = 0
         self.buffers = []
-        self.revisions = [] # ENG-0034 page revs
         self.write_buffers = []
 
         self.editable = [ "excitation_nm",
@@ -160,9 +160,9 @@ class EEPROM(object):
         log.info("  Excitation:       %s nm", self.excitation_nm)
         log.info("  Excitation (f):   %.2f nm", self.excitation_nm_float)
         log.info("  Slit size:        %s um", self.slit_size_um)
-        log.info("  Start Integ Time: %d ms", self.startup_integration_time_ms)
-        log.info("  Start Temp:       %d degC", self.startup_temp_degC)
-        log.info("  Start Triggering: 0x%02x", self.startup_triggering_scheme)
+        log.info("  Start Integ Time: %s", ("%d ms"     % self.startup_integration_time_ms) if self.startup_integration_time_ms is not None else None)
+        log.info("  Start Temp:       %s", ("%.2f degC" % self.startup_temp_degC)           if self.startup_temp_degC           is not None else None)
+        log.info("  Start Triggering: %s", ("0x%04x"    % self.startup_triggering_scheme)   if self.startup_triggering_scheme   is not None else None)
         log.info("  Det Gain:         %f", self.detector_gain)
         log.info("  Det Offset:       %d", self.detector_offset)
         log.info("  Det Gain Odd:     %f", self.detector_gain_odd)
@@ -213,12 +213,7 @@ class EEPROM(object):
     # @see https://docs.python.org/2/library/struct.html#format-characters
     # (capitals are unsigned)
     def read_eeprom(self):
-        self.revisions = []
-
-        # populate the array of page "revisions" (version of each page)
-        for page in range(6):
-            self.revisions.append(self.unpack((page, 63,  1), "B")) # rev is a single byte
-        self.format = self.revisions[0]
+        self.format = self.unpack((0, 63,  1), "B")
 
         # ######################################################################
         # Page 0

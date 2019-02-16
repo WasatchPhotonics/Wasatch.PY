@@ -346,7 +346,9 @@ class WasatchDevice(object):
         # (given sleep()'s precision) for each acquisition.  For true precision
         # this should all go into the firmware anyway.
         auto_enable_laser = self.settings.state.acquisition_laser_trigger_enable and not self.settings.state.free_running_mode
+        log.debug("acquire_spectrum: auto_enable_laser = %s", auto_enable_laser)
         if auto_enable_laser:
+            log.debug("acquire_spectum: enabling laser, then sleeping %d ms", self.settings.state.acquisition_laser_trigger_delay_ms)
             self.hardware.set_laser_enable(True)
             time.sleep(self.settings.state.acquisition_laser_trigger_delay_ms / 1000.0)
 
@@ -432,6 +434,7 @@ class WasatchDevice(object):
 
         # Batch Collection
         if auto_enable_laser:
+            log.debug("acquire_spectrum: disabling laser post-acquisition")
             self.hardware.set_laser_enable(False)
 
         # read detector temperature if applicable (should we do this for Ambient as well?)
@@ -496,6 +499,7 @@ class WasatchDevice(object):
                 # is this a command used by WasatchDevice itself, and not
                 # passed down to FeatureIdentificationDevice?
                 if control_object.setting == "acquire":
+                    log.debug("process_commands: acquire found")
                     retval = True
                 else:
                     self.hardware.write_setting(control_object)

@@ -86,6 +86,25 @@ class SpectrometerSettings(object):
 
     def isIMX(self):
         return "imx" in self.eeprom.detector.lower()
+
+    def default_detector_setpoint_degC(self):
+        # newer units should specify this via EEPROM
+        if self.eeprom.format >= 4:
+            return self.eeprom.startup_temp_degC
+
+        # otherwise infer from detector
+        det = self.eeprom.detector.upper()
+        if "S11511" in det:
+            return 10
+        elif "S10141" in det:
+            return -15
+        elif "G9214" in det:
+            return -15
+        elif "7031" in det:
+            # reviewed by Caleb "Cookie" Carden
+            return -15
+
+        return None
     
     def default_detector_setpoint_degC(self):
         # newer units should specify this via EEPROM
