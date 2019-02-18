@@ -26,13 +26,11 @@ MICROSEC_TO_SEC = 0.000001
 # This is the basic implementation of our FeatureIdentificationDevice (FID) 
 # spectrometer USB API as defined in ENG-0001.
 #
-# Compare this class to Wasatch.NET's Spectrometer.cs.
+# This class is roughly comparable to Wasatch.NET's Spectrometer.cs.
 #
 # This class is normally not accessed directly, but through the higher-level 
-# abstraction WasatchDevice (which can also wrap legacy StrokerProtocol spectrometers,
-# virtual FileSpectrometer devices etc).
+# abstraction WasatchDevice.
 #
-# @todo inherit from SpectrometerDevice or similar
 # @see ENG-0001
 class FeatureIdentificationDevice(object):
 
@@ -75,7 +73,7 @@ class FeatureIdentificationDevice(object):
         self.next_applied_laser_power = None # power level to be applied NEXT time the laser is enabled (immediate or ramping)
 
         self.raise_exceptions = False
-        self.random_errors = False
+        self.inject_random_errors = False
         self.random_error_perc = 0.001   # 0.1%
         self.shutdown_requested = False
 
@@ -144,19 +142,16 @@ class FeatureIdentificationDevice(object):
             raise
         return True
 
+    ##
+    # Something in the driver has caused it to request the controlling 
+    # application to close the peripheral.  The next time 
+    # WasatchDevice.acquire_data is called, it will pass a "poison pill" back
+    # up the response queue.
+    #
+    # Alternately, non-ENLIGHTEN callers can set "raise_exceptions" -> True for 
+    # in-process exception-handling.
+    #
     def schedule_disconnect(self, exc):
-        # Not doing this right now, because it's not clear that all
-        #
-        #   "USBError: [Errno None] libusb0-dll:err [control_msg] sending
-        #    control message failed, win error: A device attached to the system
-        #    is not functioning."
-        #
-        # actually indicate unrecoverable errors.  The UV-VIS currently
-        # generates that when trying to enable the TEC, even though the TEC
-        # seems to work.
-
-        # log.critical("Due to hardware error, attempting reconnection")
-        # self.disconnect()
         if self.raise_exceptions:
             log.critical("schedule_disconnect: raising exception")
             raise exc
@@ -174,28 +169,47 @@ class FeatureIdentificationDevice(object):
     def is_ingaas(self):
         return self.pid == 0x2000
 
+    ##
+    # Wait until any enforced USB packet intervals have elapsed. This does 
+    # nothing in most cases - the function is normally a no-op.
+    #
+    # However, if the application has defined min/max_usb_interval_ms (say
+    # (20, 50ms), then pick a random delay in the defined window (e.g. 37ms)
+    # and sleep until it has been at least that long since the last USB
+    # exchange.
+    #
+    # The purpose of this function was to wring-out some early ARM micro-
+    # controllers with apparent timing issues under high-speed USB 2.0, to see
+    # if communications issues disappeared if we enforced a communication
+    # latency from the software side.
     def wait_for_usb_available(self):
-        if self.settings.state.max_usb_interval_ms > 0:
-            if self.last_usb_timestamp is not None:
-                delay_ms = randint(self.settings.state.min_usb_interval_ms, self.settings.state.max_usb_interval_ms)
-                next_usb_timestamp = self.last_usb_timestamp + datetime.timedelta(milliseconds=delay_ms)
-                if datetime.datetime.now() < next_usb_timestamp:
-                    log.debug("fid: sleeping to enforce %d ms USB interval", delay_ms)
-                    while datetime.datetime.now() < next_usb_timestamp:
-                        sleep(0.001) # 1ms
-            self.last_usb_timestamp = datetime.datetime.now()
+        if self.settings.state.max_usb_interval_ms <= 0:
+            return
 
+        if self.last_usb_timestamp is not None:
+            delay_ms = randint(self.settings.state.min_usb_interval_ms, self.settings.state.max_usb_interval_ms)
+            next_usb_timestamp = self.last_usb_timestamp + datetime.timedelta(milliseconds=delay_ms)
+            now = datetime.datetime.now()
+            if now < next_usb_timestamp:
+                sleep_sec = (next_usb_timestamp - now).total_seconds()
+                log.debug("fid: sleeping %.3f sec to enforce %d ms USB interval", sleep_sec, delay_ms)
+                sleep(sleep_sec)
+        self.last_usb_timestamp = datetime.datetime.now()
+
+    ##
+    # This function is provided to simulate random USB communication errors
+    # during regression testing, and is normally a no-op.
     def check_for_random_error(self):
-        if self.random_errors and random.random() <= self.random_error_perc:
+        if not self.inject_random_errors:
+            return False
+
+        if random.random() <= self.random_error_perc:
             log.critical("Randomly-injected error")
             self.schedule_disconnect(Exception("Randomly-injected error"))
             return True
         return False
 
-    ##
-    # Note: some USB docs call this "bmRequest" for "bitmap" vs "byte", but it's
-    #       definitely an octet.  And yes, the USB spec really does say "data_or_length".
-    def send_code(self, bRequest, wValue=0, wIndex=0, data_or_wLength=None, label="", dry_run=False):
+    def send_code(self, bmRequest, wValue=0, wIndex=0, data_or_wLength=None, label="", dry_run=False):
         prefix = "" if not label else ("%s: " % label)
         result = None
 
@@ -208,7 +222,7 @@ class FeatureIdentificationDevice(object):
                 data_or_wLength = ""
 
         log.debug("%ssend_code: request 0x%02x value 0x%04x index 0x%04x data/len %s (orig %s)",
-            prefix, bRequest, wValue, wIndex, data_or_wLength, doL)
+            prefix, bmRequest, wValue, wIndex, data_or_wLength, doL)
 
         if dry_run:
             return True
@@ -218,8 +232,8 @@ class FeatureIdentificationDevice(object):
 
         try:
             self.wait_for_usb_available()
-            result = self.device.ctrl_transfer(0x40,     # HOST_TO_DEVICE
-                                               bRequest,
+            result = self.device.ctrl_transfer(0x40,        # HOST_TO_DEVICE
+                                               bmRequest,
                                                wValue,
                                                wIndex,
                                                data_or_wLength) # add TIMEOUT_MS parameter?
@@ -229,11 +243,11 @@ class FeatureIdentificationDevice(object):
 
         log.debug("%sSend Raw result: [%s]", prefix, result)
         log.debug("%ssend_code: request 0x%02x value 0x%04x index 0x%04x data/len %s: result %s",
-            prefix, bRequest, wValue, wIndex, data_or_wLength, result)
+            prefix, bmRequest, wValue, wIndex, data_or_wLength, result)
         return result
 
     ## @note weird that so few calls to this function override the default wLength
-    def get_code(self, bRequest, wValue=0, wIndex=0, wLength=64, label="", msb_len=None, lsb_len=None):
+    def get_code(self, bmRequest, wValue=0, wIndex=0, wLength=64, label="", msb_len=None, lsb_len=None):
         prefix = "" if not label else ("%s: " % label)
         result = None
 
@@ -243,7 +257,7 @@ class FeatureIdentificationDevice(object):
         try:
             self.wait_for_usb_available()
             result = self.device.ctrl_transfer(0xc0,        # DEVICE_TO_HOST
-                                               bRequest,
+                                               bmRequest,
                                                wValue,
                                                wIndex,
                                                wLength)
@@ -253,7 +267,7 @@ class FeatureIdentificationDevice(object):
             return None
 
         log.debug("%sget_code: request 0x%02x value 0x%04x index 0x%04x = [%s]",
-            prefix, bRequest, wValue, wIndex, result)
+            prefix, bmRequest, wValue, wIndex, result)
 
         if result is None:
             log.critical("get_code[%s, %s]: received null", label, self.uuid)
@@ -291,6 +305,8 @@ class FeatureIdentificationDevice(object):
 
     ##
     # at least one linearity coeff is other than 0 or -1
+    #
+    # @todo check for NaN
     def has_linearity_coeffs(self):
         if self.settings.eeprom.linearity_coeffs:
             for c in self.settings.eeprom.linearity_coeffs:
@@ -378,44 +394,46 @@ class FeatureIdentificationDevice(object):
     # sensor. These comments are from the C DLL for the SDK - also see
     # control.py for details.
     #
-    # 201205171534 nharrington:
-    # Are you getting strange results even though you write what
-    # appears to be the correct 2-byte integer data (first byte being
-    # the binary encoding?) It looks like the value gets sent to the
-    # device correctly, but is stored incorrectly (maybe).
-    #
-    # For example, if you run 'get_detector_gain' on the device:
-    #
-    #   C-00130   gain is 1.421875  1064  G9214
-    #   WP-00108  gain is 1.296875  830-C S10141
-    #   WP-00132  gain is 1.296875  638-R S11511
-    #   WP-00134  gain is 1.296875  638-A S11511
-    #   WP-00222  gain is 1.296875  VIS   S11511
-    #
-    # In practice, what this means is you will pass 1.9 as the gain
-    # setting into this function. It will transform it to the value 487
-    # according to the shifted gain algorithm below. The CCD will change
-    # dynamic range. Reading back the gain will still say 1.296875. This
-    # has been tested with WP-00108 on 20170602
-    #
-    # If you write 1.9 to C-00130, you get 1.296875 back, which seems to
-    # imply that only the default gain is set differently with the G9214
-    # sensor.
-    #
-    # To see more confusion: Start: WP-00154
-    # Get gain value: 1.296875
-    # Start enlighten, set gain to 3.0
-    # Get gain again: 1.296875
-    # Why does it not change?
+    # \verbatim
+    #     201205171534 nharrington:
+    #     Are you getting strange results even though you write what
+    #     appears to be the correct 2-byte integer data (first byte being
+    #     the binary encoding?) It looks like the value gets sent to the
+    #     device correctly, but is stored incorrectly (maybe).
+    #    
+    #     For example, if you run 'get_detector_gain' on the device:
+    #    
+    #       C-00130   gain is 1.421875  1064  G9214
+    #       WP-00108  gain is 1.296875  830-C S10141
+    #       WP-00132  gain is 1.296875  638-R S11511
+    #       WP-00134  gain is 1.296875  638-A S11511
+    #       WP-00222  gain is 1.296875  VIS   S11511
+    #    
+    #     In practice, what this means is you will pass 1.9 as the gain
+    #     setting into this function. It will transform it to the value 487
+    #     according to the shifted gain algorithm below. The CCD will change
+    #     dynamic range. Reading back the gain will still say 1.296875. This
+    #     has been tested with WP-00108 on 20170602
+    #    
+    #     If you write 1.9 to C-00130, you get 1.296875 back, which seems to
+    #     imply that only the default gain is set differently with the G9214
+    #     sensor.
+    #    
+    #     To see more confusion: Start: WP-00154
+    #     Get gain value: 1.296875
+    #     Start enlighten, set gain to 3.0
+    #     Get gain again: 1.296875
+    #     Why does it not change?
+    # \endverbatim
     def set_detector_gain(self, gain):
 
         if round(gain, 2) == 1.90:
             log.warn("legacy spectrometers don't like gain being re-set to default 1.90...ignoring")
             return
 
-        msb = int(gain)
-        lsb = int((gain - msb) * 256)
-        raw = (msb << 8) + lsb
+        msb = int(gain) & 0xff
+        lsb = int((gain - msb) * 256) & 0xff
+        raw = (msb << 8) | lsb
 
         # MZ: note that we SEND gain MSB-LSB, but we READ gain LSB-MSB?!
 
@@ -426,20 +444,25 @@ class FeatureIdentificationDevice(object):
     def set_detector_gain_odd(self, n):
         self.settings.eeprom.detector_gain_odd = n
 
-    ## Should this be 0xeb? (no, that's CF_SELECT).
+    ## MZ: Should this be 0xeb? (no, that's CF_SELECT).
     def set_area_scan_enable(self, flag):
         value = 1 if flag else 0
-        if not self.settings.isIMX():
-            self.send_code(0xe9, value, label="SET_AREA_SCAN_ENABLE")
+
+        # Currently the SiG doesn't support runtime-configurable Area Scan
+        # (instead, custom firmware is built with that option enabled)
+        if self.settings.isIMX():
+            log.warn("area scan not implemented for IMX")
+            return
+
+        self.send_code(0xe9, value, label="SET_AREA_SCAN_ENABLE")
+
         self.settings.state.area_scan_enabled = flag
 
-    ## The line length is encoded as a LSB-MSB ushort, such that 0x0004 = 1024 pixels
     def get_sensor_line_length(self):
         value = self.get_upper_code(0x03, label="GET_LINE_LENGTH", lsb_len=2)
         if value != self.settings.eeprom.active_pixels_horizontal:
             log.error("GET_LINE_LENGTH opcode result %d != EEPROM active_pixels_horizontal %d (using opcode)",
                 value, self.settings.eeprom.active_pixels_horizontal)
-            # MZ: change eeprom value?
         return value
 
     def get_opt_has_laser(self):
@@ -447,7 +470,6 @@ class FeatureIdentificationDevice(object):
         if available != self.settings.eeprom.has_laser:
             log.error("OPT_HAS_LASER opcode result %s != EEPROM has_laser %s (using opcode)",
                 value, self.settings.eeprom.has_laser)
-            # MZ: change eeprom value?
         return available
 
     def get_microcontroller_firmware_version(self):
@@ -459,8 +481,8 @@ class FeatureIdentificationDevice(object):
         return version
 
     def get_fpga_firmware_version(self):
-        result = self.get_code(0xb4, label="GET_FPGA_REV")
         s = ""
+        result = self.get_code(0xb4, label="GET_FPGA_REV")
         if result is not None:
             for i in range(len(result)):
                 s += chr(result[i])
@@ -596,6 +618,9 @@ class FeatureIdentificationDevice(object):
 
         if raw is None:
             raw = self.get_secondary_adc_raw()
+        if raw is None:
+            return None
+
         raw = float(raw)
 
         # use the first 4 linearity coefficients as a 3rd-order polynomial
@@ -615,12 +640,12 @@ class FeatureIdentificationDevice(object):
         log.debug("secondary_adc_raw: 0x%04x", value)
         return value
 
+    ## @note little-endian, reverse of get_detector_temperature_raw
     def get_laser_temperature_raw(self):
         # flip to primary ADC if needed
         if self.settings.state.selected_adc is None or self.settings.state.selected_adc != 0:
             self.select_adc(0)
 
-        # Yes, this is little-endian, reverse of get_detector_temperature_raw
         result = self.get_code(0xd5, wLength=2, label="GET_ADC", lsb_len=2)
         if not result:
             log.debug("Unable to read laser temperature")
@@ -636,6 +661,7 @@ class FeatureIdentificationDevice(object):
     #
     # The official conversion from thermistor resistance (in ohms) to degC is:
     #
+    # \verbatim
     # 1 / (   C1 
     #       + C2 * ln(ohms) 
     #       + C3 * pow(ln(ohms), 3)
@@ -645,18 +671,19 @@ class FeatureIdentificationDevice(object):
     # Where: C1 = 0.00113
     #        C2 = 0.000234
     #        C3 = 8.78e-8
+    # \endverbatim
     #
     # @param raw    the value read from the thermistor's 12-bit ADC
-    def get_laser_temperature_degC(self, raw=-1):
-        if raw < 0:
+    def get_laser_temperature_degC(self, raw=None):
+        if raw is None:
             raw = self.get_laser_temperature_raw()
 
         if raw is None:
             return None
 
         if raw > 0xfff:
-            log.error("get_laser_temperature_degC: read raw value 0x%04x (greater than 12 bit)", raw)
-            return -99
+            log.error("get_laser_temperature_degC: read raw value 0x%04x exceeds 12 bits", raw)
+            return 0
 
         # can't take log of zero
         if raw == 0:
@@ -682,12 +709,12 @@ class FeatureIdentificationDevice(object):
 
         return degC
 
+    ## @note big-endian, reverse of get_laser_temperature_raw
     def get_detector_temperature_raw(self):
-        # Yes, this is big-endian, reverse of get_laser_temperature_raw
         return self.get_code(0xd7, label="GET_CCD_TEMP", msb_len=2)
 
-    def get_detector_temperature_degC(self, raw=-1):
-        if raw < 0:
+    def get_detector_temperature_degC(self, raw=None):
+        if raw is None:
             raw = self.get_detector_temperature_raw()
 
         if raw is None:
@@ -948,7 +975,7 @@ class FeatureIdentificationDevice(object):
     # specification. Where you can set integration time 100 ms with the
     # command:
     #
-    # device.ctrl_transfer(bRequestType=device_to_host,
+    # device.ctrl_transfer(bmRequestType=device_to_host,
     #                      bmRequest=0xDB,
     #                      wValue=100,
     #                      wIndex=0,
@@ -1062,7 +1089,7 @@ class FeatureIdentificationDevice(object):
     def get_laser_temperature_setpoint_raw(self):
         if not self.settings.eeprom.has_laser:
             log.error("unable to control laser: EEPROM reports no laser installed")
-            return 0
+            return None
 
         result = self.get_code(0xe8, label="GET_LASER_TEC_SETPOINT")
         return result[0]
@@ -1372,7 +1399,7 @@ class FeatureIdentificationDevice(object):
             buf[0] = chip_value
 
             log.debug("sending byte string %d of %d", count + 1, string_count)
-            self.send_code(bRequest        = 0xff, 
+            self.send_code(bmRequest       = 0xff, 
                            wValue          = 0x11, 
                            wIndex          = wIndex,
                            data_or_wLength = buf,
