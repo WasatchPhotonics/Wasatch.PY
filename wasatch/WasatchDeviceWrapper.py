@@ -213,8 +213,10 @@ class WasatchDeviceWrapper(object):
             # note: testing indicates it may take more than 2.5sec for the forked
             # continuous_poll to actually start moving.  5sec timeout may be on the short side?
             # Initial testing with 2 spectrometers showed 2nd spectrometer taking 6+ sec to initialize.
+            # If you kick-off another heavy operation in another window while the spectrometer is 
+            # enumerating, this can take even longer.
 
-            self.settings = self.spectrometer_settings_queue.get(timeout=10)
+            self.settings = self.spectrometer_settings_queue.get(timeout=15)
             if self.settings is None:
                 log.error("WasatchDeviceWrapper.connect: received poison-pill from forked continuous_poll")
                 kill_myself = True

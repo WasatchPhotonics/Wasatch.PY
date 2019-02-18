@@ -302,6 +302,8 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2019-02-16 1.0.5
+    - disabled EEPROM range-checks on integration time
 - 2019-02-07 1.0.4
     - added default\_detector\_setpoint\_degC
     - tweaked auto-laser behavior

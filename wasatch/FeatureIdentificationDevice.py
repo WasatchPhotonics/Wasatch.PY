@@ -586,15 +586,19 @@ class FeatureIdentificationDevice(object):
         return (spectrum, area_scan_row_count)
 
     ## Send the updated integration time in a control message to the device
+    # 
+    # @warning temporarily disabled EEPROM range-checking by customer 
+    #          request; range limits in EEPROM are defined as 16-bit 
+    #          values, while integration time is actually a 24-bit value,
+    #          such that the EEPROM is artificially limiting our range.
     def set_integration_time_ms(self, ms):
-
-        if ms < self.settings.eeprom.min_integration_time_ms or ms > self.settings.eeprom.max_integration_time_ms:
+        if False and (ms < self.settings.eeprom.min_integration_time_ms or ms > self.settings.eeprom.max_integration_time_ms):
             log.error("fid.set_integration_time_ms: %d ms outside range (%d ms, %d ms)",
                 ms, self.settings.eeprom.min_integration_time_ms, self.settings.eeprom.max_integration_time_ms)
             return False
 
-        lsw = (ms % 65536) & 0xffff
-        msw = (ms / 65536) & 0xffff
+        lsw =  ms        & 0xffff
+        msw = (ms >> 16) & 0x00ff
 
         result = self.send_code(0xB2, lsw, msw, label="SET_INTEGRATION_TIME_MS")
         log.debug("SET_INTEGRATION_TIME_MS: now %d", ms)

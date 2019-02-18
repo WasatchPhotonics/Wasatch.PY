@@ -17,8 +17,12 @@ log = logging.getLogger(__name__)
 #
 # @see ENG-0034
 class EEPROM(object):
+    
+    USE_REV_4 = False
 
     def __init__(self):
+        self.format = 0
+
         self.model                       = None
         self.serial_number               = None
         self.baud_rate                   = 0
@@ -226,8 +230,8 @@ class EEPROM(object):
 
         # NOTE: the new InGaAs detector gain/offset won't be usable from 
         #       EEPROM until we start bumping production spectrometers to
-        #       EEPROM format 4
-        if self.format >= 4:
+        #       EEPROM Page 0 Revision 3!
+        if self.format >= 3:
             self.startup_integration_time_ms = self.unpack((0, 43,  2), "H")
             self.startup_temp_degC           = self.unpack((0, 45,  2), "H" if self.format >= 4 else "h")
             self.startup_triggering_scheme   = self.unpack((0, 47,  1), "B")
@@ -415,6 +419,9 @@ class EEPROM(object):
         # copy the above revision numbers into the last byte of each buffer
         for page in revs.keys():
             self.write_buffers[page][63] = revs[page]
+
+        if EEPROM.USE_REV_4:
+            self.write_buffers[0][63] = 4
 
         # Page 0
         self.pack((0,  0, 16), "s", self.model                       )
