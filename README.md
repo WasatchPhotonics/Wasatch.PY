@@ -271,6 +271,16 @@ The following was tested under MacOS 10.13.2 ("High Sierra"):
 
 # Known Issues
 
+## Should rename UUID
+
+I used the acronym "UUID" to refer to a unique bus device because I'd been 
+working with BLE and wanted to carry-over the concept, but I now realize
+UUID has a pre-existing definition which I'm failing to enforce:
+
+@see https://en.wikipedia.org/wiki/Universally\_unique\_identifier
+
+This field should be renamed "bus\_id" or similar in Wasatch.PY and ENLIGHTEN.
+
 ## Non-Blocking doesn't work on MacOS
 
 MacOS doesn't allow usb.core.find() to be called from a forked background process.
