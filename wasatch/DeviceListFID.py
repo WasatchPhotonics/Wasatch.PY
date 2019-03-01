@@ -61,7 +61,7 @@ class DeviceListFID(object):
                 vid = device.idVendor
                 pid = device.idProduct
 
-                log.debug("get_usb_discovery_recs: discovered vid 0x%04x, pid 0x%04x", vid, pid)
+                # log.debug("get_usb_discovery_recs: discovered vid 0x%04x, pid 0x%04x", vid, pid)
 
                 if vid != 0x24aa:
                     continue
