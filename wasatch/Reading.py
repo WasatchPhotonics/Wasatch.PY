@@ -9,8 +9,8 @@ log = logging.getLogger(__name__)
 # state in time. 
 class Reading(object):
 
-    def __init__(self, uuid):
-        self.uuid = uuid
+    def __init__(self, device_id):
+        self.device_id = device_id
         self.timestamp = datetime.datetime.now()
 
         self.spectrum                  = None
@@ -34,7 +34,7 @@ class Reading(object):
     def dump(self):
         log.info("Reading:")
         log.info("  Timestamp:              %s", self.timestamp)
-        log.info("  UUID:                   %s", self.uuid)
+        log.info("  Device ID:              %s", self.device_id)
         log.info("  Spectrum:               %s", self.spectrum[:max(5, len(self.spectrum))] if self.spectrum else None)
         log.info("  Laser Temp Raw:         0x%04x", self.laser_temperature_raw)
         log.info("  Laser Temp DegC:        %.2f", self.laser_temperature_degC)

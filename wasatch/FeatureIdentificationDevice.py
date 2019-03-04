@@ -39,16 +39,18 @@ class FeatureIdentificationDevice(object):
     # ##########################################################################
 
     ##
-    # @param uuid [in] device UUID ("0x24aa:0x1000:0:0")
+    # Instantiate a FeatureIdentificationDevice with from the given device_id.
+    #
+    # @param device_id [in] device ID ("USB:0x24aa:0x1000:1:24")
     # @param message_queue [out] if provided, provides a queue for writing
     #        StatusMessage objects back to the caller
-    def __init__(self, uuid, message_queue=None):
-        self.uuid = uuid
+    def __init__(self, device_id, message_queue=None):
+        self.device_id = device_id
         self.message_queue = message_queue
 
-        self.vid       = 0x24aa
-        self.pid       = int(uuid.split(":")[1], 16)
-        self.pid_order = int(uuid.split(":")[2])
+        did = DeviceID(device_id)
+        self.vid       = did.vid
+        self.pid       = did.pid
 
         self.device = None
 
@@ -57,7 +59,7 @@ class FeatureIdentificationDevice(object):
         self.laser_temperature_invalid = False
         self.ccd_temperature_invalid = False
 
-        self.settings = SpectrometerSettings(uuid)
+        self.settings = SpectrometerSettings(device_id)
         self.eeprom_backup = None
 
         self.overrides = None
@@ -86,11 +88,18 @@ class FeatureIdentificationDevice(object):
         # We want the "pid_order"th entry, if there is one.
         #
         # MZ: this causes a problem in non-blocking mode (WasatchDeviceWrapper) on MacOS
+        #
+        # Note that this is NOT how WasatchBus traverses the list.  It actually calls usb.busses()
         devices = usb.core.find(find_all=True, idVendor=self.vid, idProduct=self.pid)
 
-        dev_list = list(devices) # convert from array?
+        dev_list = list(devices) # convert from array
         if self.pid_order > len(dev_list):
             log.critical("FID.connect: requested pid_order %d > dev_list size %d", self.pid_order, len(dev_list))
+            return False
+
+        if self.pid_order >= len(dev_list):
+            log.critical("FID.connect: self.pid_order = %d", self.pid_order)
+            log.critical("FID.connect: dev_list = %s", dev_list)
             return False
 
         device = dev_list[self.pid_order]
@@ -270,7 +279,7 @@ class FeatureIdentificationDevice(object):
             prefix, bmRequest, wValue, wIndex, result)
 
         if result is None:
-            log.critical("get_code[%s, %s]: received null", label, self.uuid)
+            log.critical("get_code[%s, %s]: received null", label, self.device_id)
             self.schedule_disconnect(exc)
             return None
 

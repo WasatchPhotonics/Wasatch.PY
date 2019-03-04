@@ -25,9 +25,9 @@ log = logging.getLogger(__name__)
 #
 class SpectrometerSettings(object):
 
-    def __init__(self, uuid=None):
+    def __init__(self, device_id=None):
         # populate this if the settings came from a real device
-        self.uuid = uuid
+        self.device_id = device_id
 
         # volatile state
         self.state = SpectrometerState()
@@ -69,7 +69,7 @@ class SpectrometerSettings(object):
         return self.eeprom.active_pixels_horizontal
 
     def excitation(self):
-        old = self.eeprom.excitation_nm
+        old = float(self.eeprom.excitation_nm)
         new = self.eeprom.excitation_nm_float
 
         # if 'new' looks corrupt or not populated, use old
@@ -80,8 +80,10 @@ class SpectrometerSettings(object):
         if 200 <= new and new <= 2500:
             return new
 
-        # if 'new' looks bizarrely out-of-range, use old
-        log.debug("excitation wavelength %f outside (200, 2500) - suspect corrupt EEPROM, using %f", new, old)
+        # if 'new' value is unreasonable AND NON-ZERO, complain
+        if new != 0.0:
+            log.debug("excitation wavelength %e outside (200, 2500) - suspect corrupt EEPROM, using %e", new, old)
+
         return old
 
     def isIMX(self):
@@ -179,7 +181,7 @@ class SpectrometerSettings(object):
                 
     def dump(self):
         log.info("SpectrometerSettings:")
-        log.info("  UUID = %s", self.uuid)
+        log.info("  DeviceID = %s", self.device_id)
         log.info("  Microcontroller Firmware Version = %s", self.microcontroller_firmware_version)
         log.info("  FPGA Firmware Version = %s", self.fpga_firmware_version)
 

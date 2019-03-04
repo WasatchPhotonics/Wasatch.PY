@@ -7,7 +7,7 @@ log = logging.getLogger(__name__)
 # A mechanism to override the normal FID commands sent to a USB device
 # with arbitrary binary data stored in an external JSON configuration file.
 #
-# @section theory Theory of Operation
+# @par Theory of Operation
 # 
 # Say we want to control an experimental spectrometer, which operates 
 # more-or-less like our standard units, except that a couple settings 

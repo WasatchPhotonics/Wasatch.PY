@@ -38,12 +38,12 @@ log = logging.getLogger(__name__)
 class WasatchDevice(object):
 
     ##
-    # @param uuid           (VID:PID:order) ("0x24aa:0x1000:0") or FileSpectrometer directory ("/path/to/foo")
+    # @param device_id      ("USB:VID:PID:bus:addr") ("USB:0x24aa:0x1000:1:24") or FileSpectrometer directory ("FILE:/path/to/foo")
     # @param bus_order      integral USB bus sequence
     # @param message_queue  if provided, used to send status back to caller
-    def __init__(self, uuid, bus_order=0, message_queue=None):
+    def __init__(self, device_id, bus_order=0, message_queue=None):
 
-        self.uuid          = uuid
+        self.device_id     = device_id
         self.bus_order     = bus_order
         self.message_queue = message_queue
 
@@ -76,13 +76,12 @@ class WasatchDevice(object):
     ## Attempt low level connection to the device specified in init.
     def connect(self):
 
-        if ("/" in self.uuid or "\\" in self.uuid) and self.connect_file_spectrometer():
+        if (self.device_id.type == "FILE") and self.connect_file_spectrometer():
             log.info("connected to FileSpectrometer")
             self.connected = True
             self.initialize_settings()
             return True
-
-        if self.connect_feature_identification():
+        elif (self.device_id.type == "USB") and self.connect_feature_identification():
             log.info("Connected to FeatureIdentificationDevice")
             self.connected = True
             self.initialize_settings()
@@ -103,7 +102,7 @@ class WasatchDevice(object):
         return True
 
     def connect_file_spectrometer(self):
-        dev = FileSpectrometer(self.uuid)
+        dev = FileSpectrometer(self.device_id)
         if dev.connect():
             self.hardware = dev
             return True
@@ -114,38 +113,25 @@ class WasatchDevice(object):
         # TODO: merge with the list in DeviceListFID
         FID_list = ["0x1000", "0x2000", "0x4000"]
 
-        if self.uuid == None:
-            log.debug("No specified UUID for feature id connect")
+        if self.device_id == None:
+            log.debug("No device_id for FID connect")
             return False
 
         # check to see if valid FID PID
-        uuid_pid_str   =     self.uuid.split(":")[1]
-        uuid_pid_order = int(self.uuid.split(":")[2])
-        uuid_vid_order = int(self.uuid.split(":")[3])
-
-        if not uuid_pid_str in FID_list:
-            log.debug("connect_feature_identification: UUID %s PID %s not in FID list %s", self.uuid, uuid_pid_str, FID_list)
+        did = DeviceID(device_id)
+        if not did.pid in FID_list:
+            log.debug("connect_feature_identification: device_id %s PID %s not in FID list %s", self.device_id, did.pid, FID_list)
             return False
-
-        # whether or not we're filtering based on bus_order (that is, whether or
-        # not we're intending to only instantiate a single spectrometer), we need
-        # to extract the pidOrder from the UUID so we can connect to it.
-
-        # optionally filter on bus_order
-        if self.bus_order is not None:
-            if self.bus_order != uuid_vid_order:
-                log.debug("connect_feature_identification: UUID %s vidOrder %d != requested bus_order %d", self.uuid, uuid_vid_order, self.bus_order)
-                return False
 
         dev = None
         try:
-            log.debug("connect_fid: Attempt connection to UUID %s pid %s pid_order %d", self.uuid, uuid_pid_str, uuid_pid_order)
-            dev = FeatureIdentificationDevice(uuid=self.uuid, message_queue=self.message_queue)
+            log.debug("connect_fid: Attempt connection to device_id %s pid %s", self.device_id, did.pid)
+            dev = FeatureIdentificationDevice(device_id=self.device_id, message_queue=self.message_queue)
 
             try:
                 ok = dev.connect()
             except Exception as exc:
-                log.critical("connect_feature_identification: %s", exc)
+                log.critical("connect_feature_identification: %s", exc, exc_info=1)
                 return False
 
             if not ok:
@@ -155,10 +141,10 @@ class WasatchDevice(object):
             self.hardware = dev
 
         except Exception as exc:
-            log.critical("Problem connecting to: %s", self.uuid, exc_info=1)
+            log.critical("Problem connecting to: %s", self.device_id, exc_info=1)
             return False
 
-        log.info("Connected to FeatureIdentificationDevice %s", self.uuid)
+        log.info("Connected to FeatureIdentificationDevice %s", self.device_id)
         return True
 
     def initialize_settings(self):
@@ -363,7 +349,7 @@ class WasatchDevice(object):
         for loop_index in range(0, loop_count):
 
             # start a new reading
-            reading = Reading(self.uuid)
+            reading = Reading(self.device_id)
 
             # TODO...just include a copy of SpectrometerState? something to think about
             # That would actually provide a reason to roll all the temperature etc readouts

@@ -10,30 +10,30 @@ log = logging.getLogger(__name__)
 # Interface to a remote "virtual spectrometer" with which ENLIGHTEN exchanges
 # commands and spectra via a watch-directory.
 #
-# @section theory Theory of Operation
+# @par Theory of Operation
 # 
 # We pass in a monitor_dir to WasatchBus.  WasatchBus now knows to check
 # that directory whenever WasatchBus.update() is called.
 # 
 # When WasatchBus.update() finds that monitor_dir exists, is writable and
-# contains "spectrometer.json", it will add a device with UUID /path/to/monitor_dir
+# contains "spectrometer.json", it will add a device with DeviceID "FILE:/path/to/monitor_dir"
 # to bus.devices.
 # 
 # The next time Controller.connect_new() is called, it will iterate over all
 # of bus.devices to see if any are not yet in Controller.serial_by_device
-# (whose keys are WasatchDevice objects, each of which has a .uuid attribute
-# for comparison with the new bus.devices uuid).
+# (whose keys are WasatchDevice objects, each of which has a .device_id attribute
+# for comparison with the new bus.devices device_id).
 # 
 # Assuming the FileSpectrometer is not yet connected, connect_new will then
-# instantiate a WasatchDeviceWrapper with the UUID (/path/to/monitor_dir),
+# instantiate a WasatchDeviceWrapper with the DeviceID (/path/to/monitor_dir),
 # and then call connect() on that wrapper.
 # 
 # The wrapper will then fork a new process, and 
 # WasatchDeviceWrapper<subprocess>.continuous_poll will instantiate a 
-# WasatchDevice with the given UUID (/path/to/monitor_dir).
+# WasatchDevice with the given DeviceID (/path/to/monitor_dir).
 # 
-# WasatchDevice will see that the UUID is not a VID:PID:order pair, but a path, 
-# and will attempt to instantiate a FileSpectrometer with the UUID.
+# WasatchDevice will see that the DeviceID is not a VID:PID pair, but a path, 
+# and will attempt to instantiate a FileSpectrometer with the DeviceID.
 # 
 # On instantiation (or on connect()), the FileSpectrometer will load the 
 # spectrometer.json file and use it to populate a SpectrometerSettings object.
