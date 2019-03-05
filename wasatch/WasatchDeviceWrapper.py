@@ -18,7 +18,6 @@ class SubprocessArgs(object):
 
     def __init__(self, 
             device_id, 
-            bus_order, 
             log_queue, 
             command_queue, 
             response_queue, 
@@ -26,7 +25,6 @@ class SubprocessArgs(object):
             message_queue,
             log_level):
         self.device_id                   = device_id
-        self.bus_order                   = bus_order
         self.log_queue                   = log_queue
         self.command_queue               = command_queue
         self.response_queue              = response_queue
@@ -95,7 +93,7 @@ class WasatchDeviceWrapper(object):
     # "FILE:/path/to/dir", then assume it is a FileSpectrometer.  However, device_id is just
     # a string scalar to this class, and actually parsing / using it should be
     # entirely encapsulated within WasatchDevice and lower using DeviceID.
-    def __init__(self, device_id, , log_queue, log_level):
+    def __init__(self, device_id, log_queue, log_level):
         self.device_id = device_id
         self.log_queue = log_queue
         self.log_level = log_level
@@ -431,8 +429,8 @@ class WasatchDeviceWrapper(object):
         # connect() activity.
         applog.process_log_configure(args.log_queue, logging.DEBUG)
 
-        log.info("continuous_poll: start (device_id %s, bus_order %s, log_level %s)", 
-            args.device_id, args.bus_order, args.log_level)
+        log.info("continuous_poll: start (device_id %s, log_level %s)", 
+            args.device_id, args.log_level)
 
         # The second thing we do is actually instantiate a WasatchDevice.  Note
         # that for multi-process apps like ENLIGHTEN which use WasatchDeviceWrapper,
@@ -449,18 +447,18 @@ class WasatchDeviceWrapper(object):
         # as that is how the Controller knows to call Controller.create_new and
         # instantiate this Wrapper in the first place.)
         #
-        # Finally, note that the only "hints" we are passing into WasatchDevice
-        # in terms of what type of device it should be instantiating are the DeviceID
-        # (a string with no conventions enforced, though it's typically USB 
-        # "VID:PID:pidOrder:busOrder", e.g. "0x24aa:0x4000:0:0") and optional 
-        # bus_order (int).  These parameters are all that WasatchDevice gets to 
+        # Finally, note that the only hint we are passing into WasatchDevice
+        # in terms of what type of device it should be instantiating is the 
+        # DeviceID.  This parameter is all that WasatchDevice gets to 
         # decide whether to instantiate a FeatureIdentificationDevice (and which), 
         # something else, or nothing.
+        #
+        # Now that we've removed bus_order, we should replace it with "serial_number".
         #
         # Regardless, if anything goes wrong here, ensure we do our best to 
         # cleanup these processes and queues.
         try:
-            wasatch_device = WasatchDevice(args.device_id, args.bus_order, args.message_queue)
+            wasatch_device = WasatchDevice(args.device_id, args.message_queue)
         except:
             log.critical("continuous_poll: exception instantiating WasatchDevice", exc_info=1)
             return args.spectrometer_settings_queue.put(None, timeout=2)

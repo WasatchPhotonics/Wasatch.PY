@@ -48,10 +48,6 @@ class FeatureIdentificationDevice(object):
         self.device_id = device_id
         self.message_queue = message_queue
 
-        did = DeviceID(device_id)
-        self.vid       = did.vid
-        self.pid       = did.pid
-
         self.device = None
 
         self.last_usb_timestamp = None
@@ -82,30 +78,35 @@ class FeatureIdentificationDevice(object):
     ## 
     # Attempt to connect to the specified device. Log any failures and
     # return False if there is a problem, otherwise return True.
+    #
+    # @warning this causes a problem in non-blocking mode (WasatchDeviceWrapper) 
+    #          on MacOS
     def connect(self):
 
         # Generate a fresh listing of USB devices with the requested VID and PID.
-        # We want the "pid_order"th entry, if there is one.
-        #
-        # MZ: this causes a problem in non-blocking mode (WasatchDeviceWrapper) on MacOS
-        #
-        # Note that this is NOT how WasatchBus traverses the list.  It actually calls usb.busses()
-        devices = usb.core.find(find_all=True, idVendor=self.vid, idProduct=self.pid)
+        # Note that this is NOT how WasatchBus traverses the list.  It actually 
+        # calls usb.busses(), then iterates over bus.devices, but that's because
+        # it doesn't know what PIDs it might be looking for.  We know, so just
+        # narrow down the search to those devices.
 
+        devices = usb.core.find(find_all=True, idVendor=self.device_id.vid, idProduct=self.device_id.pid)
         dev_list = list(devices) # convert from array
-        if self.pid_order > len(dev_list):
-            log.critical("FID.connect: requested pid_order %d > dev_list size %d", self.pid_order, len(dev_list))
-            return False
 
-        if self.pid_order >= len(dev_list):
-            log.critical("FID.connect: self.pid_order = %d", self.pid_order)
-            log.critical("FID.connect: dev_list = %s", dev_list)
-            return False
+        device = None
+        for dev in dev_list:
+            if dev.bus != self.device_id.bus:
+                log.debug("FID.connect: rejecting device (bus %d != requested %d)", dev.bus, self.device_id.bus)
+            elif dev.address != self.device_id.address:
+                log.debug("FID.connect: rejecting device (address %d != requested %d)", dev.address, self.device_id.address)
+            else:
+                device = dev
+                break
 
-        device = dev_list[self.pid_order]
         if device is None:
-            log.critical("FID.connect: can't find vid 0x%04x, pid 0x%04x at pid_order %d", self.vid, self.pid, self.pid_order)
+            log.debug("FID.connect: unable to find DeviceID %s", str(self.device_id))
             return False
+        else:
+            log.debug("FID.connect: matched DeviceID %s", str(self.device_id))
 
         try:
             result = device.set_configuration(1)
@@ -173,10 +174,10 @@ class FeatureIdentificationDevice(object):
     # ##########################################################################
 
     def is_arm(self):
-        return self.pid == 0x4000
+        return self.device.idProduct == 0x4000
 
     def is_ingaas(self):
-        return self.pid == 0x2000
+        return self.device.idProduct == 0x2000
 
     ##
     # Wait until any enforced USB packet intervals have elapsed. This does 

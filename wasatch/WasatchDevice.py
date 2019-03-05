@@ -17,6 +17,7 @@ from SpectrometerState           import SpectrometerState
 from FileSpectrometer            import FileSpectrometer
 from ControlObject               import ControlObject
 from WasatchBus                  import WasatchBus
+from DeviceID                    import DeviceID
 from Reading                     import Reading
 
 log = logging.getLogger(__name__)
@@ -38,13 +39,15 @@ log = logging.getLogger(__name__)
 class WasatchDevice(object):
 
     ##
-    # @param device_id      ("USB:VID:PID:bus:addr") ("USB:0x24aa:0x1000:1:24") or FileSpectrometer directory ("FILE:/path/to/foo")
-    # @param bus_order      integral USB bus sequence
+    # @param device_id      a DeviceID instance OR string label thereof
     # @param message_queue  if provided, used to send status back to caller
-    def __init__(self, device_id, bus_order=0, message_queue=None):
+    def __init__(self, device_id, message_queue=None):
+
+        # if passed a string representation of a DeviceID, deserialize it 
+        if type(device_id) is str:
+            device_id = DeviceID(label=device_id)
 
         self.device_id     = device_id
-        self.bus_order     = bus_order
         self.message_queue = message_queue
 
         self.connected = False
@@ -73,22 +76,26 @@ class WasatchDevice(object):
     #                                                                          #
     # ######################################################################## #
 
-    ## Attempt low level connection to the device specified in init.
+    ## Attempt low level connection to the specified DeviceID
     def connect(self):
+        if self.device_id.is_usb():
+            log.debug("trying to connect to USB device")
+            if self.connect_feature_identification():
+                log.info("Connected to FeatureIdentificationDevice")
+                self.connected = True
+                self.initialize_settings()
+                return True
+        elif self.device_id.is_file():
+            log.debug("trying to connect to FILE device")
+            if self.connect_file_spectrometer():
+                log.info("connected to FileSpectrometer")
+                self.connected = True
+                self.initialize_settings()
+                return True
+        else:
+            log.critical("unsupported DeviceID protocol: %s", device_id)
 
-        if (self.device_id.type == "FILE") and self.connect_file_spectrometer():
-            log.info("connected to FileSpectrometer")
-            self.connected = True
-            self.initialize_settings()
-            return True
-        elif (self.device_id.type == "USB") and self.connect_feature_identification():
-            log.info("Connected to FeatureIdentificationDevice")
-            self.connected = True
-            self.initialize_settings()
-            return True
-
-        log.debug("Can't find FID or SP class device")
-
+        log.debug("Can't connect to %s", self.device_id)
         return False
 
     def disconnect(self):
@@ -108,24 +115,19 @@ class WasatchDevice(object):
             return True
 
     ## Given a specified universal identifier, attempt to connect to the device using FID protocol.
+    # @todo merge with the hardcoded list in DeviceFinderUSB
     def connect_feature_identification(self):
-
-        # TODO: merge with the list in DeviceListFID
-        FID_list = ["0x1000", "0x2000", "0x4000"]
-
-        if self.device_id == None:
-            log.debug("No device_id for FID connect")
-            return False
+        FID_list = ["1000", "2000", "4000"] # hex
 
         # check to see if valid FID PID
-        did = DeviceID(device_id)
-        if not did.pid in FID_list:
-            log.debug("connect_feature_identification: device_id %s PID %s not in FID list %s", self.device_id, did.pid, FID_list)
+        pid_hex = self.device_id.get_pid_hex()
+        if not pid_hex in FID_list:
+            log.debug("connect_feature_identification: device_id %s PID %s not in FID list %s", self.device_id, pid_hex, FID_list)
             return False
 
         dev = None
         try:
-            log.debug("connect_fid: Attempt connection to device_id %s pid %s", self.device_id, did.pid)
+            log.debug("connect_fid: Attempt connection to device_id %s pid %s", self.device_id, pid_hex)
             dev = FeatureIdentificationDevice(device_id=self.device_id, message_queue=self.message_queue)
 
             try:

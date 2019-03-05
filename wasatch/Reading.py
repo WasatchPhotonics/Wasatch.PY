@@ -11,6 +11,7 @@ class Reading(object):
 
     def __init__(self, device_id):
         self.device_id = device_id
+
         self.timestamp = datetime.datetime.now()
 
         self.spectrum                  = None

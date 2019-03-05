@@ -312,6 +312,10 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2019-02-16 1.0.6
+    - added DeviceID
+    - renamed DeviceListFID -> DeviceFinderUSB
+    - removed bus\_order
 - 2019-02-16 1.0.5
     - disabled EEPROM range-checks on integration time
 - 2019-02-07 1.0.4

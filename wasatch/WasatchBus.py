@@ -1,7 +1,7 @@
 import logging
 import os
 
-from DeviceListFID import DeviceListFID
+from DeviceFinderUSB import DeviceFinderUSB
 
 from usb import USBError
 
@@ -16,9 +16,11 @@ log = logging.getLogger(__name__)
 ##
 # The different bus classes don't use inheritance and don't follow a common ABC
 # or interface, but each should have an update() method, and each should have a 
-# 'device_ids' array (TODO: USE INHERITANCE!) 
+# 'device_ids' array.
+#
+# @param use_sim not used, left to avoid breaking old code
 class WasatchBus(object):
-    def __init__(self, monitor_dir = None):
+    def __init__(self, use_sim=False, monitor_dir=None):
 
         self.monitor_dir = monitor_dir
 
@@ -62,16 +64,14 @@ class USBBus(object):
         self.backend_error_raised = False
         self.update()
 
-    ## Return a list of connected USB device keys, in the format
-    # "VID:PID:order:pidOrder", e.g. [ "0x24aa:0x1000:0:0", "0x24aa:0x4000:1:0", "0x24aa:0x1000:2:1" ]
+    ## Return a list of DeviceIDs on the USB bus
     def update(self):
-        log.debug("USBBus.update: instantiating DeviceListFID")
         device_ids = []
 
         try:
-            log.debug("USBBus.update: instantiating DeviceListFID")
-            lister = DeviceListFID()
-            device_ids.extend(lister.device_ids)
+            log.debug("USBBus.update: instantiating DeviceFinderUSB")
+            finder = DeviceFinderUSB()
+            device_ids.extend(finder.find_usb_devices())
         except USBError:
             # MZ: this seems to happen when I run from Git Bash shell
             #     (resolved on MacOS with 'brew install libusb')
@@ -91,6 +91,27 @@ class USBBus(object):
 #                                                                              #
 # ##############################################################################
 
+##
+# Support a "virtual spectrometer" implemented via a "watch folder" containing
+# a file named "spectrometer.json" (see FileSpectrometer for format), allowing
+# ENLIGHTEN to send commands "to" the remote spectrometer (by writing command
+# files to the directory), and reading spectra "from" the remote spectrometer
+# (by reading spectrum files from the directory).  
+#
+# It was initially created to allow ENLIGHTEN to control an instance of ASISpec
+# and make a ZWO ASI290MM camera (positioned behind an optical bench and grating)
+# appear as a spectrometer in ENLIGHTEN.
+#
+# Currently this only supports a single directory, passed to the constructor.
+# As a proper "Bus" we should conceptually support the concept of multiple 
+# "watch folders", but there hasn't been a need to date.  
+#
+# One possible application would be to use this as a "test-driver" for ENLIGHTEN,
+# "faking" the inputs and outputs of a variety of different simulated spectrometers
+# from an external program.  It wouldn't be terribly efficient (there are faster
+# ways to pipe data than via files in a watch-folder) but would work.
+# 
+# @see FileSpectrometer
 class FileBus(object):
     def __init__(self, directory):
         super(B, self).__init__()
@@ -102,4 +123,3 @@ class FileBus(object):
         if os.access(self.directory, os.W_OK) and os.path.isfile(self.configfile):
             device_ids.append("FILE:%s", self.directory)
         return device_ids
-
