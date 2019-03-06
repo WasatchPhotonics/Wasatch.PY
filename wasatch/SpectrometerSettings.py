@@ -10,17 +10,17 @@ from EEPROM            import EEPROM
 
 log = logging.getLogger(__name__)
 
-## 
-# Encapsulate a spectrometer's state, including compiled firmware (FPGAOptions), 
+##
+# Encapsulate a spectrometer's state, including compiled firmware (FPGAOptions),
 # non-volatile configuration (EEPROM) and volatile state (SpectrometerState).
 #
 # This class serves two goals:
 #
-# 1. A picklable object that can be passed between the spectrometer process and 
-#    the GUI, containing everything the GUI might need to know in convenient 
+# 1. A picklable object that can be passed between the spectrometer process and
+#    the GUI, containing everything the GUI might need to know in convenient
 #    form.
 #
-# 2. A place where the GUI can store settings of MANY different connected 
+# 2. A place where the GUI can store settings of MANY different connected
 #    spectrometers, and quickly switch between them.
 #
 class SpectrometerSettings(object):
@@ -32,7 +32,7 @@ class SpectrometerSettings(object):
         # volatile state
         self.state = SpectrometerState()
 
-        # For consistency, consider adding a class FPGARegisters here for writable 
+        # For consistency, consider adding a class FPGARegisters here for writable
         # settings like ccd_gain, ccd_offset etc which aren't naturally supported
         # by on-screen widgets like integration time.
 
@@ -89,42 +89,32 @@ class SpectrometerSettings(object):
     def isIMX(self):
         return "imx" in self.eeprom.detector.lower()
 
+    ##
+    # @note S11510 is ambient so shouldn't have a TEC
     def default_detector_setpoint_degC(self):
+        log.debug("default_detector_setpoint_degC: here")
+
         # newer units should specify this via EEPROM
         if self.eeprom.format >= 4:
+            log.debug("default_detector_setpoint_degC: eeprom.format %d so using startup_temp_degC %d",
+                self.eeprom.format, self.eeprom.startup_temp_degC)
             return self.eeprom.startup_temp_degC
 
         # otherwise infer from detector
         det = self.eeprom.detector.upper()
-        if "S11511" in det:
-            return 10
-        elif "S10141" in det:
-            return -15
-        elif "G9214" in det:
-            return -15
-        elif "7031" in det:
-            # reviewed by Caleb "Cookie" Carden
-            return -15
+        degC = None
+        if   "S11511" in det: degC =  10
+        elif "S10141" in det: degC = -15
+        elif "G9214"  in det: degC = -15
+        elif "7031"   in det: degC = -15
 
-        return None
-    
-    def default_detector_setpoint_degC(self):
-        # newer units should specify this via EEPROM
-        if False and self.eeprom.format >= 4:
-            return self.eeprom.startup_temp_degC
+        if degC is not None:
+            log.debug("default_detector_setpoint_degC: defaulting to %d per supported detector %s",
+                degC, det)
+            return degC
 
-        # otherwise infer from detector
-        det = self.eeprom.detector.upper()
-        if "S11511" in det:
-            return 10
-        elif "S10141" in det:
-            return -15 
-        elif "G9214" in det:
-            return -15 
-        elif "7031" in det:
-            # reviewed by Caleb "Cookie" Carden
-            return -15 
-
+        log.error("default_detector_setpoint_degC: serial %s has unknown detector %s",
+            self.eeprom.serial_number, det)
         return None
 
     # ##########################################################################
@@ -139,17 +129,17 @@ class SpectrometerSettings(object):
 
         if coeffs:
             self.wavelengths = utils.generate_wavelengths(
-                self.pixels(), 
-                self.eeprom.wavelength_coeffs[0], 
-                self.eeprom.wavelength_coeffs[1], 
-                self.eeprom.wavelength_coeffs[2], 
+                self.pixels(),
+                self.eeprom.wavelength_coeffs[0],
+                self.eeprom.wavelength_coeffs[1],
+                self.eeprom.wavelength_coeffs[2],
                 self.eeprom.wavelength_coeffs[3])
         else:
             # this can happen on Stroker Protocol before/without .ini file
             log.debug("no wavecal found - using pixel space")
             self.wavelengths = range(self.pixels())
 
-        log.debug("generated %d wavelengths from %.2f to %.2f", 
+        log.debug("generated %d wavelengths from %.2f to %.2f",
             len(self.wavelengths), self.wavelengths[0], self.wavelengths[-1])
 
         # keep legacy excitation in sync with floating-point
@@ -158,7 +148,7 @@ class SpectrometerSettings(object):
 
         if self.excitation() > 0:
             self.wavenumbers = utils.generate_wavenumbers(self.excitation(), self.wavelengths)
-            log.debug("generated %d wavenumbers from %.2f to %.2f", 
+            log.debug("generated %d wavenumbers from %.2f to %.2f",
                 len(self.wavenumbers), self.wavenumbers[0], self.wavenumbers[-1])
 
     def is_InGaAs(self):
@@ -178,7 +168,7 @@ class SpectrometerSettings(object):
             else:
                 tmp[k] = v
         return json.dumps(tmp, indent=4, sort_keys=True, default=str)
-                
+
     def dump(self):
         log.info("SpectrometerSettings:")
         log.info("  DeviceID = %s", self.device_id)

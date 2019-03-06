@@ -69,6 +69,15 @@ class SubprocessArgs(object):
 # 7. continuous_poll() populates (exactly once) a SpectrometerSettings object,
 #    then feeds it back to MainProcess
 #
+# It is incredibly important to recognize that continuous_poll() updates the 
+# command/response queues at a leisurely interval (currently 20Hz, set in 
+# poller_wait_sec.  No matter how short the integration time is (1ms), you're not
+# going to get spectra faster than 20 per second through this.
+#
+# Now, if you set ACQUISITION_MODE_KEEP_ALL, then you should still get every 
+# spectrum (whatever the spectrometer achieved through its scan-rate, potentially
+# 220/sec or so) -- but you'll get them in chunks (e.g., scan rate of 220/sec 
+# polled at 20Hz = 20 chunks of 11 ea).
 class WasatchDeviceWrapper(object):
 
     ACQUISITION_MODE_KEEP_ALL      = 0 # don't drop frames
@@ -116,7 +125,7 @@ class WasatchDeviceWrapper(object):
         #   - ideally on configured integration times per spectrometer
         #   - need to check whether it can be modified from inside the process
         #   - need to check whether it can be modified after process creation
-        self.poller_wait  = 0.1     # .1sec = 100ms = update from hardware device at 10Hz
+        self.poller_wait_sec = 0.05    # .05sec = 50ms = update from hardware device at 20Hz
 
         self.closing      = False   # Don't permit new acquires during close
         self.poller       = None    # a handle to the subprocess
@@ -308,6 +317,19 @@ class WasatchDeviceWrapper(object):
     # potentially voluminous amount of data returned from the device.
     # get_last by default will make sure the queue is cleared, then
     # return the most recent reading from the device.
+    #
+    # See WasatchDevice.acquire_data for a full discussion of return
+    # codes, or Controller.acquire_reading to see how they're handled,
+    # but in short:
+    #
+    # - False = Poison pill (shutdown subprocess)
+    # - None or True = Keepalive (no-op)
+    # - Reading = measured data
+    #
+    # @note it is not clear that measurement modes other than 
+    #       ACQUISITION_MODE_KEEP_COMPLETE have been well-tested,
+    #       especially in the context of multiple spectrometers,
+    #       BatchCollection etc.
     def acquire_data(self, mode=None):
 
         if self.closing:
@@ -343,44 +365,78 @@ class WasatchDeviceWrapper(object):
             reading = self.response_queue.get_nowait()
             log.debug("acquire_data: read Reading %d (qsize %d)", reading.session_count, qsize)
         except Queue.Empty:
-            log.debug("acquire_data: no data, sending True upstream as KEEPALIVE")
-            return True 
+            log.debug("acquire_data: no data, sending keepalive")
+            return None
 
         return reading
 
     ## Read from the response queue until empty (or we find an averaged item) 
+    # 
+    # In the currently implementation, it seems unlikely that a "True" will ever
+    # be passed up (we're basically converting them to None here).
     def get_final_item(self, keep_averaged=False):
-        reading = None
-        dequeue_count = 0
+        last_reading = None
         last_averaged = None
+        dequeue_count = 0
+
         while True:
             try:
+                # without waiting (don't block), just get the first item off the 
+                # queue if there is one
                 reading = self.response_queue.get_nowait()
-                if reading:
-                    if isinstance(reading, bool):
-                        log.critical("get_final_item: read Reading %s", reading)
-                        return reading
-                    log.debug("get_final_item: read Reading %d", reading.session_count)
+
+                # If we come across a poison-pill, flow that up immediately -- 
+                # game-over, we're done
+                if isinstance(reading, bool) and reading == False:
+                    log.critical("get_final_item: poison-pill!")
+                    return False
+
+                # If we come across a NONE or a True, ignore it for the moment.
+                # Returning "None" will always be the "default" action at the
+                # end, so for now continue cleaning-out the queue.
+                if reading is None or isinstance(reading, bool):
+                    log.debug("get_final_item: ignoring keepalive")
+                    continue
+
+                # apparently we read a Reading
+                log.debug("get_final_item: read Reading %d", reading.session_count)
+                last_reading = reading
+                dequeue_count += 1
+
+                # Was this the final spectrum in an averaged sequence?
+                #
+                # If so, grab a reference, but DON'T flow it up yet...there
+                # may be a NEWER fully-averaged spectrum later on.
+                #
+                # It is the purpose of this function ("get FINAL item...")
+                # to PURGE THE QUEUE -- we are not intending to leave any
+                # values in the queue (None, bool, or Readings of any kind.
+                if keep_averaged and reading.averaged:
+                    last_averaged = reading
+
             except Queue.Empty:
+                # If there is nothing more to read, then we've emptied the queue
                 break
 
-            if reading is None:
-                break
+        if last_reading is None:
+            # apparently we didn't read anything...just pass up a keepalive
+            return None
 
-            dequeue_count += 1
+        # apparently we read at least some readings.  For interest, how how many
+        # readings did we throw away (not return up to ENLIGHTEN)?
+        if dequeue_count > 1:
+            log.debug("discarded %d readings", dequeue_count - 1)
 
-            # was this the final spectrum in an averaged sequence?
-            if keep_averaged and reading.averaged:
-                last_averaged = reading
+        # if we're doing averaging, and we found one or more averaged readings,
+        # return the latest of those
+        if last_averaged is not None:
+            return last_averaged
 
-        # if we're doing averaging, take the latest of those
-        if last_averaged:
-            reading = last_averaged
-
-        if reading is not None and dequeue_count > 1:
-            log.debug("discarded %d spectra", dequeue_count - 1)
-
-        return reading
+        # We've had every opportunity short-cut the process: we could have 
+        # returned potential poison pills or completed averages, but found
+        # none of those.  Yet apparently we did read some normal readings.
+        # Return the latest of those.
+        return last_reading
 
     ## 
     # Add the specified setting and value to the local control queue.
@@ -493,7 +549,7 @@ class WasatchDeviceWrapper(object):
             # Relay downstream commands (GUI -> Spectrometer)
             # ##################################################################
 
-            poison_pill = False
+            received_poison_pill_command = False
 
             # only keep the MOST RECENT of any given command (but retain order otherwise)
             dedupped = self.dedupe(args.command_queue)
@@ -502,7 +558,11 @@ class WasatchDeviceWrapper(object):
             if dedupped:
                 for record in dedupped:
                     if record is None:
-                        poison_pill = True
+                        # reminder, the DOWNSTREAM poison_pill is a None, while the UPSTREAM
+                        # poison_pill is False...need to straighten that out.
+
+                        received_poison_pill_command = True
+
                         # do NOT put a 'break' here -- if caller is in process of
                         # cleaning shutting things down, let them switch off the
                         # laser etc in due sequence
@@ -517,8 +577,8 @@ class WasatchDeviceWrapper(object):
             else:
                 log.debug("continuous_poll: Command queue empty")
 
-            if poison_pill:
-                log.debug("continuous_poll: Exiting per command queue (poison pill received)")
+            if received_poison_pill_command:
+                log.critical("continuous_poll: Exiting per command queue (poison pill received)")
                 break
 
             # ##################################################################
@@ -541,22 +601,49 @@ class WasatchDeviceWrapper(object):
                 # integration time is set by the caller (could occur through "startup"
                 # overrides).
                 log.debug("continuous_poll: no Reading to be had")
-            else:
-                if reading.failure is not None:
-                    log.critical("continuous_poll: Hardware level ERROR")
-                    break
 
-                if reading.spectrum is not None:
-                    log.debug("continuous_poll: sending Reading %d back to GUI process (%s)", reading.session_count, reading.spectrum[0:5])
+            elif isinstance(reading, bool):
+                # we received either a True (keepalive) or False (upstream poison pill)
+
+                # was it just a keepalive?
+                if reading == True:
+                    # just pass it upstream and move on
                     args.response_queue.put(reading, timeout=1)
+                else:
+                    # it was an upstream poison pill
+                    #
+                    # There's nothing we need to do here except 'break'...that will
+                    # exit the loop, and the last thing this function does is flow-up
+                    # a poison pill anyway, so we're done
+                    log.critical("continuous_poll: received upstream poison pill...exiting")
+                    break
+                    
+            elif reading.failure is not None:
+                # this wasn't passed-up as a poison-pill, but we're going to treat it
+                # as one anyway
+                #
+                # @todo deprecate Reading.failure and just return False (poison pill?)
+                log.critical("continuous_poll: hardware level error...exiting")
+                break
+
+            elif reading.spectrum is not None:
+                log.debug("continuous_poll: sending Reading %d back to GUI process (%s)", reading.session_count, reading.spectrum[0:5])
+                args.response_queue.put(reading, timeout=1)
+
+            else:
+                log.error("continuous_poll: received non-failure Reading without spectrum...ignoring?")
 
             # only poll hardware at 20Hz
-            log.debug("continuous_poll: sleeping %d", self.poller_wait)
-            time.sleep(self.poller_wait)
+            log.debug("continuous_poll: sleeping %.2f sec", self.poller_wait_sec)
+            time.sleep(self.poller_wait_sec)
 
         # send poison-pill upstream to Controller, then quit
         log.critical("sending poison-pill upstream to controller")
         args.response_queue.put(False, timeout=5)
+
+        # Controller.ACQUISITION_TIMER_SLEEP_MS currently 50ms, so wait 100ms
+        log.critical("waiting long enough for Controller to receive it")
+        time.sleep(0.1)
 
         log.critical("continuous_poll: done")
         sys.exit()

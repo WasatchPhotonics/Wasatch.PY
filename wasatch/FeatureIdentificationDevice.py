@@ -163,10 +163,10 @@ class FeatureIdentificationDevice(object):
     #
     def schedule_disconnect(self, exc):
         if self.raise_exceptions:
-            log.critical("schedule_disconnect: raising exception")
+            log.critical("schedule_disconnect: raising exception %s", exc)
             raise exc
         else:
-            log.error("requesting shutdown")
+            log.critical("requesting shutdown due to exception %s", exc)
             self.shutdown_requested = True
 
     # ##########################################################################
@@ -220,6 +220,9 @@ class FeatureIdentificationDevice(object):
         return False
 
     def send_code(self, bmRequest, wValue=0, wIndex=0, data_or_wLength=None, label="", dry_run=False):
+        if self.shutdown_requested:
+            return
+
         prefix = "" if not label else ("%s: " % label)
         result = None
 
@@ -250,6 +253,7 @@ class FeatureIdentificationDevice(object):
         except Exception as exc:
             log.critical("Hardware Failure FID Send Code Problem with ctrl transfer", exc_info=1)
             self.schedule_disconnect(exc)
+            return False
 
         log.debug("%sSend Raw result: [%s]", prefix, result)
         log.debug("%ssend_code: request 0x%02x value 0x%04x index 0x%04x data/len %s: result %s",
@@ -258,6 +262,9 @@ class FeatureIdentificationDevice(object):
 
     ## @note weird that so few calls to this function override the default wLength
     def get_code(self, bmRequest, wValue=0, wIndex=0, wLength=64, label="", msb_len=None, lsb_len=None):
+        if self.shutdown_requested:
+            return
+
         prefix = "" if not label else ("%s: " % label)
         result = None
 

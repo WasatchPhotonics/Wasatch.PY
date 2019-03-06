@@ -121,5 +121,6 @@ class FileBus(object):
     def update(self):
         device_ids = []
         if os.access(self.directory, os.W_OK) and os.path.isfile(self.configfile):
-            device_ids.append("FILE:%s", self.directory)
+            device_id = DeviceID(directory = self.directory)
+            device_ids.append(device_id)
         return device_ids

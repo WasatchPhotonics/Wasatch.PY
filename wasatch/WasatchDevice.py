@@ -180,13 +180,26 @@ class WasatchDevice(object):
     #                                                                          #
     # ######################################################################## #
 
-    ## Assumes bad_pixels is a sorted array (possibly empty)
+    ## 
+    # If a spectrometer has bad_pixels configured in the EEPROM, then average 
+    # over them in the driver.
+    #
+    # Even though we're doing spatial averaging here, we truncate the result to
+    # a uint16 rather than return a float.  That's because most pixels normally
+    # return uint16, and it looks weird if a few scattered pixels are floats.
+    # When we're doing scan-averaging, ALL the pixels are returned as floats,
+    # which is okay.
+    #
+    # @note assumes bad_pixels is previously sorted
     def correct_bad_pixels(self, spectrum):
 
-        if not self.settings or not self.settings.eeprom or not self.settings.eeprom.bad_pixels:
+        if self.settings is None or \
+                self.settings.eeprom is None or \
+                self.settings.eeprom.bad_pixels is None or \
+                len(self.settings.eeprom.bad_pixels) == 0:
             return
 
-        if not spectrum:
+        if spectrum is None or len(spectrum) == 0:
             return
 
         pixels = len(spectrum)
@@ -222,15 +235,13 @@ class WasatchDevice(object):
                         i += 1
 
                     if next_good < pixels:
-                        # for now, draw a line between previous and next good pixels
+                        # for now, draw a line between previous and next_good pixels
                         # TODO: consider some kind of curve-fit
                         delta = float(spectrum[next_good] - spectrum[prev_good])
                         rng   = next_good - prev_good
                         step  = delta / rng
                         for j in range(rng - 1):
-                            # MZ: examining performance
-                            # spectrum[prev_good + j + 1] = spectrum[prev_good] + step * (j + 1)
-                            spectrum[prev_good + j + 1] = spectrum[prev_good] + int(step * (j + 1))
+                            spectrum[prev_good + j + 1] = spectrum[prev_good] + round(step * (j + 1), 0)
                     else:
                         # we ran off the high end, so copy-right
                         for j in range(bad_pix, pixels):
@@ -239,8 +250,12 @@ class WasatchDevice(object):
             # advance to next bad pixel
             i += 1
 
+    ##
+    # Until support for even/odd InGaAs gain and offset have been added to the 
+    # firmware, apply the correction in software.
+    #
+    # @todo delete this function when firmware has been updated!
     def correct_ingaas_gain_and_offset(self, reading):
-        #if False and not self.settings.is_InGaAs():
         if not self.settings.is_InGaAs():
             return
 
@@ -258,26 +273,39 @@ class WasatchDevice(object):
         # iterate over the ODD pixels of the spectrum
         spectrum = reading.spectrum
         for i in range(1, len(spectrum), 2):
-            # back-out even gain and offset
+
+            # back-out the incorrectly applied "even" gain and offset
             old = float(spectrum[i])
             raw = (old - self.settings.eeprom.detector_offset) / self.settings.eeprom.detector_gain
+
+            # apply the correct "odd" gain and offset
             new = (raw * self.settings.eeprom.detector_gain_odd) + self.settings.eeprom.detector_offset_odd
-            clean = round(max(0, min(new, 65535)))
-            spectrum[i] = clean
+
+            # convert back to uint16 so the spectrum is all of one type
+            spectrum[i] = round(max(0, min(new, 0xffff)))
 
             if i < 5:
-                log.debug("  pixel %4d: old %.2f raw %.2f new %.2f clean %5d", i, old, raw, new, clean)
+                log.debug("  pixel %4d: old %.2f raw %.2f new %.2f final %5d", i, old, raw, new, spectrum[i])
 
     ##
     # Process all enqueued settings, then read actual data (spectrum and
     # temperatures) from the device.
+    #
+    # Somewhat confusingly, this function can return any of the following:
+    #
+    # @return False     a poison-pill sent upstream (requested device shutdown)
+    # @return True      keepalive
+    # @return None      keepalive
+    # @return Reading   a partial or complete spectrometer Reading (may itself 
+    #                   have Reading.failure set other than None)
+    #
+    # @see Controller.acquire_reading
     def acquire_data(self):
 
         log.debug("Device acquire_data")
 
         if self.hardware.shutdown_requested:
-            log.critical("Device requested shutdown")
-            return False # poison pill
+            return False 
 
         # process queued commands, and find out if we've been asked to read a
         # spectrum
@@ -298,13 +326,27 @@ class WasatchDevice(object):
         return self.acquire_spectrum()
 
     ##
-    # Called directly by acquire_data, above.  Encapsulates the act of acquisition
-    # from the decision-making of whether same is needed.
+    # Encapsulates the act of acquisition from the decision-making of whether 
+    # same is needed.  Called directly by acquire_data, above.  
     #
-    # Notes:
-    #     - we always return raw readings, even during scan averaging (.spectrum)
-    #     - if averaging was enabled and we're complete, then we return the
-    #       averaged "complete" INSTEAD OF the raw
+    # @par Scan Averaging
+    #
+    # If the driver is in free-running mode, AND performing scan averaging,
+    # THEN we return piecemeal partial readings while "building up" to the
+    # final averaged measurement.  This gives the GUI an opportunity to update
+    # the "collected X of Y" readout on-screen, and in earlier versions, 
+    # supported a faint background trace of in-process partial readings.
+    #
+    # However, this doesn't make as much sense if we're not in free-running mode,
+    # i.e. the subprocess has been slaved to explicit control by the Controller
+    # (likely a feature object like BatchCollection), and is collecting exactly 
+    # those measurements we're being commanded, as they're commanded.  
+    #
+    # Therefore, if the driver isn't in free-running mode, then we only return
+    # the final averaged spectrum as an atomic operation.
+    #
+    # @par Precision
+    #
     #     - we always return temperatures for live GUI updates
     #     - we always perform bad pixel correction
     #     - currently returning INTEGRAL averages (including bad_pixel)
@@ -316,9 +358,6 @@ class WasatchDevice(object):
     # long averaged updates.  This can also allow the temperature and
     # metadata readings to continue to update during long averaged collections.
     #
-    # However, this doesn't work well if we're not in free-running mode: in
-    # that case, we really need to collect and return the whole averaged
-    # spectrum when the acquisition is triggered.
     def acquire_spectrum(self):
         averaging_enabled = (self.settings.state.scans_to_average > 1)
 
@@ -338,6 +377,8 @@ class WasatchDevice(object):
         if auto_enable_laser:
             log.debug("acquire_spectum: enabling laser, then sleeping %d ms", self.settings.state.acquisition_laser_trigger_delay_ms)
             self.hardware.set_laser_enable(True)
+            if self.hardware.shutdown_requested: return False
+
             time.sleep(self.settings.state.acquisition_laser_trigger_delay_ms / 1000.0)
 
         if averaging_enabled and not self.settings.state.free_running_mode:
@@ -365,6 +406,8 @@ class WasatchDevice(object):
             try:
                 while True:
                     (reading.spectrum, reading.area_scan_row_count)  = self.hardware.get_line()
+                    if self.hardware.shutdown_requested: return False
+
                     if reading.spectrum is None:
                         # hardware devices (FID, SP) should never do this: for better or worse,
                         # they're blocked on a USB call.  FileSpectrometer can, though, if there
@@ -424,12 +467,17 @@ class WasatchDevice(object):
         if auto_enable_laser:
             log.debug("acquire_spectrum: disabling laser post-acquisition")
             self.hardware.set_laser_enable(False)
+            if self.hardware.shutdown_requested: return False
 
         # read detector temperature if applicable (should we do this for Ambient as well?)
         if self.settings.eeprom.has_cooling:
             try:
                 reading.detector_temperature_raw  = self.hardware.get_detector_temperature_raw()
+                if self.hardware.shutdown_requested: return False
+
                 reading.detector_temperature_degC = self.hardware.get_detector_temperature_degC(reading.detector_temperature_raw)
+                if self.hardware.shutdown_requested: return False
+
             except Exception as exc:
                 log.debug("Error reading detector temperature", exc_info=1)
             if reading.detector_temperature_raw is None:
@@ -441,7 +489,10 @@ class WasatchDevice(object):
                 count = 2 if self.settings.state.secondary_adc_enabled else 1
                 for throwaway in range(count):
                     reading.laser_temperature_raw  = self.hardware.get_laser_temperature_raw()
+                    if self.hardware.shutdown_requested: return False
+
                 reading.laser_temperature_degC = self.hardware.get_laser_temperature_degC(reading.laser_temperature_raw)
+                if self.hardware.shutdown_requested: return False
             except Exception as exc:
                 log.debug("Error reading laser temperature", exc_info=1)
 
@@ -449,10 +500,16 @@ class WasatchDevice(object):
         if self.settings.state.secondary_adc_enabled:
             try:
                 self.hardware.select_adc(1)
+                if self.hardware.shutdown_requested: return False
+
                 for throwaway in range(2):
                     reading.secondary_adc_raw = self.hardware.get_secondary_adc_raw()
+                    if self.hardware.shutdown_requested: return False
+
                 reading.secondary_adc_calibrated = self.hardware.get_secondary_adc_calibrated(reading.secondary_adc_raw)
                 self.hardware.select_adc(0)
+                if self.hardware.shutdown_requested: return False
+
             except Exception as exc:
                 log.debug("Error reading secondary ADC", exc_info=1)
 
@@ -460,8 +517,14 @@ class WasatchDevice(object):
         if self.settings.eeprom.has_battery:
             if self.settings.state.battery_timestamp is None or (datetime.datetime.now() >= self.settings.state.battery_timestamp + datetime.timedelta(seconds=10)):
                 reading.battery_raw = self.hardware.get_battery_state_raw()
+                if self.hardware.shutdown_requested: return False
+
                 reading.battery_percentage = self.hardware.get_battery_percentage()
+                if self.hardware.shutdown_requested: return False
+
                 reading.battery_charging = self.hardware.get_battery_charging()
+                if self.hardware.shutdown_requested: return False
+
                 log.debug("battery: level %.2f%% (%s)", reading.battery_percentage, "charging" if reading.battery_charging else "not charging")
 
         return reading
