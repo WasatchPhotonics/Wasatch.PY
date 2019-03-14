@@ -241,7 +241,7 @@ class WasatchDevice(object):
                         rng   = next_good - prev_good
                         step  = delta / rng
                         for j in range(rng - 1):
-                            spectrum[prev_good + j + 1] = spectrum[prev_good] + round(step * (j + 1), 0)
+                            spectrum[prev_good + j + 1] = int(spectrum[prev_good] + round(step * (j + 1), 0))
                     else:
                         # we ran off the high end, so copy-right
                         for j in range(bad_pix, pixels):
@@ -282,7 +282,7 @@ class WasatchDevice(object):
             new = (raw * self.settings.eeprom.detector_gain_odd) + self.settings.eeprom.detector_offset_odd
 
             # convert back to uint16 so the spectrum is all of one type
-            spectrum[i] = round(max(0, min(new, 0xffff)))
+            spectrum[i] = int(round(max(0, min(new, 0xffff))))
 
             if i < 5:
                 log.debug("  pixel %4d: old %.2f raw %.2f new %.2f final %5d", i, old, raw, new, spectrum[i])

@@ -74,6 +74,14 @@ class DeviceID(object):
     # Instantiates a DeviceID object from either a usb.device or an
     # existing device_id string representation.
     def __init__(self, device=None, label=None, directory=None):
+
+        self.type      = None
+        self.vid       = None
+        self.pid       = None
+        self.bus       = None
+        self.address   = None
+        self.directory = None
+
         if label is not None:
             # instantiate from an existing string id
             if label.startswith("USB:"):

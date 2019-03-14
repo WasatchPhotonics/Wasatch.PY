@@ -5,6 +5,7 @@ import math
 import re
 
 from SpectrometerState import SpectrometerState
+from HardwareInfo      import HardwareInfo
 from FPGAOptions       import FPGAOptions
 from EEPROM            import EEPROM
 
@@ -32,10 +33,6 @@ class SpectrometerSettings(object):
         # volatile state
         self.state = SpectrometerState()
 
-        # For consistency, consider adding a class FPGARegisters here for writable
-        # settings like ccd_gain, ccd_offset etc which aren't naturally supported
-        # by on-screen widgets like integration time.
-
         # permanent attributes
         self.microcontroller_firmware_version = None
         self.fpga_firmware_version = None
@@ -43,6 +40,14 @@ class SpectrometerSettings(object):
 
         # semi-permanent attributes
         self.eeprom = EEPROM()
+
+        # expose some hardware attributes upstream (let ENLIGHTEN know if device
+        # supports triggering etc)
+        self.hardware_info = None
+        if self.device_id is not None:
+            if self.device_id.is_usb():
+                self.hardware_info = HardwareInfo(vid = self.device_id.vid,
+                                                  pid = self.device_id.pid)
 
         # derived attributes
         self.wavelengths = None
