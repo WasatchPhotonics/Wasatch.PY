@@ -843,6 +843,12 @@ class FeatureIdentificationDevice(object):
         self.send_code(0xeb, lsb, msb, buf, label="SET_CF_SELECT")
         self.settings.state.high_gain_mode_enabled = flag
 
+    ##
+    # @todo need this for offset
+    def set_selected_laser(self, n):
+        log.error("NOT IMPLEMENTED: set_selected_laser %d", n)
+        self.settings.state.selected_laser = n
+
     def set_laser_enable(self, flag):
         if not self.settings.eeprom.has_laser:
             log.error("unable to control laser: EEPROM reports no laser installed")
@@ -1437,6 +1443,8 @@ class FeatureIdentificationDevice(object):
     # on, changing the integration time, turning the cooler on, etc. 
     #
     # implemented subset of WasatchDeviceWrapper.DEVICE_CONTROL_COMMANDS
+    #
+    # Might be time to change this into a dict (setting -> lambda)
     def write_setting(self, record):
 
         setting = record.setting
@@ -1444,111 +1452,48 @@ class FeatureIdentificationDevice(object):
 
         log.debug("fid.write_setting: %s -> %s", setting, value)
 
-        if self.overrides and self.overrides.has_override(setting):
-            self.apply_override(setting, value)
+        if self.overrides and self.overrides.has_override(setting): self.apply_override(setting, value) 
+        elif setting == "laser_enable":                         self.set_laser_enable(True if value else False) 
+        elif setting == "integration_time_ms":                  self.set_integration_time_ms(int(round(value))) 
+        elif setting == "scans_to_average":                     self.settings.state.scans_to_average = int(value) 
 
-        elif setting == "laser_enable":
-            self.set_laser_enable(True if value else False)
+        elif setting == "detector_tec_setpoint_degC":           self.set_detector_tec_setpoint_degC(int(round(value))) 
+        elif setting == "detector_tec_enable":                  self.set_tec_enable(True if value else False) 
+        elif setting == "detector_gain":                        self.set_detector_gain(float(value)) 
+        elif setting == "detector_offset":                      self.set_detector_offset(int(round(value))) 
+        elif setting == "detector_gain_odd":                    self.set_detector_gain_odd(float(value)) 
+        elif setting == "detector_offset_odd":                  self.set_detector_offset_odd(int(round(value))) 
+        elif setting == "degC_to_dac_coeffs":                   self.settings.eeprom.degC_to_dac_coeffs = value 
 
-        elif setting == "integration_time_ms":
-            self.set_integration_time_ms(int(round(value)))
+        elif setting == "laser_power_perc":                     self.set_laser_power_perc(value) 
+        elif setting == "laser_power_mW":                       self.set_laser_power_mW(value) 
+        elif setting == "laser_temperature_setpoint_raw":       self.set_laser_temperature_setpoint_raw(int(round(value))) 
+        elif setting == "laser_power_ramping_enable":           self.set_laser_power_ramping_enable(True if value else False) 
+        elif setting == "laser_power_ramp_increments":          self.settings.state.laser_power_ramp_increments = int(value) 
+        elif setting == "selected_laser":                       self.set_selected_laser(int(value))
 
-        elif setting == "detector_tec_setpoint_degC":
-            self.set_detector_tec_setpoint_degC(int(round(value)))
+        elif setting == "high_gain_mode_enable":                self.set_high_gain_mode_enable(True if value else False) 
+        elif setting == "trigger_source":                       self.set_trigger_source(int(value)) 
+        elif setting == "enable_secondary_adc":                 self.settings.state.secondary_adc_enabled = True if value else False 
+        elif setting == "area_scan_enable":                     self.set_area_scan_enable(True if value else False) 
 
-        elif setting == "detector_tec_enable":
-            self.set_tec_enable(True if value else False)
+        elif setting == "free_running_mode":                    self.settings.state.free_running_mode = True if value else False 
+        elif setting == "acquisition_laser_trigger_enable":     self.settings.state.acquisition_laser_trigger_enable = True if value else False 
+        elif setting == "acquisition_laser_trigger_delay_ms":   self.settings.state.acquisition_laser_trigger_delay_ms = int(value) 
 
-        elif setting == "degC_to_dac_coeffs":
-            self.settings.eeprom.degC_to_dac_coeffs = value
+        elif setting == "update_eeprom":                        self.update_session_eeprom(value) 
+        elif setting == "replace_eeprom":                       self.replace_session_eeprom(value) 
+        elif setting == "write_eeprom":                         self.write_eeprom() 
 
-        elif setting == "laser_power_perc":
-            self.set_laser_power_perc(value)
-
-        elif setting == "laser_power_mW":
-            self.set_laser_power_mW(value)
-
-        elif setting == "laser_temperature_setpoint_raw":
-            self.set_laser_temperature_setpoint_raw(int(round(value)))
-
-        elif setting == "detector_gain":
-            self.set_detector_gain(float(value))
-
-        elif setting == "detector_offset":
-            self.set_detector_offset(int(round(value)))
-
-        elif setting == "detector_gain_odd":
-            self.set_detector_gain_odd(float(value))
-
-        elif setting == "detector_offset_odd":
-            self.set_detector_offset_odd(int(round(value)))
-
-        elif setting == "high_gain_mode_enable":
-            self.set_high_gain_mode_enable(True if value else False)
-
-        elif setting == "trigger_source":
-            self.set_trigger_source(int(value))
-
-        elif setting == "scans_to_average":
-            self.settings.state.scans_to_average = int(value)
-
-        elif setting == "bad_pixel_mode":
-            self.settings.state.bad_pixel_mode = int(value)
-
-        elif setting == "log_level":
-            self.set_log_level(value)
-
-        elif setting == "min_usb_interval_ms":
-            self.settings.state.min_usb_interval_ms = int(round(value))
-
-        elif setting == "max_usb_interval_ms":
-            self.settings.state.max_usb_interval_ms = int(round(value))
-
-        elif setting == "reset_fpga":
-            self.reset_fpga()
-
-        elif setting == "enable_secondary_adc":
-            self.settings.state.secondary_adc_enabled = True if value else False
-
-        elif setting == "invert_x_axis":
-            self.settings.state.invert_x_axis = True if value else False
-
-        elif setting == "laser_power_ramping_enable":
-            self.set_laser_power_ramping_enable(True if value else False)
-
-        elif setting == "laser_power_ramp_increments":
-            self.settings.state.laser_power_ramp_increments = int(value)
-
-        elif setting == "area_scan_enable":
-            self.set_area_scan_enable(True if value else False)
-
-        elif setting == "update_eeprom":
-            self.update_session_eeprom(value)
-
-        elif setting == "replace_eeprom":
-            self.replace_session_eeprom(value)
-
-        elif setting == "write_eeprom":
-            self.write_eeprom()
-
-        elif setting == "overrides":
-            self.set_overrides(value)
-
-        elif setting == "graph_alternating_pixels":
-            self.settings.state.graph_alternating_pixels = True if value else False
-
-        elif setting == "raise_exceptions":
-            self.raise_exceptions = True if value else False
-
-        elif setting == "free_running_mode":
-            self.settings.state.free_running_mode = True if value else False
-
-        elif setting == "acquisition_laser_trigger_enable":
-            self.settings.state.acquisition_laser_trigger_enable = True if value else False
-
-        elif setting == "acquisition_laser_trigger_delay_ms":
-            self.settings.state.acquisition_laser_trigger_delay_ms = int(value)
-
+        elif setting == "log_level":                            self.set_log_level(value) 
+        elif setting == "graph_alternating_pixels":             self.settings.state.graph_alternating_pixels = True if value else False 
+        elif setting == "raise_exceptions":                     self.raise_exceptions = True if value else False 
+        elif setting == "bad_pixel_mode":                       self.settings.state.bad_pixel_mode = int(value) 
+        elif setting == "min_usb_interval_ms":                  self.settings.state.min_usb_interval_ms = int(round(value)) 
+        elif setting == "max_usb_interval_ms":                  self.settings.state.max_usb_interval_ms = int(round(value)) 
+        elif setting == "invert_x_axis":                        self.settings.state.invert_x_axis = True if value else False 
+        elif setting == "overrides":                            self.set_overrides(value) 
+        elif setting == "reset_fpga":                           self.reset_fpga() 
         else:
             log.critical("Unknown setting to write: %s", setting)
             return False

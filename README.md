@@ -312,6 +312,9 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2019-03-14 1.0.7
+    - stubbed select\_laser
+    - tweaked poison-pill logic
 - 2019-02-16 1.0.6
     - added DeviceID
     - renamed DeviceListFID -> DeviceFinderUSB

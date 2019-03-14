@@ -543,13 +543,14 @@ class WasatchDeviceWrapper(object):
         
         log.debug("resetting commanded log_level %s", args.log_level)
         logging.getLogger().setLevel(args.log_level)
-        while True:
 
+        received_poison_pill_command  = False # from ENLIGHTEN
+        received_poison_pill_response = False # from WasatchDevice
+
+        while True:
             # ##################################################################
             # Relay downstream commands (GUI -> Spectrometer)
             # ##################################################################
-
-            received_poison_pill_command = False
 
             # only keep the MOST RECENT of any given command (but retain order otherwise)
             dedupped = self.dedupe(args.command_queue)
@@ -616,6 +617,7 @@ class WasatchDeviceWrapper(object):
                     # exit the loop, and the last thing this function does is flow-up
                     # a poison pill anyway, so we're done
                     log.critical("continuous_poll: received upstream poison pill...exiting")
+                    received_poison_pill_response = True
                     break
                     
             elif reading.failure is not None:
@@ -637,13 +639,19 @@ class WasatchDeviceWrapper(object):
             log.debug("continuous_poll: sleeping %.2f sec", self.poller_wait_sec)
             time.sleep(self.poller_wait_sec)
 
-        # send poison-pill upstream to Controller, then quit
-        log.critical("sending poison-pill upstream to controller")
-        args.response_queue.put(False, timeout=5)
+        if received_poison_pill_response:
+            # send poison-pill notification upstream to Controller
+            log.critical("exiting because of upstream poison-pill response")
+            log.critical("sending poison-pill upstream to controller")
+            args.response_queue.put(False, timeout=5)
 
-        # Controller.ACQUISITION_TIMER_SLEEP_MS currently 50ms, so wait 100ms
-        log.critical("waiting long enough for Controller to receive it")
-        time.sleep(0.1)
+            # Controller.ACQUISITION_TIMER_SLEEP_MS currently 50ms, so wait 500ms
+            log.critical("waiting long enough for Controller to receive it")
+            time.sleep(0.5)
+        elif received_poison_pill_command:
+            log.critical("exiting because of downstream poison-pill command")
+        else:
+            log.critical("exiting for no reason?!")
 
         log.critical("continuous_poll: done")
         sys.exit()
