@@ -507,6 +507,7 @@ class FeatureIdentificationDevice(object):
         return s
 
     ## send "acquire", then immediately read the bulk endpoint(s).
+    # @throws exception on timeout (unless external triggering enabled)
     def get_line(self):
         # Only send ACQUIRE (internal SW trigger) if external HW trigger is disabled (the default)
         log.debug("get_line: requesting spectrum")

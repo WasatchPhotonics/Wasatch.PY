@@ -100,8 +100,17 @@ multi-process pipeline used by ENLIGHTEN.
 
 # Version History
 
+- 03-15-2019 2.1.0
+    - updated to DeviceID
+    - refactored input token processing
+    - changed from direct FID calls to WasatchDevice.change\_setting
+    - changed to non-free-running mode
+    - changed to bare readings to reduce duplicate photodiode reads
+    - added set\_scans\_to\_average
+    - added set\_acquisition\_laser\_trigger\_enable
+    - added set\_acquisition\_laser\_trigger\_delay\_ms
 - 10-24-2018 2.0.4
-    - added has_linearity_coeffs
+    - added has\_linearity\_coeffs
 - 08-22-2018 2.0.3
     - improved exception handling
 - 08-02-2018 2.0.2

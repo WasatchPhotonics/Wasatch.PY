@@ -64,6 +64,15 @@ class WasatchDevice(object):
         # interface to the spectrometer.
         self.command_queue = multiprocessing.Queue()
 
+        # Enable for "immediate mode" by clients like WasatchShell (by default,
+        # inbound commands are queued and executed at beginning of next acquire_data;
+        # this runs them as they arrive).
+        self.immediate_mode = False
+
+        # Enable this to skip extra metadata in Readings (detector temperature,
+        # laser temperature, photodiode, battery etc)
+        self.bare_readings = False
+
         self.settings = SpectrometerSettings()
 
         self.summed_spectra         = None
@@ -377,7 +386,8 @@ class WasatchDevice(object):
         if auto_enable_laser:
             log.debug("acquire_spectum: enabling laser, then sleeping %d ms", self.settings.state.acquisition_laser_trigger_delay_ms)
             self.hardware.set_laser_enable(True)
-            if self.hardware.shutdown_requested: return False
+            if self.hardware.shutdown_requested: 
+                return False
 
             time.sleep(self.settings.state.acquisition_laser_trigger_delay_ms / 1000.0)
 
@@ -394,7 +404,7 @@ class WasatchDevice(object):
             # start a new reading
             reading = Reading(self.device_id)
 
-            # TODO...just include a copy of SpectrometerState? something to think about
+            # TODO...just include a copy of SpectrometerState? something to think about.
             # That would actually provide a reason to roll all the temperature etc readouts
             # into the SpectrometerState class...
             reading.integration_time_ms = self.settings.state.integration_time_ms
@@ -402,18 +412,17 @@ class WasatchDevice(object):
             reading.laser_power         = self.settings.state.laser_power
             reading.laser_power_in_mW   = self.settings.state.laser_power_in_mW
 
-            # collect next spectrum (ON)
+            # collect next spectrum
             try:
                 while True:
                     (reading.spectrum, reading.area_scan_row_count)  = self.hardware.get_line()
-                    if self.hardware.shutdown_requested: return False
+                    if self.hardware.shutdown_requested: 
+                        return False
 
                     if reading.spectrum is None:
-                        # hardware devices (FID, SP) should never do this: for better or worse,
-                        # they're blocked on a USB call.  FileSpectrometer can, though, if there
-                        # is no new spectrum to read.  And sometimes 2048-pixel SP spectrometers
-                        # will be unable to stitch together a complete spectrum
-                        #
+                        # FeatureIdentificationDevice shouldn't ever return None; for better or 
+                        # worse it's blocked on a USB call.  FileSpectrometer can, though, if 
+                        # there is no new spectrum to read.
                         log.debug("device.acquire_data: get_line None, retrying")
                         pass
                     else:
@@ -461,27 +470,31 @@ class WasatchDevice(object):
                     # reset for next average
                     self.summed_spectra = None
                     self.sum_count = 0
+
         # end of loop_index
 
-        # Batch Collection
-        if auto_enable_laser:
-            log.debug("acquire_spectrum: disabling laser post-acquisition")
-            self.hardware.set_laser_enable(False)
-            if self.hardware.shutdown_requested: return False
+        ########################################################################
+        # provide early exit-ramp if we've been asked to return bare Readings 
+        # (just averaged spectra with corrected bad pixels, no metadata)
+        ########################################################################
 
-        # read detector temperature if applicable (should we do this for Ambient as well?)
-        if self.settings.eeprom.has_cooling:
-            try:
-                reading.detector_temperature_raw  = self.hardware.get_detector_temperature_raw()
-                if self.hardware.shutdown_requested: return False
+        def disable_laser():
+            if auto_enable_laser:
+                log.debug("acquire_spectrum: disabling laser post-acquisition")
+                self.hardware.set_laser_enable(False)
+            return False # for convenience
 
-                reading.detector_temperature_degC = self.hardware.get_detector_temperature_degC(reading.detector_temperature_raw)
-                if self.hardware.shutdown_requested: return False
+        if self.bare_readings:
+            disable_laser()
+            return reading
 
-            except Exception as exc:
-                log.debug("Error reading detector temperature", exc_info=1)
-            if reading.detector_temperature_raw is None:
-                return reading
+        ########################################################################
+        # We're done with the (possibly-averaged) spectrum, so we'd like to now
+        # disable the automatically-enabled laser, if it was engaged; but before
+        # we can do that that, we should take any requested measurements of the
+        # laser temperature and photodiode, as those would obviously be invalid-
+        # ated if we took them AFTER the laser was off.  
+        ########################################################################
 
         # only read laser temperature if we have a laser 
         if self.settings.eeprom.has_laser:
@@ -489,10 +502,12 @@ class WasatchDevice(object):
                 count = 2 if self.settings.state.secondary_adc_enabled else 1
                 for throwaway in range(count):
                     reading.laser_temperature_raw  = self.hardware.get_laser_temperature_raw()
-                    if self.hardware.shutdown_requested: return False
+                    if self.hardware.shutdown_requested: 
+                        return disable_laser()
 
                 reading.laser_temperature_degC = self.hardware.get_laser_temperature_degC(reading.laser_temperature_raw)
-                if self.hardware.shutdown_requested: return False
+                if self.hardware.shutdown_requested: 
+                    return disable_laser()
             except Exception as exc:
                 log.debug("Error reading laser temperature", exc_info=1)
 
@@ -500,30 +515,63 @@ class WasatchDevice(object):
         if self.settings.state.secondary_adc_enabled:
             try:
                 self.hardware.select_adc(1)
-                if self.hardware.shutdown_requested: return False
+                if self.hardware.shutdown_requested: 
+                    return disable_laser()
 
                 for throwaway in range(2):
                     reading.secondary_adc_raw = self.hardware.get_secondary_adc_raw()
-                    if self.hardware.shutdown_requested: return False
+                    if self.hardware.shutdown_requested: 
+                        return disable_laser()
 
                 reading.secondary_adc_calibrated = self.hardware.get_secondary_adc_calibrated(reading.secondary_adc_raw)
                 self.hardware.select_adc(0)
-                if self.hardware.shutdown_requested: return False
+                if self.hardware.shutdown_requested: 
+                    return disable_laser()
 
             except Exception as exc:
                 log.debug("Error reading secondary ADC", exc_info=1)
+
+        ########################################################################
+        # we've read the laser temperature and photodiode, so we can now safely 
+        # disable the laser (if we're the one who enabled it)
+        ########################################################################
+
+        disable_laser()
+
+        ########################################################################
+        # finish collecting any metadata that doesn't require the laser
+        ########################################################################
+
+        # read detector temperature if applicable (should we do this for Ambient as well?)
+        if self.settings.eeprom.has_cooling:
+            try:
+                reading.detector_temperature_raw  = self.hardware.get_detector_temperature_raw()
+                if self.hardware.shutdown_requested: 
+                    return False
+
+                reading.detector_temperature_degC = self.hardware.get_detector_temperature_degC(reading.detector_temperature_raw)
+                if self.hardware.shutdown_requested: 
+                    return False
+
+            except Exception as exc:
+                log.debug("Error reading detector temperature", exc_info=1)
+            if reading.detector_temperature_raw is None:
+                return reading
 
         # read battery every 10sec
         if self.settings.eeprom.has_battery:
             if self.settings.state.battery_timestamp is None or (datetime.datetime.now() >= self.settings.state.battery_timestamp + datetime.timedelta(seconds=10)):
                 reading.battery_raw = self.hardware.get_battery_state_raw()
-                if self.hardware.shutdown_requested: return False
+                if self.hardware.shutdown_requested: 
+                    return False
 
                 reading.battery_percentage = self.hardware.get_battery_percentage()
-                if self.hardware.shutdown_requested: return False
+                if self.hardware.shutdown_requested: 
+                    return False
 
                 reading.battery_charging = self.hardware.get_battery_charging()
-                if self.hardware.shutdown_requested: return False
+                if self.hardware.shutdown_requested: 
+                    return False
 
                 log.debug("battery: level %.2f%% (%s)", reading.battery_percentage, "charging" if reading.battery_charging else "not charging")
 
@@ -581,7 +629,7 @@ class WasatchDevice(object):
     # Add the specified setting and value to the local control queue.
     #
     # Called by subprocess.continuous_poll
-    def change_setting(self, setting, value):
+    def change_setting(self, setting, value, allow_immediate=True):
         log.debug("WasatchDevice.change_setting: %s -> %s", setting, value)
         control_object = ControlObject(setting, value)
 
@@ -593,3 +641,6 @@ class WasatchDevice(object):
         except Exception as exc:
             log.critical("WasatchDevice.change_setting: can't enqueue %s -> %s",
                 setting, value, exc_info=1)
+
+        if allow_immediate and self.immediate_mode:
+            self.process_commands()

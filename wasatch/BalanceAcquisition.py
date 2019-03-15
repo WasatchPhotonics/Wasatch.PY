@@ -38,8 +38,9 @@ class BalanceAcquisition(object):
 
         self.overshoot_count = 0
         while True:
+            self.device.change_setting("acquire", True, allow_immediate = False)
             reading = self.device.acquire_data()
-            if reading is None or reading.spectrum is None:
+            if reading is None or isinstance(reading, bool) or reading.spectrum is None:
                 log.error("failed to get spectrum")
                 return False
             spectrum = reading.spectrum

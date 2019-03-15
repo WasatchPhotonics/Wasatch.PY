@@ -1,18 +1,4 @@
 #!/usr/bin/env python -u
-################################################################################
-#                               wasatch-shell.py                               #
-################################################################################
-#                                                                              #
-#  DESCRIPTION:  An interactive wrapper over a wasatch.WasatchDevice.          #
-#                                                                              #
-#  EXAMPLE:      $ ./wasatch-shell.py [--logfile path]                         #
-#                  open                                                        #
-#                  set_integration_time_ms                                     #
-#                  100                                                         #
-#                  get_spectrum                                                #
-#                  close                                                       #
-#                                                                              #
-################################################################################
 
 import platform
 import argparse
@@ -30,14 +16,30 @@ from wasatch.WasatchBus         import WasatchBus
 from wasatch.WasatchDevice      import WasatchDevice
 from wasatch.BalanceAcquisition import BalanceAcquisition
 
-VERSION = "2.0.4"
+VERSION = "2.1.0"
 
 log = logging.getLogger(__name__)
 
+## 
+# An interactive wrapper over a wasatch.WasatchDevice.
+#
+# EXAMPLE:
+# \verbatim
+#   $ ./wasatch-shell.py [--logfile path]
+#   open
+#   set_integration_time_ms
+#   100
+#   get_spectrum
+#   close
+# \endverbatim
+#
+# @todo currently there is no support for scan averaging.  That is because 
+#       scan averaging is built into WasatchDevice.acquire_data, and configured
+#       via Feature
 class WasatchShell(object):
     
     def __init__(self):
-        self.device = None
+        self.device = None                      # wasatch.WasatchDevice
         self.interpolated_x_axis_cm = None
 
         # process command-line options
@@ -47,6 +49,7 @@ class WasatchShell(object):
         self.args = parser.parse_args()
 
         self.configure_logging()
+        self.input_tokens = None
 
         # pass-through calls to any of these gettors (note names are lowercased)
         self.gettors = {}
@@ -89,7 +92,6 @@ class WasatchShell(object):
             "get_selected_adc",
             "get_sensor_line_length",
             "get_tec_enabled",
-            "get_tec_enabled",
             "get_trigger_delay",
             "get_vr_continuous_ccd",
             "get_vr_num_frames",
@@ -103,30 +105,33 @@ class WasatchShell(object):
     def usage(self):
         print "Version: %s" % VERSION
         print """The following commands are supported:
-        help                           - this screen
-        version                        - program and library versions
-                                       
-        open                           - initialize connected spectrometer
-        close                          - exit program (synonyms 'exit', 'quit')
-        connection_check               - confirm communication
-                                       
-        set_integration_time_ms        - takes integer argument
-        set_laser_enable               - takes bool argument (on/off, true/false, 1/0)
-        set_laser_power_mw             - takes float argument
-        set_laser_power_ramping_enable - gradually ramp laser power in software
-        set_tec_enable                 - takes bool argument
-        set_detector_tec_setpoint_degc - takes float argument
-        set_detector_offset            - override the "offset" added to pixel readings
-
-        set_interpolated_x_axis_cm     - takes start, end, incr (zero incr to disable)
-        balance_acquisition            - takes mode [integ, laser, laser_and_integ], 
-                                            intensity, threshold, x, unit [px, nm, cm]
-
-        get_spectrum                   - print received spectrum
-        get_spectrum_pretty            - graph received spectrum
-        get_spectrum_save              - save spectrum to filename as CSV
-        get_config_json                - return EEPROM as JSON string
-        get_all                        - calls all gettors
+        help                                   - this screen
+        version                                - program and library versions
+                                               
+        open                                   - initialize connected spectrometer
+        close                                  - exit program (synonyms 'exit', 'quit')
+        connection_check                       - confirm communication
+                                               
+        set_scans_to_average                   - takes integer argument
+        set_integration_time_ms                - takes integer argument
+        set_laser_enable                       - takes bool argument (on/off, true/false, 1/0)
+        set_laser_power_mw                     - takes float argument
+        set_laser_power_ramping_enable         - gradually ramp laser power in software
+        set_acquisition_laser_trigger_enable   - takes bool argument
+        set_acquisition_laser_trigger_delay_ms - takes float argument
+        set_tec_enable                         - takes bool argument
+        set_detector_tec_setpoint_degc         - takes float argument
+        set_detector_offset                    - override the "offset" added to pixel readings
+                                               
+        set_interpolated_x_axis_cm             - takes start, end, incr (zero incr to disable)
+        balance_acquisition                    - takes mode [integ, laser, laser_and_integ], 
+                                                    intensity, threshold, x, unit [px, nm, cm]
+                                               
+        get_spectrum                           - print received spectrum
+        get_spectrum_pretty                    - graph received spectrum
+        get_spectrum_save                      - save spectrum to filename as CSV
+        get_config_json                        - return EEPROM as JSON string
+        get_all                                - calls all gettors
         """
         print "The following gettors are also available:"
         for k in sorted(self.gettors.keys()):
@@ -135,31 +140,32 @@ class WasatchShell(object):
     def disconnected(self):
         self.display("ERROR: no device connected")
 
-    def parse_result(self, result):
-        return "1" if result else "0"
-
     ## encapsulating in case any platforms don't like GNU readline
-    def get_line(self, prompt):
+    def get_line(self, prompt="args> "):
         return raw_input(prompt).strip()
 
-    def get_next(self, tok):
-        if not tok:
+    def has_input(self):
+        return self.input_tokens is not None and len(self.input_tokens) > 0
+
+    def get_next_token(self):
+        while not self.has_input():
             line = self.get_line()
             log.info("<< %s", line)
-            line = line.lower()
-            for s in line.split():
-                tok.append(s)
-        return tok.pop(0)
+            self.input_tokens = [s.strip() for s in line.lower().strip().split()]
+        return self.input_tokens.pop(0)
 
-    def read_bool(self, tok):
-        s = self.get_next(tok)
-        return re.match("1|true|yes|on", s.lower())
+    def read_bool(self):
+        s = self.get_next_token()
+        return re.match("1|true|yes|on", s.lower()) is not None
 
-    def read_int(self, tok):
-        return int(self.get_next(tok))
+    def read_int(self):
+        return int(self.get_next_token())
 
-    def read_float(self, tok):
-        return float(self.get_next(tok))
+    def read_float(self):
+        return float(self.get_next_token())
+
+    def read_str(self):
+        return self.get_next_token()
 
     def display(self, msg):
         log.info(">> %s", msg)
@@ -189,11 +195,10 @@ class WasatchShell(object):
                     continue
 
                 log.info("<< %s", line)
-                line = line.lower()
 
                 # tokenize
-                tok = line.split()
-                command = tok.pop(0)
+                self.input_tokens = [s.strip() for s in line.lower().strip().split()]
+                command = self.read_str()
 
                 # these commands always work
                 if command == "help":
@@ -211,7 +216,7 @@ class WasatchShell(object):
                 # these commands work if currently closed
                 if self.device is None:
                     if command == "open":
-                        self.display("1" if self.open() else "0")
+                        self.display(1 if self.open() else 0)
                     else:
                         self.display("ERROR: must open spectrometer first")
 
@@ -231,7 +236,7 @@ class WasatchShell(object):
                             self.get_spectrum_pretty()
 
                         elif command == "get_spectrum_save":
-                            self.get_spectrum_save(tok)
+                            self.get_spectrum_save()
 
                         elif command == "get_config_json":
                             self.display(self.device.settings.eeprom.json())
@@ -242,44 +247,70 @@ class WasatchShell(object):
                         elif command == "connection_check":
                             self.run_gettor("get_integration_time_ms")
 
+                        elif command == "balance_acquisition":
+                            self.balance_acquisition()
+
+                        elif command == "set_interpolated_x_axis_cm":
+                            self.set_interpolated_x_axis_cm(start = self.read_float(),
+                                                            end   = self.read_float(),
+                                                            incr  = self.read_float())
+
                         # currently these are the only setters implemented
+                        #
+                        # These originally called directly into FeatureIdentificationDevice, 
+                        # which was efficient, but:
+                        #
+                        #   1. missed value-add processing in WasatchDevice.change_setting, 
+                        #   2. couldn't utilize inline (non functional) implementations in FID.write_setting,
+                        #   3. provided no obvious path to achieve scan averaging (issues 1 and 2)
+                        #   4. potentially differed than ENLIGHTEN processing while failing to 
+                        #      exercise ENLIGHTEN communication path (part of the script's purpose)
+                        #
+                        # Therefore, setters now utilize WasatchDevice.change_setting where possible.
                         elif command == "set_integration_time_ms":
-                            self.device.hardware.set_integration_time_ms(self.read_int(tok))
+                            self.device.change_setting("integration_time_ms", self.read_int())
                             self.display(1)
 
                         elif command == "set_laser_power_mw":
-                            self.device.hardware.set_laser_power_mW(self.read_float(tok))
+                            self.device.change_setting("laser_power_mW", self.read_float())
                             self.display(1)
 
                         elif command == "set_laser_enable":
-                            self.device.hardware.set_laser_enable(self.read_bool(tok))
+                            self.device.change_setting("laser_enable", self.read_bool())
                             self.display(1)
 
                         elif command == "set_tec_enable":
-                            self.device.hardware.set_tec_enable(self.read_bool(tok))
+                            self.device.change_setting("detector_tec_enable", self.read_bool())
                             self.display(1)
 
                         elif command == "set_detector_tec_setpoint_degc":
-                            self.device.hardware.set_detector_tec_setpoint_degC(self.read_float(tok))
+                            self.device.change_setting("detector_tec_setpoint_degC", self.read_float())
                             self.display(1)
 
                         elif command == "set_laser_power_ramping_enable":
-                            self.device.hardware.set_laser_power_ramping_enable(self.read_bool(tok))
+                            self.device.change_setting("laser_power_ramping_enable", self.read_bool())
+                            self.display(1)
 
                         elif command == "set_detector_offset":
-                            self.device.hardware.set_detector_offset(self.read_int(tok))
+                            self.device.change_setting("detector_offset", self.read_int())
+                            self.display(1)
 
-                        elif command == "balance_acquisition":
-                            self.balance_acquisition(tok)
+                        elif command == "set_scans_to_average":
+                            self.device.change_setting("scans_to_average", self.read_int())
+                            self.display(1)
 
-                        elif command == "set_interpolated_x_axis_cm":
-                            self.set_interpolated_x_axis_cm(start = self.read_float(tok),
-                                                            end   = self.read_float(tok),
-                                                            incr  = self.read_float(tok))
+                        elif command == "set_acquisition_laser_trigger_enable":
+                            self.device.change_setting("acquisition_laser_trigger_enable", self.read_bool())
+                            self.display(1)
+
+                        elif command == "set_acquisition_laser_trigger_delay_ms":
+                            self.device.change_setting("acquisition_laser_trigger_delay_ms", self.read_int())
+                            self.display(1)
+
                         else:
                             self.display("ERROR: unknown command: " + command)
                     except Exception as ex:
-                        log.critical("caught exception")
+                        log.critical("caught exception", exc_info=1)
                         log.info("disconnecting")
                         self.device.disconnect()
                         self.device = None
@@ -324,13 +355,13 @@ class WasatchShell(object):
         # lazy-load a USB bus
         log.debug("instantiating WasatchBus")
         bus = WasatchBus()
-        if not bus.devices:
+        if not bus.device_ids:
             self.display("No Wasatch USB spectrometers found.")
             return False
 
-        log.debug("open: trying to connect to new device on bus 1")
-        uid = bus.devices[0]
-        device = WasatchDevice(uid)
+        device_id = bus.device_ids[0]
+        log.debug("open: trying to connect to %s", device_id)
+        device = WasatchDevice(device_id)
 
         ok = device.connect()
         if not ok: 
@@ -343,6 +374,15 @@ class WasatchShell(object):
         # enable exceptions
         self.device.hardware.raise_exceptions = True
 
+        # enable immediate mode (don't queue commands until acquire_data)
+        self.device.immediate_mode = True
+
+        # enable bare readings (don't query extra hardware metadata during acquisitions)
+        self.device.bare_readings = True
+
+        # disable free-running mode (interactive shell is the definition of "slaved to user commands")
+        self.device.change_setting("free_running_mode", False)
+
         # throw random errors
         # self.device.hardware.random_errors = True
 
@@ -352,8 +392,8 @@ class WasatchShell(object):
                 self.display("WARNING: gettor %s (%s) not found in device" % (func_name, self.gettors[func_name]))
                 del self.gettors[func_name]
 
-        # default to minimum integration time
-        self.device.hardware.set_integration_time_ms(self.device.settings.eeprom.min_integration_time_ms)
+        # default to minimum configured integration time
+        self.device.change_setting("integration_time_ms", self.device.settings.eeprom.min_integration_time_ms)
 
         return True
 
@@ -365,32 +405,43 @@ class WasatchShell(object):
         else:
             self.display(value)
 
+    ##
+    # This calls WasatchDevice.acquire_data, rather than FID.get_line, because 
+    # scan averaging, bad-pixel correction, acquisition laser trigger and other
+    # high-level acquisition features are implemented in WasatchDevice rather 
+    # than FID.
     def get_spectrum(self, quiet=True):
+        # enqueue ACQUIRE command, as we're not in free-running mode
+        self.device.change_setting("acquire", True, allow_immediate=False)
+
+        # now collect the spectrum
         reading = self.device.acquire_data()
-        if reading is None or reading.spectrum is None:
+        if reading is None or isinstance(reading, bool) or reading.spectrum is None:
             self.display("ERROR: get_spectrum failed")
             return
         spectrum = reading.spectrum
-
         log.debug("received %d pixels", len(spectrum))
 
         if self.interpolated_x_axis_cm and self.device.settings.wavenumbers:
             spectrum = utils.interpolate_array(spectrum, 
                                                self.device.settings.wavenumbers, 
                                                self.interpolated_x_axis_cm)
-
         if quiet:
             return spectrum
-        else:
-            for pixel in spectrum:
-                print pixel
 
-    def get_spectrum_save(self, tok):
+        for pixel in spectrum:
+            print pixel
+
+    def get_spectrum_save(self):
         spectrum = self.get_spectrum()
         if spectrum is None:
             return 
 
-        filename = tok[0] if tok[0] else datetime.datetime.now().strftime("%Y%m%d-%H%M%S.csv")
+        if self.has_input():
+            filename = self.read_str()
+        else:
+            filename = datetime.datetime.now().strftime("%Y%m%d-%H%M%S.csv")
+
         with open(filename, "w") as outfile:
             for i in range(len(spectrum)):
                 if self.interpolated_x_axis_cm:
@@ -432,35 +483,18 @@ class WasatchShell(object):
         self.interpolated_x_axis_cm = axis
         self.display(1)
 
-    def balance_acquisition(self, tok):
-        unit = "px"
-        x_value = None
-        threshold = 2500
-        intensity = 45000
-        mode = "integration"
-        
-        if len(tok) > 5:
-            return self.display("ERROR: balance takes mode [integ, laser, laser_and_integ], intensity, threshold, x-value, unit [px, nm, cm]")
+    ## takes mode [integ, laser, laser_and_integ], intensity, threshold, x, unit [px, nm, cm]
+    def balance_acquisition(self):
+        mode        = "integration" if not self.has_input() else self.read_str()
+        intensity   = 45000         if not self.has_input() else self.read_float()
+        threshold   = 2500          if not self.has_input() else self.read_float()
+        x_value     = None          if not self.has_input() else self.read_float()
+        unit        = "px"          if not self.has_input() else self.read_str()
 
-        if len(tok) == 5:
-            s = tok[4].strip().lower()
-            if re.match('(px|cm|nm)$', s):
-                unit = s
-            else:
-                return self.display("ERROR: invalid unit " + s)
-        
-        if len(tok) >= 4:
-            x_value = float(tok[3])
+        if not re.match('(px|cm|nm)$', unit):
+            return self.display("ERROR: invalid unit " + s)
 
-        if len(tok) >= 3:
-            threshold = float(tok[2])
-
-        if len(tok) >= 2:
-            intensity = float(tok[1])
-
-        if len(tok) >= 1:
-            mode = tok[0]
-
+        pixel = None
         if x_value is not None:
             if unit == "px":
                 pixel = int(x_value)
@@ -475,7 +509,7 @@ class WasatchShell(object):
             self.display("Ok integration_time_ms %s laser_power %s %s" % (
                 self.device.settings.state.integration_time_ms,
                 self.device.settings.state.laser_power, 
-               "mW" if self.device.settings.state.laser_power_in_mW else "percent"))
+                "mW" if self.device.settings.state.laser_power_in_mW else "percent"))
 
     def get_all(self):
         for command in sorted(self.gettors):

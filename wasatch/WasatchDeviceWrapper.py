@@ -650,8 +650,10 @@ class WasatchDeviceWrapper(object):
             time.sleep(0.5)
         elif received_poison_pill_command:
             log.critical("exiting because of downstream poison-pill command")
+            pass
         else:
             log.critical("exiting for no reason?!")
+            pass
 
         log.critical("continuous_poll: done")
         sys.exit()

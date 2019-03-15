@@ -312,6 +312,11 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2019-03-15 1.0.8
+    - added bare\_readings so WasatchShell wouldn't double-sample photodiode
+    - added immediate\_mode so WasatchShell could use change\_setting
+    - fixed BalanceAcquisition to support non-free-running mode
+    - moved auto-triggered laser disable to after laser temperature and photodiode readouts
 - 2019-03-14 1.0.7
     - stubbed select\_laser
     - tweaked poison-pill logic
