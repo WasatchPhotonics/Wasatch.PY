@@ -16,7 +16,7 @@ from wasatch.WasatchBus         import WasatchBus
 from wasatch.WasatchDevice      import WasatchDevice
 from wasatch.BalanceAcquisition import BalanceAcquisition
 
-VERSION = "2.1.0"
+VERSION = "2.1.1"
 
 log = logging.getLogger(__name__)
 
@@ -116,6 +116,7 @@ class WasatchShell(object):
         set_integration_time_ms                - takes integer argument
         set_laser_enable                       - takes bool argument (on/off, true/false, 1/0)
         set_laser_power_mw                     - takes float argument
+        set_laser_power_perc                   - takes int argument
         set_laser_power_ramping_enable         - gradually ramp laser power in software
         set_acquisition_laser_trigger_enable   - takes bool argument
         set_acquisition_laser_trigger_delay_ms - takes float argument
@@ -273,6 +274,10 @@ class WasatchShell(object):
 
                         elif command == "set_laser_power_mw":
                             self.device.change_setting("laser_power_mW", self.read_float())
+                            self.display(1)
+
+                        elif command == "set_laser_power_perc":
+                            self.device.change_setting("laser_power_perc", self.read_int())
                             self.display(1)
 
                         elif command == "set_laser_enable":

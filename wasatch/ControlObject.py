@@ -9,3 +9,6 @@ class ControlObject(object):
     def __init__(self, setting, value):
         self.setting = setting
         self.value = value
+
+    def __str__(self):
+        return "%s -> %s" % (self.setting, self.value)

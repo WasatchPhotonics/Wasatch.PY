@@ -100,6 +100,8 @@ multi-process pipeline used by ENLIGHTEN.
 
 # Version History
 
+- 03-19-2019 2.1.1
+    - added set\_laser\_power\_perc
 - 03-15-2019 2.1.0
     - updated to DeviceID
     - refactored input token processing

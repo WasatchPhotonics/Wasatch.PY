@@ -590,19 +590,21 @@ class WasatchDevice(object):
     def process_commands(self):
         control_object = "throwaway"
         retval = False
+        log.debug("process_commands: processing")
         while control_object != None:
             try:
                 control_object = self.command_queue.get_nowait()
-                log.debug("process_commands: %s -> %s", control_object.setting, control_object.value)
+                log.debug("process_commands: %s", control_object)
 
                 # is this a command used by WasatchDevice itself, and not
                 # passed down to FeatureIdentificationDevice?
-                if control_object.setting == "acquire":
+                if control_object.setting.lower() == "acquire":
                     log.debug("process_commands: acquire found")
                     retval = True
                 else:
                     self.hardware.write_setting(control_object)
             except Queue.Empty:
+                log.debug("process_commands: empty")
                 break
             except Exception as exc:
                 log.critical("process_commands: error dequeuing or writing control object", exc_info=1)
@@ -630,17 +632,19 @@ class WasatchDevice(object):
     #
     # Called by subprocess.continuous_poll
     def change_setting(self, setting, value, allow_immediate=True):
-        log.debug("WasatchDevice.change_setting: %s -> %s", setting, value)
         control_object = ControlObject(setting, value)
+        log.debug("WasatchDevice.change_setting: %s", control_object)
 
         if control_object.setting == "scans_to_average":
             self.sum_count = 0
 
         try:
             self.command_queue.put(control_object)
+            log.debug("change_setting: queued %s", control_object)
         except Exception as exc:
-            log.critical("WasatchDevice.change_setting: can't enqueue %s -> %s",
-                setting, value, exc_info=1)
+            log.critical("WasatchDevice.change_setting: failed to enqueue %s",
+                control_object, exc_info=1)
 
         if allow_immediate and self.immediate_mode:
+            log.debug("immediately processing %s", control_object)
             self.process_commands()
