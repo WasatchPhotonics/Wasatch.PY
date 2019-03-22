@@ -413,23 +413,29 @@ class WasatchDevice(object):
             reading.laser_power_in_mW   = self.settings.state.laser_power_in_mW
 
             # collect next spectrum
+            externally_triggered = self.settings.state.trigger_source == SpectrometerState.TRIGGER_SOURCE_EXTERNAL
             try:
                 while True:
-                    (reading.spectrum, reading.area_scan_row_count)  = self.hardware.get_line()
+                    (reading.spectrum, reading.area_scan_row_count) = self.hardware.get_line()
                     if self.hardware.shutdown_requested: 
                         return False
 
                     if reading.spectrum is None:
-                        # FeatureIdentificationDevice shouldn't ever return None; for better or 
-                        # worse it's blocked on a USB call.  FileSpectrometer can, though, if 
+                        # FeatureIdentificationDevice can return None when waiting
+                        # on an external trigger.  FileSpectrometer can as well if 
                         # there is no new spectrum to read.
-                        log.debug("device.acquire_data: get_line None, retrying")
-                        pass
+                        log.debug("device.acquire_data: get_line None, sending keepalive for now")
+                        return True
                     else:
                         break
 
                 log.debug("device.acquire_data: got %s ...", reading.spectrum[0:9])
             except Exception as exc:
+                # if we got the timeout after switching from externally triggered back to internal, let it ride
+                if externally_triggered:
+                    log.debug("caught exception from get_line while externally triggered...sending keepalive")
+                    return True
+
                 log.critical("Error reading hardware data", exc_info=1)
                 reading.failure = str(exc)
 
@@ -645,6 +651,8 @@ class WasatchDevice(object):
             log.critical("WasatchDevice.change_setting: failed to enqueue %s",
                 control_object, exc_info=1)
 
-        if allow_immediate and self.immediate_mode:
+        # always process trigger_source commands promptly (can't wait for end of
+        # acquisition which may never come)
+        if (allow_immediate and self.immediate_mode) or (setting == "trigger_source"):
             log.debug("immediately processing %s", control_object)
             self.process_commands()

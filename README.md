@@ -312,6 +312,9 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2019-03-22 1.0.9
+    - added set\_selected\_laser
+    - improved robustness when recovering from disabled triggering
 - 2019-03-15 1.0.8
     - added bare\_readings so WasatchShell wouldn't double-sample photodiode
     - added immediate\_mode so WasatchShell could use change\_setting

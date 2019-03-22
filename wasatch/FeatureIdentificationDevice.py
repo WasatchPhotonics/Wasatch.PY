@@ -543,7 +543,8 @@ class FeatureIdentificationDevice(object):
                     if self.settings.state.trigger_source == SpectrometerState.TRIGGER_SOURCE_EXTERNAL:
                         # we don't know how long we'll have to wait for the trigger, so
                         # just loop and hope
-                        log.debug("still waiting for external trigger")
+                        # log.debug("still waiting for external trigger")
+                        return None
                     else:        
                         raise exc
 
@@ -845,10 +846,20 @@ class FeatureIdentificationDevice(object):
         self.settings.state.high_gain_mode_enabled = flag
 
     ##
-    # @todo need this for offset
-    def set_selected_laser(self, n):
-        log.error("NOT IMPLEMENTED: set_selected_laser %d", n)
+    # On spectrometers supporting two lasers, select the primary (0) or
+    # secondary (1).  Laser Enable, laser power etc should all then 
+    # affect the currently-selected laser.
+    def set_selected_laser(self, value):
+        n = 1 if value else 0
+
+        log.debug("selecting laser %d", n)
         self.settings.state.selected_laser = n
+
+        self.send_code(bmRequest       = 0xff, 
+                       wValue          = 0x15,  
+                       wIndex          = n,
+                       data_or_wLength = buf,
+                       label           = "SET_SELECTED_LASER")
 
     def set_laser_enable(self, flag):
         if not self.settings.eeprom.has_laser:
@@ -882,10 +893,11 @@ class FeatureIdentificationDevice(object):
 
         lsb = value
         msb = 0
-        buf = [0] * 8 # defined but not used
+        buf = [0] * 8 
 
         return self.send_code(0xbe, lsb, msb, buf, label="SET_LASER_ENABLE")
-
+    ##
+    # Does not currently support "second laser"
     def set_laser_enable_ramp(self):
         SET_LASER_ENABLE          = 0xbe
         SET_LASER_MOD_ENABLE      = 0xbd
@@ -1244,7 +1256,6 @@ class FeatureIdentificationDevice(object):
 
     def get_opt_laser_control(self):
         return self.get_upper_code(0x09, label="GET_OPT_LASER_CONTROL", msb_len=1)
-
     ##
     # @todo move string-to-enum converter to AppLog
     def set_log_level(self, s):
