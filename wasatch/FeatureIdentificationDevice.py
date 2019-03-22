@@ -858,7 +858,7 @@ class FeatureIdentificationDevice(object):
         self.send_code(bmRequest       = 0xff, 
                        wValue          = 0x15,  
                        wIndex          = n,
-                       data_or_wLength = buf,
+                       data_or_wLength = [0] * 8,
                        label           = "SET_SELECTED_LASER")
 
     def set_laser_enable(self, flag):
