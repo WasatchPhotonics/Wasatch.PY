@@ -312,6 +312,10 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2019-03-26 1.0.10
+    - added set\_selected\_laser to WasatchShell
+    - add is\_zynq() with 250ms min USB interval
+    - ignore NULLs/control chars in reading FPGA revision string
 - 2019-03-22 1.0.9
     - added set\_selected\_laser
     - improved robustness when recovering from disabled triggering

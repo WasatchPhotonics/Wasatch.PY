@@ -123,6 +123,7 @@ class WasatchShell(object):
         set_tec_enable                         - takes bool argument
         set_detector_tec_setpoint_degc         - takes float argument
         set_detector_offset                    - override the "offset" added to pixel readings
+        set_selected_laser                     - takes 0 or 1
                                                
         set_interpolated_x_axis_cm             - takes start, end, incr (zero incr to disable)
         balance_acquisition                    - takes mode [integ, laser, laser_and_integ], 
@@ -310,6 +311,10 @@ class WasatchShell(object):
 
                         elif command == "set_acquisition_laser_trigger_delay_ms":
                             self.device.change_setting("acquisition_laser_trigger_delay_ms", self.read_int())
+                            self.display(1)
+
+                        elif command == "set_selected_laser":
+                            self.device.change_setting("selected_laser", self.read_int())
                             self.display(1)
 
                         else:

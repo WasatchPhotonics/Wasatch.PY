@@ -130,7 +130,13 @@ class FeatureIdentificationDevice(object):
             self.settings.state.min_usb_interval_ms = 0
             self.settings.state.max_usb_interval_ms = 0
 
-        # overridden by EEPROM...do we need this?
+        # SiG-VIS seems to have some issues if you pull spectra too fast.  Unsure
+        # if that would affect all USB commands.
+        if self.is_zynq():
+            self.settings.state.min_usb_interval_ms = 250
+            self.settings.state.max_usb_interval_ms = 250
+
+        # This must be for some very old InGaAs spectrometers?
         if self.is_ingaas():
             self.settings.eeprom.active_pixels_horizontal = 512
 
@@ -175,6 +181,18 @@ class FeatureIdentificationDevice(object):
 
     def is_arm(self):
         return self.device.idProduct == 0x4000
+
+    ##
+    # We'll need to know this if the feature set / opcodes change for this platform.
+    #
+    # @todo currently assuming that NO MODEL means SiG-VIS :-(
+    def is_zynq(self):
+        model = self.settings.eeprom.model
+        if model is None: 
+            model = "SiG-VIS"
+            
+        model = model.lower()
+        return self.is_arm() and ("sig" in model) and ("vis" in model)
 
     def is_ingaas(self):
         return self.device.idProduct == 0x2000
@@ -502,7 +520,9 @@ class FeatureIdentificationDevice(object):
         result = self.get_code(0xb4, label="GET_FPGA_REV")
         if result is not None:
             for i in range(len(result)):
-                s += chr(result[i])
+                c = result[i]
+                if 0x20 <= c < 0x7f: # visible ASCII
+                    s += chr(c)
         self.settings.fpga_firmware_version = s
         return s
 
