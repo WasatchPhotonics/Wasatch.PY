@@ -915,7 +915,20 @@ class FeatureIdentificationDevice(object):
         msb = 0
         buf = [0] * 8 
 
-        return self.send_code(0xbe, lsb, msb, buf, label="SET_LASER_ENABLE")
+        # prototype has been observed to drop the odd laser commands...let's make
+        # the fix general as this is pretty important functionality
+        tries = 0
+        while True:
+            self.send_code(0xbe, lsb, msb, buf, label="SET_LASER_ENABLE")
+            check = self.get_laser_enabled() != 0
+            if flag == check:
+                return True
+            tries += 1
+            if tries > 3:
+                log.critical("laser_enable %s command failed, giving up", flag)
+                return False
+            else:
+                log.error("laser_enable %s command failed, re-trying", flag)
     ##
     # Does not currently support "second laser"
     def set_laser_enable_ramp(self):
@@ -1208,7 +1221,9 @@ class FeatureIdentificationDevice(object):
         return self.get_code(0xef, label="GET_LASER_INTERLOCK", msb_len=1)
 
     def get_laser_enabled(self):
-        return self.get_code(0xe2, label="GET_LASER_ENABLED", msb_len=1)
+        enabled = 0 != self.get_code(0xe2, label="GET_LASER_ENABLED", msb_len=1)
+        log.debug("get_laser_enabled: %s", enabled)
+        return enabled
         
     def get_link_laser_mod_to_integration_time(self):
         return self.get_code(0xde, label="GET_LINK_LASER_MOD_TO_INTEGRATION_TIME", msb_len=1)

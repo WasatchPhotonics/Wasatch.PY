@@ -62,7 +62,13 @@ class WasatchDevice(object):
         # directly?  Still, probably(?) not hurting anything.  May be leftover
         # from pre-WasatchDeviceWrapper days, when ENLIGHTEN had a blocking
         # interface to the spectrometer.
-        self.command_queue = multiprocessing.Queue()
+        #
+        # Update: this IS hurting things, as "immediate" commands are queued and
+        # then immediately intended for processing...yet the queue still reports
+        # as empty! :-(
+        #
+        # self.command_queue = multiprocessing.Queue()
+        self.command_queue = []
 
         # Enable for "immediate mode" by clients like WasatchShell (by default,
         # inbound commands are queued and executed at beginning of next acquire_data;
@@ -597,24 +603,28 @@ class WasatchDevice(object):
         control_object = "throwaway"
         retval = False
         log.debug("process_commands: processing")
-        while control_object != None:
-            try:
-                control_object = self.command_queue.get_nowait()
-                log.debug("process_commands: %s", control_object)
+        # while control_object != None:
+        while len(self.command_queue) > 0:
+            # try:
+            # control_object = self.command_queue.get_nowait()
 
-                # is this a command used by WasatchDevice itself, and not
-                # passed down to FeatureIdentificationDevice?
-                if control_object.setting.lower() == "acquire":
-                    log.debug("process_commands: acquire found")
-                    retval = True
-                else:
-                    self.hardware.write_setting(control_object)
-            except Queue.Empty:
-                log.debug("process_commands: empty")
-                break
-            except Exception as exc:
-                log.critical("process_commands: error dequeuing or writing control object", exc_info=1)
-                raise
+            control_object = self.command_queue.pop(0)
+            log.debug("process_commands: %s", control_object)
+
+            # is this a command used by WasatchDevice itself, and not
+            # passed down to FeatureIdentificationDevice?
+            if control_object.setting.lower() == "acquire":
+                log.debug("process_commands: acquire found")
+                retval = True
+            else:
+                self.hardware.write_setting(control_object)
+
+            # except Queue.Empty:
+            #     log.debug("process_commands: empty")
+            #     break
+            # except Exception as exc:
+            #     log.critical("process_commands: error dequeuing or writing control object", exc_info=1)
+            #     raise
         return retval
 
     # ######################################################################## #
@@ -644,15 +654,16 @@ class WasatchDevice(object):
         if control_object.setting == "scans_to_average":
             self.sum_count = 0
 
-        try:
-            self.command_queue.put(control_object)
-            log.debug("change_setting: queued %s", control_object)
-        except Exception as exc:
-            log.critical("WasatchDevice.change_setting: failed to enqueue %s",
-                control_object, exc_info=1)
+        # try:
+        # self.command_queue.put(control_object)
+        self.command_queue.append(control_object)
+        log.debug("change_setting: queued %s", control_object)
+        # except Exception as exc:
+        #     log.critical("WasatchDevice.change_setting: failed to enqueue %s",
+        #         control_object, exc_info=1)
 
         # always process trigger_source commands promptly (can't wait for end of
         # acquisition which may never come)
-        if (allow_immediate and self.immediate_mode) or (setting == "trigger_source"):
+        if (allow_immediate and self.immediate_mode) or (setting in ["trigger_source", "laser_enable"]):
             log.debug("immediately processing %s", control_object)
             self.process_commands()

@@ -259,16 +259,25 @@ class WasatchShell(object):
 
                         # currently these are the only setters implemented
                         #
-                        # These originally called directly into FeatureIdentificationDevice, 
-                        # which was efficient, but:
+                        # These originally called directly into 
+                        # FeatureIdentificationDevice, which was efficient, but:
                         #
                         #   1. missed value-add processing in WasatchDevice.change_setting, 
-                        #   2. couldn't utilize inline (non functional) implementations in FID.write_setting,
-                        #   3. provided no obvious path to achieve scan averaging (issues 1 and 2)
-                        #   4. potentially differed than ENLIGHTEN processing while failing to 
-                        #      exercise ENLIGHTEN communication path (part of the script's purpose)
+                        #   2. couldn't utilize inline (non functional) 
+                        #      implementations in FID.write_setting,
+                        #   3. provided no obvious path to achieve scan averaging 
+                        #      (issues 1 and 2)
+                        #   4. potentially differed than ENLIGHTEN processing 
+                        #      while failing to exercise ENLIGHTEN communication
+                        #      path (part of the script's purpose)
                         #
-                        # Therefore, setters now utilize WasatchDevice.change_setting where possible.
+                        # Therefore, setters now utilize WasatchDevice.change_setting 
+                        # where possible.
+                        #
+                        # An obvious CONSEQUENCE of using change_setting() over 
+                        # direct FID function calls is that no return value is 
+                        # possible on "settor" functions :-(
+
                         elif command == "set_integration_time_ms":
                             self.device.change_setting("integration_time_ms", self.read_int())
                             self.display(1)
@@ -282,8 +291,7 @@ class WasatchShell(object):
                             self.display(1)
 
                         elif command == "set_laser_enable":
-                            self.device.change_setting("laser_enable", self.read_bool())
-                            self.display(1)
+                            self.set_laser_enable(flag = self.read_bool())
 
                         elif command == "set_tec_enable":
                             self.device.change_setting("detector_tec_enable", self.read_bool())
@@ -348,7 +356,7 @@ class WasatchShell(object):
 
         # disable the laser if connected
         if self.device is not None:
-            self.device.hardware.set_laser_enable(False)
+            self.set_laser_enable(False)
             self.device.disconnect()
             self.device = None
 
@@ -478,6 +486,22 @@ class WasatchShell(object):
         for line in lines:
             self.display(line)
 
+    def set_laser_enable(self, flag):
+        self.device.change_setting("laser_enable", flag)
+        return self.display(1)
+
+        # tries = 0
+        # while True:
+        #     self.device.change_setting("laser_enable", flag)
+        #     check = self.device.hardware.get_laser_enabled() != 0
+        #     if flag == check:
+        #         return self.display(1)
+        #     tries += 1
+        #     if tries > 3:
+        #         return self.display(0)
+        #     else:
+        #         log.error("laser_enable command failed, re-trying")
+                
     def set_interpolated_x_axis_cm(self, start, end, incr):
         if incr == 0:
             self.interpolated_x_axis_cm = None

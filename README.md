@@ -312,6 +312,9 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2019-03-28 1.0.11
+    - validate set\_laser\_enable with gettor
+    - replace WasatchDevice internal multiprocessing.Queue with array
 - 2019-03-26 1.0.10
     - added set\_selected\_laser to WasatchShell
     - add is\_zynq() with 250ms min USB interval
