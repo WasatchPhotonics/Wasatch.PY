@@ -312,6 +312,9 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2019-03-29 1.0.12
+    - disable select\_laser if no laser present
+    - kludge SiG-VIS to bare\_readings
 - 2019-03-28 1.0.11
     - validate set\_laser\_enable with gettor
     - replace WasatchDevice internal multiprocessing.Queue with array

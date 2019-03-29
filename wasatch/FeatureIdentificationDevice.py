@@ -872,6 +872,10 @@ class FeatureIdentificationDevice(object):
     def set_selected_laser(self, value):
         n = 1 if value else 0
 
+        if not self.settings.eeprom.has_laser:
+            log.error("unable to control laser: EEPROM reports no laser installed")
+            return False
+
         log.debug("selecting laser %d", n)
         self.settings.state.selected_laser = n
 
@@ -880,6 +884,7 @@ class FeatureIdentificationDevice(object):
                        wIndex          = n,
                        data_or_wLength = [0] * 8,
                        label           = "SET_SELECTED_LASER")
+        return True
 
     def set_laser_enable(self, flag):
         if not self.settings.eeprom.has_laser:

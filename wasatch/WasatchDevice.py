@@ -189,6 +189,11 @@ class WasatchDevice(object):
         self.settings.update_wavecal()
         self.settings.dump()
 
+        # SiG-VIS kludge
+        if self.settings.eeprom.model == "ENG-SV-DEFAULT":
+            log.critical("enabling bare_readings for %s", self.settings.eeprom.model)
+            self.bare_readings = True
+
     # ######################################################################## #
     #                                                                          #
     #                               Acquisition                                #
