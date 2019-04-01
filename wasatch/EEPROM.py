@@ -18,7 +18,7 @@ log = logging.getLogger(__name__)
 # @see ENG-0034
 class EEPROM(object):
     
-    USE_REV_4 = False
+    USE_REV_4 = True
 
     def __init__(self):
         self.format = 0

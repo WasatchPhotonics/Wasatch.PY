@@ -312,6 +312,8 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2019-04-01 1.0.13
+    - Enable ENG-0034 Rev 4
 - 2019-03-29 1.0.12
     - disable select\_laser if no laser present
     - kludge SiG-VIS to bare\_readings

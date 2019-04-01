@@ -395,13 +395,22 @@ class FeatureIdentificationDevice(object):
 
     def set_detector_offset(self, value):
         word = max(-32768, min(32767, int(value))) # clamp to Int16
+        word = word & 0xffff
         self.settings.eeprom.detector_offset = word
         return self.send_code(0xb6, word, label="SET_DETECTOR_OFFSET")
 
     def set_detector_offset_odd(self, value):
         word = max(-32768, min(32767, int(value))) # clamp to Int16
+        word = word & 0xffff
         self.settings.eeprom.detector_offset_odd = word
-        log.debug("SET_DETECTOR_OFFSET_ODD NOT IMPLEMENTED: %d", word)
+
+        log.debug("SET_DETECTOR_OFFSET_ODD NOT IMPLEMENTED: %04x", word)
+        return
+
+        if self.is_ingaas():
+            return self.send_code(0x9c, word, label="SET_DETECTOR_OFFSET")
+        else:
+            log.debug("SET_DETECTOR_OFFSET_ODD NOT IMPLEMENTED ON %s", self.settings.eeprom.model)
 
     ##
     # Read the device stored gain.  Convert from binary "half-precision" float.
@@ -421,6 +430,23 @@ class FeatureIdentificationDevice(object):
         gain = msb + lsb / 256.0
         log.debug("Gain is: %f (msb %d, lsb %d)" % (gain, msb, lsb))
         self.settings.eeprom.detctor_gain = gain
+
+        return gain
+
+    def get_detector_gain_odd(self):
+        if not self.is_ingaas():
+            log.debug("get_detector_gain_odd not implemented on %s", self.settings.eeprom.model)
+            self.settings.eeprom.detctor_gain_odd = 0
+            return 0
+
+        result = self.get_code(0x9f, label="GET_DETECTOR_GAIN_ODD")
+
+        lsb = result[0] # LSB-MSB
+        msb = result[1]
+
+        gain = msb + lsb / 256.0
+        log.debug("Gain_odd is: %f (msb %d, lsb %d)" % (gain, msb, lsb))
+        self.settings.eeprom.detctor_gain_odd = gain
 
         return gain
 
@@ -476,8 +502,23 @@ class FeatureIdentificationDevice(object):
         self.send_code(0xb7, raw, label="SET_DETECTOR_GAIN")
         self.settings.eeprom.detector_gain = gain
 
-    def set_detector_gain_odd(self, n):
-        self.settings.eeprom.detector_gain_odd = n
+    def set_detector_gain_odd(self, gain):
+        if not self.is_ingaas():
+            log.debug("set_detector_gain_odd not implemented on %s", self.settings.eeprom.model)
+            return
+
+        log.debug("set_detector_gain_odd not implemented (%s)", gain)
+        return
+
+        msb = int(gain) & 0xff
+        lsb = int((gain - msb) * 256) & 0xff
+        raw = (msb << 8) | lsb
+
+        # MZ: note that we SEND gain MSB-LSB, but we READ gain LSB-MSB?!
+
+        log.debug("Send Detector Gain Odd: 0x%04x (%s)", raw, gain)
+        self.send_code(0x9d, raw, label="SET_DETECTOR_GAIN_ODD")
+        self.settings.eeprom.detector_gain_odd = gain
 
     ## MZ: Should this be 0xeb? (no, that's CF_SELECT).
     def set_area_scan_enable(self, flag):
@@ -1209,6 +1250,13 @@ class FeatureIdentificationDevice(object):
 
     def get_detector_offset(self):
         return self.get_code(0xc4, label="GET_DETECTOR_OFFSET", lsb_len=2) 
+
+    def get_detector_offset_odd(self):
+        if not self.is_ingaas():
+            log.debug("get_detector_offset_odd is not implemented on %s", self.settings.eeprom.model)
+            return 0
+
+        return self.get_code(0x9e, label="GET_DETECTOR_OFFSET_ODD", lsb_len=2) 
 
     def get_ccd_sensing_threshold(self):
         return self.get_code(0xd1, label="GET_CCD_SENSING_THRESHOLD", lsb_len=2)
