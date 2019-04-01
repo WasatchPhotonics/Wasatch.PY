@@ -41,6 +41,7 @@ parser = argparse.ArgumentParser(description="Load test of Wasatch.PY function c
 parser.add_argument("--outer-loop", type=int, default=5,  help="outer loop count (0 for inf)")
 parser.add_argument("--inner-loop", type=int, default=10, help="inner loop count")
 parser.add_argument("--seed", type=int, default=None, help="Monte Carlo seed")
+parser.add_argument("--vis-only", action="store_true", help="only test WP-VIS features (no TEC, no laser)")
 args = parser.parse_args()
 
 ################################################################################
@@ -108,21 +109,22 @@ while True:
         child.expect(success)
         child.expect(prompt)
 
-        child.sendline("set_detector_tec_setpoint_degc %d" % detector_tec_setpoint_degc)
-        child.expect(success)
-        child.expect(prompt)
+        if not args.vis_only:
+            child.sendline("set_detector_tec_setpoint_degc %d" % detector_tec_setpoint_degc)
+            child.expect(success)
+            child.expect(prompt)
 
-        child.sendline("set_tec_enable on")
-        child.expect(success)
-        child.expect(prompt)
+            child.sendline("set_tec_enable on")
+            child.expect(success)
+            child.expect(prompt)
 
-        child.sendline("set_laser_power_mw %d" % laser_power_mw)
-        child.expect(success)
-        child.expect(prompt)
+            child.sendline("set_laser_power_mw %d" % laser_power_mw)
+            child.expect(success)
+            child.expect(prompt)
 
-        child.sendline("set_laser_enable on")
-        child.expect(success)
-        child.expect(prompt)
+            child.sendline("set_laser_enable on")
+            child.expect(success)
+            child.expect(prompt)
 
         for inner_loop in range(args.inner_loop):
             print "  Iteration %d of %d" % (inner_loop, args.inner_loop)
@@ -130,32 +132,35 @@ while True:
             child.sendline("get_detector_temperature_degc")
             child.expect(prompt)
 
-            child.sendline("get_tec_enabled")
-            child.expect(success)
-            child.expect(prompt)
+            if not args.vis_only:
+                child.sendline("get_tec_enabled")
+                child.expect(success)
+                child.expect(prompt)
 
             child.sendline("get_integration_time_ms")
             child.expect(str(integration_time_ms))
             child.expect(prompt)
 
-            child.sendline("get_laser_mod_duration")
-            child.expect(prompt)
+            if not args.vis_only:
+                child.sendline("get_laser_mod_duration")
+                child.expect(prompt)
 
-            child.sendline("get_laser_mod_pulse_delay")
-            child.expect(prompt)
+                child.sendline("get_laser_mod_pulse_delay")
+                child.expect(prompt)
 
-            child.sendline("get_laser_mod_period")
-            child.expect("100")
-            child.expect(prompt)
+                child.sendline("get_laser_mod_period")
+                child.expect("100")
+                child.expect(prompt)
 
-            child.sendline("get_laser_temperature_degc")
-            child.expect(prompt)
+                child.sendline("get_laser_temperature_degc")
+                child.expect(prompt)
 
             child.sendline("get_actual_frames")
             child.expect(prompt)
 
-            child.sendline("get_laser_mod_pulse_width")
-            child.expect(prompt)
+            if not args.vis_only:
+                child.sendline("get_laser_mod_pulse_width")
+                child.expect(prompt)
 
             child.sendline("get_actual_integration_time_us")
             child.expect(prompt)
@@ -163,16 +168,17 @@ while True:
             child.sendline("get_external_trigger_output")
             child.expect(prompt)
 
-            child.sendline("get_laser_enabled")
-            child.expect(success)
-            child.expect(prompt)
+            if not args.vis_only:
+                child.sendline("get_laser_enabled")
+                child.expect(success)
+                child.expect(prompt)
 
-            child.sendline("get_laser_mod_enabled")
-            child.expect(success)
-            child.expect(prompt)
+                child.sendline("get_laser_mod_enabled")
+                child.expect(success)
+                child.expect(prompt)
 
-            child.sendline("get_laser_power_ramping_enabled")
-            child.expect(prompt)
+                child.sendline("get_laser_power_ramping_enabled")
+                child.expect(prompt)
 
             child.sendline("get_vr_num_frames")
             child.expect(prompt)
@@ -180,8 +186,9 @@ while True:
             child.sendline("get_spectrum")
             child.expect(prompt)
 
-            child.sendline("get_laser_temperature_degc")
-            child.expect(prompt)
+            if not args.vis_only:
+                child.sendline("get_laser_temperature_degc")
+                child.expect(prompt)
 
             child.sendline("get_selected_adc")
             child.expect("0")
@@ -195,13 +202,14 @@ while True:
                 child.expect("1")
                 child.expect(prompt)
 
-        child.sendline("set_tec_enable off")
-        child.expect(success)
-        child.expect(prompt)
+        if not args.vis_only:
+            child.sendline("set_tec_enable off")
+            child.expect(success)
+            child.expect(prompt)
 
-        child.sendline("set_laser_enable off")
-        child.expect(success)
-        child.expect(prompt)
+            child.sendline("set_laser_enable off")
+            child.expect(success)
+            child.expect(prompt)
 
     except Exception as ex:
         failure_count += 1

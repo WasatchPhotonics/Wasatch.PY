@@ -32,9 +32,9 @@ class EEPROM(object):
         self.excitation_nm               = 0.0
         self.excitation_nm_float         = 0.0
         self.slit_size_um                = 0
-        self.startup_integration_time_ms = None
-        self.startup_temp_degC           = None
-        self.startup_triggering_scheme   = None
+        self.startup_integration_time_ms = 10
+        self.startup_temp_degC           = 15
+        self.startup_triggering_scheme   = 0
         self.detector_gain               = 1.9
         self.detector_offset             = 0
         self.detector_gain_odd           = 1.9
@@ -160,9 +160,9 @@ class EEPROM(object):
         log.info("  Excitation:       %s nm", self.excitation_nm)
         log.info("  Excitation (f):   %.2f nm", self.excitation_nm_float)
         log.info("  Slit size:        %s um", self.slit_size_um)
-        log.info("  Start Integ Time: %s", ("%d ms"     % self.startup_integration_time_ms) if self.startup_integration_time_ms is not None else None)
-        log.info("  Start Temp:       %s", ("%.2f degC" % self.startup_temp_degC)           if self.startup_temp_degC           is not None else None)
-        log.info("  Start Triggering: %s", ("0x%04x"    % self.startup_triggering_scheme)   if self.startup_triggering_scheme   is not None else None)
+        log.info("  Start Integ Time: %d ms", self.startup_integration_time_ms)
+        log.info("  Start Temp:       %.2f degC", self.startup_temp_degC)
+        log.info("  Start Triggering: %0x%04x", self.startup_triggering_scheme)
         log.info("  Det Gain:         %f", self.detector_gain)
         log.info("  Det Offset:       %d", self.detector_offset)
         log.info("  Det Gain Odd:     %f", self.detector_gain_odd)
@@ -233,7 +233,7 @@ class EEPROM(object):
         #       EEPROM Page 0 Revision 3!
         if self.format >= 3:
             self.startup_integration_time_ms = self.unpack((0, 43,  2), "H")
-            self.startup_temp_degC           = self.unpack((0, 45,  2), "H" if self.format >= 4 else "h")
+            self.startup_temp_degC           = self.unpack((0, 45,  2), "h")
             self.startup_triggering_scheme   = self.unpack((0, 47,  1), "B")
             self.detector_gain               = self.unpack((0, 48,  4), "f") # "even pixels" for InGaAs
             self.detector_offset             = self.unpack((0, 52,  2), "h") # "even pixels" for InGaAs
