@@ -162,7 +162,7 @@ class EEPROM(object):
         log.info("  Slit size:        %s um", self.slit_size_um)
         log.info("  Start Integ Time: %d ms", self.startup_integration_time_ms)
         log.info("  Start Temp:       %.2f degC", self.startup_temp_degC)
-        log.info("  Start Triggering: %0x%04x", self.startup_triggering_scheme)
+        log.info("  Start Triggering: 0x%04x", self.startup_triggering_scheme)
         log.info("  Det Gain:         %f", self.detector_gain)
         log.info("  Det Offset:       %d", self.detector_offset)
         log.info("  Det Gain Odd:     %f", self.detector_gain_odd)
@@ -253,12 +253,12 @@ class EEPROM(object):
         self.degC_to_dac_coeffs        .append(self.unpack((1, 16,  4), "f"))
         self.degC_to_dac_coeffs        .append(self.unpack((1, 20,  4), "f"))
         self.degC_to_dac_coeffs        .append(self.unpack((1, 24,  4), "f"))
+        self.max_temp_degC                   = self.unpack((1, 28,  2), "h")
+        self.min_temp_degC                   = self.unpack((1, 30,  2), "h")
         self.adc_to_degC_coeffs = []
         self.adc_to_degC_coeffs        .append(self.unpack((1, 32,  4), "f"))
         self.adc_to_degC_coeffs        .append(self.unpack((1, 36,  4), "f"))
         self.adc_to_degC_coeffs        .append(self.unpack((1, 40,  4), "f"))
-        self.max_temp_degC                   = self.unpack((1, 28,  2), "h")
-        self.min_temp_degC                   = self.unpack((1, 30,  2), "h")
         self.tec_r298                        = self.unpack((1, 44,  2), "h")
         self.tec_beta                        = self.unpack((1, 46,  2), "h")
         self.calibration_date                = self.unpack((1, 48, 12), "s")
@@ -269,7 +269,7 @@ class EEPROM(object):
         # ######################################################################
 
         self.detector                        = self.unpack((2,  0, 16), "s")
-        self.active_pixels_horizontal        = self.unpack((2, 16,  2), "h")
+        self.active_pixels_horizontal        = self.unpack((2, 16,  2), "H")
         self.active_pixels_vertical          = self.unpack((2, 19,  2), "H" if self.format >= 4 else "h")
         self.min_integration_time_ms         = self.unpack((2, 21,  2), "H")
         self.max_integration_time_ms         = self.unpack((2, 23,  2), "H")

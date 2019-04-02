@@ -312,6 +312,9 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2019-04-02 1.0.14
+    - clear response queue when disabling free-running mode
+    - Zynq fix
 - 2019-04-01 1.0.13
     - Enable ENG-0034 Rev 4
 - 2019-03-29 1.0.12

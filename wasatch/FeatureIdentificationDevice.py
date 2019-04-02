@@ -130,18 +130,19 @@ class FeatureIdentificationDevice(object):
             self.settings.state.min_usb_interval_ms = 0
             self.settings.state.max_usb_interval_ms = 0
 
-        # SiG-VIS seems to have some issues if you pull spectra too fast.  Unsure
-        # if that would affect all USB commands.
-        if self.is_zynq():
-            self.settings.state.min_usb_interval_ms = 250
-            self.settings.state.max_usb_interval_ms = 250
-
         # This must be for some very old InGaAs spectrometers?
         if self.is_ingaas():
             self.settings.eeprom.active_pixels_horizontal = 512
 
         self.read_eeprom()
         self.read_fpga_compilation_options()
+
+        # SiG-VIS seems to have some issues if you pull spectra too fast.  Unsure
+        # if that would affect all USB commands.
+        if self.is_zynq():
+            log.debug("Zynq detected, slowing USB comms")
+            self.settings.state.min_usb_interval_ms = 250
+            self.settings.state.max_usb_interval_ms = 250
 
         return True
 

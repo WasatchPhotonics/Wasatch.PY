@@ -514,7 +514,10 @@ class WasatchDeviceWrapper(object):
         # Regardless, if anything goes wrong here, ensure we do our best to 
         # cleanup these processes and queues.
         try:
-            wasatch_device = WasatchDevice(args.device_id, args.message_queue)
+            wasatch_device = WasatchDevice(
+                device_id = args.device_id, 
+                message_queue = args.message_queue,
+                response_queue = args.response_queue)
         except:
             log.critical("continuous_poll: exception instantiating WasatchDevice", exc_info=1)
             return args.spectrometer_settings_queue.put(None, timeout=2)

@@ -41,14 +41,15 @@ class WasatchDevice(object):
     ##
     # @param device_id      a DeviceID instance OR string label thereof
     # @param message_queue  if provided, used to send status back to caller
-    def __init__(self, device_id, message_queue=None):
+    def __init__(self, device_id, message_queue=None, response_queue=None):
 
         # if passed a string representation of a DeviceID, deserialize it 
         if type(device_id) is str:
             device_id = DeviceID(label=device_id)
 
-        self.device_id     = device_id
-        self.message_queue = message_queue
+        self.device_id      = device_id
+        self.message_queue  = message_queue
+        self.response_queue = response_queue
 
         self.connected = False
 
@@ -624,6 +625,10 @@ class WasatchDevice(object):
             else:
                 self.hardware.write_setting(control_object)
 
+            if control_object.setting == "free_running_mode" and not self.hardware.settings.state.free_running_mode:
+                log.debug("exited free-running mode, so clearing response queue")
+                self.clear_response_queue()
+
             # except Queue.Empty:
             #     log.debug("process_commands: empty")
             #     break
@@ -631,6 +636,11 @@ class WasatchDevice(object):
             #     log.critical("process_commands: error dequeuing or writing control object", exc_info=1)
             #     raise
         return retval
+
+    def clear_response_queue(self):
+        while not self.response_queue.empty():
+            log.debug("clearing response queue: throwing away Reading")
+            self.response_queue.get()
 
     # ######################################################################## #
     #                                                                          #
