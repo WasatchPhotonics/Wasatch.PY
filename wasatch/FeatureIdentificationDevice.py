@@ -74,6 +74,8 @@ class FeatureIdentificationDevice(object):
         self.inject_random_errors = False
         self.random_error_perc = 0.001   # 0.1%
         self.shutdown_requested = False
+        self.allow_default_gain_reset = False
+        self.swap_alternating_pixels = False
 
     ## 
     # Attempt to connect to the specified device. Log any failures and
@@ -489,7 +491,7 @@ class FeatureIdentificationDevice(object):
     # \endverbatim
     def set_detector_gain(self, gain):
 
-        if round(gain, 2) == 1.90:
+        if not self.allow_default_gain_reset and round(gain, 2) == 1.90:
             log.warn("legacy spectrometers don't like gain being re-set to default 1.90...ignoring")
             return
 
@@ -626,6 +628,17 @@ class FeatureIdentificationDevice(object):
                 spectrum.extend([0] * (pixels - len(spectrum)))
             else:
                 spectrum = spectrum[:-pixels]
+
+        # a prototype model output spectra with alternating pixels swapped, and this was
+        # quicker than changing in firmware (do this BEFORE grabbing first pixel for area
+        # scan index)
+        if self.swap_alternating_pixels:
+            log.debug("swapping alternating pixels: spectrum = %s", spectrum[:10])
+            corrected = []
+            for a, b in zip(spectrum[0::2], spectrum[1::2]):
+                corrected.extend([b, a])
+            spectrum = corrected
+            log.debug("swapped alternating pixels: spectrum = %s", spectrum[:10])
 
         # if we're in area scan mode, use first pixel as row index (leave pixel in spectrum)
         area_scan_row_count = -1
@@ -1595,6 +1608,10 @@ class FeatureIdentificationDevice(object):
         elif setting == "invert_x_axis":                        self.settings.state.invert_x_axis = True if value else False 
         elif setting == "overrides":                            self.set_overrides(value) 
         elif setting == "reset_fpga":                           self.reset_fpga() 
+
+        elif setting == "allow_default_gain_reset":             self.allow_default_gain_reset = True if value else False
+        elif setting == "swap_alternating_pixels":              self.swap_alternating_pixels = True if value else False
+
         else:
             log.critical("Unknown setting to write: %s", setting)
             return False

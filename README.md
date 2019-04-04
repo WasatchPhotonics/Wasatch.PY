@@ -312,6 +312,9 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2019-04-04 1.0.15
+    - added swap\_alternating\_pixels
+    - added allow\_default\_gain\_reset
 - 2019-04-02 1.0.14
     - clear response queue when disabling free-running mode
     - Zynq fix
