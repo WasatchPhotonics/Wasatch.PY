@@ -74,7 +74,7 @@ class FeatureIdentificationDevice(object):
         self.inject_random_errors = False
         self.random_error_perc = 0.001   # 0.1%
         self.shutdown_requested = False
-        self.allow_default_gain_reset = False
+        self.allow_default_gain_reset = True
         self.swap_alternating_pixels = False
 
     ## 
