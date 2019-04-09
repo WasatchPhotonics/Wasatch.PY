@@ -101,9 +101,10 @@ class DeviceID(object):
         elif device is not None:
             # instantiate from a PyUSB Device
             self.type = "USB"
-            self.vid = device.idVendor
-            self.pid = device.idProduct
-            (self.bus, self.address) = self.get_bus_and_address(device)
+            self.vid = int(device.idVendor)
+            self.pid = int(device.idProduct)
+            self.bus = int(device.dev.bus)
+            self.address = int(device.dev.address)
 
         elif directory is not None:
             # instantiate from a file spec
@@ -121,7 +122,6 @@ class DeviceID(object):
     def is_usb(self):
         return self.type.upper() == "USB"
 
-    ##
     # Surely there is a better way to obtain the 'bus' and 'address' attributes 
     # than rendering the usb.device as a string and then parsing it.  I tried 
     # dumping the __dict__ and didn't see the address anywhere...must be in a 
@@ -131,27 +131,33 @@ class DeviceID(object):
     #       But it seems to work on Ubuntu and Win10-64, so...
     #
     # @see https://github.com/pyusb/pyusb/blob/master/docs/tutorial.rst#user-content-dealing-with-multiple-identical-devices
-    def get_bus_and_address(self, device):
-        log.debug("parsing bus and address from device")
-
-        # device.dev is what is returned by usb.core.find().  This is what you 
-        # get if you just print device.dev to stdout
-        s = str(device.dev)
-
-        # ARE YOU SURE you can't just read device.dev.bus and .address?
-
-        # extract the "hidden fields" from the first line of the ASCII dump
-        m = re.match(r"DEVICE ID ([0-9a-f]{4}):([0-9a-f]{4}) on Bus (\d+) Address (\d+)", s, re.IGNORECASE)
-        if m:
-            # 1 and 2 are hex VID and PID respectively
-            bus = int(m.group(3))
-            address = int(m.group(4))
-            log.debug("get_bus_and_address: parsed bus = %d, address = %d", bus, address)
-        else:
-            bus = -1
-            address = -1
-            log.critical("get_bus_and_address: failed to parse bus and address")
-        return (bus, address)
+    # def get_bus_and_address_NOT_USED(self, device):
+    #     log.debug("parsing bus and address from device")
+    # 
+    #     # device.dev is what is returned by usb.core.find().  This is what you 
+    #     # get if you just print device.dev to stdout
+    #     s = str(device.dev)
+    # 
+    #     # ARE YOU SURE you can't just read device.dev.bus and .address?
+    #     log.debug("MZ: s = %s", s)
+    #     log.debug("MZ: bus = %s", str(device.dev.bus))
+    #     log.debug("MZ: addr = %s", str(device.dev.address))
+    # 
+    #     device = None
+    #     del device
+    # 
+    #     # extract the "hidden fields" from the first line of the ASCII dump
+    #     m = re.match(r"DEVICE ID ([0-9a-f]{4}):([0-9a-f]{4}) on Bus (\d+) Address (\d+)", s, re.IGNORECASE)
+    #     if m:
+    #         # 1 and 2 are hex VID and PID respectively
+    #         bus = int(m.group(3))
+    #         address = int(m.group(4))
+    #         log.debug("get_bus_and_address: parsed bus = %d, address = %d", bus, address)
+    #     else:
+    #         bus = -1
+    #         address = -1
+    #         log.critical("get_bus_and_address: failed to parse bus and address")
+    #     return (bus, address)
 
     def get_pid_hex(self):
         return "%04x" % self.pid

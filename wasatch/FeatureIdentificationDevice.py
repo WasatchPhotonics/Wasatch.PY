@@ -22,6 +22,14 @@ log = logging.getLogger(__name__)
 
 MICROSEC_TO_SEC = 0.000001
 
+class SpectrumAndRow(object):
+    def __init__(self, spectrum=None, row=-1):
+        self.spectrum = None
+        self.row = row
+
+        if spectrum is not None:
+            self.spectrum = [int(x) for x in spectrum]
+
 ##
 # This is the basic implementation of our FeatureIdentificationDevice (FID) 
 # spectrometer USB API as defined in ENG-0001.
@@ -76,6 +84,10 @@ class FeatureIdentificationDevice(object):
         self.shutdown_requested = False
         self.allow_default_gain_reset = True
         self.swap_alternating_pixels = False
+
+        # YOU ARE HERE
+        self.last_spectrum = None
+        self.spectrum_count = 0
 
     ## 
     # Attempt to connect to the specified device. Log any failures and
@@ -575,6 +587,7 @@ class FeatureIdentificationDevice(object):
     def get_line(self):
         # Only send ACQUIRE (internal SW trigger) if external HW trigger is disabled (the default)
         log.debug("get_line: requesting spectrum")
+
         if self.settings.state.trigger_source == SpectrometerState.TRIGGER_SOURCE_INTERNAL:
             self.send_code(0xad, label="ACQUIRE_SPECTRUM")
 
@@ -615,7 +628,7 @@ class FeatureIdentificationDevice(object):
             # This is a convoluted way to iterate across the received bytes in 'data' as 
             # two interleaved arrays, both only processing alternating bytes, but one (i) 
             # starting at zero (even bytes) and the other (j) starting at 1 (odd bytes).
-            subspectrum = [(i | (j << 8)) for i, j in zip(data[::2], data[1::2])] # LSB-MSB
+            subspectrum = [int(i | (j << 8)) for i, j in zip(data[::2], data[1::2])] # LSB-MSB
 
             spectrum.extend(subspectrum)
 
@@ -677,7 +690,7 @@ class FeatureIdentificationDevice(object):
                     smoothed.append(averaged)
             spectrum = smoothed
 
-        return (spectrum, area_scan_row_count)
+        return SpectrumAndRow(spectrum, area_scan_row_count)
 
     ## Send the updated integration time in a control message to the device
     # 

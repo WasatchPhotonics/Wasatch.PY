@@ -1,6 +1,9 @@
+import os
+import gc
 import time
-import numpy
+# import numpy # memory leaks?
 import Queue
+import psutil
 import logging
 import datetime
 import multiprocessing
@@ -380,6 +383,8 @@ class WasatchDevice(object):
     # metadata readings to continue to update during long averaged collections.
     #
     def acquire_spectrum(self):
+        self.dump_memory()
+
         averaging_enabled = (self.settings.state.scans_to_average > 1)
 
         # for Batch Collection
@@ -428,11 +433,11 @@ class WasatchDevice(object):
             externally_triggered = self.settings.state.trigger_source == SpectrometerState.TRIGGER_SOURCE_EXTERNAL
             try:
                 while True:
-                    (reading.spectrum, reading.area_scan_row_count) = self.hardware.get_line()
+                    spectrum_and_row = self.hardware.get_line()
                     if self.hardware.shutdown_requested: 
                         return False
 
-                    if reading.spectrum is None:
+                    if spectrum_and_row.spectrum is None:
                         # FeatureIdentificationDevice can return None when waiting
                         # on an external trigger.  FileSpectrometer can as well if 
                         # there is no new spectrum to read.
@@ -440,6 +445,9 @@ class WasatchDevice(object):
                         return True
                     else:
                         break
+
+                reading.spectrum            = spectrum_and_row.spectrum
+                reading.area_scan_row_count = spectrum_and_row.row
 
                 log.debug("device.acquire_data: got %s ...", reading.spectrum[0:9])
             except Exception as exc:
@@ -449,6 +457,7 @@ class WasatchDevice(object):
                     return True
 
                 log.critical("Error reading hardware data", exc_info=1)
+                reading.spectrum = None
                 reading.failure = str(exc)
 
             if not reading.failure:
@@ -458,17 +467,18 @@ class WasatchDevice(object):
                 # bad pixel correction
                 if self.settings.state.bad_pixel_mode == SpectrometerState.BAD_PIXEL_MODE_AVERAGE:
                     self.correct_bad_pixels(reading.spectrum)
-                reading.spectrum = list(reading.spectrum)
+                # reading.spectrum = list(reading.spectrum)
 
                 log.debug("device.acquire_data: after bad_pixel correction: %s ...", reading.spectrum[0:9])
 
                 # update summed spectrum
                 if averaging_enabled:
                     if self.sum_count == 0:
-                        self.summed_spectra = list(numpy.array([float(i) for i in reading.spectrum]))
+                        self.summed_spectra = [float(i) for i in reading.spectrum]
                     else:
                         log.debug("device.acquire_data: summing spectra")
-                        self.summed_spectra = numpy.add(self.summed_spectra, reading.spectrum)
+                        for i in range(len(self.summed_spectra)):
+                            self.summed_spectra[i] += reading.spectrum[i]
                     self.sum_count += 1
                     log.debug("device.acquire_data: summed_spectra : %s ...", self.summed_spectra[0:9])
 
@@ -480,8 +490,9 @@ class WasatchDevice(object):
             # have we completed the averaged reading?
             if averaging_enabled:
                 if self.sum_count >= self.settings.state.scans_to_average:
-                    # if we wanted to send the averaged spectrum as ints, use numpy.ndarray.astype(int)
-                    reading.spectrum = numpy.divide(self.summed_spectra, self.sum_count).tolist()
+                    reading.spectrum = []
+                    for i in range(len(self.summed_spectra)):
+                        reading.spectrum.append(self.summed_spectra[i] / self.sum_count)
                     log.debug("device.acquire_data: averaged_spectrum : %s ...", reading.spectrum[0:9])
                     reading.averaged = True
 
@@ -594,6 +605,18 @@ class WasatchDevice(object):
                 log.debug("battery: level %.2f%% (%s)", reading.battery_percentage, "charging" if reading.battery_charging else "not charging")
 
         return reading
+
+    def dump_memory(self):
+        process = psutil.Process(os.getpid())
+        size_in_bytes = process.memory_info().rss
+        log.debug("dump_memory: Process memory = %d bytes", size_in_bytes)
+        log.debug("dump_memory: object count = %d", len(gc.get_objects()))
+
+        gc.collect(0)
+        gc.collect(1)
+        gc.collect(2)
+        gc.collect(1)
+        gc.collect(0)
 
     ##
     # Process every entry on the settings queue, writing each to the device.  As

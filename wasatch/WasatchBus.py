@@ -59,6 +59,7 @@ class WasatchBus(object):
 # ##############################################################################
 
 class USBBus(object):
+    finder = DeviceFinderUSB() # class attribute
 
     def __init__(self):
         self.backend_error_raised = False
@@ -70,8 +71,8 @@ class USBBus(object):
 
         try:
             log.debug("USBBus.update: instantiating DeviceFinderUSB")
-            finder = DeviceFinderUSB()
-            device_ids.extend(finder.find_usb_devices())
+            # finder = DeviceFinderUSB()
+            device_ids.extend(USBBus.finder.find_usb_devices())
         except USBError:
             # MZ: this seems to happen when I run from Git Bash shell
             #     (resolved on MacOS with 'brew install libusb')

@@ -11,7 +11,7 @@ from DeviceID import DeviceID
 class DeviceFinderUSB(object):
 
     def __init__(self):
-        device_ids = []
+        pass
 
     ##
     # Iterates over each USB bus, and each device on the bus, retaining any
@@ -23,8 +23,8 @@ class DeviceFinderUSB(object):
         device_ids = []
         for bus in usb.busses():
             for device in bus.devices:
-                vid = device.idVendor
-                pid = device.idProduct
+                vid = int(device.idVendor)
+                pid = int(device.idProduct)
                 log.debug("DeviceListFID: discovered vid 0x%04x, pid 0x%04x", vid, pid)
 
                 if vid != 0x24aa:
