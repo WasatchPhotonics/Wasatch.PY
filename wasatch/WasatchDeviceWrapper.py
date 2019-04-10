@@ -120,18 +120,14 @@ class WasatchDeviceWrapper(object):
         self.log_queue = log_queue
         self.log_level = log_level
 
-        ########################################################################
-        # Both of these seem to work...pick one
-        ########################################################################
-        
-        # Option 1:
-        self.manager = multiprocessing.Manager()
-        manager = self.manager
+        # This works equally well on Linux (no obvious advantage or disadvantage),
+        # but blows up on Windows :-(
+
+        # self.manager = multiprocessing.Manager()
+        # manager = self.manager
         #
-        #    ...OR...
-        #
-        # Option 2:
-        # manager = multiprocessing
+        # Therefore...
+        manager = multiprocessing
 
         self.spectrometer_settings_queue = manager.Queue(1)   # spectrometer -> GUI (SpectrometerSettings, one-time)
         self.response_queue              = manager.Queue(100) # spectrometer -> GUI (Readings)

@@ -153,7 +153,7 @@ class FeatureIdentificationDevice(object):
 
         # SiG-VIS seems to have some issues if you pull spectra too fast.  Unsure
         # if that would affect all USB commands.
-        if False && self.is_zynq():
+        if False and self.is_zynq():
             log.debug("Zynq detected, slowing USB comms")
             self.settings.state.min_usb_interval_ms = 250
             self.settings.state.max_usb_interval_ms = 250
