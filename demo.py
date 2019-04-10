@@ -22,6 +22,7 @@ import sys
 import time
 import numpy
 import signal
+import psutil
 import logging
 import datetime
 import argparse
@@ -64,7 +65,6 @@ class WasatchDemo(object):
     def parse_args(self, argv):
         parser = argparse.ArgumentParser(description="Simple demo to acquire spectra from command-line interface")
         parser.add_argument("--log-level",           type=str, default="INFO", help="logging level [DEBUG,INFO,WARNING,ERROR,CRITICAL]")
-        parser.add_argument("--bus-order",           type=int, default=0,      help="usb device ordinal to connect")
         parser.add_argument("--integration-time-ms", type=int, default=10,     help="integration time (ms, default 10)")
         parser.add_argument("--scans-to-average",    type=int, default=1,      help="scans to average (default 1)")
         parser.add_argument("--boxcar-half-width",   type=int, default=0,      help="boxcar half-width (default 0)")
@@ -104,28 +104,27 @@ class WasatchDemo(object):
             log.debug("instantiating WasatchBus")
             self.bus = WasatchBus(use_sim = False)
 
-        if not self.bus.uuids:
+        if not self.bus.device_ids:
             print("No Wasatch USB spectrometers found.")
             return 
 
-        log.debug("connect: trying to connect to new device on bus 1")
-        uuid = self.bus.uuids[0]
+        device_id = self.bus.device_ids[0]
+        log.debug("connect: trying to connect to %s", device_id)
 
         if self.args.non_blocking:
             # this is still buggy on MacOS
             log.debug("instantiating WasatchDeviceWrapper (non-blocking)")
             device = WasatchDeviceWrapper(
-                uuid      = uuid,
-                bus_order = self.args.bus_order,
+                device_id = device_id,
                 log_queue = self.logger.log_queue,
                 log_level = self.args.log_level)
         else:
             log.debug("instantiating WasatchDevice (blocking)")
-            device = WasatchDevice(uuid, bus_order=self.args.bus_order)
+            device = WasatchDevice(device_id)
 
         ok = device.connect()
         if not ok:
-            log.critical("connect: can't connect to device on bus 1")
+            log.critical("connect: can't connect to %s", device_id)
             return
 
         log.debug("connect: device connected")
@@ -189,14 +188,20 @@ class WasatchDemo(object):
             self.exiting = True
             return
 
-        self.reading_count += 1
+        if isinstance(reading, bool):
+            if reading:
+                log.debug("received poison-pill, exiting")
+                self.exiting = True
+                return
+            else:
+                log.debug("no reading available")
+                return
 
         if reading.failure:
-            log.critical("Hardware ERROR %s", reading.failure)
-            log.critical("Device has been disconnected")
-            self.device.disconnect()
-            self.device = None
-            raise Exception("disconnected")
+            self.exiting = True
+            return
+
+        self.reading_count += 1
 
         self.process_reading(reading)
 
@@ -208,10 +213,10 @@ class WasatchDemo(object):
         # yet ready).
         while True:
             reading = self.device.acquire_data()
-            if reading:
-                return reading
-            else:
+            if reading is None:
                 log.debug("waiting on next reading")
+            else:
+                return reading
 
     def process_reading(self, reading):
         if self.args.scans_to_average > 1 and not reading.averaged:
@@ -228,13 +233,15 @@ class WasatchDemo(object):
             spectrum_min = numpy.amin(spectrum)
             spectrum_max = numpy.amax(spectrum)
             spectrum_avg = numpy.mean(spectrum)
+            size_in_bytes = psutil.Process(os.getpid()).memory_info().rss
 
-            print "Reading: %4d  Detector: %5.2f degC  Min: %8.2f  Max: %8.2f  Avg: %8.2f" % (
+            print "Reading: %4d  Detector: %5.2f degC  Min: %8.2f  Max: %8.2f  Avg: %8.2f  Memory: %11d" % (
                 self.reading_count,
                 reading.detector_temperature_degC,
                 spectrum_min,
                 spectrum_max,
-                spectrum_avg)
+                spectrum_avg,
+                size_in_bytes)
 
         if self.outfile:
             self.outfile.write("%s,%.2f,%s\n" % (datetime.datetime.now(),
@@ -246,10 +253,11 @@ class WasatchDemo(object):
 ################################################################################
 
 def signal_handler(signal, frame):
-    log.critical('Interrupted by Ctrl-C')
+    print '\rInterrupted by Ctrl-C...shutting down',
     clean_shutdown()
 
 def clean_shutdown():
+    log.debug("Exiting")
     if demo:
         if demo.args and demo.args.non_blocking and demo.device:
             log.debug("closing background thread")
@@ -257,9 +265,11 @@ def clean_shutdown():
 
         if demo.logger:
             log.debug("closing logger")
+            log.debug(None)
             demo.logger.close()
-    log.debug("Exiting")
-    sys.exit(0)
+            time.sleep(1)
+            applog.explicit_log_close()
+    sys.exit()
 
 demo = None
 if __name__ == "__main__":

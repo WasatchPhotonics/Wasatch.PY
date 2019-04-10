@@ -57,21 +57,7 @@ class WasatchDevice(object):
         self.connected = False
 
         # Receives ENLIGHTEN's 'change settings' commands in the spectrometer
-        # process. It's not clear why we're using a multiprocessing.Queue inside
-        # WasatchDevice (all the multiprocessing communications are encapsulated
-        # within WasatchDeviceWrapper), or in fact why WasatchDevice.command_queue
-        # is needed at all -- we already have WasatchDeviceWrapper.command_queue,
-        # which is already deduped within continuous_poll(), so why not just have
-        # continuous_poll call WasatchDevice.hardware.write_setting(control_obj)
-        # directly?  Still, probably(?) not hurting anything.  May be leftover
-        # from pre-WasatchDeviceWrapper days, when ENLIGHTEN had a blocking
-        # interface to the spectrometer.
-        #
-        # Update: this IS hurting things, as "immediate" commands are queued and
-        # then immediately intended for processing...yet the queue still reports
-        # as empty! :-(
-        #
-        # self.command_queue = multiprocessing.Queue()
+        # process. Although a logical queue, has nothing to do with multiprocessing.
         self.command_queue = []
 
         # Enable for "immediate mode" by clients like WasatchShell (by default,
@@ -88,6 +74,10 @@ class WasatchDevice(object):
         self.summed_spectra         = None
         self.sum_count              = 0
         self.session_reading_count  = 0
+
+        self.process_id = os.getpid()
+        self.last_memory_check = datetime.datetime.now()
+
 
     # ######################################################################## #
     #                                                                          #
@@ -325,8 +315,9 @@ class WasatchDevice(object):
     #
     # @see Controller.acquire_reading
     def acquire_data(self):
-
         log.debug("Device acquire_data")
+
+        self.monitor_memory()
 
         if self.hardware.shutdown_requested:
             return False 
@@ -383,8 +374,6 @@ class WasatchDevice(object):
     # metadata readings to continue to update during long averaged collections.
     #
     def acquire_spectrum(self):
-        self.dump_memory()
-
         averaging_enabled = (self.settings.state.scans_to_average > 1)
 
         # for Batch Collection
@@ -513,6 +502,8 @@ class WasatchDevice(object):
                 self.hardware.set_laser_enable(False)
             return False # for convenience
 
+        log.debug("reading.spectrum = %s (%s)", type(reading.spectrum), type(reading.spectrum[0]))
+
         if self.bare_readings:
             disable_laser()
             return reading
@@ -606,17 +597,21 @@ class WasatchDevice(object):
 
         return reading
 
-    def dump_memory(self):
-        process = psutil.Process(os.getpid())
-        size_in_bytes = process.memory_info().rss
-        log.debug("dump_memory: Process memory = %d bytes", size_in_bytes)
-        log.debug("dump_memory: object count = %d", len(gc.get_objects()))
+    def monitor_memory(self):
+        now = datetime.datetime.now()
+        if (now - self.last_memory_check).total_seconds() < 5:
+            return
 
-        gc.collect(0)
-        gc.collect(1)
-        gc.collect(2)
-        gc.collect(1)
-        gc.collect(0)
+        self.last_memory_check = now
+        size_in_bytes = psutil.Process(self.process_id).memory_info().rss
+        log.debug("monitor_memory: Process %d memory = %d bytes", self.process_id, size_in_bytes)
+
+        if False:
+            gc.collect(0)
+            gc.collect(1)
+            gc.collect(2)
+            gc.collect(1)
+            gc.collect(0)
 
     ##
     # Process every entry on the settings queue, writing each to the device.  As

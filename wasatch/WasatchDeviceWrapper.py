@@ -1,8 +1,11 @@
 import sys
 import time
 import Queue
+import random
 import logging
 import multiprocessing
+
+# from memory_profiler import profile
 
 from . import applog
 from . import utils
@@ -87,6 +90,16 @@ class WasatchDeviceWrapper(object):
                                        # contributors can be skipped).  If the most-recent
                                        # frame IS a partial summation contributor, then send it on.
 
+    DISABLE_RESPONSE_QUEUE = False
+
+    # TODO: make this dynamic:
+    #   - initially on number of connected spectrometers
+    #   - ideally on configured integration times per spectrometer
+    #   - need to check whether it can be modified from inside the process
+    #   - need to check whether it can be modified after process creation
+    POLLER_WAIT_SEC = 0.05    # .05sec = 50ms = update from hardware device at 20Hz
+
+
     # ##########################################################################
     #                                                                          #
     #                                MainProcess                               #
@@ -107,25 +120,23 @@ class WasatchDeviceWrapper(object):
         self.log_queue = log_queue
         self.log_level = log_level
 
-        # TODO: see if the managed queues would be more robust
+        ########################################################################
+        # Both of these seem to work...pick one
+        ########################################################################
+        
+        # Option 1:
+        self.manager = multiprocessing.Manager()
+        manager = self.manager
         #
-        # self.manager = multiprocessing.Manager()
-        # self.command_queue               = self.manager.Queue()
-        # self.response_queue              = self.manager.Queue()
-        # self.message_queue               = self.manager.Queue()
-        # self.spectrometer_settings_queue = self.manager.Queue()
+        #    ...OR...
+        #
+        # Option 2:
+        # manager = multiprocessing
 
-        self.spectrometer_settings_queue = multiprocessing.Queue(1)   # spectrometer -> GUI (SpectrometerSettings, one-time)
-        self.response_queue              = multiprocessing.Queue(100) # spectrometer -> GUI (Readings)
-        self.message_queue               = multiprocessing.Queue(100) # spectrometer -> GUI (StatusMessages)
-        self.command_queue               = multiprocessing.Queue(100) # GUI -> spectrometer (ControlObjects)
-
-        # TODO: make this dynamic:
-        #   - initially on number of connected spectrometers
-        #   - ideally on configured integration times per spectrometer
-        #   - need to check whether it can be modified from inside the process
-        #   - need to check whether it can be modified after process creation
-        self.poller_wait_sec = 0.05    # .05sec = 50ms = update from hardware device at 20Hz
+        self.spectrometer_settings_queue = manager.Queue(1)   # spectrometer -> GUI (SpectrometerSettings, one-time)
+        self.response_queue              = manager.Queue(100) # spectrometer -> GUI (Readings)
+        self.message_queue               = manager.Queue(100) # spectrometer -> GUI (StatusMessages)
+        self.command_queue               = manager.Queue(100) # GUI -> spectrometer (ControlObjects)
 
         self.closing      = False   # Don't permit new acquires during close
         self.poller       = None    # a handle to the subprocess
@@ -133,6 +144,8 @@ class WasatchDeviceWrapper(object):
         # this will contain a populated SpectrometerSettings object from the 
         # WasatchDevice, for relay to the instantiating Controller
         self.settings     = None    
+
+        # self.previous_reading = None
 
     ## 
     # Create a low level device object with the specified identifier, kick off 
@@ -243,7 +256,10 @@ class WasatchDeviceWrapper(object):
             self.closing = True
 
             log.warn("WasatchDeviceWrapper.connect: sending poison pill to poller")
-            self.command_queue.put(None, 2)
+            try:
+                self.command_queue.put(None, timeout=2)
+            except Queue.Full:
+                pass
 
             log.warn("WasatchDeviceWrapper.connect: waiting .5 sec")
             time.sleep(.5)
@@ -255,6 +271,9 @@ class WasatchDeviceWrapper(object):
             self.poller = None
 
             return False
+
+        # AttributeError: 'AutoProxy[Queue]' object has no attribute 'close'
+        # self.spectrometer_settings_queue.close()
 
         log.info("WasatchDeviceWrapper.connect: received SpectrometerSettings from subprocess")
         self.settings.dump()
@@ -268,8 +287,12 @@ class WasatchDeviceWrapper(object):
     def disconnect(self):
         # send poison pill to the subprocess
         self.closing = True
-        self.command_queue.put(None, 2)
+        try:
+            self.command_queue.put(None, timeout=2)
+        except:
+            pass
 
+        log.debug("joining poller")
         try:
             self.poller.join(timeout=2)
         except NameError as exc:
@@ -277,9 +300,11 @@ class WasatchDeviceWrapper(object):
         except Exception as exc:
             log.critical("disconnect: Cannot join poller", exc_info=1)
 
-        log.debug("Post poller join")
+        log.debug("clearing queues")
+        self.clear_all_queues()
 
         try:
+            # do we need to do this?
             self.poller.terminate()
             log.debug("disconnect: poller terminated")
         except Exception as exc:
@@ -290,12 +315,23 @@ class WasatchDeviceWrapper(object):
 
         return True
 
+    def clear_queue(self, q):
+        while True:
+            try:
+                q.get_nowait()
+            except:
+                break
+
+    def clear_all_queues(self):
+        self.clear_queue(self.spectrometer_settings_queue)
+        self.clear_queue(self.response_queue)
+        self.clear_queue(self.message_queue)
+
     ##
     # Similar to acquire_data, this method is called by the Controller in
     # MainProcess to dequeue a StatusMessage from the spectrometer sub-
     # process, if one is available.
     def acquire_status_message(self):
-
         if self.closing:
             return None
 
@@ -348,78 +384,90 @@ class WasatchDeviceWrapper(object):
         if mode is None or mode == self.ACQUISITION_MODE_KEEP_COMPLETE:
             return self.get_final_item(keep_averaged=True)
 
-        if mode == self.ACQUISITION_MODE_LATEST:
-            return self.get_final_item()
-
-        # presumably mode == self.ACQUISITION_MODE_KEEP_ALL:
-
-        # Get the oldest entry off of the queue. This expects the Controller to be
-        # able to process them upstream as fast as possible, because otherwise
-        # the queue will grow (we're not currently limiting its size) and the
-        # process will eventually crash with memory issues.
-
-        # Note that these two calls to response_queue aren't synchronized
-        reading = None
-        qsize = self.response_queue.qsize()
-        try:
-            reading = self.response_queue.get_nowait()
-            log.debug("acquire_data: read Reading %d (qsize %d)", reading.session_count, qsize)
-        except Queue.Empty:
-            log.debug("acquire_data: no data, sending keepalive")
-            return None
-
-        return reading
+        # if mode == self.ACQUISITION_MODE_LATEST:
+        #     return self.get_final_item()
+        # 
+        # # presumably mode == self.ACQUISITION_MODE_KEEP_ALL:
+        # 
+        # # Get the oldest entry off of the queue. This expects the Controller to be
+        # # able to process them upstream as fast as possible, because otherwise
+        # # the queue will grow (we're not currently limiting its size) and the
+        # # process will eventually crash with memory issues.
+        # 
+        # # Note that these two calls to response_queue aren't synchronized
+        # reading = None
+        # qsize = "NA" # self.response_queue.qsize()
+        # try:
+        #     reading = self.response_queue.get_nowait()
+        #     log.debug("acquire_data: read Reading %d (qsize %s)", str(reading.session_count), qsize)
+        # except Queue.Empty:
+        #     log.debug("acquire_data: no data, sending keepalive")
+        #     return None
+        # 
+        # return reading
 
     ## Read from the response queue until empty (or we find an averaged item) 
     # 
     # In the currently implementation, it seems unlikely that a "True" will ever
     # be passed up (we're basically converting them to None here).
+    # @profile
     def get_final_item(self, keep_averaged=False):
-        last_reading = None
+        last_reading  = None
         last_averaged = None
         dequeue_count = 0
 
         while True:
+            # without waiting (don't block), just get the first item off the 
+            # queue if there is one
+            reading = None
             try:
-                # without waiting (don't block), just get the first item off the 
-                # queue if there is one
                 reading = self.response_queue.get_nowait()
-
-                # If we come across a poison-pill, flow that up immediately -- 
-                # game-over, we're done
-                if isinstance(reading, bool) and reading == False:
-                    log.critical("get_final_item: poison-pill!")
-                    return False
-
-                # If we come across a NONE or a True, ignore it for the moment.
-                # Returning "None" will always be the "default" action at the
-                # end, so for now continue cleaning-out the queue.
-                if reading is None or isinstance(reading, bool):
-                    log.debug("get_final_item: ignoring keepalive")
-                    continue
-
-                # apparently we read a Reading
-                log.debug("get_final_item: read Reading %d", reading.session_count)
-                last_reading = reading
-                dequeue_count += 1
-
-                # Was this the final spectrum in an averaged sequence?
-                #
-                # If so, grab a reference, but DON'T flow it up yet...there
-                # may be a NEWER fully-averaged spectrum later on.
-                #
-                # It is the purpose of this function ("get FINAL item...")
-                # to PURGE THE QUEUE -- we are not intending to leave any
-                # values in the queue (None, bool, or Readings of any kind.
-                if keep_averaged and reading.averaged:
-                    last_averaged = reading
-
             except Queue.Empty:
                 # If there is nothing more to read, then we've emptied the queue
                 break
 
+            # If we come across a poison-pill, flow that up immediately -- 
+            # game-over, we're done
+            if isinstance(reading, bool) and reading == False:
+                log.critical("get_final_item: poison-pill!")
+                reading = None
+                return False
+
+            # If we come across a NONE or a True, ignore it for the moment.
+            # Returning "None" will always be the "default" action at the
+            # end, so for now continue cleaning-out the queue.
+            if reading is None or isinstance(reading, bool):
+                log.debug("get_final_item: ignoring keepalive")
+                reading = None
+                continue
+
+            # apparently we read a Reading
+            log.debug("get_final_item: read Reading %s", str(reading.session_count))
+            last_reading = reading
+            dequeue_count += 1
+
+            # Was this the final spectrum in an averaged sequence?
+            #
+            # If so, grab a reference, but DON'T flow it up yet...there
+            # may be a NEWER fully-averaged spectrum later on.
+            #
+            # It is the purpose of this function ("get FINAL item...")
+            # to PURGE THE QUEUE -- we are not intending to leave any
+            # values in the queue (None, bool, or Readings of any kind.
+            if keep_averaged and reading.averaged:
+                last_averaged = reading
+
+            reading = None
+        reading = None
+
+        # kludge - memory profiling
+        # if WasatchDeviceWrapper.DISABLE_RESPONSE_QUEUE and self.previous_reading is not None:
+        #     self.previous_reading.spectrum = [(1.1 - 0.2 * random.random()) * x for x in self.previous_reading.spectrum]
+        #     return self.previous_reading
+
         if last_reading is None:
             # apparently we didn't read anything...just pass up a keepalive
+            last_averaged = None
             return None
 
         # apparently we read at least some readings.  For interest, how how many
@@ -430,12 +478,16 @@ class WasatchDeviceWrapper(object):
         # if we're doing averaging, and we found one or more averaged readings,
         # return the latest of those
         if last_averaged is not None:
+            # self.previous_reading = last_averaged
+            last_reading = None
             return last_averaged
 
         # We've had every opportunity short-cut the process: we could have 
         # returned potential poison pills or completed averages, but found
         # none of those.  Yet apparently we did read some normal readings.
         # Return the latest of those.
+        
+        # self.previous_reading = last_reading
         return last_reading
 
     ## 
@@ -446,8 +498,8 @@ class WasatchDeviceWrapper(object):
         log.debug("WasatchDeviceWrapper.change_setting: %s => %s", setting, value)
         control_object = ControlObject(setting, value)
         try:
-            self.command_queue.put(control_object)
-        except Exception as exc:
+            self.command_queue.put(control_object, timeout=2)
+        except Queue.Full:
             log.critical("WasatchDeviceWrapper.change_setting: Problem enqueuing %s", setting, exc_info=1)
 
     # ##########################################################################
@@ -527,19 +579,20 @@ class WasatchDeviceWrapper(object):
             ok = wasatch_device.connect()
         except:
             log.critical("continuous_poll: exception connecting", exc_info=1)
-            args.spectrometer_settings_queue.put(None, timeout=2)
-            return
+            return args.spectrometer_settings_queue.put(None, timeout=2)
 
         if not ok:
             log.critical("continuous_poll: failed to connect")
-            args.spectrometer_settings_queue.put(None, timeout=2)
-            return
+            return args.spectrometer_settings_queue.put(None, timeout=2)
 
         log.debug("continuous_poll: connected to a spectrometer")
 
         # send the SpectrometerSettings back to the GUI process
         log.debug("continuous_poll: returning SpectrometerSettings to GUI process")
         args.spectrometer_settings_queue.put(wasatch_device.settings, timeout=10)
+
+        # AttributeError: 'AutoProxy[Queue]' object has no attribute 'close'
+        #args.spectrometer_settings_queue.close()
 
         # Read forever until the None poison pill is received
         log.debug("continuous_poll: entering loop")
@@ -549,6 +602,8 @@ class WasatchDeviceWrapper(object):
 
         received_poison_pill_command  = False # from ENLIGHTEN
         received_poison_pill_response = False # from WasatchDevice
+
+        sent_good = False
 
         while True:
             # ##################################################################
@@ -596,6 +651,10 @@ class WasatchDeviceWrapper(object):
                 log.critical("continuous_poll: Exception", exc_info=1)
                 break
 
+            if WasatchDeviceWrapper.DISABLE_RESPONSE_QUEUE and sent_good:
+                log.debug("leaving Reading on the floor during memory profiling")
+                continue
+
             if reading is None:
                 # FileSpectrometer does this right now...hardware "can't" really, 
                 # because we use blocking calls, although we could probably add
@@ -612,7 +671,11 @@ class WasatchDeviceWrapper(object):
                 # was it just a keepalive?
                 if reading == True:
                     # just pass it upstream and move on
-                    args.response_queue.put(reading, timeout=1)
+                    try:
+                        args.response_queue.put(reading, timeout=2)
+                        sent_good = True
+                    except Queue.Full:
+                        log.error("unable to push Reading %d to GUI", reading.session_count, exc_info=1)
                 else:
                     # it was an upstream poison pill
                     #
@@ -633,20 +696,26 @@ class WasatchDeviceWrapper(object):
 
             elif reading.spectrum is not None:
                 log.debug("continuous_poll: sending Reading %d back to GUI process (%s)", reading.session_count, reading.spectrum[0:5])
-                args.response_queue.put(reading, timeout=1)
-
+                try:
+                    args.response_queue.put(reading, timeout=2)
+                except Queue.Full:
+                    log.error("unable to push Reading %d to GUI", reading.session_count, exc_info=1)
+                
             else:
                 log.error("continuous_poll: received non-failure Reading without spectrum...ignoring?")
 
             # only poll hardware at 20Hz
-            log.debug("continuous_poll: sleeping %.2f sec", self.poller_wait_sec)
-            time.sleep(self.poller_wait_sec)
+            log.debug("continuous_poll: sleeping %.2f sec", WasatchDeviceWrapper.POLLER_WAIT_SEC)
+            time.sleep(WasatchDeviceWrapper.POLLER_WAIT_SEC)
 
         if received_poison_pill_response:
             # send poison-pill notification upstream to Controller
             log.critical("exiting because of upstream poison-pill response")
             log.critical("sending poison-pill upstream to controller")
-            args.response_queue.put(False, timeout=5)
+            try:
+                args.response_queue.put(False, timeout=5)
+            except Queue.Full:
+                pass
 
             # Controller.ACQUISITION_TIMER_SLEEP_MS currently 50ms, so wait 500ms
             log.critical("waiting long enough for Controller to receive it")

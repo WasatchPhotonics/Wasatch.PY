@@ -242,4 +242,8 @@ class MainLogger(object):
     #  ensure it exits. 
     def close(self):
         self.log_queue.put_nowait(None)
-        self.listener.join()
+        # causes problem with Demo.py on Linux?
+        try:
+            self.listener.join()
+        except:
+            pass

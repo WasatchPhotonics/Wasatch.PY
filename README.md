@@ -312,8 +312,9 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
-- 2019-04-?? 1.0.17
+- 2019-04-10 1.0.17
     - memory profiling
+    - removed Zynq delay
 - 2019-04-05 1.0.16
     - made allow\_default\_gain\_reset default
 - 2019-04-04 1.0.15
