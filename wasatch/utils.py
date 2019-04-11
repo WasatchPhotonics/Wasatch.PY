@@ -15,7 +15,7 @@ log = logging.getLogger(__name__)
 
 ## convert unicode string to ascii
 def remove_unicode(s):
-    if isinstance(s, unicode):
+    if isinstance(s, str):
         return s.encode('ascii', 'ignore')
     return s
 
@@ -76,7 +76,7 @@ def dump(foo, indent=0):
 
     if isinstance(foo, dict):
         s += spc + '{\n'
-        for key,val in foo.iteritems():
+        for key,val in foo.items():
             if isinstance(val, (dict, list, tuple)):
                 s += spc1 + str(key) + '=>\n'
                 s += dump(val, indent+2)
@@ -172,7 +172,7 @@ def find_local_maxima(a, x_axis, center, tolerance=0):
     # log.debug("  range y: %s", y)
     
     if not x:
-        raise("no points within %s of %s" % (tolerance, center))
+        raise "no points within %s of %s"
 
     # find maxima within subset
     best_x_index = indices[0]

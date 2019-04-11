@@ -312,6 +312,8 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2019-04-11 py3-1.1.0
+    - initial Python 3 version (works on Linux)
 - 2019-04-10 1.0.18
     - fixed for Windows (reverted multiprocessing.Manager to multiprocessing)
 - 2019-04-10 1.0.17

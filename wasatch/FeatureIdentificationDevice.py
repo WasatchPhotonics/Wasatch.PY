@@ -12,11 +12,11 @@ from time   import sleep
 
 from . import utils
 
-from SpectrometerSettings import SpectrometerSettings
-from SpectrometerState    import SpectrometerState
-from StatusMessage        import StatusMessage
-from Overrides            import Overrides
-from EEPROM               import EEPROM
+from .SpectrometerSettings import SpectrometerSettings
+from .SpectrometerState    import SpectrometerState
+from .StatusMessage        import StatusMessage
+from .Overrides            import Overrides
+from .EEPROM               import EEPROM
 
 log = logging.getLogger(__name__)
 

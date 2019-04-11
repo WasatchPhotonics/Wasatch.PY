@@ -1,6 +1,6 @@
 import sys
 import time
-import Queue
+import queue
 import random
 import logging
 import multiprocessing
@@ -10,10 +10,10 @@ import multiprocessing
 from . import applog
 from . import utils
 
-from SpectrometerSettings import SpectrometerSettings
-from ControlObject        import ControlObject
-from WasatchDevice        import WasatchDevice
-from Reading              import Reading
+from .SpectrometerSettings import SpectrometerSettings
+from .ControlObject        import ControlObject
+from .WasatchDevice        import WasatchDevice
+from .Reading              import Reading
 
 log = logging.getLogger(__name__)
 
@@ -254,7 +254,7 @@ class WasatchDeviceWrapper(object):
             log.warn("WasatchDeviceWrapper.connect: sending poison pill to poller")
             try:
                 self.command_queue.put(None, timeout=2)
-            except Queue.Full:
+            except queue.Full:
                 pass
 
             log.warn("WasatchDeviceWrapper.connect: waiting .5 sec")
@@ -333,7 +333,7 @@ class WasatchDeviceWrapper(object):
 
         try:
             return self.message_queue.get_nowait()
-        except Queue.Empty:
+        except queue.Empty:
             return None
 
     ## 
@@ -418,7 +418,7 @@ class WasatchDeviceWrapper(object):
             reading = None
             try:
                 reading = self.response_queue.get_nowait()
-            except Queue.Empty:
+            except queue.Empty:
                 # If there is nothing more to read, then we've emptied the queue
                 break
 
@@ -495,7 +495,7 @@ class WasatchDeviceWrapper(object):
         control_object = ControlObject(setting, value)
         try:
             self.command_queue.put(control_object, timeout=2)
-        except Queue.Full:
+        except queue.Full:
             log.critical("WasatchDeviceWrapper.change_setting: Problem enqueuing %s", setting, exc_info=1)
 
     # ##########################################################################
@@ -670,7 +670,7 @@ class WasatchDeviceWrapper(object):
                     try:
                         args.response_queue.put(reading, timeout=2)
                         sent_good = True
-                    except Queue.Full:
+                    except queue.Full:
                         log.error("unable to push Reading %d to GUI", reading.session_count, exc_info=1)
                 else:
                     # it was an upstream poison pill
@@ -694,7 +694,7 @@ class WasatchDeviceWrapper(object):
                 log.debug("continuous_poll: sending Reading %d back to GUI process (%s)", reading.session_count, reading.spectrum[0:5])
                 try:
                     args.response_queue.put(reading, timeout=2)
-                except Queue.Full:
+                except queue.Full:
                     log.error("unable to push Reading %d to GUI", reading.session_count, exc_info=1)
                 
             else:
@@ -710,7 +710,7 @@ class WasatchDeviceWrapper(object):
             log.critical("sending poison-pill upstream to controller")
             try:
                 args.response_queue.put(False, timeout=5)
-            except Queue.Full:
+            except queue.Full:
                 pass
 
             # Controller.ACQUISITION_TIMER_SLEEP_MS currently 50ms, so wait 500ms
@@ -750,7 +750,7 @@ class WasatchDeviceWrapper(object):
                 # append the setting to the de-dupped list and track index
                 keep.append(control_object)
 
-            except Queue.Empty as exc:
+            except queue.Empty as exc:
                 break
 
         return keep

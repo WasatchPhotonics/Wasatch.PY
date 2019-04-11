@@ -1,7 +1,7 @@
 import logging
 import os
 
-from DeviceFinderUSB import DeviceFinderUSB
+from .DeviceFinderUSB import DeviceFinderUSB
 
 from usb import USBError
 

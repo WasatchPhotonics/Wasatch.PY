@@ -109,7 +109,7 @@ def delete_log_file_if_exists():
         os.remove(pathname)
 
     if os.path.exists(pathname):
-        print "Problem deleting: %s", pathname
+        print("Problem deleting: %s", pathname)
         return False
     return True
 
@@ -235,7 +235,7 @@ class MainLogger(object):
             except (KeyboardInterrupt, SystemExit):
                 break
             except:
-                print >> sys.stderr, 'Whoops! Problem:'
+                print('Whoops! Problem:', file=sys.stderr)
                 traceback.print_exc(file=sys.stderr)
 
     ## Wrapper to add a None poison pill to the listener process queue to

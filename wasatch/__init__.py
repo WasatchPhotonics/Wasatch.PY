@@ -1,1 +1,1 @@
-version = "1.0.18"
+version = "py3-1.1.0"

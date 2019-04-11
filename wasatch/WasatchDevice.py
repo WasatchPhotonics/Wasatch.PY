@@ -2,26 +2,25 @@ import os
 import gc
 import time
 # import numpy # memory leaks?
-import Queue
+import queue
 import psutil
 import logging
 import datetime
 import multiprocessing
 
-from ConfigParser import ConfigParser
+from configparser import ConfigParser
 
-from . import simulation_protocol
 from . import utils
 
-from FeatureIdentificationDevice import FeatureIdentificationDevice
-from SpectrometerSettings        import SpectrometerSettings
-from BalanceAcquisition          import BalanceAcquisition
-from SpectrometerState           import SpectrometerState
-from FileSpectrometer            import FileSpectrometer
-from ControlObject               import ControlObject
-from WasatchBus                  import WasatchBus
-from DeviceID                    import DeviceID
-from Reading                     import Reading
+from .FeatureIdentificationDevice import FeatureIdentificationDevice
+from .SpectrometerSettings        import SpectrometerSettings
+from .BalanceAcquisition          import BalanceAcquisition
+from .SpectrometerState           import SpectrometerState
+from .FileSpectrometer            import FileSpectrometer
+from .ControlObject               import ControlObject
+from .WasatchBus                  import WasatchBus
+from .DeviceID                    import DeviceID
+from .Reading                     import Reading
 
 log = logging.getLogger(__name__)
 

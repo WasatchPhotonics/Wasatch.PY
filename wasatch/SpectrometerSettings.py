@@ -1,13 +1,13 @@
 import logging
-import utils
+from . import utils
 import json
 import math
 import re
 
-from SpectrometerState import SpectrometerState
-from HardwareInfo      import HardwareInfo
-from FPGAOptions       import FPGAOptions
-from EEPROM            import EEPROM
+from .SpectrometerState import SpectrometerState
+from .HardwareInfo      import HardwareInfo
+from .FPGAOptions       import FPGAOptions
+from .EEPROM            import EEPROM
 
 log = logging.getLogger(__name__)
 
@@ -142,7 +142,7 @@ class SpectrometerSettings(object):
         else:
             # this can happen on Stroker Protocol before/without .ini file
             log.debug("no wavecal found - using pixel space")
-            self.wavelengths = range(self.pixels())
+            self.wavelengths = list(range(self.pixels()))
 
         log.debug("generated %d wavelengths from %.2f to %.2f",
             len(self.wavelengths), self.wavelengths[0], self.wavelengths[-1])
@@ -166,7 +166,7 @@ class SpectrometerSettings(object):
     # probably a simpler way to do this...
     def toJSON(self):
         tmp = {}
-        for k in self.__dict__.keys():
+        for k in list(self.__dict__.keys()):
             v = getattr(self, k)
             if isinstance(v, EEPROM) or isinstance(v, FPGAOptions) or isinstance(v, SpectrometerState):
                 tmp[k] = v.__dict__

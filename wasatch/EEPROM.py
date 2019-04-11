@@ -417,7 +417,7 @@ class EEPROM(object):
                  5: 1 }
 
         # copy the above revision numbers into the last byte of each buffer
-        for page in revs.keys():
+        for page in list(revs.keys()):
             self.write_buffers[page][63] = revs[page]
 
         if EEPROM.USE_REV_4:

@@ -80,7 +80,7 @@ class WasatchDemo(object):
         # normalize log level
         args.log_level = args.log_level.upper()
         if not re.match("^(DEBUG|INFO|ERROR|WARNING|CRITICAL)$", args.log_level):
-            print "Invalid log level: %s (defaulting to INFO)" % args.log_level
+            print("Invalid log level: %s (defaulting to INFO)" % args.log_level)
             args.log_level = "INFO"
 
         return args
@@ -175,7 +175,7 @@ class WasatchDemo(object):
                     try:
                         time.sleep(float(sleep_ms) / 1000)
                     except:
-                        log.critical("WasatchDemo.run sleep() caught an exception", exc_info=1)
+                        # log.critical("WasatchDemo.run sleep() caught an exception", exc_info=1)
                         self.exiting = True
 
         log.debug("WasatchDemo.run exiting")
@@ -183,7 +183,7 @@ class WasatchDemo(object):
     def attempt_reading(self):
         try:
             reading = self.acquire_reading()
-        except Exception, exc:
+        except Exception as exc:
             log.critical("attempt_reading caught exception", exc_info=1)
             self.exiting = True
             return
@@ -228,20 +228,20 @@ class WasatchDemo(object):
             spectrum = reading.spectrum
 
         if self.args.ascii_art:
-            print "\n".join(wasatch.utils.ascii_spectrum(spectrum, rows=20, cols=80, x_axis=self.device.settings.wavelengths, x_unit="nm"))
+            print("\n".join(wasatch.utils.ascii_spectrum(spectrum, rows=20, cols=80, x_axis=self.device.settings.wavelengths, x_unit="nm")))
         else:
             spectrum_min = numpy.amin(spectrum)
             spectrum_max = numpy.amax(spectrum)
             spectrum_avg = numpy.mean(spectrum)
             size_in_bytes = psutil.Process(os.getpid()).memory_info().rss
 
-            print "Reading: %4d  Detector: %5.2f degC  Min: %8.2f  Max: %8.2f  Avg: %8.2f  Memory: %11d" % (
+            print("Reading: %4d  Detector: %5.2f degC  Min: %8.2f  Max: %8.2f  Avg: %8.2f  Memory: %11d" % (
                 self.reading_count,
                 reading.detector_temperature_degC,
                 spectrum_min,
                 spectrum_max,
                 spectrum_avg,
-                size_in_bytes)
+                size_in_bytes))
 
         if self.outfile:
             self.outfile.write("%s,%.2f,%s\n" % (datetime.datetime.now(),
@@ -253,7 +253,7 @@ class WasatchDemo(object):
 ################################################################################
 
 def signal_handler(signal, frame):
-    print '\rInterrupted by Ctrl-C...shutting down',
+    print('\rInterrupted by Ctrl-C...shutting down', end=' ')
     clean_shutdown()
 
 def clean_shutdown():
