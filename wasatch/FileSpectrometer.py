@@ -2,7 +2,7 @@ import logging
 import json
 import os
 
-from SpectrometerSettings import SpectrometerSettings
+from .SpectrometerSettings import SpectrometerSettings
 
 log = logging.getLogger(__name__)
 

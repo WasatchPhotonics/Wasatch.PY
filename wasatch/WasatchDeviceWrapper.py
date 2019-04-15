@@ -1,6 +1,6 @@
 import sys
 import time
-# import Queue
+#import queue
 import random
 import logging
 import datetime
@@ -11,10 +11,10 @@ import multiprocessing
 from . import applog
 from . import utils
 
-from SpectrometerSettings import SpectrometerSettings
-from ControlObject        import ControlObject
-from WasatchDevice        import WasatchDevice
-from Reading              import Reading
+from .SpectrometerSettings import SpectrometerSettings
+from .ControlObject        import ControlObject
+from .WasatchDevice        import WasatchDevice
+from .Reading              import Reading
 
 log = logging.getLogger(__name__)
 
@@ -278,10 +278,7 @@ class WasatchDeviceWrapper(object):
             self.closing = True
 
             log.warn("WasatchDeviceWrapper.connect: sending poison pill to poller")
-            try:
-                self.command_queue_producer.send(None) # put(None, timeout=2)
-            except Queue.Full:
-                pass
+            self.command_queue_producer.send(None) # put(None, timeout=2)
 
             log.warn("WasatchDeviceWrapper.connect: waiting .5 sec")
             time.sleep(.5)
@@ -322,9 +319,6 @@ class WasatchDeviceWrapper(object):
         except Exception as exc:
             log.critical("disconnect: Cannot join poller", exc_info=1)
 
-        # log.debug("clearing queues")
-        # self.clear_all_queues()
-
         try:
             # do we need to do this?
             self.poller.terminate()
@@ -337,19 +331,6 @@ class WasatchDeviceWrapper(object):
 
         return True
 
-    def clear_queue(self, q):
-        while True:
-            try:
-                q.get_nowait()
-            except:
-                #sys.exc_clear()
-                break
-
-    def clear_all_queues(self):
-        self.clear_queue(self.spectrometer_settings_queue_consumer)
-        self.clear_queue(self.response_queue_consumer)
-        self.clear_queue(self.message_queue_consumer)
-
     ##
     # Similar to acquire_data, this method is called by the Controller in
     # MainProcess to dequeue a StatusMessage from the spectrometer sub-
@@ -360,12 +341,6 @@ class WasatchDeviceWrapper(object):
 
         if self.message_queue_consumer.poll():
             return self.message_queue_consumer.recv()
-
-        try:
-            return self.message_queue.get_nowait()
-        except:
-            #sys.exc_clear()
-            return None
 
     ## 
     # This method is called by the Controller in MainProcess.  It checks
@@ -456,14 +431,8 @@ class WasatchDeviceWrapper(object):
             if self.response_queue_consumer.poll():
                 reading = self.response_queue_consumer.recv()
             else:
+                # If there is nothing more to read, then we've emptied the queue
                 break
-
-            # try:
-            #     reading = self.response_queue.get_nowait()
-            # except:
-            #     # If there is nothing more to read, then we've emptied the queue
-            #     #sys.exc_clear()
-            #     break
 
             # If we come across a poison-pill, flow that up immediately -- 
             # game-over, we're done
@@ -536,11 +505,6 @@ class WasatchDeviceWrapper(object):
 
         self.command_queue_producer.send(control_object)
         return
-
-        # try:
-        #     self.command_queue.put(control_object, timeout=2)
-        # except Queue.Full:
-        #     log.critical("WasatchDeviceWrapper.change_setting: Problem enqueuing %s", setting, exc_info=1)
 
     # ##########################################################################
     #                                                                          #
@@ -714,7 +678,7 @@ class WasatchDeviceWrapper(object):
                     try:
                         args.response_queue.send(reading) # put(reading, timeout=2)
                         sent_good = True
-                    except Queue.Full:
+                    except queue.Full:
                         log.error("unable to push Reading %d to GUI", reading.session_count, exc_info=1)
                 else:
                     # it was an upstream poison pill
@@ -795,10 +759,7 @@ class WasatchDeviceWrapper(object):
                 # append the setting to the de-dupped list and track index
                 keep.append(control_object)
 
-            # except Queue.Empty as exc:
-                #sys.exc_clear()
             else:
                 break
-
 
         return keep

@@ -3,7 +3,7 @@ import usb
 
 log = logging.getLogger(__name__)
 
-from DeviceID import DeviceID
+from .DeviceID import DeviceID
 
 ##
 # Generates a list of DeviceID objects for all connected USB Wasatch Photonics 

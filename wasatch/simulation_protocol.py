@@ -159,20 +159,20 @@ class SimulateMaterial(object):
 
         log.info("Raw data load file: %s", filename)
 
-	csv_data = []
-	line_count = 0
-	with open(filename, "r") as csv_file:
-	    for line_data in csv_file:
+    csv_data = []
+    line_count = 0
+    with open(filename, "r") as csv_file:
+        for line_data in csv_file:
 
-	        if line_count > 1:
-		    line_data = line_data.replace('"','')
-	            commas = [x.strip() for x in line_data.split(",")]
-	            ints = [int(x.strip()) for x in commas[17:]]
-	            csv_data.append(ints)
-	            #log.info("Strip: %s", csv_data)
-		line_count += 1
+            if line_count > 1:
+            line_data = line_data.replace('"','')
+                commas = [x.strip() for x in line_data.split(",")]
+                ints = [int(x.strip()) for x in commas[17:]]
+                csv_data.append(ints)
+                #log.info("Strip: %s", csv_data)
+        line_count += 1
 
-	return csv_data
+    return csv_data
 
     ## Placeholder to log disconnect event. 
     def disconnect(self):

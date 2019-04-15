@@ -1,27 +1,27 @@
 import os
 import gc
 import time
-# import numpy # memory leaks?
-import Queue
+import queue
 import psutil
 import logging
 import datetime
 import multiprocessing
 
-from ConfigParser import ConfigParser
+# import numpy # memory leaks?
 
-from . import simulation_protocol
+from configparser import ConfigParser
+
 from . import utils
 
-from FeatureIdentificationDevice import FeatureIdentificationDevice
-from SpectrometerSettings        import SpectrometerSettings
-from BalanceAcquisition          import BalanceAcquisition
-from SpectrometerState           import SpectrometerState
-from FileSpectrometer            import FileSpectrometer
-from ControlObject               import ControlObject
-from WasatchBus                  import WasatchBus
-from DeviceID                    import DeviceID
-from Reading                     import Reading
+from .FeatureIdentificationDevice import FeatureIdentificationDevice
+from .SpectrometerSettings        import SpectrometerSettings
+from .BalanceAcquisition          import BalanceAcquisition
+from .SpectrometerState           import SpectrometerState
+from .FileSpectrometer            import FileSpectrometer
+from .ControlObject               import ControlObject
+from .WasatchBus                  import WasatchBus
+from .DeviceID                    import DeviceID
+from .Reading                     import Reading
 
 log = logging.getLogger(__name__)
 
@@ -647,19 +647,10 @@ class WasatchDevice(object):
                 log.debug("exited free-running mode, so clearing response queue")
                 self.clear_response_queue()
 
-            # except Queue.Empty:
-            #     log.debug("process_commands: empty")
-            #     break
-            # except Exception as exc:
-            #     log.critical("process_commands: error dequeuing or writing control object", exc_info=1)
-            #     raise
         return retval
 
     def clear_response_queue(self):
         return # (doesn't work for unidirectional pipes)
-    #     while not self.response_queue.empty():
-    #         log.debug("clearing response queue: throwing away Reading")
-    #         self.response_queue.get()
 
     # ######################################################################## #
     #                                                                          #
