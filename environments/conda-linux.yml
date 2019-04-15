@@ -7,6 +7,8 @@ dependencies:
 - py
 - python
 - six
+- psutil
+- pip
 - pip:
   - future
   - pygtail

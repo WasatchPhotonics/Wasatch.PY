@@ -1,15 +1,17 @@
-name: wasatch
+name: wasatch3
 channels:
-- 'defaults'
+- defaults
 dependencies:
-- 'mkl=2017.0.1=0'
-- 'numpy=1.11.3=py27_0'
-- 'py=1.4.32=py27_0'
-- 'python=2.7.13=0'
-- 'six=1.10.0=py27_0'
+- mkl
+- numpy
+- py
+- python
+- six
+- psutil
+- pip
 - pip:
-  - future==0.16.0
-  - pygtail==0.7.0
-  - pyusb==1.0.0
-  - requests==2.13.0
-  - pexpect==4.6.0
+  - future
+  - pygtail
+  - pyusb
+  - requests
+  - pexpect
