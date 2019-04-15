@@ -656,9 +656,10 @@ class WasatchDevice(object):
         return retval
 
     def clear_response_queue(self):
-        while not self.response_queue.empty():
-            log.debug("clearing response queue: throwing away Reading")
-            self.response_queue.get()
+        return # (doesn't work for unidirectional pipes)
+    #     while not self.response_queue.empty():
+    #         log.debug("clearing response queue: throwing away Reading")
+    #         self.response_queue.get()
 
     # ######################################################################## #
     #                                                                          #

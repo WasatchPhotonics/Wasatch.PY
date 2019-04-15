@@ -1517,7 +1517,7 @@ class FeatureIdentificationDevice(object):
 
         msg = StatusMessage(setting, value)
         try:
-            self.message_queue.put_nowait(msg)
+            self.message_queue.send(msg) # put_nowait(msg)
         except:
             log.error("failed to enqueue StatusMessage (%s, %s)", setting, value, exc_info=1)
 

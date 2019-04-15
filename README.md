@@ -312,6 +312,8 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2019-04-15 1.0.19
+    - moved multiprocessing.Queue to .Pipe
 - 2019-04-10 1.0.18
     - fixed for Windows (reverted multiprocessing.Manager to multiprocessing)
 - 2019-04-10 1.0.17
