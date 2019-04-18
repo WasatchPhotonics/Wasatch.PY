@@ -100,6 +100,8 @@ multi-process pipeline used by ENLIGHTEN.
 
 # Version History
 
+- 04-18-2019 2.2.0
+    - ported to Python 3.4 to support latest Wasatch.PY
 - 03-19-2019 2.1.1
     - added set\_laser\_power\_perc
 - 03-15-2019 2.1.0

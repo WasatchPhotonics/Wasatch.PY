@@ -868,6 +868,15 @@ class FeatureIdentificationDevice(object):
         self.detector_tec_setpoint_has_been_set = True
         return ok
 
+    def get_detector_tec_setpoint_degC(self):
+        if self.detector_tec_setpoint_has_been_set:
+            return self.settings.state.tec_setpoint_degC
+        log.error("Detector TEC setpoint has not yet been applied")
+        return 0.0
+
+    def get_detector_tec_setpoint_raw(self):
+        return self.get_dac(0)
+
     def get_dac(self, dacIndex=0):
         return self.get_code(0xd9, wIndex=dacIndex, label="GET_DAC", lsb_len=2)
 
@@ -953,6 +962,9 @@ class FeatureIdentificationDevice(object):
                        data_or_wLength = [0] * 8,
                        label           = "SET_SELECTED_LASER")
         return True
+
+    def get_selected_laser(self):
+        return self.settings.state.selected_laser
 
     def set_laser_enable(self, flag):
         if not self.settings.eeprom.has_laser:

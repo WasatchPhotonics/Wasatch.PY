@@ -66,10 +66,10 @@ try:
     child.expect(success)
     child.expect(prompt)
 except pexpect.exceptions.TIMEOUT:
-    print "ERROR: No spectrometers found"
+    print("ERROR: No spectrometers found")
     sys.exit(1)
 
-print "Successfully enumerated spectrometer"
+print("Successfully enumerated spectrometer")
 
 child.sendline("has_linearity_coeffs")
 child.expect(prompt)
@@ -95,7 +95,7 @@ while True:
     msg = "Pass %d of %d (time %s, integration_time_ms %d, detector_tec_setpoint_degc %d, laser_power_mw %d)" % (
         outer_loop, args.outer_loop, datetime.datetime.now(), integration_time_ms, detector_tec_setpoint_degc, laser_power_mw)
     logfile.write(msg + "\n")
-    print msg
+    print(msg)
 
     # time.sleep(2)
 
@@ -127,7 +127,7 @@ while True:
             child.expect(prompt)
 
         for inner_loop in range(args.inner_loop):
-            print "  Iteration %d of %d" % (inner_loop, args.inner_loop)
+            print("  Iteration %d of %d" % (inner_loop, args.inner_loop))
             
             child.sendline("get_detector_temperature_degc")
             child.expect(prompt)
@@ -216,10 +216,10 @@ while True:
         logfile.write("load-test error (outer_loop %d, inner_loop %d, time %s): %s" % (outer_loop, inner_loop, datetime.datetime.now(), ex))
         logfile.write(traceback.format_exc())
         if failure_count > max_failures:
-            print "too many failures, quitting"
+            print("too many failures, quitting")
             break
 
 child.sendline("close")
 child.expect(pexpect.EOF)
 
-print "All tests completed (%d errors)" % failure_count
+print("All tests completed (%d errors)" % failure_count)

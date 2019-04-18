@@ -271,16 +271,6 @@ The following was tested under MacOS 10.13.2 ("High Sierra"):
 
 # Known Issues
 
-## Should rename UUID
-
-I used the acronym "UUID" to refer to a unique bus device because I'd been 
-working with BLE and wanted to carry-over the concept, but I now realize
-UUID has a pre-existing definition which I'm failing to enforce:
-
-@see https://en.wikipedia.org/wiki/Universally\_unique\_identifier
-
-This field should be renamed "bus\_id" or similar in Wasatch.PY and ENLIGHTEN.
-
 ## Non-Blocking doesn't work on MacOS
 
 MacOS doesn't allow usb.core.find() to be called from a forked background process.
@@ -297,6 +287,13 @@ Will investigate workarounds pending prioritization, but since the default
 blocking mode works, this shouldn't be a major problem until we port ENLIGHTEN 
 to MacOS.
 
+## applog leaks on Linux
+
+If you run demo.py with "--log-level DEBUG --delay-ms 0" for extended periods on
+Linux, you may see the memory size creeping up.  This has been observed under 
+Python 2.7 and 3.4 on Ubuntu 16, but not on Windows or MacOS.  Currently under 
+investigation.
+
 # Common Errors
 
 ## LIBUSB error: No backend available (MacOS)
@@ -312,6 +309,10 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2019-04-18 1.0.21
+    - added get\_detector\_tec\_setpoint\_degC
+    - added get\_detector\_tec\_setpoint\_raw
+    - added get\_selected\_laser
 - 2019-04-15 1.0.20
     - merging Pipes and Py3
 - 2019-04-15 1.0.19

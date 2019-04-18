@@ -1,5 +1,6 @@
 #!/usr/bin/env python -u
 
+import datetime
 import platform
 import argparse
 import readline
@@ -16,7 +17,7 @@ from wasatch.WasatchBus         import WasatchBus
 from wasatch.WasatchDevice      import WasatchDevice
 from wasatch.BalanceAcquisition import BalanceAcquisition
 
-VERSION = "2.1.1"
+VERSION = "2.2.0"
 
 log = logging.getLogger(__name__)
 
@@ -46,6 +47,7 @@ class WasatchShell(object):
         parser = argparse.ArgumentParser()
         parser.add_argument("--logfile", help="where to write log messages")
         parser.add_argument("--log-level", type=str, default="info", help="logging level", choices=['debug', 'info', 'warning', 'error', 'critical'])
+        parser.add_argument("--timestamp", action="store_true", help="timestamp console messages")
         self.args = parser.parse_args()
 
         self.configure_logging()
@@ -62,6 +64,8 @@ class WasatchShell(object):
             "get_dac",
             "get_detector_gain",
             "get_detector_offset",
+            "get_detector_tec_setpoint_degC",
+            "get_detector_tec_setpoint_raw",
             "get_detector_temperature_degC",
             "get_detector_temperature_raw",
             "get_external_trigger_output",
@@ -90,6 +94,7 @@ class WasatchShell(object):
             "get_secondary_adc_calibrated",
             "get_secondary_adc_raw",
             "get_selected_adc",
+            "get_selected_laser",
             "get_sensor_line_length",
             "get_tec_enabled",
             "get_trigger_delay",
@@ -103,8 +108,8 @@ class WasatchShell(object):
     # ##############################################################################
 
     def usage(self):
-        print "Version: %s" % VERSION
-        print """The following commands are supported:
+        print("Version: %s" % VERSION)
+        print("""The following commands are supported:
         help                                   - this screen
         version                                - program and library versions
                                                
@@ -134,17 +139,17 @@ class WasatchShell(object):
         get_spectrum_save                      - save spectrum to filename as CSV
         get_config_json                        - return EEPROM as JSON string
         get_all                                - calls all gettors
-        """
-        print "The following gettors are also available:"
+        """)
+        print("The following gettors are also available:")
         for k in sorted(self.gettors.keys()):
-            print "        %s" % k
+            print("        %s" % k)
 
     def disconnected(self):
         self.display("ERROR: no device connected")
 
     ## encapsulating in case any platforms don't like GNU readline
     def get_line(self, prompt="args> "):
-        return raw_input(prompt).strip()
+        return input(prompt).strip()
 
     def has_input(self):
         return self.input_tokens is not None and len(self.input_tokens) > 0
@@ -171,7 +176,7 @@ class WasatchShell(object):
 
     def display(self, msg):
         log.info(">> %s", msg)
-        print msg
+        print(msg)
         sys.stdout.flush()
 
     def configure_logging(self):
@@ -190,7 +195,8 @@ class WasatchShell(object):
 
         try:
             while True:
-                line = self.get_line('wp> ')
+                prompt = "wp> " if not self.args.timestamp else str(datetime.datetime.now()) + " wp> "
+                line = self.get_line(prompt)
 
                 # ignore comments
                 if line.startswith('#') or len(line) == 0:
@@ -325,6 +331,10 @@ class WasatchShell(object):
                             self.device.change_setting("selected_laser", self.read_int())
                             self.display(1)
 
+                        elif command == "open":
+                            # if user re-sends open command when already open, do nothing
+                            self.display(1)
+
                         else:
                             self.display("ERROR: unknown command: " + command)
                     except Exception as ex:
@@ -405,7 +415,7 @@ class WasatchShell(object):
         # self.device.hardware.random_errors = True
 
         # validate gettors (in case this is used against a StrokerProtocol unit, for instance)
-        for func_name in self.gettors.keys():
+        for func_name in list(self.gettors.keys()):
             if not hasattr(device.hardware, self.gettors[func_name]):
                 self.display("WARNING: gettor %s (%s) not found in device" % (func_name, self.gettors[func_name]))
                 del self.gettors[func_name]
@@ -448,7 +458,7 @@ class WasatchShell(object):
             return spectrum
 
         for pixel in spectrum:
-            print pixel
+            print(pixel)
 
     def get_spectrum_save(self):
         spectrum = self.get_spectrum()
