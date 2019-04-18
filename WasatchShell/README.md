@@ -100,6 +100,13 @@ multi-process pipeline used by ENLIGHTEN.
 
 # Version History
 
+- 04-18-2019 2.2.1
+    - wasatch-shell.py
+        - added has\_laser\_power\_calibration 
+    - load-test.py 
+        - added --script-file
+        - added script\_long.py and script\_short.py 
+        - increased buffer size, timeout on load-test.py
 - 04-18-2019 2.2.0
     - ported to Python 3.4 to support latest Wasatch.PY
 - 03-19-2019 2.1.1

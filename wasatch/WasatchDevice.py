@@ -502,8 +502,6 @@ class WasatchDevice(object):
                 self.hardware.set_laser_enable(False)
             return False # for convenience
 
-        log.debug("reading.spectrum = %s (%s)", type(reading.spectrum), type(reading.spectrum[0]))
-
         if self.bare_readings:
             disable_laser()
             return reading

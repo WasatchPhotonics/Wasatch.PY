@@ -158,6 +158,8 @@ class FeatureIdentificationDevice(object):
             self.settings.state.min_usb_interval_ms = 250
             self.settings.state.max_usb_interval_ms = 250
 
+        log.debug("default timeout = %d ms", device.default_timeout)
+
         return True
 
     def disconnect(self):
@@ -1077,8 +1079,11 @@ class FeatureIdentificationDevice(object):
         self.last_applied_laser_power = self.next_applied_laser_power
         log.debug("set_laser_enable_ramp: last_applied_laser_power = %d", self.next_applied_laser_power)
 
+    def has_laser_power_calibration(self):
+        return self.settings.eeprom.has_laser_power_calibration()
+
     def set_laser_power_mW(self, mW_in):
-        if not self.settings.eeprom.has_laser_power_calibration():
+        if not self.has_laser_power_calibration():
             log.error("EEPROM doesn't have laser power calibration")
             return False
 
