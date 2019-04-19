@@ -141,7 +141,7 @@ class Test(object):
     def stabilize(self, temp):
         log.info("TEC setpoint -> %d", temp)
         self.device.change_setting("detector_tec_setpoint_degC", temp)
-        self.device.change_setting("detector_tec_enable", "1")
+        self.device.change_setting("detector_tec_enable", True)
 
         log.info("waiting for temperature to stabilize")
         self.device.change_setting("integration_time_ms", self.device.settings.eeprom.min_integration_time_ms)
