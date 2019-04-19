@@ -6,11 +6,11 @@
 #  DESCRIPTION:  Simple cmd-line demo to confirm that Wasatch.PY is working    #
 #                and can connect to and control a spectrometer.                #
 #                                                                              #
-#  ENVIRONMENT:  (if using Miniconda2)                                         #
+#  ENVIRONMENT:  (if using Miniconda3)                                         #
 #                $ rm -f environment.yml                                       #
-#                $ ln -s environments/conda-linux.yml                          #
-#                $ conda env create -n wasatch                                 #
-#                $ conda activate wasatch                                      #
+#                $ ln -s environments/conda-linux.yml  (or macos, etc)         #
+#                $ conda env create -n wasatch3                                #
+#                $ conda activate wasatch3                                     #
 #  INVOCATION:                                                                 #
 #                $ python -u demo.py                                           #
 #                                                                              #
@@ -26,7 +26,6 @@ import psutil
 import logging
 import datetime
 import argparse
-import multiprocessing
 
 import wasatch
 from wasatch import utils

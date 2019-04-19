@@ -864,7 +864,7 @@ class FeatureIdentificationDevice(object):
         # ROUND (don't mask) to 12-bit DAC 
         raw = max(0, min(raw, 0xfff))
 
-        log.info("Set CCD TEC Setpoint: %.2f deg C (raw ADC 0x%04x)", degC, raw)
+        log.debug("Set CCD TEC Setpoint: %.2f deg C (raw ADC 0x%04x)", degC, raw)
         ok = self.send_code(0xd8, raw, label="SET_DETECTOR_TEC_SETPOINT")
         self.settings.state.tec_setpoint_degC = degC
         self.detector_tec_setpoint_has_been_set = True
@@ -1192,7 +1192,7 @@ class FeatureIdentificationDevice(object):
 
         # Turn off modulation at full laser power, exit
         if value >= 100 or value < 0:
-            log.info("Turning off laser modulation (full power)")
+            log.debug("Turning off laser modulation (full power)")
             self.next_applied_laser_power = 100.0
             log.debug("next_applied_laser_power = 100.0")
             lsb = 0
@@ -1234,7 +1234,7 @@ class FeatureIdentificationDevice(object):
             log.critical("Hardware Failure to send laser modulation")
             return False
 
-        log.info("Laser power set to: %d", value)
+        log.debug("Laser power set to: %d", value)
 
         self.next_applied_laser_power = value
         log.debug("next_applied_laser_power = %s", self.next_applied_laser_power)
@@ -1392,7 +1392,7 @@ class FeatureIdentificationDevice(object):
     # @todo move string-to-enum converter to AppLog
     def set_log_level(self, s):
         lvl = logging.DEBUG if s == "DEBUG" else logging.INFO
-        log.info("fid.set_log_level: setting to %s", lvl)
+        log.debug("fid.set_log_level: setting to %s", lvl)
         logging.getLogger().setLevel(lvl)
 
     def validate_eeprom(self, pair):
@@ -1456,9 +1456,9 @@ class FeatureIdentificationDevice(object):
             return
 
         # backup contents of previous EEPROM in log
-        log.info("Original EEPROM contents")
+        log.debug("Original EEPROM contents")
         self.eeprom_backup.dump()
-        log.info("Original EEPROM buffers: %s", self.eeprom_backup.buffers)
+        log.debug("Original EEPROM buffers: %s", self.eeprom_backup.buffers)
 
         try:
             self.settings.eeprom.generate_write_buffers()
@@ -1466,7 +1466,7 @@ class FeatureIdentificationDevice(object):
             log.critical("failed to render EEPROM write buffers", exc_info=1)
             return
 
-        log.info("Would write new buffers: %s", self.settings.eeprom.write_buffers)
+        log.debug("Would write new buffers: %s", self.settings.eeprom.write_buffers)
 
         for page in range(5, -1, -1):
             DATA_START = 0x3c00

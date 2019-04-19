@@ -175,20 +175,20 @@ class SpectrometerSettings(object):
         return json.dumps(tmp, indent=4, sort_keys=True, default=str)
 
     def dump(self):
-        log.info("SpectrometerSettings:")
-        log.info("  DeviceID = %s", self.device_id)
-        log.info("  Microcontroller Firmware Version = %s", self.microcontroller_firmware_version)
-        log.info("  FPGA Firmware Version = %s", self.fpga_firmware_version)
+        log.debug("SpectrometerSettings:")
+        log.debug("  DeviceID = %s", self.device_id)
+        log.debug("  Microcontroller Firmware Version = %s", self.microcontroller_firmware_version)
+        log.debug("  FPGA Firmware Version = %s", self.fpga_firmware_version)
 
         if self.wavelengths:
-            log.info("  Wavelengths = (%.2f, %.2f)", self.wavelengths[0], self.wavelengths[-1])
+            log.debug("  Wavelengths = (%.2f, %.2f)", self.wavelengths[0], self.wavelengths[-1])
         else:
-            log.info("  Wavelengths = None")
+            log.debug("  Wavelengths = None")
 
         if self.wavenumbers:
-            log.info("  Wavenumbers = (%.2f, %.2f)", self.wavenumbers[0], self.wavenumbers[-1])
+            log.debug("  Wavenumbers = (%.2f, %.2f)", self.wavenumbers[0], self.wavenumbers[-1])
         else:
-            log.info("  Wavenumbers = None")
+            log.debug("  Wavenumbers = None")
 
         if self.state:
             self.state.dump()

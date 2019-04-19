@@ -90,14 +90,14 @@ class WasatchDevice(object):
         if self.device_id.is_usb():
             log.debug("trying to connect to USB device")
             if self.connect_feature_identification():
-                log.info("Connected to FeatureIdentificationDevice")
+                log.debug("Connected to FeatureIdentificationDevice")
                 self.connected = True
                 self.initialize_settings()
                 return True
         elif self.device_id.is_file():
             log.debug("trying to connect to FILE device")
             if self.connect_file_spectrometer():
-                log.info("connected to FileSpectrometer")
+                log.debug("connected to FileSpectrometer")
                 self.connected = True
                 self.initialize_settings()
                 return True
@@ -108,7 +108,7 @@ class WasatchDevice(object):
         return False
 
     def disconnect(self):
-        log.info("WasatchDevice.disconnect: calling hardware disconnect")
+        log.debug("WasatchDevice.disconnect: calling hardware disconnect")
         try:
             self.hardware.disconnect()
         except Exception as exc:
@@ -155,7 +155,7 @@ class WasatchDevice(object):
             log.critical("Problem connecting to: %s", self.device_id, exc_info=1)
             return False
 
-        log.info("Connected to FeatureIdentificationDevice %s", self.device_id)
+        log.debug("Connected to FeatureIdentificationDevice %s", self.device_id)
         return True
 
     def initialize_settings(self):
