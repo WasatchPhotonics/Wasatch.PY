@@ -107,13 +107,19 @@ for pass_count in range(args.passes):
             child.sendline("get_spectrum_pretty")
             child.expect(prompt)
 
+            pd_raw = 0
+            pd_mW = "NA"
+
             # MZ: I don't understand this: if laser temperature is read BEFORE photodiode
-            # I can SEE the laser flicker on my test unit (which lacks a photodiode).
+            # I can SEE the laser flicker on my test unit (which lacks a photodiode).  
+            # Actually, it flickers a bit under Windows either way.
             if args.reverse:
                 (temp_raw, temp_degC) = read_temperature(child) # flickers?
-                (pd_raw, pd_mW) = read_photodiode(child)
+                if has_linearity_coeffs:
+                    (pd_raw, pd_mW) = read_photodiode(child)
             else:
-                (pd_raw, pd_mW) = read_photodiode(child)
+                if has_linearity_coeffs:
+                    (pd_raw, pd_mW) = read_photodiode(child)
                 (temp_raw, temp_degC) = read_temperature(child)
 
             print("%s reading: pass %d laser_power_perc %3d reading %2d photodiode_raw %4d photodiode_mW %s temp_raw %4d temp_degC %8.2f" % (
