@@ -18,10 +18,6 @@ import os
 
 from pexpect.popen_spawn import PopenSpawn
 
-max_passes = 2
-max_readings = 20
-integration_time_ms = 1000
-
 prompt = "wp>"
 success = "1"
 
@@ -49,6 +45,9 @@ def read_photodiode(child):
 
 # command-line args
 parser = argparse.ArgumentParser(description="Laser Hysteresis Test")
+parser.add_argument("--passes", type=int, default=2, help="number of hysteresis passes")
+parser.add_argument("--delay-ms", type=int, default=1000, help="delay between measurements")
+parser.add_argument("--readings", type=int, default=20, help="readings per laser power")
 parser.add_argument("--reverse", action="store_true", help="measure photodiode BEFORE temperature")
 args = parser.parse_args()
 
@@ -84,33 +83,24 @@ child.expect(prompt)
 has_laser_power_calibration = re.match("1", child.before)
 
 # set integration time as convenient way to control timing
-child.sendline("set_integration_time_ms %d" % integration_time_ms)
-child.expect(prompt)
-
-child.sendline("get_spectrum_pretty")
-child.expect(prompt)
-
-child.sendline("set_laser_power_perc 100")
+child.sendline("set_integration_time_ms %d" % args.delay_ms)
 child.expect(prompt)
 
 child.sendline("set_laser_enable true")
 child.expect(prompt)
 
-child.sendline("get_spectrum_pretty")
-child.expect(prompt)
-
 # perform multiple hysteresis passes
-for pass_count in range(max_passes):
+for pass_count in range(args.passes):
 
-    # perform a hysteresis pass over the laser, ramping it down from 100% to 10% and up again.
-    percentages = [ 100, 90, 80, 70, 60, 50, 40, 30, 20, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100 ]
+    # perform a hysteresis pass over the laser, ramping it down from 100% to 1% and up again.
+    percentages = [ 100, 90, 80, 70, 60, 50, 40, 30, 20, 10, 1, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100 ]
 
     for laser_power_perc in percentages:
         child.sendline("set_laser_power_perc %d" % laser_power_perc)
         child.expect(prompt)
 
         # take multiple readings as the laser stabilizes
-        for reading_count in range(max_readings):
+        for reading_count in range(args.readings):
 
             # throwaway spectrum for timing purposes and to keep the spectrometer
             # command pipeline moving (could probably just use sleep)
