@@ -309,6 +309,10 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2019-04-24 1.0.22
+    - added max\_tries and max\_integration\_time\_ms to balance\_acquisition
+    - WasatchShell updates
+    - logging fixes for ENLIGHTEN under Windows
 - 2019-04-18 1.0.21
     - added get\_detector\_tec\_setpoint\_degC
     - added get\_detector\_tec\_setpoint\_raw

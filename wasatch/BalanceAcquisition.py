@@ -9,20 +9,28 @@ class BalanceAcquisition(object):
     LASER                  = 1
     LASER_THEN_INTEGRATION = 2
 
-    def __init__(self, mode=INTEGRATION, intensity=45000, threshold=2500, pixel=None, device=None):
+    def __init__(self, mode=INTEGRATION, intensity=45000, threshold=2500, pixel=None, device=None, max_integration_time_ms=5000, max_tries=20):
         self.mode      = mode
         self.intensity = intensity
         self.threshold = threshold
         self.pixel     = pixel
         self.device    = device
+        self.max_tries = max_tries
+        self.max_integration_time_ms = min(max_integration_time_ms, device.settings.eeprom.max_integration_time_ms)
 
         if not isinstance(self.mode, int):
             self.mode = self.parse_mode(self.mode)
 
+    def using_integ(self):
+        return self.mode == self.INTEGRATION
+
+    def using_laser(self):
+        return self.mode == self.LASER
+
     def balance(self):
-        if self.mode == self.INTEGRATION:
+        if self.using_integ():
             return self.balance_pass(self.adjust_integration)
-        elif self.mode == self.LASER:
+        elif self.using_laser():
             return self.balance_pass(self.adjust_laser)
         else:
             # due to the way we're halving overshoots, the laser+integration
@@ -37,6 +45,8 @@ class BalanceAcquisition(object):
             return
 
         self.overshoot_count = 0
+        try_count = 0
+        same_count = 0
         while True:
             self.device.change_setting("acquire", True, allow_immediate = False)
             reading = self.device.acquire_data()
@@ -59,7 +69,24 @@ class BalanceAcquisition(object):
                 return True
 
             # adjust
+            last_value = state.integration_time_ms if self.using_integ() else state.laser_power
             if not adjust_func(peak):
+                return False
+            new_value = state.integration_time_ms if self.using_integ() else state.laser_power
+
+            # check if we're up against a limit
+            if last_value == new_value:
+                same_count += 1
+                if same_count >= 3:
+                    log.error("adjusted to same value (%s) %d times...giving up", last_value, same_count)
+                    return False
+            else:
+                same_count = 0
+
+            try_count += 1
+
+            if try_count >= self.max_tries:
+                log.error("giving up after %d tries", try_count)
                 return False
 
     def adjust_integration(self, peak):
@@ -73,7 +100,7 @@ class BalanceAcquisition(object):
         else:
             n = int(1.0 * state.integration_time_ms * self.intensity / peak)
 
-        n = max(10, min(5000, n))
+        n = max(self.device.settings.eeprom.min_integration_time_ms, min(self.max_integration_time_ms, n))
 
         log.debug("new integ = %d", n)
         self.device.hardware.set_integration_time_ms(n)

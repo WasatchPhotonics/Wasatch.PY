@@ -133,7 +133,8 @@ class WasatchShell(object):
                                                
         set_interpolated_x_axis_cm             - takes start, end, incr (zero incr to disable)
         balance_acquisition                    - takes mode [integ, laser, laser_and_integ], 
-                                                    intensity, threshold, x, unit [px, nm, cm]
+                                                    intensity, threshold, max_integration_time_ms, 
+                                                    max_tries, x, unit [px, nm, cm]
                                                
         get_spectrum                           - print received spectrum
         get_spectrum_pretty                    - graph received spectrum
@@ -367,7 +368,7 @@ class WasatchShell(object):
 
         # disable the laser if connected
         if self.device is not None:
-            self.set_laser_enable(False)
+            self.set_laser_enable(False, quiet=True)
             self.device.disconnect()
             self.device = None
 
@@ -411,6 +412,9 @@ class WasatchShell(object):
 
         # disable free-running mode (interactive shell is the definition of "slaved to user commands")
         self.device.change_setting("free_running_mode", False)
+
+        # laser should not be on, but even so
+        self.set_laser_enable(False, quiet=True)
 
         # throw random errors
         # self.device.hardware.random_errors = True
@@ -497,9 +501,9 @@ class WasatchShell(object):
         for line in lines:
             self.display(line)
 
-    def set_laser_enable(self, flag):
+    def set_laser_enable(self, flag, quiet=False):
         self.device.change_setting("laser_enable", flag)
-        return self.display(1)
+        return None if quiet else self.display(1)
 
         # tries = 0
         # while True:
@@ -530,11 +534,13 @@ class WasatchShell(object):
 
     ## takes mode [integ, laser, laser_and_integ], intensity, threshold, x, unit [px, nm, cm]
     def balance_acquisition(self):
-        mode        = "integration" if not self.has_input() else self.read_str()
-        intensity   = 45000         if not self.has_input() else self.read_float()
-        threshold   = 2500          if not self.has_input() else self.read_float()
-        x_value     = None          if not self.has_input() else self.read_float()
-        unit        = "px"          if not self.has_input() else self.read_str()
+        mode                    = "integration" if not self.has_input() else self.read_str()
+        intensity               = 45000         if not self.has_input() else self.read_float()
+        threshold               = 2500          if not self.has_input() else self.read_float()
+        max_integration_time_ms = 5000          if not self.has_input() else self.read_int()
+        max_tries               = 20            if not self.has_input() else self.read_int()
+        x_value                 = None          if not self.has_input() else self.read_float()
+        unit                    = "px"          if not self.has_input() else self.read_str()
 
         if not re.match('(px|cm|nm)$', unit):
             return self.display("ERROR: invalid unit " + s)
@@ -550,11 +556,21 @@ class WasatchShell(object):
             else:
                 return self.display("ERROR: can't determine pixel from %s %s" % (x_value, unit))
 
-        if self.device.balance_acquisition(mode, intensity, threshold, pixel):
+        ok = self.device.balance_acquisition(
+                mode                    = mode, 
+                intensity               = intensity, 
+                threshold               = threshold, 
+                pixel                   = pixel, 
+                max_integration_time_ms = max_integration_time_ms, 
+                max_tries               = max_tries)
+
+        if ok:
             self.display("Ok integration_time_ms %s laser_power %s %s" % (
                 self.device.settings.state.integration_time_ms,
                 self.device.settings.state.laser_power, 
                 "mW" if self.device.settings.state.laser_power_in_mW else "percent"))
+        else:
+            self.display(0)
 
     def get_all(self):
         for command in sorted(self.gettors):
