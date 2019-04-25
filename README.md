@@ -309,6 +309,8 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2019-04-25 1.0.23
+    - fixed utils.truthy() (Py3)
 - 2019-04-24 1.0.22
     - added max\_tries and max\_integration\_time\_ms to balance\_acquisition
     - WasatchShell updates
