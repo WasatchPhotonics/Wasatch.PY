@@ -151,13 +151,6 @@ class FeatureIdentificationDevice(object):
         self.read_eeprom()
         self.read_fpga_compilation_options()
 
-        # SiG-VIS seems to have some issues if you pull spectra too fast.  Unsure
-        # if that would affect all USB commands.
-        if False and self.is_zynq():
-            log.debug("Zynq detected, slowing USB comms")
-            self.settings.state.min_usb_interval_ms = 250
-            self.settings.state.max_usb_interval_ms = 250
-
         log.debug("default timeout = %d ms", device.default_timeout)
 
         return True
