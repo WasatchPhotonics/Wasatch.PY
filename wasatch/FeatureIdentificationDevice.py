@@ -1013,6 +1013,7 @@ class FeatureIdentificationDevice(object):
             tries += 1
             if tries > 3:
                 log.critical("laser_enable %s command failed, giving up", flag)
+                self.queue_message("marquee_error", "laser setting failed")
                 return False
             else:
                 log.error("laser_enable %s command failed, re-trying", flag)
@@ -1403,10 +1404,12 @@ class FeatureIdentificationDevice(object):
             new_eeprom = pair[1]
         except:
             log.critical("fid.validate_eeprom: expected (sn, EEPROM) pair", exc_info=1)
+            self.queue_message("marquee_error", "Failed to write EEPROM")
             return False
 
         if not isinstance(new_eeprom, EEPROM):
             log.critical("fid.validate_eeprom: rejecting invalid EEPROM reference")
+            self.queue_message("marquee_error", "Failed to write EEPROM")
             return False
 
         # Confirm that this FeatureIdentificationDevice instance is the intended
@@ -1417,6 +1420,7 @@ class FeatureIdentificationDevice(object):
         if intended_serial != self.settings.eeprom.serial_number:
             log.critical("fid.validate_eeprom: %s process rejecting EEPROM intended for %s",
                 self.settings.eeprom.serial_number, intended_serial)
+            self.queue_message("marquee_error", "Failed to write EEPROM")
             return False
 
         return True
@@ -1453,6 +1457,7 @@ class FeatureIdentificationDevice(object):
     def write_eeprom(self):
         if not self.eeprom_backup:
             log.critical("expected to update or replace EEPROM object before write command")
+            self.queue_message("marquee_error", "Failed to write EEPROM")
             return
 
         # backup contents of previous EEPROM in log
@@ -1464,6 +1469,7 @@ class FeatureIdentificationDevice(object):
             self.settings.eeprom.generate_write_buffers()
         except:
             log.critical("failed to render EEPROM write buffers", exc_info=1)
+            self.queue_message("marquee_error", "Failed to write EEPROM")
             return
 
         log.debug("Would write new buffers: %s", self.settings.eeprom.write_buffers)
@@ -1474,6 +1480,8 @@ class FeatureIdentificationDevice(object):
             log.debug("writing page %d at offset 0x%04x: %s", page, offset, self.settings.eeprom.write_buffers[page])
             # note that "offset" (which is essentially an index) is nonetheless passed as value
             self.send_code(0xa2, wValue=offset, wIndex=0, data_or_wLength=self.settings.eeprom.write_buffers[page])
+
+        self.queue_message("marquee_info", "EEPROM successfully updated")
 
     def set_overrides(self, overrides):
         log.debug("received overrides %s", overrides)
