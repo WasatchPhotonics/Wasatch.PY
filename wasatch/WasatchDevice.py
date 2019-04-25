@@ -656,9 +656,23 @@ class WasatchDevice(object):
     #                                                                          #
     # ######################################################################## #
 
-    def balance_acquisition(self, mode=None, intensity=45000, threshold=2500, pixel=None):
-        balancer = BalanceAcquisition(mode, intensity, threshold, pixel, self)
-        balancer.balance()
+    def balance_acquisition(self, 
+            device                  = None, 
+            mode                    = None, 
+            intensity               = 45000, 
+            threshold               = 2500, 
+            pixel                   = None, 
+            max_integration_time_ms = 5000, 
+            max_tries               = 20):
+        balancer = BalanceAcquisition(
+            device                  = self,
+            mode                    = mode, 
+            intensity               = intensity, 
+            threshold               = threshold, 
+            pixel                   = pixel, 
+            max_integration_time_ms = max_integration_time_ms, 
+            max_tries               = max_tries)
+        return balancer.balance()
 
     # ######################################################################## #
     #                                                                          #

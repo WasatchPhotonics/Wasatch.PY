@@ -100,6 +100,9 @@ multi-process pipeline used by ENLIGHTEN.
 
 # Version History
 
+- 04-24-2019 2.2.2
+    - added laser-test.py
+    - added max\_tries and max\_integration\_time\_ms to balance\_acquisition
 - 04-18-2019 2.2.1
     - wasatch-shell.py
         - added has\_laser\_power\_calibration 

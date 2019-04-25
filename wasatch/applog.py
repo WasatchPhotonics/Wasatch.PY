@@ -23,16 +23,19 @@ import multiprocessing
 #                                                                              #
 # ##############################################################################
 
+explicit_path = None
+
 ##
 # Determine the location to store the log file. Current directory
 # on Linux, or %PROGRAMDATA% on windows - usually C:\ProgramData 
 def get_location():
+    if explicit_path is not None:
+        return explicit_path
 
     # For convenience, replace any dots with underscores to help windows know
     # it is a text file.
     module_name = __name__.replace(".", "_") # "wasatch.applog" -> "wasatch_applog"
     filename = "%s.txt" % module_name        # "wasatch_applog.txt"
-    # consider "%s-%s.log" % (module_name, utils.timestamp())
 
     if "Linux" in platform.platform():
         return filename
@@ -40,8 +43,12 @@ def get_location():
     if "Darwin" in platform.platform():
         return filename
 
-    # print "applog.get_location: platform.platform() = %s" % platform.platform()
+    pathname = os.path.join("C:\\ProgramData", filename)
+    return pathname
 
+    # The following doesn't seem to work so well under Python 3.4 :-/
+
+    # print "applog.get_location: platform.platform() = %s" % platform.platform()
     log_dir = ""
     try:
         # get pathname to C:\ProgramData (but with a lot more work)
@@ -62,7 +69,7 @@ def get_location():
         print("applog.get_location: problem assigning log directory")
 
     pathname = "%s/%s" % (log_dir, filename)
-    # print("applog.get_location: pathname = %s" % pathname)
+    print("applog.get_location: pathname = %s" % pathname)
     return pathname
 
 ##
@@ -142,12 +149,10 @@ def explicit_log_close():
 # user code for use with earlier Python versions.
 class QueueHandler(logging.Handler):
     def __init__(self, log_queue):
-        """ Initialise an instance, using the passed queue. """
         logging.Handler.__init__(self)
         self.log_queue = log_queue
 
     def emit(self, record):
-        """ Emit a record. Writes the LogRecord to the queue. """
         try:
             ei = record.exc_info
             if ei:
@@ -168,17 +173,21 @@ class QueueHandler(logging.Handler):
 class MainLogger(object):
     FORMAT = '%(asctime)s %(processName)-10s %(name)s %(levelname)-8s %(message)s'
 
-    def __init__(self, log_level=logging.DEBUG, enable_stdout=True):
+    def __init__(self, 
+            log_level=logging.DEBUG, 
+            enable_stdout=True,
+            logfile=None):
         self.log_queue     = multiprocessing.Queue(-1) # MZ: ?
         self.log_level     = log_level
         self.enable_stdout = enable_stdout
+        self.explicit_path = logfile
 
         # kick-off a listener in a separate process
         # Specifically, create a process running the listener_process() function
         # and pass it the arguments log_queue and listener_configurer (which is the
         # first function it will call)
         self.listener = multiprocessing.Process(target=self.listener_process,
-                                                args=(self.log_queue, self.listener_configurer))
+                                                args=(self.log_queue, self.listener_configurer, self.explicit_path))
         self.listener.start()
 
         # Remember you have to add a local log configurator for each
@@ -200,9 +209,13 @@ class MainLogger(object):
 
     ## Setup file handler and command window stream handlers. Every log
     #  message received on the queue handler will use these log configurers. 
-    def listener_configurer(self):
-
-        pathname = get_location()
+    def listener_configurer(self, explicit_path=None):
+        if explicit_path is not None:
+            pathname = explicit_path
+        elif self.explicit_path is not None:
+            pathname = self.explicit_path
+        else:
+            pathname = get_location()
 
         root_logger = logging.getLogger()
         fh = logging.FileHandler(pathname, 'w') # Overwrite previous run (does not append!)
@@ -223,8 +236,8 @@ class MainLogger(object):
     # This is the listener process top-level loop: wait for logging events
     # (LogRecords) on the queue and handle them, quit when you get a None for a
     # LogRecord (poison pill).
-    def listener_process(self, log_queue, configurer):
-        configurer()
+    def listener_process(self, log_queue, configurer, explicit_path):
+        configurer(explicit_path=explicit_path)
         while True:
             try:
                 record = log_queue.get()

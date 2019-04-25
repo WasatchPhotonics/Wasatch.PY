@@ -722,7 +722,7 @@ class FeatureIdentificationDevice(object):
         log.debug("select_adc -> %d", n)
         self.settings.state.selected_adc = n
         self.send_code(0xed, n, label="SELECT_ADC")
-        self.get_code(0xd5, wLength=2, label="GET_ADC (throwaway)")
+        self.get_code(0xd5, wLength=2, label="GET_ADC (throwaway)") # stabilization read
 
     def get_secondary_adc_calibrated(self, raw=None):
         if not self.has_linearity_coeffs():
@@ -1188,6 +1188,9 @@ class FeatureIdentificationDevice(object):
     #     value (200us? 400? 1000?), OR whether pulse WIDTH can be
     #     in smaller unit (500ns? 100ns?)
     def set_laser_power_perc_immediate(self, value):
+
+        # laser can flicker if we're on the wrong ADC?
+
         # don't want anything weird when passing over USB
         value = int(max(0, min(100, round(value))))
 
