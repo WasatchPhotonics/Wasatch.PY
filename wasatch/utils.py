@@ -316,7 +316,11 @@ def timestamp():
 def truthy(flag):
     if flag is None:
         return False
-    elif hasattr(flag, "__len__"): # lists, arrays, Numpy
-        return flag.__len__ > 0
-    else:
-        return flag
+
+    try:
+        if len(flag) > 0:
+            return True
+    except:
+        pass
+
+    return True if flag else False
