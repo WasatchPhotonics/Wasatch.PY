@@ -144,8 +144,9 @@ class FeatureIdentificationDevice(object):
             self.settings.state.min_usb_interval_ms = 0
             self.settings.state.max_usb_interval_ms = 0
 
-        # This must be for some very old InGaAs spectrometers?
-        if self.is_ingaas():
+        # This must be for some very old InGaAs spectrometers? 
+        # Will probably want to remove this for SiG...
+        if self.is_ingaas() and not self.is_arm():
             self.settings.eeprom.active_pixels_horizontal = 512
 
         self.read_eeprom()
@@ -530,14 +531,17 @@ class FeatureIdentificationDevice(object):
         self.send_code(0x9d, raw, label="SET_DETECTOR_GAIN_ODD")
         self.settings.eeprom.detector_gain_odd = gain
 
-    ## MZ: Should this be 0xeb? (no, that's CF_SELECT).
+    ## 
+    # Historically, this opcode moved around a bit.  At one point it may have 
+    # been 0xeb (now CF_SELECT).  Some firmwares used 0xe9 for LASER_RAMP_ENABLE.
+    # This seems to be what we're standardizing on henceforth.
     def set_area_scan_enable(self, flag):
         value = 1 if flag else 0
 
         # Currently the SiG doesn't support runtime-configurable Area Scan
         # (instead, custom firmware is built with that option enabled)
         if self.settings.isIMX():
-            log.warn("area scan not implemented for IMX")
+            log.warn("area scan not yet implemented for IMX")
             return
 
         self.send_code(0xe9, value, label="SET_AREA_SCAN_ENABLE")
@@ -604,8 +608,10 @@ class FeatureIdentificationDevice(object):
 
         spectrum = []
         timeout_ms = self.settings.state.integration_time_ms * 2 + 100
-        for endpoint in endpoints:
+        if self.settings.state.area_scan_enabled:
+            timeout_ms += 250
 
+        for endpoint in endpoints:
             data = None 
             while data is None:
                 try:
@@ -1344,7 +1350,17 @@ class FeatureIdentificationDevice(object):
             self.settings.state.selected_adc = value
         return value
 
-    # not tested
+    ##
+    # A configurable delay from when an inbound trigger signal is
+    # received by the spectrometer, until the triggered acquisition actually starts.
+    #
+    # Default value is 0us.
+    #
+    # Unit is in 0.5 microseconds (500ns), so value of 25 would represent 12.5us.
+    #
+    # Value is 24bit, so max value is 16777216 (8.388608 sec).
+    #
+    # Like triggering, only currently supported on ARM.
     def set_trigger_delay(self, half_us):
         if not self.is_arm():
             return log.error("SET_TRIGGER_DELAY only supported on ARM")
