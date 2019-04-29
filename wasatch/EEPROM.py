@@ -56,6 +56,7 @@ class EEPROM(object):
         self.min_integration_time_ms     = 10
         self.max_integration_time_ms     = 60000
         self.actual_horizontal           = 0
+        self.actual_vertical             = 0     # not a real EEPROM field, though it should be
         self.roi_horizontal_start        = 0
         self.roi_horizontal_end          = 0
         self.roi_vertical_region_1_start = 0
@@ -274,6 +275,7 @@ class EEPROM(object):
         self.min_integration_time_ms         = self.unpack((2, 21,  2), "H")
         self.max_integration_time_ms         = self.unpack((2, 23,  2), "H")
         self.actual_horizontal               = self.unpack((2, 25,  2), "H" if self.format >= 4 else "h")
+        self.actual_vertical                 = self.active_pixels_vertical  # approximate for now
         self.roi_horizontal_start            = self.unpack((2, 27,  2), "H" if self.format >= 4 else "h")
         self.roi_horizontal_end              = self.unpack((2, 29,  2), "H" if self.format >= 4 else "h")
         self.roi_vertical_region_1_start     = self.unpack((2, 31,  2), "H" if self.format >= 4 else "h")

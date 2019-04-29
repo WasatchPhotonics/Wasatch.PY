@@ -302,13 +302,10 @@ Using [Homebrew](https://brew.sh/), type:
 
     $ brew install libusb
 
-# Backlog
-
-- [ ] provide simplified blocking API
-- [ ] provide rendered API documentation (http://www.sphinx-doc.org/en/master/)
-
 # Version History
 
+- 2019-04-29 1.0.24
+    - support for area scan on FX2
 - 2019-04-25 1.0.23
     - fixed utils.truthy() (Py3)
 - 2019-04-24 1.0.22

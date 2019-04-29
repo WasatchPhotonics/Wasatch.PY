@@ -540,7 +540,7 @@ class FeatureIdentificationDevice(object):
 
         # Currently the SiG doesn't support runtime-configurable Area Scan
         # (instead, custom firmware is built with that option enabled)
-        if self.settings.isIMX():
+        if self.settings.is_imx():
             log.warn("area scan not yet implemented for IMX")
             return
 

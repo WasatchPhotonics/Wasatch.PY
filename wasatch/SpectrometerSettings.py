@@ -91,7 +91,7 @@ class SpectrometerSettings(object):
 
         return old
 
-    def isIMX(self):
+    def is_imx(self):
         return "imx" in self.eeprom.detector.lower()
 
     ##
