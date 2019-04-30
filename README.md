@@ -305,7 +305,7 @@ Using [Homebrew](https://brew.sh/), type:
 # Version History
 
 - 2019-04-30 1.0.25
-    - made linearity coeffs customer-editable
+    - made linearity\_coeffs, laser\_power\_coeffs and min/max\_laser\_power\_mW customer-editable
 - 2019-04-29 1.0.24
     - support for area scan on FX2
 - 2019-04-25 1.0.23
