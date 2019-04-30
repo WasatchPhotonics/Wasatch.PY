@@ -105,8 +105,15 @@ class EEPROM(object):
                           "roi_vertical_region_3_start" ]
 
     ## whether the given field is normally editable by users via ENLIGHTEN
+    #
+    # @return False otherwise (don't trust in None's truthiness, as you can't 
+    #         pass None to Qt's setEnabled)
     def is_editable(self, name):
-        return name.lower() in self.editable
+        s = name.lower()
+        for field in self.editable:
+            if s == field.lower():
+                return True
+        return False
 
     ## 
     # passed a temporary copy of another EEPROM object, copy-over any
@@ -123,7 +130,6 @@ class EEPROM(object):
                 setattr(self, field, new)
                 log.debug("  old: %s", old)
                 log.debug("  new: %s", getattr(self, field))
-
     ## 
     # given a set of the 6 buffers read from a spectrometer via USB,
     # parse those into the approrpriate fields and datatypes
