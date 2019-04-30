@@ -90,6 +90,7 @@ class EEPROM(object):
                           "calibration_date", 
                           "user_text",
                           "wavelength_coeffs",
+                          "linearity_coeffs",
                           "bad_pixels",
                           "roi_horizontal_end",             
                           "roi_horizontal_start",           
