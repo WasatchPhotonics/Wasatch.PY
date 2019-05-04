@@ -62,33 +62,36 @@ for dependencies and package management.
 # Running the Demo
 
 Following are the general usage instructions for the included command-line demo
-scripts.  After find specific Anaconda setup instructions for Windows, MacOS and 
-other tested platforms.
+scripts.  After find specific Anaconda setup instructions for Windows, Linux, MacOS 
+and other tested platforms.
 
-	usage: demo.py [-h] [-l LOG_LEVEL] [-o BUS_ORDER] [-i INTEGRATION_TIME_MS]
-				   [-s SCANS_TO_AVERAGE] [-w BOXCAR_HALF_WIDTH] [-d DELAY_MS]
-				   [-f OUTFILE] [-m MAX] [-b]
+    mzieg-macbook.local [~/work/code/Wasatch.PY] mzieg  9:48PM $ conda activate wasatch3
+    (wasatch3) mzieg-macbook.local [~/work/code/Wasatch.PY] mzieg  9:49PM $ python -u demo.py --help
+
+	usage: demo.py [-h] [--log-level LOG_LEVEL]
+				   [--integration-time-ms INTEGRATION_TIME_MS]
+				   [--scans-to-average SCANS_TO_AVERAGE]
+				   [--boxcar-half-width BOXCAR_HALF_WIDTH] [--delay-ms DELAY_MS]
+				   [--outfile OUTFILE] [--max MAX] [--non-blocking] [--ascii-art]
 
 	Simple demo to acquire spectra from command-line interface
 
 	optional arguments:
 	  -h, --help            show this help message and exit
-	  -l LOG_LEVEL, --log-level LOG_LEVEL
+	  --log-level LOG_LEVEL
 							logging level [DEBUG,INFO,WARNING,ERROR,CRITICAL]
-	  -o BUS_ORDER, --bus-order BUS_ORDER
-							usb device ordinal to connect
-	  -i INTEGRATION_TIME_MS, --integration-time-ms INTEGRATION_TIME_MS
+	  --integration-time-ms INTEGRATION_TIME_MS
 							integration time (ms, default 10)
-	  -s SCANS_TO_AVERAGE, --scans-to-average SCANS_TO_AVERAGE
+	  --scans-to-average SCANS_TO_AVERAGE
 							scans to average (default 1)
-	  -w BOXCAR_HALF_WIDTH, --boxcar-half-width BOXCAR_HALF_WIDTH
+	  --boxcar-half-width BOXCAR_HALF_WIDTH
 							boxcar half-width (default 0)
-	  -d DELAY_MS, --delay-ms DELAY_MS
-							delay between integrations (ms, default 1000)
-	  -f OUTFILE, --outfile OUTFILE
-							output filename (e.g. path/to/spectra.csv)
-	  -m MAX, --max MAX     max spectra to acquire (default 0, unlimited)
-	  -b, --non-blocking    non-blocking USB interface
+	  --delay-ms DELAY_MS   delay between integrations (ms, default 1000)
+	  --outfile OUTFILE     output filename (e.g. path/to/spectra.csv)
+	  --max MAX             max spectra to acquire (default 0, unlimited)
+	  --non-blocking        non-blocking USB interface (WasatchDeviceWrapper
+							instead of WasatchDevice)
+	  --ascii-art           graph spectra in ASCII
 
 ## Microsoft Windows 
 
