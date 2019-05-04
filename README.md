@@ -56,7 +56,7 @@ sp\_hardware.py (via devices.hardware) but these are not yet fully documented.
 
 # Dependencies
 
-Wasatch.PY uses the Python 2.7 build of [Miniconda](https://conda.io/miniconda.html)
+Wasatch.PY uses the Python 3.x build of [Miniconda](https://conda.io/miniconda.html)
 for dependencies and package management.
 
 # Running the Demo
@@ -93,35 +93,35 @@ other tested platforms.
 ## Microsoft Windows 
 
 The following session was run on Windows 10 using the Cmd shell of [Git for Windows](https://git-scm.com/)
-and [Miniconda](https://conda.io/miniconda.html) (Python 2.7):
+and [Miniconda](https://conda.io/miniconda.html) (Python 3.x):
 
-	C:\Users\mzieg>set PATH=%HOME%\miniconda2;%HOME%\miniconda2\scripts;%PATH%
+	C:\Users\mzieg>set PATH=%HOME%\miniconda3;%HOME%\miniconda3\scripts;%PATH%
 	C:\Users\mzieg>cd work\code\Wasatch.PY
 	C:\Users\mzieg\work\code\Wasatch.PY>conda update conda
 	C:\Users\mzieg\work\code\Wasatch.PY>cp environments\conda-win10.yml environment.yml
-	C:\Users\mzieg\work\code\Wasatch.PY>conda env create -n wasatch
+	C:\Users\mzieg\work\code\Wasatch.PY>conda env create -n wasatch3
         Solving environment: done
         Preparing transaction: done
         Verifying transaction: done
         Executing transaction: done
-        Requirement already satisfied: future==0.16.0 in c:\users\mzieg\miniconda2\envs\conda_enlighten\lib\site-packages (from -r C:\Users\mzieg\work\code\Wasatch.PY\condaenv.xq_jth.requirements.txt (line 1))
+        Requirement already satisfied: future==0.16.0 in c:\users\mzieg\miniconda3\envs\conda_enlighten\lib\site-packages (from -r C:\Users\mzieg\work\code\Wasatch.PY\condaenv.xq_jth.requirements.txt (line 1))
         Collecting pefile==2016.3.28 (from -r C:\Users\mzieg\work\code\Wasatch.PY\condaenv.xq_jth.requirements.txt (line 2))
-        Requirement already satisfied: pygtail==0.7.0 in c:\users\mzieg\miniconda2\envs\conda_enlighten\lib\site-packages (from -r C:\Users\mzieg\work\code\Wasatch.PY\condaenv.xq_jth.requirements.txt (line 3))
-        Requirement already satisfied: pyside==1.2.4 in c:\users\mzieg\miniconda2\envs\conda_enlighten\lib\site-packages (from -r C:\Users\mzieg\work\code\Wasatch.PY\condaenv.xq_jth.requirements.txt (line 4))
-        Requirement already satisfied: pytest-capturelog==0.7 in c:\users\mzieg\miniconda2\envs\conda_enlighten\lib\site-packages (from -r C:\Users\mzieg\work\code\Wasatch.PY\condaenv.xq_jth.requirements.txt (line 5))
-        Requirement already satisfied: pytest-qt==2.1.0 in c:\users\mzieg\miniconda2\envs\conda_enlighten\lib\site-packages (from -r C:\Users\mzieg\work\code\Wasatch.PY\condaenv.xq_jth.requirements.txt (line 6))
-        Requirement already satisfied: pyusb==1.0.0 in c:\users\mzieg\miniconda2\envs\conda_enlighten\lib\site-packages (from -r C:\Users\mzieg\work\code\Wasatch.PY\condaenv.xq_jth.requirements.txt (line 7))
-        Requirement already satisfied: requests==2.13.0 in c:\users\mzieg\miniconda2\envs\conda_enlighten\lib\site-packages (from -r C:\Users\mzieg\work\code\Wasatch.PY\condaenv.xq_jth.requirements.txt (line 8))
-        Requirement already satisfied: py>=1.1.1 in c:\users\mzieg\miniconda2\envs\conda_wasatch\lib\site-packages (from pytest-capturelog==0.7->-r C:\Users\mzieg\work\code\Wasatch.PY\condaenv.xq_jth.requirements.txt (line 5))
-        Requirement already satisfied: pytest>=2.7.0 in c:\users\mzieg\miniconda2\envs\conda_wasatch\lib\site-packages (from pytest-qt==2.1.0->-r C:\Users\mzieg\work\code\Wasatch.PY\condaenv.xq_jth.requirements.txt (line 6))
-        Requirement already satisfied: colorama in c:\users\mzieg\miniconda2\envs\conda_wasatch\lib\site-packages (from pytest>=2.7.0->pytest-qt==2.1.0->-r C:\Users\mzieg\work\code\Wasatch.PY\condaenv.xq_jth.requirements.txt (line 6))
+        Requirement already satisfied: pygtail==0.7.0 in c:\users\mzieg\miniconda3\envs\conda_enlighten\lib\site-packages (from -r C:\Users\mzieg\work\code\Wasatch.PY\condaenv.xq_jth.requirements.txt (line 3))
+        Requirement already satisfied: pyside==1.2.4 in c:\users\mzieg\miniconda3\envs\conda_enlighten\lib\site-packages (from -r C:\Users\mzieg\work\code\Wasatch.PY\condaenv.xq_jth.requirements.txt (line 4))
+        Requirement already satisfied: pytest-capturelog==0.7 in c:\users\mzieg\miniconda3\envs\conda_enlighten\lib\site-packages (from -r C:\Users\mzieg\work\code\Wasatch.PY\condaenv.xq_jth.requirements.txt (line 5))
+        Requirement already satisfied: pytest-qt==2.1.0 in c:\users\mzieg\miniconda3\envs\conda_enlighten\lib\site-packages (from -r C:\Users\mzieg\work\code\Wasatch.PY\condaenv.xq_jth.requirements.txt (line 6))
+        Requirement already satisfied: pyusb==1.0.0 in c:\users\mzieg\miniconda3\envs\conda_enlighten\lib\site-packages (from -r C:\Users\mzieg\work\code\Wasatch.PY\condaenv.xq_jth.requirements.txt (line 7))
+        Requirement already satisfied: requests==2.13.0 in c:\users\mzieg\miniconda3\envs\conda_enlighten\lib\site-packages (from -r C:\Users\mzieg\work\code\Wasatch.PY\condaenv.xq_jth.requirements.txt (line 8))
+        Requirement already satisfied: py>=1.1.1 in c:\users\mzieg\miniconda3\envs\wasatch3\lib\site-packages (from pytest-capturelog==0.7->-r C:\Users\mzieg\work\code\Wasatch.PY\condaenv.xq_jth.requirements.txt (line 5))
+        Requirement already satisfied: pytest>=2.7.0 in c:\users\mzieg\miniconda3\envs\wasatch3\lib\site-packages (from pytest-qt==2.1.0->-r C:\Users\mzieg\work\code\Wasatch.PY\condaenv.xq_jth.requirements.txt (line 6))
+        Requirement already satisfied: colorama in c:\users\mzieg\miniconda3\envs\wasatch3\lib\site-packages (from pytest>=2.7.0->pytest-qt==2.1.0->-r C:\Users\mzieg\work\code\Wasatch.PY\condaenv.xq_jth.requirements.txt (line 6))
         Installing collected packages: pefile
           Found existing installation: pefile 2017.11.5
             Uninstalling pefile-2017.11.5:
               Successfully uninstalled pefile-2017.11.5
         Successfully installed pefile-2016.3.28
 
-	C:\Users\mzieg\work\code\Wasatch.PY>activate wasatch
+	C:\Users\mzieg\work\code\Wasatch.PY>activate wasatch3
 
     C:\Users\mzieg\work\code\Wasatch.PY>python demo.py --outfile data.csv --integration-time-ms 100 --delay-ms 500
     2018-01-22 15:20:12,457 MainProcess wasatch.fid_hardware INFO     reading EEPROM page 1
@@ -192,8 +192,8 @@ The following was tested under Ubuntu 16.04 LTS:
     
     $ conda update -q conda
     $ ln -s environments/conda-linux.yml environment.yml
-    $ conda env create -n wasatch
-	$ source activate wasatch
+    $ conda env create -n wasatch3
+	$ source activate wasatch3
 
     (wasatch) ubuntu [~/work/code/Wasatch.PY] parallels 07:17 PM $ python demo.py
     2018-01-22 19:17:12,041 MainProcess wasatch.fid_hardware INFO     reading EEPROM page 1
@@ -248,7 +248,7 @@ The following was tested under MacOS 10.13.2 ("High Sierra"):
 
     $ conda update -q conda
     $ ln -s environments/conda-macos.yml environment.yml
-	$ conda env create -n wasatch
+	$ conda env create -n wasatch3
 		Solving environment: done
 		Preparing transaction: done
 		Verifying transaction: done
@@ -304,6 +304,8 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2019-05-03 1.0.25+
+    - README (explicitly call-out Miniconda3)
 - 2019-04-30 1.0.25
     - made linearity\_coeffs, laser\_power\_coeffs and min/max\_laser\_power\_mW customer-editable
 - 2019-04-29 1.0.24
