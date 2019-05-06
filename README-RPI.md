@@ -44,20 +44,19 @@ This process was tested with 2019-04-08-raspbian-stretch.zip.
 
 # Install Miniconda3
 
-Follow the instructions posted here, changing the installation directory to /home/pi/miniconda3 when prompted:
+Follow the instructions posted here:
 
 - https://gist.github.com/simoncos/a7ce35babeaf73f512be24135c0fbafb
+
+Change the installation directory to /home/pi/miniconda3 when prompted:
 
     $ wget http://repo.continuum.io/miniconda/Miniconda3-latest-Linux-armv7l.sh
     $ sudo /bin/bash Miniconda3-latest-Linux-armv7l.sh
 
-    Miniconda3 will now be installed into this location:
-    /root/miniconda3
-
+    Miniconda3 will now be installed into this location: /root/miniconda3
       - Press ENTER to confirm the location
       - Press CTRL-C to abort the installation
       - Or specify a different location below
-
     [/root/miniconda3] >>> /home/pi/miniconda3
 
 ## Post-Install Miniconda3 cleanup
@@ -75,9 +74,9 @@ Follow the instructions posted here, changing the installation directory to /hom
     $ cp environments/conda-linux.yml environment.yml
     $ vi environment.yml
 
-Comment-out the entry for 'mkl' by prepending a '#' character or deleting the line.
+Comment-out the entry for `mkl` by prepending a `#` character or deleting the line.
 The MKL package is a set of optimized binary libraries from Intel which provide a
-performance boost on x86 / x64 processors, but don't apply to the Raspberry Pi's ARM
+performance boost on x86 / x64 processors, but doesn't apply to the Raspberry Pi's ARM
 CPU.
 
 # Add Conda "channels" providing pre-built Raspberry Pi binaries of popular Python packages
