@@ -1,3 +1,5 @@
+![RPI board](https://www.raspberrypi.org/app/uploads/2017/05/Raspberry-Pi-3-Ports-1-1833x1080.jpg)
+
 # Overview
 
 Following is a quick-start guide for configuring Wasatch.PY on a brand-new or freshly imaged Raspberry Pi.
@@ -165,3 +167,5 @@ See [WasatchShell README](WasatchShell/README.md) for documentation, or type "he
     wp> set_laser_enable off
     1
     wp> quit
+
+![RPI Logo](https://www.raspberrypi.org/app/uploads/2018/03/RPi-Logo-Reg-SCREEN-199x250.png)
