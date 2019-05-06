@@ -181,6 +181,12 @@ and [Miniconda](https://conda.io/miniconda.html) (Python 3.x):
     2018-01-22 15:20:14.146000,66.00,916.00,924.00,956
     2018-01-22 15:20:14.661000,66.00,913.00,941.00,951
 
+## Raspberry Pi
+
+A standalone Raspberry Pi "Quick Start" tutorial is available here:
+
+- [README-RPI.md](README-RPI.md)
+
 ## Linux
 
 **IMPORTANT:** For Linux, you must copy the file udev/10-wasatch.rules from the
