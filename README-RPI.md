@@ -72,9 +72,9 @@ Change the installation directory to /home/pi/miniconda3 when prompted:
 
     $ cd ~/work/code/Wasatch.PY
     $ cp environments/conda-linux.yml environment.yml
-    $ vi environment.yml
 
-Comment-out the entry for `mkl` by prepending a `#` character or deleting the line.
+In the copied environment.yml (not the original conda-linux.yml), comment-out the
+entry for `mkl` by prepending a `#` character or deleting the line.
 The MKL package is a set of optimized binary libraries from Intel which provide a
 performance boost on x86 / x64 processors, but doesn't apply to the Raspberry Pi's ARM
 CPU.
@@ -98,7 +98,10 @@ CPU.
 
 # Test Demo.py
 
-Run demo.py with "--help" for command-line options.
+Run demo.py with "--help" for command-line options.  Note that you need to run "source activate wasatch3"
+*each time you reboot* (or open a new Terminal window, depending on how your shell is configured), in
+order to tell Linux and Miniconda "which version" of Python, and which set of package dependencies,
+you want to use.
 
     $ cd ~/work/code/Wasatch.PY
     $ source activate wasatch3
