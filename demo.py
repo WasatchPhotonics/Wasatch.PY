@@ -145,7 +145,7 @@ class WasatchDemo(object):
         # apply initial settings
         self.device.change_setting("integration_time_ms", self.args.integration_time_ms)
         self.device.change_setting("scans_to_average", self.args.scans_to_average)
-        self.device.change_setting("detector_tec_enable", "1")
+        self.device.change_setting("detector_tec_enable", True)
 
         # initialize outfile if one was specified
         if self.args.outfile:
