@@ -68,22 +68,16 @@ Change the installation directory to /home/pi/miniconda3 when prompted:
 
     $ sudo shutdown -r now
 
-# Tailor conda-linux.yml for Raspberry Pi
-
-    $ cd ~/work/code/Wasatch.PY
-    $ cp environments/conda-linux.yml environment.yml
-
-In the copied environment.yml (not the original conda-linux.yml), comment-out the
-entry for `mkl` by prepending a `#` character or deleting the line.
-The MKL package is a set of optimized binary libraries from Intel which provide a
-performance boost on x86 / x64 processors, but doesn't apply to the Raspberry Pi's ARM
-CPU.
-
 # Add Conda "channels" providing pre-built Raspberry Pi binaries of popular Python packages
 
     $ conda update --all
     $ conda config --add channels raspberrypi
     $ conda config --add channels rpi
+
+# Select Raspberry Pi Conda environment
+
+    $ cd ~/work/code/Wasatch.PY
+    $ cp environments/conda-rpi.yml environment.yml
 
 # Create Conda environment
 
