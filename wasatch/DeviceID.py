@@ -178,6 +178,9 @@ class DeviceID(object):
         else:
             raise Exception("unsupported DeviceID type %s" % self.type)
 
+    def __repr__(self):
+        return str(self)
+
     def __eq__(self, other):
         return str(self) == str(other)
 

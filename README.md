@@ -313,8 +313,11 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
-- 2019-05-03 1.0.25+
-    - README (explicitly call-out Miniconda3)
+- 2019-05-10 1.0.26
+    - README-RPI.md
+    - added conda-rpi.yml
+    - cleanup Queue references in exception cases
+    - added DeviceID.__repr__()
 - 2019-04-30 1.0.25
     - made linearity\_coeffs, laser\_power\_coeffs and min/max\_laser\_power\_mW customer-editable
 - 2019-04-29 1.0.24

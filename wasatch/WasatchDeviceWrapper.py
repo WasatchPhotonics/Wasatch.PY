@@ -1,6 +1,5 @@
 import sys
 import time
-#import queue
 import random
 import logging
 import datetime
@@ -678,7 +677,7 @@ class WasatchDeviceWrapper(object):
                     try:
                         args.response_queue.send(reading) # put(reading, timeout=2)
                         sent_good = True
-                    except queue.Full:
+                    except:
                         log.error("unable to push Reading %d to GUI", reading.session_count, exc_info=1)
                 else:
                     # it was an upstream poison pill
@@ -702,7 +701,7 @@ class WasatchDeviceWrapper(object):
                 log.debug("continuous_poll: sending Reading %d back to GUI process (%s)", reading.session_count, reading.spectrum[0:5])
                 try:
                     args.response_queue.send(reading) # put(reading, timeout=2)
-                except Queue.Full:
+                except:
                     log.error("unable to push Reading %d to GUI", reading.session_count, exc_info=1)
                 
             else:
@@ -718,7 +717,7 @@ class WasatchDeviceWrapper(object):
             log.critical("sending poison-pill upstream to controller")
             try:
                 args.response_queue.send(False) # put(False, timeout=5)
-            except Queue.Full:
+            except:
                 pass
 
             # Controller.ACQUISITION_TIMER_SLEEP_MS currently 50ms, so wait 500ms
