@@ -185,7 +185,7 @@ and [Miniconda](https://conda.io/miniconda.html) (Python 3.x):
 
 A standalone Raspberry Pi "Quick Start" tutorial is available here:
 
-- [README-RPI.md](README-RPI.md)
+- [README RPI](README_RPI.md)
 
 ## Linux
 
