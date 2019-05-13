@@ -14,6 +14,26 @@ class DeviceFinderUSB(object):
         pass
 
     ##
+    # Iterates over each supported PID, searching for any Wasatch devices
+    # with a known VID/PID and generating a list of DeviceIDs.
+    #
+    # Note that DeviceID internally pulls more attributes from the Device object.
+    # def find_usb_devices_alternate_unused(self):
+    #     vid = 0x24aa
+    #     device_ids = []
+    #     count = 0
+    #     for pid in [0x1000, 0x2000, 0x4000]:
+    #         # we could also remove iProduct and do one find on vid
+    #         devices = usb.core.find(find_all=True, idVendor=vid, idProduct=pid)
+    #         for device in devices:
+    #             count += 1
+    #             log.debug("DeviceListFID: discovered vid 0x%04x, pid 0x%04x (count %d)", vid, pid, count)
+    #
+    #             device_id = DeviceID(device=device)
+    #             device_ids.append(device_id)
+    #     return device_ids
+    
+    ##
     # Iterates over each USB bus, and each device on the bus, retaining any
     # with a Wasatch Photonics VID and supported PID and instantiating a
     # DeviceID for each.  
@@ -21,11 +41,13 @@ class DeviceFinderUSB(object):
     # Note that DeviceID internally pulls more attributes from the Device object.
     def find_usb_devices(self):
         device_ids = []
-        for bus in usb.busses():
+        count = 0
+        for bus in sorted(usb.busses()):
             for device in bus.devices:
+                count += 1
                 vid = int(device.idVendor)
                 pid = int(device.idProduct)
-                log.debug("DeviceListFID: discovered vid 0x%04x, pid 0x%04x", vid, pid)
+                log.debug("DeviceListFID: discovered vid 0x%04x, pid 0x%04x (count %d)", vid, pid, count)
 
                 if vid != 0x24aa:
                     continue

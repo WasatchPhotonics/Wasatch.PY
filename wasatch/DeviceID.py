@@ -103,8 +103,7 @@ class DeviceID(object):
             self.type = "USB"
             self.vid = int(device.idVendor)
             self.pid = int(device.idProduct)
-            self.bus = int(device.dev.bus)
-            self.address = int(device.dev.address)
+            self.determine_bus_and_address(device)
 
         elif directory is not None:
             # instantiate from a file spec
@@ -115,6 +114,29 @@ class DeviceID(object):
             raise Exception("DeviceID: needs usb.device OR device_id label OR directory")
 
         log.debug("instantiated DeviceID: %s", str(self))
+
+    def determine_bus_and_address(self, device):
+        # this seems to work on tested platforms, but is not guaranteed by the 
+        # protocol or library
+        if hasattr(device, "dev"):
+            self.bus = int(device.dev.bus)
+            self.address = int(device.dev.address)
+            return
+
+        # if the above fails, try to parse from string representation, e.g.:
+        # "DEVICE ID 24aa:1000 on Bus 000 Address 001 ================="
+        s = str(device)
+        m = re.match(r"Bus\s+(\d+)\s+Address\s+(\d+)", s, re.IGNORECASE)
+        if m:
+            self.bus = int(m.group(1))
+            self.address = int(m.group(2))
+            return
+
+        # Give up.  Shouldn't be a problem unless we talking to multiple devices
+        # with the same PID at once (Raman Rainbow etc).
+        log.error("can't determine bus or address of USB device from:\n%s", s)
+        self.bus = -1
+        self.address = -1
 
     def is_file(self):
         return self.type.upper() == "FILE"
