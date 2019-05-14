@@ -37,45 +37,83 @@ class SubprocessArgs(object):
 
 ##
 # Wrap WasatchDevice in a non-blocking interface run in a separate
-# process. Use a "settings queue" to pass metadata about the device 
-# (SpectrometerSettings) for multiprocessing-safe device communications
-# and acquisition on Windows. 
+# process, using multiprocess.pipes to exchange data (SpectrometerSettings, 
+# Readings and StatusMessages) for multiprocessing-safe device communications
+# and acquisition under Windows and Qt.
 # 
+# @par Lifecycle
+#
 # From ENLIGHTEN's standpoint (the original Wasatch.PY caller), here's what's going on:
 # 
-# 1. MainProcess creates a Controller.bus_timer which on timeout (tick) calls
-#    Controller.update_connections()
+# - MainProcess (enlighten.Controller.setup_bus_listener) instantiates a 
+#   wasatch.WasatchBus (bus) which will be persistent through the application 
+#   lifetime. setup_bus_listener also creates a QTimer (bus_timer) which will 
+#   check the USB bus for newly-connected ("hotplug") devices every second or so.
 #
-# 2. Controller.update_connections() calls Controller.connect_new()
+# - Controller.tick_bus_listener
+#   - does nothing (silently reschedules itself) if any new spectrometers are 
+#     actively in the process of connecting, because things get hairy if we're 
+#     trying to enumerate and configure several spectrometers at once
 #
-# 3. connect_new(): if we're not already connected to a spectrometer, yet
-#    bus.device_1 is not "disconnected" (implying something was found on the
-#    bus), then connect_new() instantiates a WasatchDeviceWrapper and then
-#    calls connect() on it
+#   - calls bus.update(), which will internally instantiate and use a 
+#     wasatch.DeviceFinderUSB to scan the current USB bus and update its internal
+#     list of all Wasatch spectrometers (whether already connected or otherwise)
 #
-# 4. WasatchDeviceWrapper.connect() forks a child process running the
-#    continuous_poll() method of the same WasatchDeviceWrapper instance,
-#    then waits on SpectrometerSettings to be returned via a pipe (queue).
-# 
-#    (at this point, the same WasatchDeviceWrapper instance is being 
-#        accessed by two processes...be careful!)
-# 
-# 5. continuous_poll() instantiantes a WasatchDevice.  This object will only
-#    ever be referenced within the subprocess.
+#   - then calls Controller.connect_new() to process the updated device list 
+#     (including determining whether any new devices are visible, and if so what
+#     to do about them)
 #
-# 6. continuous_poll() calls WasatchDevice.connect() (exits on failure)
+# - Controller.connect_new()
+#   - if there is at least one new spectrometer on the device list, pull off that 
+#     ONE device for connection (don't iterate over multiple new devices...we'll 
+#     get them on a subsequent bus tick).
 #
-#    6.a WasatchDevice instantiates a FID, SP or FileSpectrometer based on DeviceID
+#   - instantiates a WasatchDeviceWrapper and then calls connect() on it
+#   - WasatchDeviceWrapper.connect() 
+#       - forks a child process running the continuous_poll() method of the _same_
+#         WasatchDeviceWrapper instance
+#           - the WDW in the MainProcess then waits (blocks) while waiting for a
+#             single SpectrometerSettings object to be returned via a pipe from the
+#             child process.  This doesn't block the GUI, because this whole sequence
+#             is occuring in a background tick event on the bus_timer QTimer.
+#           - the WDW in the child process is running continuous_poll()
+#               - instantiates a WasatchDevice to access the actual hardware spectrometer 
+#                 over USB (this object will only ever be referenced within this subprocess)
+#               - then calls WasatchDevice.connect()
+#                   - WasatchDevice then instantiates an internal FeatureIdentificationDevice, 
+#                     FileSpectrometer or other implementation based on the passed DeviceID
+#                   - WasatchDevice then populates a SpectrometerSettings object based on
+#                     the connected device (loading the EEPROM, basic firmware settings etc)
+#               - continuous_poll() sends back the single SpectrometerSettings object
+#                 to the blocked MainProcess by way of confirmation that a new spectrometer
+#                 has successfully connected
+#    - Controller.connect_new() then completes the initialization of the spectrometer
+#      in the GUI by calling Controller.initialize_new_device(), which adds the spectrometer
+#      to Multispec, updates the EEPROMEditor, defaults the TEC controls and so on.
+# - In the background, WasatchDeviceWrapper.continuous_poll() continues running, acting as a 
+#   "free-running mode driver" of the spectrometer, passing down new commands from the
+#   enlighten.Controller, and feeding back Readings or StatusMessages when they appear.
 #
-#    6.b if FID, WasatchDevice.connect() loads the EEPROM
+# @par Shutdown
 #
-# 7. continuous_poll() populates (exactly once) a SpectrometerSettings object,
-#    then feeds it back to MainProcess
+# The whole thing can be shutdown in various ways, using the concept of "poison pill"
+# messages which can be flowed either upstream or downstream:
 #
-# It is incredibly important to recognize that continuous_poll() updates the 
-# command/response queues at a leisurely interval (currently 20Hz, set in 
-# poller_wait_sec.  No matter how short the integration time is (1ms), you're not
-# going to get spectra faster than 20 per second through this.
+#   - if a hardware error occurs in the spectrometer process, it sends a poison 
+#     pill upstream (a False value where a Reading is expected), then self-destructs
+#     (Controller is expected to drop the spectrometer from the GUI)
+#   - if the GUI is closing, poison-pills (None values where ControlObjects are expected)
+#     are sent downstream to each spectrometer process, telling them to terminate themselves
+#
+# There's some extra calls to ensure the logger process closes itself as well.
+#
+# @par Throughput Considerations
+#
+# It is important to recognize that continuous_poll() updates the command/response 
+# pipes at a relatively leisurely interval (currently 20Hz, set in POLLER_WAIT_SEC).  
+# No matter how short the integration time is (1ms), you're not going to get spectra 
+# faster than 20 per second through this (as ENLIGHTEN was designed as a real-time
+# visualization tool, not a high-speed data collection tool).
 #
 # Now, if you set ACQUISITION_MODE_KEEP_ALL, then you should still get every 
 # spectrum (whatever the spectrometer achieved through its scan-rate, potentially
@@ -84,14 +122,17 @@ class SubprocessArgs(object):
 #
 # @par Memory Leak
 #
-# This class leaks memory under Linux.
+# This class appears to leak memory under Linux, but only when debug logging
+# is enabled (ergo, the real leak is likely in applog).
 #
 # - occurs under Python 2.7 and 3.4
-# - seems related to response_queue and get_final_item() 
-#   - DISABLE_RESPONSE_QUEUE reduces leak by 66% (18MB -> 6MB over 60sec @ 10ms)
+# - correlated to response_queue and get_final_item() 
+#   - DISABLE_RESPONSE_QUEUE reduced ENLIGHTEN leak by 66% (18MB -> 6MB over 60sec @ 10ms)
+#     (while obviously blocking core functionality)
 # - doesn't show up under memory_profiler
 # - Reading.copy() doesn't help
 # - exc_clear() doesn't help
+#
 class WasatchDeviceWrapper(object):
 
     ACQUISITION_MODE_KEEP_ALL      = 0 # don't drop frames

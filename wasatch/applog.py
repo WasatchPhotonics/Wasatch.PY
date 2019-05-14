@@ -2,13 +2,17 @@
 # Custom logging setup and helper functions. 
 #
 # The general approach is that the control portion of the application 
-# instantiates a MainLogger object below. This will create a separate process 
+# instantiates a MainLogger object. This will create a separate process 
 # that looks for log events on a queue. Each process of the application then 
 # registers a queue handler, and writes its log events. The MainLogger loop 
 # will collect and write these log events to file and any other defined 
 # logging location.
 #
 # @see http://plumberjack.blogspot.com/2010/09/using-logging-with-multiprocessing.html
+#
+# The overall level of support for this file is basically "someone borrowed and
+# modified it from an open-source example on the internet, and it basically works
+# so I haven't putzed with it much" (except to try to understand when it breaks).
 
 import os
 import sys
@@ -73,7 +77,9 @@ def get_location():
     return pathname
 
 ##
-# Called at the beginning of every process, EXCEPT(?) the main process.
+# Called at the beginning of every subprocess, to tie into the existing
+# root logger (owned and created by the MainProcess).
+#
 # Adds a queue handler object to the root logger to be processed in the 
 # main listener.
 # 
@@ -170,6 +176,18 @@ class QueueHandler(logging.Handler):
 #                                                                              #
 # ##############################################################################
 
+##
+# @warning Memory Leak
+#
+# This code appears to leak memory under Linux.  In ENLIGHTEN it hasn't really
+# been a problem under normal operation, but if run with DEBUG logging enabled
+# can grow quite significant.
+#
+# The leak has not been thoroughly analyzed as a workaround exists (--log-level info).
+#
+# This code uses queues rather than pipes because pipes are point-to-point
+# (would only support one producer) while queues can have multiple producers
+# (e.g. Controller + WasatchDeviceWrapper instances) feeding one consumer.
 class MainLogger(object):
     FORMAT = '%(asctime)s %(processName)-10s %(name)s %(levelname)-8s %(message)s'
 
@@ -177,7 +195,7 @@ class MainLogger(object):
             log_level=logging.DEBUG, 
             enable_stdout=True,
             logfile=None):
-        self.log_queue     = multiprocessing.Queue(-1) # MZ: ?
+        self.log_queue     = multiprocessing.Queue(-1) 
         self.log_level     = log_level
         self.enable_stdout = enable_stdout
         self.explicit_path = logfile

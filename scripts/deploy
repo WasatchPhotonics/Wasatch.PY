@@ -15,8 +15,13 @@ read -p "Username: " USERNAME
 # render documentation 
 make doc
 
-echo
-read -p "Press return to continue..." FOO
+# echo
+# read -p "Press return to continue..." FOO
 
 # upload documentation
 rsync --archive doxygen/html/ ${USERNAME}@wasatchphotonics.com:www/api/Wasatch.PY/
+
+echo
+echo "View via:"
+echo
+echo "    http://www.wasatchphotonics.com/api/Wasatch.PY/"
