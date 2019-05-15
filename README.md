@@ -313,6 +313,8 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2019-05-15 1.0.28
+    - fixed DeviceFinderUSB bug in Linux
 - 2019-05-13 1.0.27
     - fallback bus/addr implementation
 - 2019-05-10 1.0.26
