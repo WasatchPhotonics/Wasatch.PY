@@ -42,7 +42,7 @@ class DeviceFinderUSB(object):
     def find_usb_devices(self):
         device_ids = []
         count = 0
-        for bus in sorted(usb.busses()):
+        for bus in usb.busses():
             for device in bus.devices:
                 count += 1
                 vid = int(device.idVendor)
