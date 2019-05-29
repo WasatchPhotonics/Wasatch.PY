@@ -127,6 +127,13 @@ class SpectrometerSettings(object):
     # ##########################################################################
 
     def update_wavecal(self, coeffs=None):
+        self.wavelengths = None
+        self.wavenumbers = None
+
+        if self.pixels() < 1:
+            log.error("no pixels defined, cannot generate wavecal")
+            return
+
         if coeffs is None:
             coeffs = self.eeprom.wavelength_coeffs
         else:
@@ -139,8 +146,10 @@ class SpectrometerSettings(object):
                 self.eeprom.wavelength_coeffs[1],
                 self.eeprom.wavelength_coeffs[2],
                 self.eeprom.wavelength_coeffs[3])
-        else:
-            # this can happen on Stroker Protocol before/without .ini file
+
+        if self.wavelengths is None:
+            # this can happen on Stroker Protocol before/without .ini file,
+            # or SiG with bad battery / corrupt EEPROM
             log.debug("no wavecal found - using pixel space")
             self.wavelengths = list(range(self.pixels()))
 

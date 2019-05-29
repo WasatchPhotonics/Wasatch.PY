@@ -313,6 +313,10 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2019-05-29 1.0.28
+    - enable Area Scan for IMX detectors
+    - added EEPROM.product\_configuration
+    - changed min/max\_integration\_time\_ms to 32-bit
 - 2019-05-13 1.0.27
     - fallback bus/addr implementation
 - 2019-05-10 1.0.26

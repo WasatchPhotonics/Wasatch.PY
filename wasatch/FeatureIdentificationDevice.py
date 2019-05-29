@@ -537,16 +537,8 @@ class FeatureIdentificationDevice(object):
     # This seems to be what we're standardizing on henceforth.
     def set_area_scan_enable(self, flag):
         value = 1 if flag else 0
-
-        # Currently the SiG doesn't support runtime-configurable Area Scan
-        # (instead, custom firmware is built with that option enabled)
-        if self.settings.is_imx():
-            log.warn("area scan not yet implemented for IMX")
-            return
-
-        self.send_code(0xe9, value, label="SET_AREA_SCAN_ENABLE")
-
         self.settings.state.area_scan_enabled = flag
+        self.send_code(0xe9, value, label="SET_AREA_SCAN_ENABLE")
 
     def get_sensor_line_length(self):
         value = self.get_upper_code(0x03, label="GET_LINE_LENGTH", lsb_len=2)
@@ -654,15 +646,6 @@ class FeatureIdentificationDevice(object):
             spectrum = corrected
             log.debug("swapped alternating pixels: spectrum = %s", spectrum[:10])
 
-        # if we're in area scan mode, use first pixel as row index (leave pixel in spectrum)
-        area_scan_row_count = -1
-        if self.settings.state.area_scan_enabled:
-            area_scan_row_count = spectrum[0]
-
-            # override row counter to smooth data and avoid a weird peak/trough 
-            # which could affect other smoothing, normalization or min/max algos.
-            spectrum[0] = spectrum[1]
-
         # For custom benches where the detector is essentially rotated
         # 180-deg from our typical orientation with regard to the grating
         # (e.g., on this spectrometer red wavelengths are diffracted toward 
@@ -673,6 +656,16 @@ class FeatureIdentificationDevice(object):
         # need to reverse the display order of the rows.
         if self.settings.state.invert_x_axis:
             spectrum.reverse()
+
+        # if we're in area scan mode, use first pixel as row index (leave pixel in spectrum)
+        area_scan_row_count = -1
+        if self.settings.state.area_scan_enabled:
+            area_scan_row_count = spectrum[0]
+
+            # override row counter to smooth data and avoid a weird peak/trough 
+            # which could affect other smoothing, normalization or min/max algos.
+            spectrum[0] = spectrum[1]
+            log.debug("get_line: area_scan_row_count = %d", area_scan_row_count)
 
         # When integrating new sensors, sometimes we want to only look at even-
         # numbered pixels to flatten-out irregularities in Bayer filters or InGaAs 

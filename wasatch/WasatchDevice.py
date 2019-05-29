@@ -438,7 +438,7 @@ class WasatchDevice(object):
                 reading.spectrum            = spectrum_and_row.spectrum
                 reading.area_scan_row_count = spectrum_and_row.row
 
-                log.debug("device.acquire_data: got %s ...", reading.spectrum[0:9])
+                log.debug("device.acquire_data: got %s ... (row %d)", reading.spectrum[0:9], reading.area_scan_row_count)
             except Exception as exc:
                 # if we got the timeout after switching from externally triggered back to internal, let it ride
                 if externally_triggered:

@@ -75,6 +75,7 @@ class EEPROM(object):
         self.user_text                   = None
 
         self.bad_pixels                  = [] # should be set, not list
+        self.product_configuration       = None
                                          
         self.format = 0
         self.buffers = []
@@ -209,6 +210,7 @@ class EEPROM(object):
         log.debug("  User Text:        %s", self.user_text)
         log.debug("")
         log.debug("  Bad Pixels:       %s", self.bad_pixels)
+        log.debug("  Product Config:   %s", self.product_configuration)
 
     # ##########################################################################
     #                                                                          #
@@ -282,8 +284,9 @@ class EEPROM(object):
         self.detector                        = self.unpack((2,  0, 16), "s")
         self.active_pixels_horizontal        = self.unpack((2, 16,  2), "H")
         self.active_pixels_vertical          = self.unpack((2, 19,  2), "H" if self.format >= 4 else "h")
-        self.min_integration_time_ms         = self.unpack((2, 21,  2), "H")
-        self.max_integration_time_ms         = self.unpack((2, 23,  2), "H")
+        if self.format < 5:
+            self.min_integration_time_ms         = self.unpack((2, 21,  2), "H")
+            self.max_integration_time_ms         = self.unpack((2, 23,  2), "H") 
         self.actual_horizontal               = self.unpack((2, 25,  2), "H" if self.format >= 4 else "h")
         self.actual_vertical                 = self.active_pixels_vertical  # approximate for now
         self.roi_horizontal_start            = self.unpack((2, 27,  2), "H" if self.format >= 4 else "h")
@@ -312,10 +315,14 @@ class EEPROM(object):
         self.laser_power_coeffs        .append(self.unpack((3, 24,  4), "f"))
         self.max_laser_power_mW              = self.unpack((3, 28,  4), "f")
         self.min_laser_power_mW              = self.unpack((3, 32,  4), "f")
-        self.excitation_nm_float             = self.unpack((3, 36,  4), "f")
 
+        self.excitation_nm_float             = self.unpack((3, 36,  4), "f")
         if self.format < 4:
             self.excitation_nm_float = self.excitation_nm
+
+        if self.format >= 5:
+            self.min_integration_time_ms     = self.unpack((3, 40,  4), "I")
+            self.max_integration_time_ms     = self.unpack((3, 44,  4), "I") 
 
         # ######################################################################
         # Page 4
@@ -335,6 +342,8 @@ class EEPROM(object):
                 bad.add(pixel)
         self.bad_pixels = list(bad)
         self.bad_pixels.sort()
+
+        self.product_configuration           = self.unpack((5,  30, 16), "s")
 
     ## make a printable ASCII string out of possibly-binary data
     def printable(self, buf):
@@ -366,6 +375,8 @@ class EEPROM(object):
             return
 
         if data_type == "s":
+            # This stops at the first NULL, so is not appropriate for binary data (user_data).
+            # OTOH, it doesn't currently enforce "printable" characters either (nor support Unicode).
             unpack_result = ""
             for c in buf[start_byte:end_byte]:
                 if c == 0:
@@ -433,7 +444,7 @@ class EEPROM(object):
             self.write_buffers[page][63] = revs[page]
 
         if EEPROM.USE_REV_4:
-            self.write_buffers[0][63] = 4
+            self.write_buffers[0][63] = 5
 
         # Page 0
         self.pack((0,  0, 16), "s", self.model                       )
@@ -475,8 +486,8 @@ class EEPROM(object):
         self.pack((2, 16,  2), "H", self.active_pixels_horizontal    )
         #        skip 18
         self.pack((2, 19,  2), "H", self.active_pixels_vertical      )
-        self.pack((2, 21,  2), "H", self.min_integration_time_ms     )
-        self.pack((2, 23,  2), "H", self.max_integration_time_ms     )
+        self.pack((2, 21,  2), "H", max(0xffff, self.min_integration_time_ms)) # by default, keep populating these with 
+        self.pack((2, 23,  2), "H", max(0xffff, self.max_integration_time_ms)) # old values
         self.pack((2, 25,  2), "H", self.actual_horizontal           )
         self.pack((2, 27,  2), "H", self.roi_horizontal_start        )
         self.pack((2, 29,  2), "H", self.roi_horizontal_end          )
@@ -500,6 +511,8 @@ class EEPROM(object):
         self.pack((3, 28,  4), "f", self.max_laser_power_mW)
         self.pack((3, 32,  4), "f", self.min_laser_power_mW)
         self.pack((3, 36,  4), "f", self.excitation_nm_float)
+        self.pack((3, 40,  4), "I", self.min_integration_time_ms     )
+        self.pack((3, 44,  4), "I", self.max_integration_time_ms     )
 
         # Page 4
         self.pack((4,  0, 63), "s", self.user_text)
@@ -518,6 +531,7 @@ class EEPROM(object):
                 value = -1
             self.pack((5, i * 2, 2), "h", value)
 
+        self.pack((5, 30, 16), "s", self.product_configuration)
 
     ## can be used as a sanity-check for any set of coefficients
     def coeffs_look_valid(self, coeffs, count=None):
