@@ -226,68 +226,69 @@ class EEPROM(object):
     # @see https://docs.python.org/2/library/struct.html#format-characters
     # (capitals are unsigned)
     def read_eeprom(self):
-        self.format = self.unpack((0, 63,  1), "B")
+        self.format = self.unpack((0, 63,  1), "B", "format")
+        log.debug("parsing EEPROM format %d", self.format)
 
         # ######################################################################
         # Page 0
         # ######################################################################
 
-        self.model                           = self.unpack((0,  0, 16), "s")
-        self.serial_number                   = self.unpack((0, 16, 16), "s")
-        self.baud_rate                       = self.unpack((0, 32,  4), "I")
-        self.has_cooling                     = self.unpack((0, 36,  1), "?")
-        self.has_battery                     = self.unpack((0, 37,  1), "?")
-        self.has_laser                       = self.unpack((0, 38,  1), "?")
-        self.excitation_nm                   = self.unpack((0, 39,  2), "H" if self.format >= 3 else "h")
-        self.slit_size_um                    = self.unpack((0, 41,  2), "H" if self.format >= 4 else "h")
+        self.model                           = self.unpack((0,  0, 16), "s", "model")
+        self.serial_number                   = self.unpack((0, 16, 16), "s", "serial")
+        self.baud_rate                       = self.unpack((0, 32,  4), "I", "baud")
+        self.has_cooling                     = self.unpack((0, 36,  1), "?", "cooling")
+        self.has_battery                     = self.unpack((0, 37,  1), "?", "battery")
+        self.has_laser                       = self.unpack((0, 38,  1), "?", "laser")
+        self.excitation_nm                   = self.unpack((0, 39,  2), "H" if self.format >= 3 else "h", "excitation(ushort)")
+        self.slit_size_um                    = self.unpack((0, 41,  2), "H" if self.format >= 4 else "h", "slit")
 
         # NOTE: the new InGaAs detector gain/offset won't be usable from 
         #       EEPROM until we start bumping production spectrometers to
         #       EEPROM Page 0 Revision 3!
         if self.format >= 3:
-            self.startup_integration_time_ms = self.unpack((0, 43,  2), "H")
-            self.startup_temp_degC           = self.unpack((0, 45,  2), "h")
-            self.startup_triggering_scheme   = self.unpack((0, 47,  1), "B")
-            self.detector_gain               = self.unpack((0, 48,  4), "f") # "even pixels" for InGaAs
-            self.detector_offset             = self.unpack((0, 52,  2), "h") # "even pixels" for InGaAs
-            self.detector_gain_odd           = self.unpack((0, 54,  4), "f") # InGaAs-only
-            self.detector_offset_odd         = self.unpack((0, 58,  2), "h") # InGaAs-only
+            self.startup_integration_time_ms = self.unpack((0, 43,  2), "H", "start_integ")
+            self.startup_temp_degC           = self.unpack((0, 45,  2), "h", "start_temp")
+            self.startup_triggering_scheme   = self.unpack((0, 47,  1), "B", "start_trigger")
+            self.detector_gain               = self.unpack((0, 48,  4), "f", "gain") # "even pixels" for InGaAs
+            self.detector_offset             = self.unpack((0, 52,  2), "h", "offset") # "even pixels" for InGaAs
+            self.detector_gain_odd           = self.unpack((0, 54,  4), "f", "gain_odd") # InGaAs-only
+            self.detector_offset_odd         = self.unpack((0, 58,  2), "h", "offset_odd") # InGaAs-only
 
         # ######################################################################
         # Page 1
         # ######################################################################
 
         self.wavelength_coeffs = []
-        self.wavelength_coeffs         .append(self.unpack((1,  0,  4), "f"))
+        self.wavelength_coeffs         .append(self.unpack((1,  0,  4), "f", "wavecal_coeff_0"))
         self.wavelength_coeffs         .append(self.unpack((1,  4,  4), "f"))
         self.wavelength_coeffs         .append(self.unpack((1,  8,  4), "f"))
         self.wavelength_coeffs         .append(self.unpack((1, 12,  4), "f"))
         self.degC_to_dac_coeffs = []
-        self.degC_to_dac_coeffs        .append(self.unpack((1, 16,  4), "f"))
+        self.degC_to_dac_coeffs        .append(self.unpack((1, 16,  4), "f", "degCtoDAC_coeff_0"))
         self.degC_to_dac_coeffs        .append(self.unpack((1, 20,  4), "f"))
         self.degC_to_dac_coeffs        .append(self.unpack((1, 24,  4), "f"))
-        self.max_temp_degC                   = self.unpack((1, 28,  2), "h")
-        self.min_temp_degC                   = self.unpack((1, 30,  2), "h")
+        self.max_temp_degC                   = self.unpack((1, 28,  2), "h", "max_temp")
+        self.min_temp_degC                   = self.unpack((1, 30,  2), "h", "min_temp")
         self.adc_to_degC_coeffs = []
-        self.adc_to_degC_coeffs        .append(self.unpack((1, 32,  4), "f"))
+        self.adc_to_degC_coeffs        .append(self.unpack((1, 32,  4), "f", "adcToDegC_coeff_0"))
         self.adc_to_degC_coeffs        .append(self.unpack((1, 36,  4), "f"))
         self.adc_to_degC_coeffs        .append(self.unpack((1, 40,  4), "f"))
-        self.tec_r298                        = self.unpack((1, 44,  2), "h")
-        self.tec_beta                        = self.unpack((1, 46,  2), "h")
-        self.calibration_date                = self.unpack((1, 48, 12), "s")
-        self.calibrated_by                   = self.unpack((1, 60,  3), "s")
+        self.tec_r298                        = self.unpack((1, 44,  2), "h", "r298")
+        self.tec_beta                        = self.unpack((1, 46,  2), "h", "beta")
+        self.calibration_date                = self.unpack((1, 48, 12), "s", "date")
+        self.calibrated_by                   = self.unpack((1, 60,  3), "s", "tech")
                                     
         # ######################################################################
         # Page 2                    
         # ######################################################################
 
-        self.detector                        = self.unpack((2,  0, 16), "s")
-        self.active_pixels_horizontal        = self.unpack((2, 16,  2), "H")
+        self.detector                        = self.unpack((2,  0, 16), "s", "detector")
+        self.active_pixels_horizontal        = self.unpack((2, 16,  2), "H", "pixels")
         self.active_pixels_vertical          = self.unpack((2, 19,  2), "H" if self.format >= 4 else "h")
         if self.format < 5:
-            self.min_integration_time_ms         = self.unpack((2, 21,  2), "H")
-            self.max_integration_time_ms         = self.unpack((2, 23,  2), "H") 
-        self.actual_horizontal               = self.unpack((2, 25,  2), "H" if self.format >= 4 else "h")
+            self.min_integration_time_ms         = self.unpack((2, 21,  2), "H", "min_integ(ushort)")
+            self.max_integration_time_ms         = self.unpack((2, 23,  2), "H", "max_integ(ushort)") 
+        self.actual_horizontal               = self.unpack((2, 25,  2), "H" if self.format >= 4 else "h", "actual_horiz")
         self.actual_vertical                 = self.active_pixels_vertical  # approximate for now
         self.roi_horizontal_start            = self.unpack((2, 27,  2), "H" if self.format >= 4 else "h")
         self.roi_horizontal_end              = self.unpack((2, 29,  2), "H" if self.format >= 4 else "h")
@@ -298,7 +299,7 @@ class EEPROM(object):
         self.roi_vertical_region_3_start     = self.unpack((2, 39,  2), "H" if self.format >= 4 else "h")
         self.roi_vertical_region_3_end       = self.unpack((2, 41,  2), "H" if self.format >= 4 else "h")
         self.linearity_coeffs = []
-        self.linearity_coeffs          .append(self.unpack((2, 43,  4), "f")) # overloading for secondary ADC
+        self.linearity_coeffs          .append(self.unpack((2, 43,  4), "f", "linearity_coeff_0")) # overloading for secondary ADC
         self.linearity_coeffs          .append(self.unpack((2, 47,  4), "f"))
         self.linearity_coeffs          .append(self.unpack((2, 51,  4), "f"))
         self.linearity_coeffs          .append(self.unpack((2, 55,  4), "f"))
@@ -309,20 +310,20 @@ class EEPROM(object):
         # ######################################################################
         
         self.laser_power_coeffs = []
-        self.laser_power_coeffs        .append(self.unpack((3, 12,  4), "f"))
+        self.laser_power_coeffs        .append(self.unpack((3, 12,  4), "f", "laser_power_coeff_0"))
         self.laser_power_coeffs        .append(self.unpack((3, 16,  4), "f"))
         self.laser_power_coeffs        .append(self.unpack((3, 20,  4), "f"))
         self.laser_power_coeffs        .append(self.unpack((3, 24,  4), "f"))
-        self.max_laser_power_mW              = self.unpack((3, 28,  4), "f")
-        self.min_laser_power_mW              = self.unpack((3, 32,  4), "f")
+        self.max_laser_power_mW              = self.unpack((3, 28,  4), "f", "max_laser_mW")
+        self.min_laser_power_mW              = self.unpack((3, 32,  4), "f", "min_laser_mW")
 
-        self.excitation_nm_float             = self.unpack((3, 36,  4), "f")
+        self.excitation_nm_float             = self.unpack((3, 36,  4), "f", "excitation(float)")
         if self.format < 4:
             self.excitation_nm_float = self.excitation_nm
 
         if self.format >= 5:
-            self.min_integration_time_ms     = self.unpack((3, 40,  4), "I")
-            self.max_integration_time_ms     = self.unpack((3, 44,  4), "I") 
+            self.min_integration_time_ms     = self.unpack((3, 40,  4), "I", "min_integ(uint)")
+            self.max_integration_time_ms     = self.unpack((3, 44,  4), "I", "max_integ(uint)") 
 
         # ######################################################################
         # Page 4
@@ -343,7 +344,7 @@ class EEPROM(object):
         self.bad_pixels = list(bad)
         self.bad_pixels.sort()
 
-        self.product_configuration           = self.unpack((5,  30, 16), "s")
+        self.product_configuration           = self.unpack((5,  30, 16), "s", "product_config")
 
     ## make a printable ASCII string out of possibly-binary data
     def printable(self, buf):
@@ -362,7 +363,7 @@ class EEPROM(object):
     #
     # @param address    a tuple of the form (buf, offset, len)
     # @param data_type  see https://docs.python.org/2/library/struct.html#format-characters
-    def unpack(self, address, data_type):
+    def unpack(self, address, data_type, label=None):
         page       = address[0]
         start_byte = address[1]
         length     = address[2]
@@ -370,8 +371,8 @@ class EEPROM(object):
 
         buf = self.buffers[page]
         if buf is None or end_byte > len(buf):
-            log.error("error unpacking EEPROM page %d, offset %d, len %d as %s: buf is %s", 
-                page, start_byte, length, data_type, buf, exc_info=1)
+            log.error("error unpacking EEPROM page %d, offset %d, len %d as %s: buf is %s (label %s)", 
+                page, start_byte, length, data_type, buf, label, exc_info=1)
             return
 
         if data_type == "s":
@@ -389,7 +390,10 @@ class EEPROM(object):
             except:
                 log.error("error unpacking EEPROM page %d, offset %d, len %d as %s", page, start_byte, length, data_type, exc_info=1)
 
-        log.debug("Unpacked [%s]: %s", data_type, unpack_result)
+        if label is None:
+            log.debug("Unpacked [%s]: %s", data_type, unpack_result)
+        else:
+            log.debug("Unpacked [%s]: %s (%s)", data_type, unpack_result, label)
         return unpack_result
 
     ## 
@@ -403,6 +407,11 @@ class EEPROM(object):
         start_byte = address[1]
         length     = address[2]
         end_byte   = start_byte + length
+
+        # don't try to write negatives to unsigned types
+        if data_type in ["H", "I"] and value < 0:
+            raise Exception("refusing to write negative to unsigned field (address %s, data_type %s, value %s)" % (
+                address, data_type, value))
 
         buf = self.write_buffers[page]
         if buf is None or end_byte > 63: # byte [63] for revision

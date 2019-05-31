@@ -13,6 +13,7 @@ class Reading(object):
         self.device_id                 = None
         self.timestamp                 = None
         self.spectrum                  = None
+        self.laser_enabled             = None
         self.laser_temperature_raw     = 0
         self.laser_temperature_degC    = 0
         self.detector_temperature_raw  = 0

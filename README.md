@@ -313,6 +313,8 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2019-??-?? 1.0.30
+    - moved write\_eeprom to 2nd-tier command
 - 2019-05-29 1.0.29
     - enable Area Scan for IMX detectors
     - added EEPROM.product\_configuration

@@ -496,8 +496,8 @@ class WasatchDevice(object):
         # (just averaged spectra with corrected bad pixels, no metadata)
         ########################################################################
 
-        def disable_laser():
-            if auto_enable_laser:
+        def disable_laser(force=False):
+            if force or auto_enable_laser:
                 log.debug("acquire_spectrum: disabling laser post-acquisition")
                 self.hardware.set_laser_enable(False)
             return False # for convenience
@@ -521,11 +521,16 @@ class WasatchDevice(object):
                 for throwaway in range(count):
                     reading.laser_temperature_raw  = self.hardware.get_laser_temperature_raw()
                     if self.hardware.shutdown_requested: 
-                        return disable_laser()
+                        return disable_laser(force=True)
 
                 reading.laser_temperature_degC = self.hardware.get_laser_temperature_degC(reading.laser_temperature_raw)
                 if self.hardware.shutdown_requested: 
-                    return disable_laser()
+                    return disable_laser(force=True)
+
+                reading.laser_enabled = auto_enable_laser and self.hardware.get_laser_enabled()
+                if self.hardware.shutdown_requested: 
+                    return disable_laser(force=True)
+
             except Exception as exc:
                 log.debug("Error reading laser temperature", exc_info=1)
 
@@ -534,17 +539,17 @@ class WasatchDevice(object):
             try:
                 self.hardware.select_adc(1)
                 if self.hardware.shutdown_requested: 
-                    return disable_laser()
+                    return disable_laser(force=True)
 
                 for throwaway in range(2):
                     reading.secondary_adc_raw = self.hardware.get_secondary_adc_raw()
                     if self.hardware.shutdown_requested: 
-                        return disable_laser()
+                        return disable_laser(force=True)
 
                 reading.secondary_adc_calibrated = self.hardware.get_secondary_adc_calibrated(reading.secondary_adc_raw)
                 self.hardware.select_adc(0)
                 if self.hardware.shutdown_requested: 
-                    return disable_laser()
+                    return disable_laser(force=True)
 
             except Exception as exc:
                 log.debug("Error reading secondary ADC", exc_info=1)
