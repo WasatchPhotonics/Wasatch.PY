@@ -527,7 +527,8 @@ class WasatchDevice(object):
                 if self.hardware.shutdown_requested: 
                     return disable_laser(force=True)
 
-                reading.laser_enabled = auto_enable_laser and self.hardware.get_laser_enabled()
+                if not auto_enable_laser:
+                    reading.laser_enabled = self.hardware.get_laser_enabled()
                 if self.hardware.shutdown_requested: 
                     return disable_laser(force=True)
 

@@ -11,8 +11,19 @@
 ################################################################################
 
 read -p "Username: " USERNAME
+read -p "Version:  " VERSION 
+
+# verify version number is tagged
+if git tag | egrep -q $VERSION
+then
+    echo "Git tag found"
+else
+    echo "Git tag not found: $VERSION"
+    exit 1
+fi
 
 # render documentation 
+export VERSION
 make doc
 
 # echo
