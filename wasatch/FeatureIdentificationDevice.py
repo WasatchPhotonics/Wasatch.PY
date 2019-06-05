@@ -1211,7 +1211,7 @@ class FeatureIdentificationDevice(object):
         # note we send value as wValue AND wLength_or_data
         if self.is_arm():
             buf = [0] * 8
-        else:i
+        else:
             buf = [0] * max(8, value)
         result = self.send_code(0xdb, wValue=value, wIndex=0, data_or_wLength=buf, label="SET_LASER_MOD_PULSE_WIDTH (immediate)")
         if result is None:
