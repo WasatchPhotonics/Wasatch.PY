@@ -1486,28 +1486,21 @@ class FeatureIdentificationDevice(object):
         log.debug("Would write new buffers: %s", self.settings.eeprom.write_buffers)
 
         for page in range(6):
-            if True:
-                # old: self.send_cmd(0xa2, value=offset, index=0, buf=buf)
-                # new: self.send_cmd(0xff, value=0x02, index=page, buf=buf)
-
-                if self.is_arm():
-                    index = page
-                else:
-                    index = page - 1 # yes, that means -1 for EEPROM page 0   o_O
-
+            if self.is_arm():
                 log.debug("writing page %d: %s", page, self.settings.eeprom.write_buffers[page])
-                self.send_code(bmRequest       = 0xff, 
+                self.send_code(bmRequest       = 0xff, # second-tier
                                wValue          = 0x02,  
-                               wIndex          = index,
+                               wIndex          = page,
                                data_or_wLength = self.settings.eeprom.write_buffers[page],
                                label           = "WRITE_EEPROM")
             else:
-                # this was the "old way"
                 DATA_START = 0x3c00
                 offset = DATA_START + page * 64
                 log.debug("writing page %d at offset 0x%04x: %s", page, offset, self.settings.eeprom.write_buffers[page])
-                # note that "offset" (which is essentially an index) is nonetheless passed as value
-                self.send_code(0xa2, wValue=offset, wIndex=0, data_or_wLength=self.settings.eeprom.write_buffers[page])
+                self.send_code(bmRequest       = 0xa2,   # dangerous
+                               wValue          = offset, # arguably an index but hey
+                               wIndex          = 0, 
+                               data_or_wLength = self.settings.eeprom.write_buffers[page])
 
         self.queue_message("marquee_info", "EEPROM successfully updated")
 

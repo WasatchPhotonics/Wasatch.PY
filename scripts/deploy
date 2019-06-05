@@ -13,21 +13,21 @@
 read -p "Username: " USERNAME
 read -p "Version:  " VERSION 
 
-# verify version number is tagged
-if git tag | egrep -q $VERSION
-then
-    echo "Git tag found"
-else
-    echo "Git tag not found: $VERSION"
-    exit 1
-fi
-
 # verify version number in module
 if egrep -q "$VERSION" wasatch/__init__.py
 then
     echo "Correct version in __init__.py"
 else
     echo "Can't find $VERSION in __init__.py"
+    exit 1
+fi
+
+# verify version number is tagged
+if git tag | egrep -q $VERSION
+then
+    echo "Git tag found"
+else
+    echo "Git tag not found: $VERSION"
     exit 1
 fi
 
