@@ -120,6 +120,21 @@ class SubprocessArgs(object):
 # 220/sec or so) -- but you'll get them in chunks (e.g., scan rate of 220/sec 
 # polled at 20Hz = 20 chunks of 11 ea).
 #
+# @par Responsiveness
+#
+# With regard to the "immediacy" of commands like laser_enable, note that spectrometer
+# subprocesses (Process-2, etc) are internally single-threaded: the continuous_poll()
+# function BLOCKS on WasatchDevice.acquire_data(), meaning that even if new laser_enable
+# commands get pushed into the downstream command pipe, continuous_poll won't check for
+# them until the end of the current acquisition.
+#
+# What we'd really like is two threads running in the subprocess, one handling 
+# acquisitions and most commands, and another handling high-priority events like
+# laser_enable.  I'm not sure the pipes are designed for multiple readers, but 
+# a SEPARATE pipe (or queue) could be setup for high-priority commands, and
+# EXCLUSIVELY read by the secondary thread.  That just leaves open the question
+# of synchronization on WasatchDevice's USBDevice.
+#
 # @par Memory Leak
 #
 # This class appears to leak memory under Linux, but only when debug logging
@@ -149,6 +164,8 @@ class WasatchDeviceWrapper(object):
     #   - ideally on configured integration times per spectrometer
     #   - need to check whether it can be modified from inside the process
     #   - need to check whether it can be modified after process creation
+    #   - note that this is essentially ADDED to the total measurement time
+    #     of EACH AND EVERY INTEGRATION
     POLLER_WAIT_SEC = 0.05    # .05sec = 50ms = update from hardware device at 20Hz
 
     # ##########################################################################
@@ -347,7 +364,7 @@ class WasatchDeviceWrapper(object):
         # send poison pill to the subprocess
         self.closing = True
         try:
-            self.command_queue.send(None) # put(None, timeout=2)
+            self.command_queue_producer.send(None) # put(None, timeout=2)  
         except:
             pass
 

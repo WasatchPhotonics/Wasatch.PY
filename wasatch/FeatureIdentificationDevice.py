@@ -1198,7 +1198,10 @@ class FeatureIdentificationDevice(object):
 
         # Change the pulse period to 100 us
         # MZ: this doesn't seem to agree with ENG-0001's comment about "square root"
-        buf = [0] * 100
+        if self.is_arm():
+            buf = [0] * 8
+        else:
+            buf = [0] * 100
         result = self.send_code(0xc7, wValue=100, wIndex=0, data_or_wLength=buf, label="SET_MOD_PERIOD (immediate)")
         if result is None:
             log.critical("Hardware Failure to send laser mod. pulse period")
@@ -1206,7 +1209,10 @@ class FeatureIdentificationDevice(object):
 
         # Set the pulse width to the 0-100 percentage of power;
         # note we send value as wValue AND wLength_or_data
-        buf = [0] * max(8, value)
+        if self.is_arm():
+            buf = [0] * 8
+        else:i
+            buf = [0] * max(8, value)
         result = self.send_code(0xdb, wValue=value, wIndex=0, data_or_wLength=buf, label="SET_LASER_MOD_PULSE_WIDTH (immediate)")
         if result is None:
             log.critical("Hardware Failure to send pulse width")

@@ -313,6 +313,8 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2019-06-05 1.0.32
+    - disable "fake buffer length from value" on ARM
 - 2019-05-31 1.0.31
     - updated scripts/deploy
     - still working on reading.laser\_enabled

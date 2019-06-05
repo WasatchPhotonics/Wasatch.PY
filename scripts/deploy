@@ -22,6 +22,15 @@ else
     exit 1
 fi
 
+# verify version number in module
+if egrep -q "$VERSION" wasatch/__init__.py
+then
+    echo "Correct version in __init__.py"
+else
+    echo "Can't find $VERSION in __init__.py"
+    exit 1
+fi
+
 # render documentation 
 export VERSION
 make doc
