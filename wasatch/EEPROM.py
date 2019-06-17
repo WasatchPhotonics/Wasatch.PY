@@ -410,8 +410,8 @@ class EEPROM(object):
 
         # don't try to write negatives to unsigned types
         if data_type in ["H", "I"] and value < 0:
-            raise Exception("refusing to write negative to unsigned field (address %s, data_type %s, value %s)" % (
-                address, data_type, value))
+            log.error("rounding negative to zero when writing to unsigned field (address %s, data_type %s, value %s)", address, data_type, value)
+            value = 0
 
         buf = self.write_buffers[page]
         if buf is None or end_byte > 63: # byte [63] for revision
