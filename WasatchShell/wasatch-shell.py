@@ -17,7 +17,7 @@ from wasatch.WasatchBus         import WasatchBus
 from wasatch.WasatchDevice      import WasatchDevice
 from wasatch.BalanceAcquisition import BalanceAcquisition
 
-VERSION = "2.2.1"
+VERSION = "2.2.3"
 
 log = logging.getLogger(__name__)
 
@@ -45,6 +45,7 @@ class WasatchShell(object):
 
         # process command-line options
         parser = argparse.ArgumentParser()
+        parser.add_argument("--eod", action="store_true", help="output END_OF_DATA on a line by itself following every action")
         parser.add_argument("--logfile", help="where to write log messages")
         parser.add_argument("--log-level", type=str, default="info", help="logging level", choices=['debug', 'info', 'warning', 'error', 'critical'])
         parser.add_argument("--timestamp", action="store_true", help="timestamp console messages")
@@ -355,7 +356,10 @@ class WasatchShell(object):
                             log.error("could not re-open...giving up")
                             break
 
-                # whatever happend, flush stdout
+                if self.args.eod:
+                    self.display("END_OF_DATA")
+
+                # whatever happened, flush stdout
                 try:
                     sys.stdout.flush()
                 except:

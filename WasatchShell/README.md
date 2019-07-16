@@ -100,6 +100,8 @@ multi-process pipeline used by ENLIGHTEN.
 
 # Version History
 
+- 07-16-2019 2.2.3
+    - added --eod
 - 04-24-2019 2.2.2
     - added laser-test.py
     - added max\_tries and max\_integration\_time\_ms to balance\_acquisition

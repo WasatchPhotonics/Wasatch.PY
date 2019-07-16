@@ -313,6 +313,8 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2019-07-16 1.0.35
+    - added --eod to WasatchShell 
 - 2019-06-17 1.0.34
     - round negatives to zero when writing unsigned EEPROM fields
 - 2019-06-05 1.0.33

@@ -5,8 +5,6 @@ import logging
 import datetime
 import multiprocessing
 
-# from memory_profiler import profile
-
 from . import applog
 from . import utils
 
@@ -18,7 +16,6 @@ from .Reading              import Reading
 log = logging.getLogger(__name__)
 
 class SubprocessArgs(object):
-
     def __init__(self, 
             device_id, 
             log_queue, 
@@ -190,7 +187,7 @@ class WasatchDeviceWrapper(object):
 
         # This works equally well on Linux (no obvious advantage or disadvantage),
         # but blows up on Windows :-(
-
+        #
         # self.manager = multiprocessing.Manager()
         # manager = self.manager
         #
@@ -264,7 +261,7 @@ class WasatchDeviceWrapper(object):
 
         # Fork a child process running the continuous_poll() method on this
         # object instance.  
-        subprocessArgs = SubprocessArgs(
+        args = SubprocessArgs(
             device_id                   = self.device_id, 
             log_level                   = self.log_level, # log.getEffectiveLevel(),
 
@@ -276,7 +273,7 @@ class WasatchDeviceWrapper(object):
             message_queue               = self.message_queue_producer)                 # Main <-- subprocess /
 
         # instantiate subprocess
-        self.poller = multiprocessing.Process(target=self.continuous_poll, args=(subprocessArgs,))
+        self.poller = multiprocessing.Process(target=self.continuous_poll, args=(args,))
 
         # spawn subprocess
         self.poller.start()
