@@ -100,6 +100,8 @@ multi-process pipeline used by ENLIGHTEN.
 
 # Version History
 
+- 07-19-2019 2.2.4
+    - export NaN as null in JSON
 - 07-16-2019 2.2.3
     - added --eod
 - 04-24-2019 2.2.2

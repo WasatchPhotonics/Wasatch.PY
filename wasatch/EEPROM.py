@@ -4,6 +4,7 @@ import array
 import math
 import copy
 import json
+import re
 
 log = logging.getLogger(__name__)
 
@@ -146,14 +147,19 @@ class EEPROM(object):
         self.read_eeprom()
 
     ## render the attributes of this object as a JSON string
-    def json(self):
+    def json(self, allow_nan=True):
         tmp_buf  = self.buffers
         tmp_data = self.user_data
 
         self.buffers   = str(self.buffers)
         self.user_data = str(self.user_data)
 
+        # this does take an allow_nan argument, but it throws an exception on NaN, 
+        # rather than replacing with null :-(
+        # https://stackoverflow.com/questions/6601812/sending-nan-in-json
         s = json.dumps(self.__dict__, indent=2, sort_keys=True)
+        if not allow_nan:
+            s = re.sub(r"\bNaN\b", "null", s)
 
         self.buffers   = tmp_buf
         self.user_data = tmp_data

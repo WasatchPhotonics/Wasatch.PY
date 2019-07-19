@@ -17,7 +17,7 @@ from wasatch.WasatchBus         import WasatchBus
 from wasatch.WasatchDevice      import WasatchDevice
 from wasatch.BalanceAcquisition import BalanceAcquisition
 
-VERSION = "2.2.3"
+VERSION = "2.2.4"
 
 log = logging.getLogger(__name__)
 
@@ -250,7 +250,7 @@ class WasatchShell(object):
                             self.get_spectrum_save()
 
                         elif command == "get_config_json":
-                            self.display(self.device.settings.eeprom.json())
+                            self.display(self.device.settings.eeprom.json(allow_nan=False))
 
                         elif command == "get_all":
                             self.get_all()

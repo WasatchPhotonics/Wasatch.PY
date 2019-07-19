@@ -313,6 +313,8 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2019-07-16 1.0.36
+    - added allow\_nan to EEPROM.json()
 - 2019-07-16 1.0.35
     - added --eod to WasatchShell 
 - 2019-06-17 1.0.34
