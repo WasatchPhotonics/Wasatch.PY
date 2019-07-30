@@ -296,11 +296,15 @@ class WasatchShell(object):
                             self.display(1)
 
                         elif command == "set_laser_power_perc":
-                            self.device.change_setting("laser_power_perc", self.read_int())
+                            self.device.change_setting("laser_power_perc", self.read_float())
                             self.display(1)
 
                         elif command == "set_laser_enable":
                             self.set_laser_enable(flag = self.read_bool())
+
+                        elif command == "set_laser_power_high_resolution":
+                            self.device.change_setting("laser_power_high_resolution", self.read_bool())
+                            self.display(1)
 
                         elif command == "set_tec_enable":
                             self.device.change_setting("detector_tec_enable", self.read_bool())

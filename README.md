@@ -313,6 +313,9 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2019-07-30 1.0.37
+    - added laser\_power\_high\_resolution
+    - stopped sending FX2 fake buffers on laser pulse width/period
 - 2019-07-16 1.0.36
     - added allow\_nan to EEPROM.json()
 - 2019-07-16 1.0.35

@@ -1091,6 +1091,9 @@ class FeatureIdentificationDevice(object):
             perc)
         return self.set_laser_power_perc(perc)
 
+    def set_laser_power_high_resolution(self, flag):
+        self.settings.state.laser_power_high_resolution = True if flag else False
+
     ##
     # @todo support floating-point value, as we have a 12-bit ADC and can provide
     # a bit more precision than 100 discrete steps (goal to support 0.1 - .125% resolution)
@@ -1184,36 +1187,42 @@ class FeatureIdentificationDevice(object):
         # laser can flicker if we're on the wrong ADC?
 
         # don't want anything weird when passing over USB
-        value = int(max(0, min(100, round(value))))
+        value = float(max(0, min(100, value)))
 
         # Turn off modulation at full laser power, exit
         if value >= 100 or value < 0:
             log.debug("Turning off laser modulation (full power)")
             self.next_applied_laser_power = 100.0
             log.debug("next_applied_laser_power = 100.0")
-            lsb = 0
-            msb = 0
+            lsw = 0
+            msw = 0
             buf = [0] * 8
-            return self.send_code(0xbd, lsb, msb, buf, label="SET_LASER_MOD_ENABLED (full)")
+            return self.send_code(0xbd, lsw, msw, buf, label="SET_LASER_MOD_ENABLED (full)")
+
+        period_us = 1000 if self.settings.state.laser_power_high_resolution else 100
+        width_us = int(round(1.0 * value * period_us / 100.0, 0)) # note that value is in range (0, 100) not (0, 1)
+
+        # pulse width can't be longer than period, or shorter than 1us
+        width_us = max(1, min(width_us, period_us))
 
         # Change the pulse period to 100 us
         # MZ: this doesn't seem to agree with ENG-0001's comment about "square root"
-        if self.is_arm():
+        if True or self.is_arm():
             buf = [0] * 8
         else:
-            buf = [0] * 100
-        result = self.send_code(0xc7, wValue=100, wIndex=0, data_or_wLength=buf, label="SET_MOD_PERIOD (immediate)")
+            buf = [0] * period_us
+        result = self.send_code(0xc7, wValue=period_us, wIndex=0, data_or_wLength=buf, label="SET_MOD_PERIOD (immediate)")
         if result is None:
             log.critical("Hardware Failure to send laser mod. pulse period")
             return False
 
         # Set the pulse width to the 0-100 percentage of power;
-        # note we send value as wValue AND wLength_or_data
-        if self.is_arm():
+        # note on FX2, we send width_us as wValue AND wLength_or_data
+        if True or self.is_arm():
             buf = [0] * 8
         else:
-            buf = [0] * max(8, value)
-        result = self.send_code(0xdb, wValue=value, wIndex=0, data_or_wLength=buf, label="SET_LASER_MOD_PULSE_WIDTH (immediate)")
+            buf = [0] * max(8, width_us)
+        result = self.send_code(0xdb, wValue=width_us, wIndex=0, data_or_wLength=buf, label="SET_LASER_MOD_PULSE_WIDTH (immediate)")
         if result is None:
             log.critical("Hardware Failure to send pulse width")
             return False
@@ -1227,10 +1236,10 @@ class FeatureIdentificationDevice(object):
         # prevent failure. Also present in the get_line control message.
         # Only with libusb; the original Cypress drivers do not have this
         # requirement.
-        lsb = 1
-        msb = 0
+        lsw = 1
+        msw = 0
         buf = [0] * 8
-        result = self.send_code(0xbd, lsb, msb, buf, label="SET_LASER_MOD_ENABLED (immediate)")
+        result = self.send_code(0xbd, lsw, msw, buf, label="SET_LASER_MOD_ENABLED (immediate)")
 
         if result is None:
             log.critical("Hardware Failure to send laser modulation")
@@ -1643,6 +1652,7 @@ class FeatureIdentificationDevice(object):
         elif setting == "laser_temperature_setpoint_raw":       self.set_laser_temperature_setpoint_raw(int(round(value))) 
         elif setting == "laser_power_ramping_enable":           self.set_laser_power_ramping_enable(True if value else False) 
         elif setting == "laser_power_ramp_increments":          self.settings.state.laser_power_ramp_increments = int(value) 
+        elif setting == "laser_power_high_resolution":          self.set_laser_power_high_resolution(value)
         elif setting == "selected_laser":                       self.set_selected_laser(int(value))
 
         elif setting == "high_gain_mode_enable":                self.set_high_gain_mode_enable(True if value else False) 
