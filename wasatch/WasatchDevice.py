@@ -1,3 +1,4 @@
+import re
 import os
 import gc
 import time
@@ -707,6 +708,6 @@ class WasatchDevice(object):
 
         # always process trigger_source commands promptly (can't wait for end of
         # acquisition which may never come)
-        if (allow_immediate and self.immediate_mode) or (setting in ["trigger_source", "laser_enable"]):
+        if (allow_immediate and self.immediate_mode) or re.search(r"trigger|laser", setting):
             log.debug("immediately processing %s", control_object)
             self.process_commands()

@@ -36,6 +36,7 @@ class SpectrometerState(object):
         self.selected_adc = None
         self.selected_laser = 0
         self.laser_power_high_resolution = False
+        self.laser_power_require_modulation = False
 
         # triggering
         self.trigger_source = self.TRIGGER_SOURCE_INTERNAL

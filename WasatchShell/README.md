@@ -100,6 +100,9 @@ multi-process pipeline used by ENLIGHTEN.
 
 # Version History
 
+- 08-20-2019 2.2.5
+    - default to laser_power_high_resolution
+    - if laser power calibration is found, require modulation and default to max configured milliwatts
 - 07-19-2019 2.2.4
     - export NaN as null in JSON
 - 07-16-2019 2.2.3

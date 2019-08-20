@@ -1094,6 +1094,9 @@ class FeatureIdentificationDevice(object):
     def set_laser_power_high_resolution(self, flag):
         self.settings.state.laser_power_high_resolution = True if flag else False
 
+    def set_laser_power_require_modulation(self, flag):
+        self.settings.state.laser_power_require_modulation = True if flag else False
+
     ##
     # @todo support floating-point value, as we have a 12-bit ADC and can provide
     # a bit more precision than 100 discrete steps (goal to support 0.1 - .125% resolution)
@@ -1189,15 +1192,18 @@ class FeatureIdentificationDevice(object):
         # don't want anything weird when passing over USB
         value = float(max(0, min(100, value)))
 
-        # Turn off modulation at full laser power, exit
-        if value >= 100 or value < 0:
-            log.debug("Turning off laser modulation (full power)")
-            self.next_applied_laser_power = 100.0
-            log.debug("next_applied_laser_power = 100.0")
-            lsw = 0
-            msw = 0
-            buf = [0] * 8
-            return self.send_code(0xbd, lsw, msw, buf, label="SET_LASER_MOD_ENABLED (full)")
+        # If full power (and allowed), disable modulation and exit
+        if value >= 100:
+            if self.settings.state.laser_power_require_modulation:
+                log.debug("100% power requested, yet laser modulation required, so not disabling modulation")
+            else:
+                log.debug("Turning off laser modulation (full power)")
+                self.next_applied_laser_power = 100.0
+                log.debug("next_applied_laser_power = 100.0")
+                lsw = 0 # disabled
+                msw = 0
+                buf = [0] * 8
+                return self.send_code(0xbd, lsw, msw, buf, label="SET_LASER_MOD_ENABLED (full)")
 
         period_us = 1000 if self.settings.state.laser_power_high_resolution else 100
         width_us = int(round(1.0 * value * period_us / 100.0, 0)) # note that value is in range (0, 100) not (0, 1)
@@ -1228,15 +1234,7 @@ class FeatureIdentificationDevice(object):
             return False
 
         # Enable modulation
-        #
-        # result = self.send_code(0xBD, 1)
-        #
-        # This will result in a control message failure, for this and 
-        # many other functions. A data buffer must be specified to
-        # prevent failure. Also present in the get_line control message.
-        # Only with libusb; the original Cypress drivers do not have this
-        # requirement.
-        lsw = 1
+        lsw = 1 # enabled
         msw = 0
         buf = [0] * 8
         result = self.send_code(0xbd, lsw, msw, buf, label="SET_LASER_MOD_ENABLED (immediate)")
@@ -1653,6 +1651,7 @@ class FeatureIdentificationDevice(object):
         elif setting == "laser_power_ramping_enable":           self.set_laser_power_ramping_enable(True if value else False) 
         elif setting == "laser_power_ramp_increments":          self.settings.state.laser_power_ramp_increments = int(value) 
         elif setting == "laser_power_high_resolution":          self.set_laser_power_high_resolution(value)
+        elif setting == "laser_power_require_modulation":       self.set_laser_power_require_modulation(value)
         elif setting == "selected_laser":                       self.set_selected_laser(int(value))
 
         elif setting == "high_gain_mode_enable":                self.set_high_gain_mode_enable(True if value else False) 
