@@ -2,6 +2,7 @@ import logging
 
 log = logging.getLogger(__name__)
 
+## Not used - incomplete!
 SETTINGS = {
     # EEPROM
     "adc_to_degC_coeffs":              { "datatype": "float[]" },
@@ -49,7 +50,7 @@ SETTINGS = {
 }
 
 ##
-# This class enacapsulates information about the "ControlObject" settings
+# This class encapsulates information about the "ControlObject" settings
 # supported by WasatchDevice hardware classes (FID and SP).  These are
 # traditionally called "settings" when passing ControlObjects from ENLIGHTEN
 # down into Wasatch.PY via "settings queues", but are very different from
