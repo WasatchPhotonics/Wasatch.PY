@@ -278,7 +278,7 @@ def find_nearest_value(L, value):
 # or wavenumbers).
 def interpolate_array(spectrum, old_axis, new_axis):
     if not spectrum or not old_axis or not new_axis or len(spectrum) != len(old_axis) or len(new_axis) < 1:
-        return null
+        return 
     return numpy.interp(new_axis, old_axis, spectrum)
 
 ## render a spectrum as ASCII-art

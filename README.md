@@ -333,11 +333,22 @@ investigation.
 
 # Common Errors
 
+## PyUSB usb.core error: No backend available (Windows)
+
+I have seen this occur when the default device driver for 0x24aa:0x1000 had been
+switched for FX2 firmware updates.  Solution was:
+
+- Device Manager -> USB devices -> Wasatch spectrometer -> Update Driver -> Browse Locally -> Choose from Installed -> Wasatch Photonics spectrometer (libusb)
+
 ## LIBUSB error: No backend available (MacOS)
 
 Using [Homebrew](https://brew.sh/), type:
 
     $ brew install libusb
+
+# Backlog
+
+- update .inf files to deprecate "Stroker"
 
 # Version History
 
