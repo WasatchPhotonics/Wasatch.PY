@@ -117,6 +117,16 @@ class EEPROM(object):
                 return True
         return False
 
+    ## @return tuple of (start, end) pixel coordinates (end is last pixel, not last+1),
+    #          or None if no valid horizontal ROI
+    def get_horizontal_roi(self):
+        start = self.roi_horizontal_start
+        end   = self.roi_horizontal_end
+        pixels = self.active_pixels_horizontal
+
+        if start >= 0 and start < pixels and end >= start and end <= pixels:
+            return (start, max(start, min(end, pixels-1)))
+
     ## 
     # passed a temporary copy of another EEPROM object, copy-over any
     # "editable" fields to this one

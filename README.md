@@ -338,7 +338,9 @@ investigation.
 I have seen this occur when the default device driver for 0x24aa:0x1000 had been
 switched for FX2 firmware updates.  Solution was:
 
-- Device Manager -> USB devices -> Wasatch spectrometer -> Update Driver -> Browse Locally -> Choose from Installed -> Wasatch Photonics spectrometer (libusb)
+- Device Manager -> Universal Serial Bus controllers -> Wasatch Photonics device -> Update Driver -> Browse My Computer -> Let Me Pick -> Wasatch Photonics Spectrometer
+
+Spectrometer should then appear in Device Manager under "libusb-win32 devices"
 
 ## LIBUSB error: No backend available (MacOS)
 
@@ -352,6 +354,8 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2019-09-16 1.0.39
+    - added EEPROM.get_horizontal_roi()
 - 2019-08-20 1.0.38
     - WasatchShell updates
     - added laser_power_require_modulation

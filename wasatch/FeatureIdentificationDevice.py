@@ -667,6 +667,19 @@ class FeatureIdentificationDevice(object):
             spectrum[0] = spectrum[1]
             log.debug("get_line: area_scan_row_count = %d", area_scan_row_count)
 
+        # Moving vignetting to ENLIGHTEN, as several BaselineCorrection algos get
+        # confused by those sharp corners at the ends
+        #
+        # # don't support vignetting in Area Scan mode
+        # else:
+        #     roi = self.settings.eeprom.get_horizontal_roi()
+        #     if roi is not None:
+        #         log.debug("get_line: vignetting to (%d, %d)", roi[0], roi[1])
+        #         for i in range(roi[0]):
+        #             spectrum[i] = 0
+        #         for i in range(roi[1] + 1, pixels):
+        #             spectrum[i] = 0
+
         # When integrating new sensors, sometimes we want to only look at even-
         # numbered pixels to flatten-out irregularities in Bayer filters or InGaAs 
         # arrays.  However, we don't want to disrupt the expected pixel-count, so 
