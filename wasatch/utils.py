@@ -281,6 +281,15 @@ def interpolate_array(spectrum, old_axis, new_axis):
         return 
     return numpy.interp(new_axis, old_axis, spectrum)
 
+## I might be making this more difficult than it needs to be
+def interpolate_value(spectrum, old_axis, x):
+    if not spectrum or not old_axis or not new_axis or len(spectrum) != len(old_axis) or len(new_axis) < 1:
+        return 
+    new_axis = [ x-1, x, x+1 ] 
+    new_y = numpy.interp(new_axis, old_axis, spectrum)
+    if new_y is not None and len(new_y) == len(new_axis):
+        return new_y[1]
+
 ## render a spectrum as ASCII-art
 def ascii_spectrum(spectrum, rows, cols, x_axis, x_unit):
     spectral_min = min(spectrum)

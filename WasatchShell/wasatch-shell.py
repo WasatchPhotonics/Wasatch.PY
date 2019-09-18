@@ -17,7 +17,7 @@ from wasatch.WasatchBus         import WasatchBus
 from wasatch.WasatchDevice      import WasatchDevice
 from wasatch.BalanceAcquisition import BalanceAcquisition
 
-VERSION = "2.2.4"
+VERSION = "2.2.6"
 
 log = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ class WasatchShell(object):
     
     def __init__(self):
         self.device = None                      # wasatch.WasatchDevice
-        self.interpolated_x_axis_cm = None
+        self.clear()
 
         # process command-line options
         parser = argparse.ArgumentParser()
@@ -118,6 +118,7 @@ class WasatchShell(object):
         open                                   - initialize connected spectrometer
         close                                  - exit program (synonyms 'exit', 'quit')
         connection_check                       - confirm communication
+        clear                                  - reset interpolated x axes
                                                
         set_scans_to_average                   - takes integer argument
         set_integration_time_ms                - takes integer argument
@@ -133,6 +134,7 @@ class WasatchShell(object):
         set_selected_laser                     - takes 0 or 1
                                                
         set_interpolated_x_axis_cm             - takes start, end, incr (zero incr to disable)
+        set_interpolated_x_axis_nm             - takes start, end, incr (zero incr to disable)
         balance_acquisition                    - takes mode [integ, laser, laser_and_integ], 
                                                     intensity, threshold, max_integration_time_ms, 
                                                     max_tries, x, unit [px, nm, cm]
@@ -265,6 +267,14 @@ class WasatchShell(object):
                             self.set_interpolated_x_axis_cm(start = self.read_float(),
                                                             end   = self.read_float(),
                                                             incr  = self.read_float())
+
+                        elif command == "set_interpolated_x_axis_nm":
+                            self.set_interpolated_x_axis_nm(start = self.read_float(),
+                                                            end   = self.read_float(),
+                                                            incr  = self.read_float())
+
+                        elif command == "clear":
+                            self.clear()
 
                         # currently these are the only setters implemented
                         #
@@ -478,6 +488,10 @@ class WasatchShell(object):
             spectrum = utils.interpolate_array(spectrum, 
                                                self.device.settings.wavenumbers, 
                                                self.interpolated_x_axis_cm)
+        elif self.interpolated_x_axis_nm:
+            spectrum = utils.interpolate_array(spectrum, 
+                                               self.device.settings.wavelengths, 
+                                               self.interpolated_x_axis_nm)
         if quiet:
             return spectrum
 
@@ -498,11 +512,13 @@ class WasatchShell(object):
             for i in range(len(spectrum)):
                 if self.interpolated_x_axis_cm:
                     x = self.interpolated_x_axis_cm[i]
+                elif self.interpolated_x_axis_nm:
+                    x = self.interpolated_x_axis_nm[i]
                 elif self.device.settings.wavenumbers:
                     x = self.device.settings.wavenumbers[i]
                 else:
                     x = self.device.settings.wavelengths[i]
-                outfile.write("%.2f,%d\n" % (x, spectrum[i]))
+                outfile.write("%.2f,%.2f\n" % (x, spectrum[i]))
 
     def get_spectrum_pretty(self):
         spectrum = self.get_spectrum()
@@ -511,6 +527,12 @@ class WasatchShell(object):
 
         if self.interpolated_x_axis_cm:
             x_axis = self.interpolated_x_axis_cm
+            x_unit = "cm-1"
+        elif self.interpolated_x_axis_nm:
+            x_axis = self.interpolated_x_axis_nm
+            x_unit = "nm"
+        elif self.device.settings.wavenumbers:
+            x_axis = self.device.settings.wavenumbers
             x_unit = "cm-1"
         else:
             x_axis = self.device.settings.wavelengths
@@ -524,32 +546,30 @@ class WasatchShell(object):
         self.device.change_setting("laser_enable", flag)
         return None if quiet else self.display(1)
 
-        # tries = 0
-        # while True:
-        #     self.device.change_setting("laser_enable", flag)
-        #     check = self.device.hardware.get_laser_enabled() != 0
-        #     if flag == check:
-        #         return self.display(1)
-        #     tries += 1
-        #     if tries > 3:
-        #         return self.display(0)
-        #     else:
-        #         log.error("laser_enable command failed, re-trying")
-                
-    def set_interpolated_x_axis_cm(self, start, end, incr):
-        if incr == 0:
-            self.interpolated_x_axis_cm = None
-            self.display(0)
-            return
+    ## should use numpy.arange
+    def generate_interpolated_x_axis(self, start, end, incr):
+        if incr == 0 or start >= end:
+            return [ start ]
 
         axis = []
         x = start
         while x <= end:
             axis.append(x)
             x += incr
-
-        self.interpolated_x_axis_cm = axis
+        return axis
+                
+    def set_interpolated_x_axis_cm(self, start, end, incr):
+        self.interpolated_x_axis_cm = self.generate_interpolated_x_axis(start, end, incr)
         self.display(1)
+
+    def set_interpolated_x_axis_nm(self, start, end, incr):
+        self.interpolated_x_axis_nm = self.generate_interpolated_x_axis(start, end, incr)
+        self.display(1)
+
+    def clear(self):
+        self.interpolated_x_axis_nm = None
+        self.interpolated_x_axis_cm = None
+        # ...more...
 
     ## takes mode [integ, laser, laser_and_integ], intensity, threshold, x, unit [px, nm, cm]
     def balance_acquisition(self):

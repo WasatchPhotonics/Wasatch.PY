@@ -200,8 +200,6 @@ class WasatchDemo(object):
             self.exiting = True
             return
 
-        self.reading_count += 1
-
         self.process_reading(reading)
 
     def acquire_reading(self):
@@ -220,6 +218,8 @@ class WasatchDemo(object):
     def process_reading(self, reading):
         if self.args.scans_to_average > 1 and not reading.averaged:
             return
+
+        self.reading_count += 1
 
         if self.args.boxcar_half_width > 0:
             spectrum = utils.apply_boxcar(reading.spectrum, self.args.boxcar_half_width)

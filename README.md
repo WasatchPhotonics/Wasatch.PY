@@ -354,6 +354,9 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2019-09-16 1.0.40
+    - WasatchShell updates
+    - fixed demo.py with --max and --scans-to-average
 - 2019-09-16 1.0.39
     - added EEPROM.get_horizontal_roi()
 - 2019-08-20 1.0.38

@@ -100,6 +100,10 @@ multi-process pipeline used by ENLIGHTEN.
 
 # Version History
 
+- 09-18-2019 2.2.6
+    - added set_interpolated_x_axis_nm
+    - added clear
+    - added one-shot.py
 - 08-20-2019 2.2.5
     - default to laser_power_high_resolution
     - if laser power calibration is found, require modulation and default to max configured milliwatts
