@@ -1,12 +1,15 @@
 import logging
-from . import utils
+import numpy as np
 import json
 import math
 import re
 
+from . import utils
+
 from .SpectrometerState import SpectrometerState
 from .HardwareInfo      import HardwareInfo
 from .FPGAOptions       import FPGAOptions
+from .DeviceID          import DeviceID
 from .EEPROM            import EEPROM
 
 log = logging.getLogger(__name__)
@@ -173,15 +176,25 @@ class SpectrometerSettings(object):
         return False
 
     # probably a simpler way to do this...
-    def toJSON(self):
-        tmp = {}
-        for k in list(self.__dict__.keys()):
-            v = getattr(self, k)
-            if isinstance(v, EEPROM) or isinstance(v, FPGAOptions) or isinstance(v, SpectrometerState):
-                tmp[k] = v.__dict__
+    def to_dict(self):
+        d = {}
+        for k, v in self.__dict__.items():
+            if k in ["eeprom_backup"]:
+                continue # skip these
+
+            if isinstance(v, (DeviceID, EEPROM, FPGAOptions, SpectrometerState, HardwareInfo)):
+                o = v.to_dict()
+            elif isinstance(v, np.ndarray):
+                o = v.tolist()
             else:
-                tmp[k] = v
-        return json.dumps(tmp, indent=4, sort_keys=True, default=str)
+                o = v
+
+            d[k] = o
+        return d
+
+    def to_json(self):
+        d = dict(self)
+        return json.dumps(d, indent=4, sort_keys=True, default=str)
 
     def dump(self):
         log.debug("SpectrometerSettings:")

@@ -143,3 +143,6 @@ class SpectrometerState(object):
         log.debug("  Invert X-Axis:          %s", self.invert_x_axis)
         log.debug("  Laser Power Ramping:    %s", self.laser_power_ramping_enabled)
         log.debug("  Laser Power Ramp Incr:  %d", self.laser_power_ramp_increments)
+
+    def to_dict(self):
+        return self.__dict__

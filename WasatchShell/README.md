@@ -36,67 +36,31 @@ firmware implementation under stress.
       Iteration 2 of 50
       ...
 
-# Terminal I/O
+# Expect Scripts
+
+A couple additional scripts are provided to show how expect (or pexpect) can be used
+to interact with a spectrometer using WasatchShell.
+
+## load-test.py
+
+A sample framework to perform a heavy "load test" of a spectrometer, walking through a series
+of functions with Monte Carlo randomization to help wring-out the deepest of bugs.
+
+## one-shot.py
+
+A simple command-line wrapper to take a single measurement and output data to console,
+optionally filtering by wavelength or wavenumber:
+
+    $ python one-shot.py --laser --integration-time-ms 1000 --scans-to-average 5 --wavenumber 1046
+    1046.00,18796.25
+
+# Dependencies
+
+## GNU Readline
 
 WasatchShell uses GNU Readline, so you can create a 
 [~/.inputrc file](https://www.gnu.org/software/bash/manual/html_node/Readline-Init-File.html)
-to enable 'vi' history searching, etc.
-
-# Changes from 1.0
-
-WasatchShell 1.x was a standalone script which did not use the rest of 
-Wasatch.PY.  It basically re-implemented various commands, in some cases 
-implementing them differently than the main Wasatch.PY and so potentially 
-generated different results software from other Wasatch.PY applications
-like ENLIGHTEN.  
-
-WasatchShell 2.x is a lightweight wrapper over Wasatch.PY.  Sspecifically,
-it uses WasatchBus, WasatchDevice and FeatureIdentificationDevice, but NOT
-WasatchDeviceWrapper.  That means that it uses Wasatch.PY in a "blocking"
-(single-threaded, single-process) architecture, rather than the non-blocking 
-multi-process pipeline used by ENLIGHTEN.
-
-- Command parameters can be on the same line, or on following lines.  The 
-  following are all equivalent:
-
-  balance\_acquisition integ 45000 2500 850 nm
-
-  balance\_acquisition integ
-  45000 2500
-  850 nm
-
-  balance\_acquisition 
-  integ
-  45000 
-  2500
-  850 
-  nm
-
-- Boolean arguments may be passed as "on/off", "true/false", "yes/no" or the 
-  original "1/0".  Outputs are still generally 1/0.
-
-## Renamed commands
-
-- get\_actual\_integration\_time -> get\_actual\_integration\_time\_us
-- get\_integration\_time -> get\_integration\_time\_ms
-- get\_laser\_mod -> get\_laser\_mod\_enabled
-- get\_laser\_ramping\_mode -> get\_laser\_power\_ramping\_enabled
-- get\_laser\_temp -> get\_laser\_temperature\_degc
-- get\_laser\_temp\_setpoint -> [removed]
-- get\_mod\_duration -> get\_laser\_mod\_duration
-- get\_mod\_period -> get\_laser\_mod\_period
-- get\_mod\_pulse\_delay -> get\_laser\_mod\_pulse\_delay
-- get\_photodiode\_mw -> get\_secondary\_adc\_calibrated
-- get\_selected\_laser -> get\_selected\_adc
-- gettecenable -> get\_tec\_enable
-- gettemp -> get\_detector\_temperature\_degc
-- gettempset -> get\_detector\_temperature\_setpoint\_degc
-- set\_lsi\_mw -> set\_laser\_power\_mw
-- setinttime -> set\_integration\_time\_ms
-- setlse -> set\_laser\_enable
-- settece -> set\_tec\_enable
-- startacquisition / getdata -> get\_spectrum
-- vr\_get\_num\_frames -> get\_vr\_num\_frames
+to enable 'vi' editing with history searching, etc.
 
 # Version History
 

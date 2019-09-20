@@ -106,6 +106,13 @@ class EEPROM(object):
                           "roi_vertical_region_3_end",      
                           "roi_vertical_region_3_start" ]
 
+    def to_dict(self):
+        d = {}
+        for k, v in self.__dict__.items():
+            if k not in ["user_data", "buffers", "write_buffers", "editable"]:
+                d[k] = v
+        return d
+
     ## whether the given field is normally editable by users via ENLIGHTEN
     #
     # @return False otherwise (don't trust in None's truthiness, as you can't 
@@ -157,6 +164,8 @@ class EEPROM(object):
         self.read_eeprom()
 
     ## render the attributes of this object as a JSON string
+    #
+    # @note some callers may prefer SpectrometerSettings.to_dict() or to_json()
     def json(self, allow_nan=True):
         tmp_buf  = self.buffers
         tmp_data = self.user_data

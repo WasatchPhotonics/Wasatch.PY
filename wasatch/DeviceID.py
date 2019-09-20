@@ -214,3 +214,12 @@ class DeviceID(object):
 
     def __hash__(self):
         return hash(str(self))
+
+    ## So that dict() can return a clean __dict__ without any "private" attributes
+    #  (which we should probably __prefix or something)
+    def to_dict(self):
+        d = {}
+        for k, v in self.__dict__.items():
+            if k not in ["device"]:
+                d[k] = v
+        return d

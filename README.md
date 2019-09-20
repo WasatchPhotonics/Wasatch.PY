@@ -354,6 +354,8 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
+- 2019-09-19 1.0.41
+    - added various to_dict() methods to better-support JSON serialization
 - 2019-09-16 1.0.40
     - WasatchShell updates
     - fixed demo.py with --max and --scans-to-average

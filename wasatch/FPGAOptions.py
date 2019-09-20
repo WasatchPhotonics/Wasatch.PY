@@ -116,3 +116,6 @@ class FPGAOptions(object):
             return "Ramping"
         else:
             return "ERROR"
+
+    def to_dict(self):
+        return self.__dict__

@@ -30,3 +30,6 @@ class HardwareInfo(object):
     # @see enlighten.ModelInfo.has_high_gain_mode
     def supports_high_gain_mode(self):
         return self.is_ingaas()
+
+    def to_dict(self):
+        return self.__dict__
