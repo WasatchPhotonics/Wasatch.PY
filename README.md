@@ -360,5 +360,5 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
-See [Changelog](https://github.com/WasatchPhotonics/Wasatch.PY/raw/master/README_CHANGELOG.md)
+See [Changelog](README_CHANGELOG.md)
 
