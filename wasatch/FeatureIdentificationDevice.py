@@ -1648,7 +1648,6 @@ class FeatureIdentificationDevice(object):
         if self.overrides and self.overrides.has_override(setting): self.apply_override(setting, value) 
         elif setting == "laser_enable":                         self.set_laser_enable(True if value else False) 
         elif setting == "integration_time_ms":                  self.set_integration_time_ms(int(round(value))) 
-        elif setting == "scans_to_average":                     self.settings.state.scans_to_average = int(value) 
 
         elif setting == "detector_tec_setpoint_degC":           self.set_detector_tec_setpoint_degC(int(round(value))) 
         elif setting == "detector_tec_enable":                  self.set_tec_enable(True if value else False) 

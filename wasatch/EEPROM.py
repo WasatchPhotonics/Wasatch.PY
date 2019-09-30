@@ -131,7 +131,7 @@ class EEPROM(object):
         end   = self.roi_horizontal_end
         pixels = self.active_pixels_horizontal
 
-        if start >= 0 and start < pixels and end >= start and end <= pixels:
+        if start >= 0 and start < pixels and end > start and end <= pixels:
             return (start, max(start, min(end, pixels-1)))
 
     ## 

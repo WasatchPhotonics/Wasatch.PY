@@ -16,9 +16,10 @@
 
 import os
 import sys
-import traceback
+import queue            # for exception
 import logging
 import platform
+import traceback
 import multiprocessing
 
 # ##############################################################################
@@ -194,18 +195,20 @@ class MainLogger(object):
     def __init__(self, 
             log_level=logging.DEBUG, 
             enable_stdout=True,
-            logfile=None):
-        self.log_queue     = multiprocessing.Queue(-1) 
+            logfile=None,
+            timeout_sec=5):
+        self.log_queue     = multiprocessing.Queue() 
         self.log_level     = log_level
         self.enable_stdout = enable_stdout
         self.explicit_path = logfile
+        self.timeout_sec   = timeout_sec
 
         # kick-off a listener in a separate process
         # Specifically, create a process running the listener_process() function
         # and pass it the arguments log_queue and listener_configurer (which is the
         # first function it will call)
         self.listener = multiprocessing.Process(target=self.listener_process,
-                                                args=(self.log_queue, self.listener_configurer, self.explicit_path))
+                                                args=(self.log_queue, self.listener_configurer, self.explicit_path, self.timeout_sec))
         self.listener.start()
 
         # Remember you have to add a local log configurator for each
@@ -254,20 +257,28 @@ class MainLogger(object):
     # This is the listener process top-level loop: wait for logging events
     # (LogRecords) on the queue and handle them, quit when you get a None for a
     # LogRecord (poison pill).
-    def listener_process(self, log_queue, configurer, explicit_path):
+    def listener_process(self, log_queue, configurer, explicit_path, timeout_sec):
         configurer(explicit_path=explicit_path)
         while True:
             try:
-                record = log_queue.get()
+                if timeout_sec <= 0:
+                    record = log_queue.get()
+                else:
+                    record = log_queue.get(timeout=timeout_sec)
+
                 if record is None: # We send this as a sentinel to tell the listener to quit.
                     break
                 logger = logging.getLogger(record.name)
                 logger.handle(record) # No level or filter logic applied - just do it!
+            except queue.Empty:
+                print("wasatch.applog shutting down after %s sec of no log messages" % timeout_sec)
+                break
             except (KeyboardInterrupt, SystemExit):
                 break
             except:
-                print('Whoops! Problem:', file=sys.stderr)
+                print('wasatch.applog exception:', file=sys.stderr)
                 traceback.print_exc(file=sys.stderr)
+                break
 
     ## Wrapper to add a None poison pill to the listener process queue to
     #  ensure it exits. 

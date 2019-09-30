@@ -72,13 +72,15 @@ class WasatchDevice(object):
 
         self.settings = SpectrometerSettings()
 
+        # Any particular reason these aren't in FeatureIdentificationDevice?
+        # I guess because they could theoretically apply to a FileSpectrometer, etc?
         self.summed_spectra         = None
         self.sum_count              = 0
         self.session_reading_count  = 0
+        self.take_one               = False
 
         self.process_id = os.getpid()
         self.last_memory_check = datetime.datetime.now()
-
 
     # ######################################################################## #
     #                                                                          #
@@ -388,7 +390,7 @@ class WasatchDevice(object):
         # for now I'm putting this delay here, so it will be exactly the same
         # (given sleep()'s precision) for each acquisition.  For true precision
         # this should all go into the firmware anyway.
-        auto_enable_laser = self.settings.state.acquisition_laser_trigger_enable and not self.settings.state.free_running_mode
+        auto_enable_laser = self.settings.state.acquisition_laser_trigger_enable # and not self.settings.state.free_running_mode
         log.debug("acquire_spectrum: auto_enable_laser = %s", auto_enable_laser)
         if auto_enable_laser:
             log.debug("acquire_spectum: enabling laser, then sleeping %d ms", self.settings.state.acquisition_laser_trigger_delay_ms)
@@ -489,6 +491,15 @@ class WasatchDevice(object):
                     # reset for next average
                     self.summed_spectra = None
                     self.sum_count = 0
+            else:
+                # if averaging isn't enabled...then a single reading is the 
+                # "averaged" final measurement (check reading.sum_count to confirm)
+                reading.averaged = True
+
+            # were we told to only take one (potentially averaged) measurement?
+            if self.take_one and reading.averaged:
+                log.debug("completed take_one")
+                self.change_setting("cancel_take_one", True)
 
         # end of loop_index
 
@@ -612,11 +623,8 @@ class WasatchDevice(object):
         log.debug("monitor_memory: Process %d memory = %d bytes", self.process_id, size_in_bytes)
 
         if False:
-            gc.collect(0)
-            gc.collect(1)
-            gc.collect(2)
-            gc.collect(1)
-            gc.collect(0)
+            for i in [0, 1, 2, 1, 0]:
+                gc.collect(i)
 
     ##
     # Process every entry on the settings queue, writing each to the device.  As
@@ -695,16 +703,27 @@ class WasatchDevice(object):
         control_object = ControlObject(setting, value)
         log.debug("WasatchDevice.change_setting: %s", control_object)
 
+        # Since scan averaging lives in WasatchDevice, handle commands which affect
+        # averaging at this level
         if control_object.setting == "scans_to_average":
             self.sum_count = 0
+            self.settings.state.scans_to_average = int(value) 
+            return
+        elif control_object.setting == "reset_scan_averaging":
+            self.sum_count = 0
+            return
+        elif control_object.setting == "take_one":
+            self.take_one = True
+            self.change_setting("free_running_mode", True)
+            return
+        elif control_object.setting == "cancel_take_one":
+            self.sum_count = 0
+            self.take_one = False
+            self.change_setting("free_running_mode", False)
+            return
 
-        # try:
-        # self.command_queue.put(control_object)
         self.command_queue.append(control_object)
         log.debug("change_setting: queued %s", control_object)
-        # except Exception as exc:
-        #     log.critical("WasatchDevice.change_setting: failed to enqueue %s",
-        #         control_object, exc_info=1)
 
         # always process trigger_source commands promptly (can't wait for end of
         # acquisition which may never come)

@@ -21,16 +21,16 @@ class SubprocessArgs(object):
             log_queue, 
             command_queue, 
             response_queue, 
-            spectrometer_settings_queue,
+            settings_queue,
             message_queue,
             log_level):
-        self.device_id                   = device_id
-        self.log_queue                   = log_queue
-        self.command_queue               = command_queue
-        self.response_queue              = response_queue
-        self.spectrometer_settings_queue = spectrometer_settings_queue
-        self.message_queue               = message_queue
-        self.log_level                   = log_level
+        self.device_id      = device_id
+        self.log_queue      = log_queue
+        self.command_queue  = command_queue
+        self.response_queue = response_queue
+        self.settings_queue = settings_queue
+        self.message_queue  = message_queue
+        self.log_level      = log_level
 
 ##
 # Wrap WasatchDevice in a non-blocking interface run in a separate
@@ -185,19 +185,10 @@ class WasatchDeviceWrapper(object):
         self.log_queue = log_queue
         self.log_level = log_level
 
-        # This works equally well on Linux (no obvious advantage or disadvantage),
-        # but blows up on Windows :-(
-        #
-        # self.manager = multiprocessing.Manager()
-        # manager = self.manager
-        #
-        # Therefore...
-        manager = multiprocessing
-
-        (self.spectrometer_settings_queue_consumer, self.spectrometer_settings_queue_producer) = manager.Pipe(False) # 1)   # spectrometer -> GUI (SpectrometerSettings, one-time)
-        (self.response_queue_consumer,              self.response_queue_producer)              = manager.Pipe(False) # 100) # spectrometer -> GUI (Readings)
-        (self.message_queue_consumer,               self.message_queue_producer)               = manager.Pipe(False) # 100) # spectrometer -> GUI (StatusMessages)
-        (self.command_queue_consumer,               self.command_queue_producer)               = manager.Pipe(False) # 100) # GUI -> spectrometer (ControlObjects)
+        (self.settings_queue_consumer, self.settings_queue_producer) = multiprocessing.Pipe(False) # spectrometer -> GUI (SpectrometerSettings, one-time)
+        (self.response_queue_consumer, self.response_queue_producer) = multiprocessing.Pipe(False) # spectrometer -> GUI (Readings)
+        (self.message_queue_consumer,  self.message_queue_producer)  = multiprocessing.Pipe(False) # spectrometer -> GUI (StatusMessages)
+        (self.command_queue_consumer,  self.command_queue_producer)  = multiprocessing.Pipe(False) # GUI -> spectrometer (ControlObjects)
 
         self.closing      = False   # Don't permit new acquires during close
         self.poller       = None    # a handle to the subprocess
@@ -222,7 +213,7 @@ class WasatchDeviceWrapper(object):
     #
     # The two instances are coupled via the 3 queues:
     #
-    # @par spectrometer_settings_queue
+    # @par settings_queue
     #
     #       Lets the subprocess (WasatchDevice) send a single, one-time copy
     #       of a populated SpectrometerSettings object back through the 
@@ -262,15 +253,15 @@ class WasatchDeviceWrapper(object):
         # Fork a child process running the continuous_poll() method on this
         # object instance.  
         args = SubprocessArgs(
-            device_id                   = self.device_id, 
-            log_level                   = self.log_level, # log.getEffectiveLevel(),
+            device_id      = self.device_id, 
+            log_level      = self.log_level, # log.getEffectiveLevel(),
 
             # the all-important message queues
-            log_queue                   = self.log_queue,                              #          subprocess --> log
-            command_queue               = self.command_queue_consumer,                 # Main --> subprocess
-            response_queue              = self.response_queue_producer,                # Main <-- subprocess \
-            spectrometer_settings_queue = self.spectrometer_settings_queue_producer,   # Main <-- subprocess  ) consolidate into SubprocessMessage?
-            message_queue               = self.message_queue_producer)                 # Main <-- subprocess /
+            log_queue      = self.log_queue,               #          subprocess --> log
+            command_queue  = self.command_queue_consumer,  # Main --> subprocess
+            response_queue = self.response_queue_producer, # Main <-- subprocess \
+            settings_queue = self.settings_queue_producer, # Main <-- subprocess  ) consolidate into SubprocessMessage?
+            message_queue  = self.message_queue_producer)  # Main <-- subprocess /
 
         # instantiate subprocess
         self.poller = multiprocessing.Process(target=self.continuous_poll, args=(args,))
@@ -293,15 +284,15 @@ class WasatchDeviceWrapper(object):
         settings_timeout_sec = 15
         self.settings = None
         while True:
-            log.debug("WasatchDeviceWrapper.connect: blocking on spectrometer_settings_queue_consumer (waiting on forked continuous_poll)")
+            log.debug("WasatchDeviceWrapper.connect: blocking on settings_queue_consumer (waiting on forked continuous_poll)")
             # note: testing indicates it may take more than 2.5sec for the forked
             # continuous_poll to actually start moving.  5sec timeout may be on the short side?
             # Initial testing with 2 spectrometers showed 2nd spectrometer taking 6+ sec to initialize.
             # If you kick-off another heavy operation in another window while the spectrometer is 
             # enumerating, this can take even longer.
 
-            if self.spectrometer_settings_queue_consumer.poll():
-                self.settings = self.spectrometer_settings_queue_consumer.recv() # get(timeout=settings_timeout_sec)
+            if self.settings_queue_consumer.poll():
+                self.settings = self.settings_queue_consumer.recv() # get(timeout=settings_timeout_sec)
                 break
 
             if (datetime.datetime.now() - time_start).total_seconds() > settings_timeout_sec:
@@ -312,7 +303,7 @@ class WasatchDeviceWrapper(object):
                 time.sleep(0.5)
 
         # except Exception as exc:
-        #    log.warn("WasatchDeviceWrapper.connect: spectrometer_settings_queue_consumer.get() caught exception", exc_info=1)
+        #    log.warn("WasatchDeviceWrapper.connect: settings_queue_consumer.get() caught exception", exc_info=1)
         #    kill_myself = True
 
         if self.settings is None:
@@ -346,7 +337,7 @@ class WasatchDeviceWrapper(object):
             return False
 
         # AttributeError: 'AutoProxy[Queue]' object has no attribute 'close'
-        del self.spectrometer_settings_queue_consumer 
+        del self.settings_queue_consumer 
 
         log.info("WasatchDeviceWrapper.connect: received SpectrometerSettings from subprocess")
         self.settings.dump()
@@ -584,9 +575,8 @@ class WasatchDeviceWrapper(object):
     #
     # This method doesn't have a return-vaue per-se, but reports upstream
     # via the various queues in SubprocessArgs.  In particular, a value of
-    # None in either the spectrometer_settings_queue or response_queue 
-    # indicates "this subprocess is shutting down and the spectrometer is
-    # going bye-bye."
+    # None in either the settings_queue or response_queue indicates "this 
+    # subprocess is shutting down and the spectrometer is going bye-bye."
     def continuous_poll(self, args):
 
         # We have just forked into a new process, so the first thing is to
@@ -630,27 +620,27 @@ class WasatchDeviceWrapper(object):
                 response_queue = args.response_queue)
         except:
             log.critical("continuous_poll: exception instantiating WasatchDevice", exc_info=1)
-            return args.spectrometer_settings_queue.send(None) # put(None, timeout=2)
+            return args.settings_queue.send(None) # put(None, timeout=2)
 
         ok = False
         try:
             ok = wasatch_device.connect()
         except:
             log.critical("continuous_poll: exception connecting", exc_info=1)
-            return args.spectrometer_settings_queue.send(None) # put(None, timeout=2)
+            return args.settings_queue.send(None) # put(None, timeout=2)
 
         if not ok:
             log.critical("continuous_poll: failed to connect")
-            return args.spectrometer_settings_queue.send(None) # put(None, timeout=2)
+            return args.settings_queue.send(None) # put(None, timeout=2)
 
         log.debug("continuous_poll: connected to a spectrometer")
 
         # send the SpectrometerSettings back to the GUI process
         log.debug("continuous_poll: returning SpectrometerSettings to GUI process")
-        args.spectrometer_settings_queue.send(wasatch_device.settings) # put(wasatch_device.settings, timeout=10)
+        args.settings_queue.send(wasatch_device.settings) # put(wasatch_device.settings, timeout=10)
 
         # AttributeError: 'AutoProxy[Queue]' object has no attribute 'close'
-        # del args.spectrometer_settings_queue
+        # del args.settings_queue
 
         # Read forever until the None poison pill is received
         log.debug("continuous_poll: entering loop")
