@@ -1,5 +1,7 @@
 # Changelog
 
+- 2019-10-08 1.0.44
+    - raman intensity calibration fixes
 - 2019-10-08 1.0.43
     - added raman intensity calibration
     - added README_SETTINGS.md

@@ -80,7 +80,7 @@ class EEPROM(object):
         self.bad_pixels                  = [] # should be set, not list
         self.product_configuration       = None
 
-        self.raman_intensity_calibration_format = -1
+        self.raman_intensity_calibration_format = 0
         self.raman_intensity_coeffs      = []
                                          
         self.format = 0
@@ -392,12 +392,14 @@ class EEPROM(object):
 
         self.raman_intensity_coeffs = []
         self.raman_intensity_calibration_format = self.unpack((6, 0, 1), "B", "raman_intensity_calibration_format")
-        if 0 <= self.raman_intensity_calibration_format < EEPROM.MAX_INTENSITY_TERMS:
+        if 0 == self.raman_intensity_calibration_format:
+            pass
+        elif self.raman_intensity_calibration_format < EEPROM.MAX_INTENSITY_TERMS:
             order = self.raman_intensity_calibration_format
             terms = order + 1
             for i in range(terms):
                 offset = i * 4 + 1
-                self.raman_intensity_coeffs.append(self.unpack((6, offset, 4), "f", "raman_intensity_coeff" + i))
+                self.raman_intensity_coeffs.append(self.unpack((6, offset, 4), "f", "raman_intensity_coeff_%d" % i))
         else:
             log.critical("Unsupported Raman Intensity Calibration format: %d", self.raman_intensity_calibration_format)
 
@@ -635,16 +637,17 @@ class EEPROM(object):
             # polynomial regression of up to 11th-order
             order = self.raman_intensity_calibration_format
             terms = order + 1
-            for i in range(12):
+            for i in range(EEPROM.MAX_INTENSITY_TERMS):
                 offset = i * 4 + 1
-                if i < terms and self.raman_intensity_coeffs is not None and len(self.raman_intensity_coeffs) < i:
+                if i < terms and self.raman_intensity_coeffs is not None and i < len(self.raman_intensity_coeffs):
                     coeff = self.raman_intensity_coeffs[i]
                 else:
                     coeff = 0.0
+                # log.debug("packing raman_intensity_coeffs[%d] (offset %d, order %d, terms %d) => %e", i, offset, order, terms, coeff)
                 self.pack((6, offset, 4), "f", coeff)
         else:
             log.critical("Unsupported Raman Intensity Calibration format: %d", self.raman_intensity_calibration_format)
-            for i in range(12):
+            for i in range(EEPROM.MAX_INTENSITY_TERMS):
                 offset = i * 4 + 1
                 self.pack((6, offset, 4), "f", 0.0)
 
@@ -695,7 +698,7 @@ class EEPROM(object):
         if self.format < 6:
             return False
 
-        if 0 <= self.raman_intensity_calibration_format < EEPROM.MAX_INTENSITY_TERMS:
+        if 0 < self.raman_intensity_calibration_format < EEPROM.MAX_INTENSITY_TERMS:
             return self.coeffs_look_valid(self.raman_intensity_coeffs, 
                                           count = self.raman_intensity_calibration_format + 1)
 

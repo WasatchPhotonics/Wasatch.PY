@@ -136,17 +136,27 @@ class SpectrometerSettings(object):
         self.raman_intensity_factors = None
         if not self.eeprom.has_raman_intensity_calibration():
             return
-        if 0 <= self.eeprom.raman_intensity_calibration_format < EEPROM.MAX_INTENSITY_TERMS:
+        if 1 <= self.eeprom.raman_intensity_calibration_format < EEPROM.MAX_INTENSITY_TERMS:
+            log.debug("updating raman intensity factors")
             coeffs = self.eeprom.raman_intensity_coeffs
             if coeffs is not None:
-                # probably faster numpy way to do this
-                factors = []
-                for pixel in range(self.pixels()):
-                    log10_factor = 0.0
-                    for i in range(len(coeffs)):
-                        log10_factor += coeffs[i] * math.pow(pixel, i)
-                    factors.append(math.pow(10, log10_factor))
-                self.raman_intensity_factors = np.array(factors, dtype=np.float64)
+                try:
+                    # probably faster numpy way to do this
+                    factors = []
+                    for pixel in range(self.pixels()):
+                        log10_factor = 0.0
+                        for i in range(len(coeffs)):
+                            x_to_i = math.pow(pixel, i)
+                            scaled = coeffs[i] * x_to_i
+                            log10_factor += scaled
+                            # log.debug("pixel %4d: px_to_i %e, coeff[%d] %e, scaled %e, log10_factor %e", pixel, x_to_i, i, coeffs[i], scaled, log10_factor)
+                        expanded = math.pow(10, log10_factor)
+                        # log.debug("pixel %4d: expanded = %e", pixel, expanded)
+                        factors.append(expanded)
+                    self.raman_intensity_factors = np.array(factors, dtype=np.float64)
+                except:
+                    log.error("exception generating Raman intensity factors", exc_info=1)
+                    self.raman_intensity_factors = None
 
     def update_wavecal(self, coeffs=None):
         self.wavelengths = None

@@ -1483,6 +1483,7 @@ class FeatureIdentificationDevice(object):
             self.eeprom_backup = copy.deepcopy(self.settings.eeprom)
 
         self.settings.eeprom = pair[1]
+        self.settings.eeprom.dump()
 
     ## Actually store the current session EEPROM fields to the spectrometer.
     def write_eeprom(self):
