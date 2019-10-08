@@ -37,8 +37,10 @@ Rendered API documentation for classes and methods is available here:
 
 - https://wasatchphotonics.com/api/Wasatch.PY/annotated.html
 
-- [Settings](README_SETTINGS.md)
+A significant portion of Wasatch.PY's command interface is provided through key-value
+settings, provided to simplify multi-process applications and summarized here:
 
+- [Key-Value Settings](README_SETTINGS.md)
 
 # Dependencies
 
