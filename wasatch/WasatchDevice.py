@@ -184,6 +184,7 @@ class WasatchDevice(object):
         # self.ccd_offset
 
         self.settings.update_wavecal()
+        self.settings.update_raman_intensity_factors()
         self.settings.dump()
 
         # SiG-VIS kludge
@@ -201,7 +202,7 @@ class WasatchDevice(object):
     # If a spectrometer has bad_pixels configured in the EEPROM, then average 
     # over them in the driver.
     #
-    # Even though we're doing spatial averaging here, we truncate the result to
+    # Even though we're doing spatial averaging here, we round the result to
     # a uint16 rather than return a float.  That's because most pixels normally
     # return uint16, and it looks weird if a few scattered pixels are floats.
     # When we're doing scan-averaging, ALL the pixels are returned as floats,
@@ -310,7 +311,7 @@ class WasatchDevice(object):
     #
     # Somewhat confusingly, this function can return any of the following:
     #
-    # @return False     a poison-pill sent upstream (requested device shutdown)
+    # @return False     a poison-pill sent upstream to device shutdown
     # @return True      keepalive
     # @return None      keepalive
     # @return Reading   a partial or complete spectrometer Reading (may itself 
@@ -344,37 +345,45 @@ class WasatchDevice(object):
         return self.acquire_spectrum()
 
     ##
-    # Encapsulates the act of acquisition from the decision-making of whether 
-    # same is needed.  Called directly by acquire_data, above.  
+    # Generate one Reading from the spectrometer, including one 
+    # optionally-averaged spectrum, device temperatures and other hardware
+    # status.
+    #
+    # This is normally called by acquire_data when that function decides it is 
+    # time to perform an acquisition.
     #
     # @par Scan Averaging
     #
-    # If the driver is in free-running mode, AND performing scan averaging,
-    # THEN we return piecemeal partial readings while "building up" to the
-    # final averaged measurement.  This gives the GUI an opportunity to update
-    # the "collected X of Y" readout on-screen, and in earlier versions, 
-    # supported a faint background trace of in-process partial readings.
+    # IF the driver is in free-running mode, AND performing scan averaging,
+    # THEN scan averaging is NOT encapsulated within a single call to this 
+    # function.  Instead, we let ths spectrometer run in free-running mode, 
+    # collecting individual spectra as per normal, and returning each "partial"
+    # readings while "building up" to the final averaged measurement.  
+    # 
+    # That is to say, if scan averaging is set to 10, then this function will
+    # get called 10 times, as ticked by the regular free-running timers, before
+    # the fully averaged spectrum is returned.  A total of 10 (not 11) spectra
+    # will be generated and sent upstream: the first 9 "partial" (unaveraged) 
+    # reads, and the final 10th spectrum which will contain the average of all
+    # 10 measurements.  
     #
-    # However, this doesn't make as much sense if we're not in free-running mode,
+    # This gives the user-facing GUI an opportunity to update the "collected 
+    # X-of-Y" readout on-screen, and potentially even graph the traces of 
+    # in-process partial readings.
+    #
+    # HOWEVER, this doesn't make as much sense if we're not in free-running mode,
     # i.e. the subprocess has been slaved to explicit control by the Controller
     # (likely a feature object like BatchCollection), and is collecting exactly 
     # those measurements we're being commanded, as they're commanded.  
     #
-    # Therefore, if the driver isn't in free-running mode, then we only return
-    # the final averaged spectrum as an atomic operation.
+    # THEREFORE, if the driver IS NOT in free-running mode, then we ONLY return
+    # the final averaged spectrum as one atomic operation.
     #
-    # @par Precision
+    # In this case, if scan averaging is set to 10, then A SINGLE CALL to this
+    # function will "block" while the full 10 measurements are made, and then
+    # a single, fully-averaged spectrum will be returned upstream.
     #
-    #     - we always return temperatures for live GUI updates
-    #     - we always perform bad pixel correction
-    #     - currently returning INTEGRAL averages (including bad_pixel)
-    #
-    # Complication: historically WasatchDevice returns every spectrum up to
-    # WasatchDeviceWrapper, even mid-averaging partial reports.  Originally
-    # this allowed ENLIGHTEN to display a light-gray trace line showing the
-    # pre-averaged spectra as they were collected, rather than waiting on the
-    # long averaged updates.  This can also allow the temperature and
-    # metadata readings to continue to update during long averaged collections.
+    # @return a Reading object
     #
     def acquire_spectrum(self):
         averaging_enabled = (self.settings.state.scans_to_average > 1)
@@ -627,15 +636,21 @@ class WasatchDevice(object):
                 gc.collect(i)
 
     ##
-    # Process every entry on the settings queue, writing each to the device.  As
-    # long as these were inserted by WasatchDeviceWrapper.continuous_poll, they
-    # should be already de-dupped.
+    # Process every entry on the incoming command (settings) queue, writing each 
+    # to the device.  
     #
-    # I'm not sure where this is going, but I need a way to trigger acquisitions
-    # through software.  An initial cautious approach is to make this function
-    # return True if a queued command requested an acquisition.
+    # Essentially this iterates through all the (setting, value) pairs we've
+    # received through change_setting() which have not yet been processed, and
+    # 
     #
-    # Called by acquire_data, ergo subprocess
+    # Note that WasatchDeviceWrapper.continuous_poll "de-dupes" commands on
+    # receipt from ENLIGHTEN, so the command stream arising from that source
+    # should already be optimized and minimal.  Commands injected manually by
+    # calling WasatchDevice.change_setting() do not receive this treatment.
+    #
+    # In the normal multi-process (ENLIGHTEN) workflow, this function is called 
+    # at the beginning of acquire_data, itself ticked regularly by 
+    # WasatchDeviceWrapper.continuous_poll.
     def process_commands(self):
         control_object = "throwaway"
         retval = False
@@ -654,9 +669,13 @@ class WasatchDevice(object):
                 log.debug("process_commands: acquire found")
                 retval = True
             else:
+                # send setting downstream to be processed by the spectrometer HAL
+                # (probably FeatureIdentificationDevice)
                 self.hardware.write_setting(control_object)
 
             if control_object.setting == "free_running_mode" and not self.hardware.settings.state.free_running_mode:
+                # we just LEFT free-running mode (went on "pause"), so toss any 
+                # queued for the caller (ENLIGHTEN)
                 log.debug("exited free-running mode, so clearing response queue")
                 self.clear_response_queue()
 
@@ -696,9 +715,29 @@ class WasatchDevice(object):
     # ######################################################################## #
 
     ##
-    # Add the specified setting and value to the local control queue.
+    # Processes an incoming (setting, value) pair.
     #
-    # Called by subprocess.continuous_poll
+    # Some settings are processed internally within this function, if the 
+    # functionality they are controlling is implemented by WasatchDevice.
+    # This includes scan averaging, and anything related to scan averaging
+    # (such as "take one" behavior).
+    #
+    # Most tuples are queued to be sent downstream to the connected hardware
+    # (usually FeatureIdentificationDevice) at the start of the next 
+    # acquisition.
+    #
+    # Some hardware settings (those involving triggering or the laser) are 
+    # sent downstream immediately, rather than waiting for the next "scheduled"
+    # settings update.
+    #
+    # ENLIGHTEN commands to WasatchDeviceWrapper are sent here by 
+    # WasatchDeviceWrapper.continuous_poll.
+    #
+    # @param setting (Input) which setting to change
+    # @param value   (Input) the new value of the setting (required, but can 
+    #                be None or "anything" for commands like "acquire" which
+    #                don't use the argument).
+    # @param allow_immediate 
     def change_setting(self, setting, value, allow_immediate=True):
         control_object = ControlObject(setting, value)
         log.debug("WasatchDevice.change_setting: %s", control_object)

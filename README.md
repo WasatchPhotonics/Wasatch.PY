@@ -37,50 +37,8 @@ Rendered API documentation for classes and methods is available here:
 
 - https://wasatchphotonics.com/api/Wasatch.PY/annotated.html
 
-At writing, these are the string keys which can be passed to wasatch.WasatchDevice.change_setting():
+- [Settings](README_SETTINGS.md)
 
-- acquire
-- acquisition_laser_trigger_delay_ms
-- acquisition_laser_trigger_enable 
-- allow_default_gain_reset
-- area_scan_enable
-- bad_pixel_mode
-- degC_to_dac_coeffs
-- detector_gain
-- detector_gain_odd
-- detector_offset
-- detector_offset_odd
-- detector_tec_enable
-- detector_tec_setpoint_degC
-- enable_secondary_adc
-- free_running_mode
-- graph_alternating_pixels
-- high_gain_mode_enable
-- integration_time_ms
-- invert_x_axis
-- laser_enable
-- laser_power_high_resolution
-- laser_power_mW
-- laser_power_perc
-- laser_power_ramp_increments
-- laser_power_ramping_enable
-- laser_power_require_modulation
-- laser_temperature_setpoint_raw
-- log_level
-- max_usb_interval_ms
-- min_usb_interval_ms
-- overrides
-- raise_exceptions
-- replace_eeprom
-- reset_fpga
-- scans_to_average
-- selected_laser
-- swap_alternating_pixels
-- trigger_source
-- update_eeprom
-- write_eeprom
-
-For a full list of parameter strings, see the source code for FeatureIdentificationDevice.write_setting.
 
 # Dependencies
 

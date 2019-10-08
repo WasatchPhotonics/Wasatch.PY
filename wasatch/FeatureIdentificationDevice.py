@@ -345,7 +345,7 @@ class FeatureIdentificationDevice(object):
 
     def read_eeprom(self):
         buffers = []
-        for page in range(6):
+        for page in range(EEPROM.MAX_PAGES):
             buffers.append(self.get_upper_code(0x01, page, label="GET_MODEL_CONFIG(%d)" % page))
         self.settings.eeprom.parse(buffers)
 
@@ -1505,7 +1505,7 @@ class FeatureIdentificationDevice(object):
 
         log.debug("Would write new buffers: %s", self.settings.eeprom.write_buffers)
 
-        for page in range(6):
+        for page in range(EEPROM.MAX_PAGES):
             if self.is_arm():
                 log.debug("writing page %d: %s", page, self.settings.eeprom.write_buffers[page])
                 self.send_code(bmRequest       = 0xff, # second-tier

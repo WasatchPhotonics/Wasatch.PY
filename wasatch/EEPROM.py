@@ -19,7 +19,9 @@ log = logging.getLogger(__name__)
 # @see ENG-0034
 class EEPROM(object):
     
-    USE_REV_4 = True
+    LATEST_REV = 6
+    MAX_PAGES = 8
+    MAX_INTENSITY_TERMS = 12
 
     def __init__(self):
         self.format = 0
@@ -77,6 +79,9 @@ class EEPROM(object):
 
         self.bad_pixels                  = [] # should be set, not list
         self.product_configuration       = None
+
+        self.raman_intensity_calibration_format = -1
+        self.raman_intensity_coeffs      = []
                                          
         self.format = 0
         self.buffers = []
@@ -126,14 +131,21 @@ class EEPROM(object):
 
     ## @return tuple of (start, end) pixel coordinates (end is last pixel, not last+1),
     #          or None if no valid horizontal ROI
+    # @todo this should return an ROI object, not a tuple
     def get_horizontal_roi(self):
-        start = self.roi_horizontal_start
-        end   = self.roi_horizontal_end
+        start  = self.roi_horizontal_start
+        end    = self.roi_horizontal_end
         pixels = self.active_pixels_horizontal
 
-        if start >= 0 and start < pixels and end > start and end <= pixels:
-            return (start, max(start, min(end, pixels-1)))
+        if 0 <= start and start < end and end < pixels:
+            checked_end = max(start, min(end, pixels-1))
+            return (start, checked_end)
 
+    def has_horizontal_roi(self):
+        start  = self.roi_horizontal_start
+        end    = self.roi_horizontal_end
+        pixels = self.active_pixels_horizontal
+        return 0 <= start and start < end and end < pixels
     ## 
     # passed a temporary copy of another EEPROM object, copy-over any
     # "editable" fields to this one
@@ -150,11 +162,11 @@ class EEPROM(object):
                 log.debug("  old: %s", old)
                 log.debug("  new: %s", getattr(self, field))
     ## 
-    # given a set of the 6 buffers read from a spectrometer via USB,
+    # given a set of the 8 buffers read from a spectrometer via USB,
     # parse those into the approrpriate fields and datatypes
     def parse(self, buffers):
-        if len(buffers) < 6:
-            log.error("EEPROM.parse expects at least 6 buffers")
+        if len(buffers) < EEPROM.MAX_PAGES:
+            log.error("EEPROM.parse expects at least %d buffers", EEPROM.MAX_PAGES)
             return
 
         # store these locally so self.unpack() can access them
@@ -236,6 +248,9 @@ class EEPROM(object):
         log.debug("")
         log.debug("  Bad Pixels:       %s", self.bad_pixels)
         log.debug("  Product Config:   %s", self.product_configuration)
+        log.debug("")
+        log.debug("  Raman Int Fmt:    %d", self.raman_intensity_calibration_format)
+        log.debug("  Raman Int Coeffs: %s", self.raman_intensity_coeffs)
 
     # ##########################################################################
     #                                                                          #
@@ -244,7 +259,7 @@ class EEPROM(object):
     # ##########################################################################
 
     ## 
-    # Assuming a set of 6+ buffers have been passed in via parse(), actually
+    # Assuming a set of 8 buffers have been passed in via parse(), actually
     # unpack (deserialize / unmarshall) the binary data into the approriate
     # fields and datatypes.
     # 
@@ -371,6 +386,21 @@ class EEPROM(object):
 
         self.product_configuration           = self.unpack((5,  30, 16), "s", "product_config")
 
+        # ######################################################################
+        # Page 6
+        # ######################################################################
+
+        self.raman_intensity_coeffs = []
+        self.raman_intensity_calibration_format = self.unpack((6, 0, 1), "B", "raman_intensity_calibration_format")
+        if 0 <= self.raman_intensity_calibration_format < EEPROM.MAX_INTENSITY_TERMS:
+            order = self.raman_intensity_calibration_format
+            terms = order + 1
+            for i in range(terms):
+                offset = i * 4 + 1
+                self.raman_intensity_coeffs.append(self.unpack((6, offset, 4), "f", "raman_intensity_coeff" + i))
+        else:
+            log.critical("Unsupported Raman Intensity Calibration format: %d", self.raman_intensity_calibration_format)
+
     ## make a printable ASCII string out of possibly-binary data
     def printable(self, buf):
         s = ""
@@ -393,6 +423,11 @@ class EEPROM(object):
         start_byte = address[1]
         length     = address[2]
         end_byte   = start_byte + length
+
+        if page > len(self.buffers):
+            log.error("error unpacking EEPROM page %d, offset %d, len %d as %s: invalid page (label %s)", 
+                page, start_byte, length, data_type, label, exc_info=1)
+            return
 
         buf = self.buffers[page]
         if buf is None or end_byte > len(buf):
@@ -433,6 +468,11 @@ class EEPROM(object):
         length     = address[2]
         end_byte   = start_byte + length
 
+        if page > len(self.write_buffers):
+            log.error("error unpacking EEPROM page %d, offset %d, len %d as %s: invalid page (label %s)", 
+                page, start_byte, length, data_type, label, exc_info=1)
+            return
+
         # don't try to write negatives to unsigned types
         if data_type in ["H", "I"] and value < 0:
             log.error("rounding negative to zero when writing to unsigned field (address %s, data_type %s, value %s)", address, data_type, value)
@@ -459,28 +499,32 @@ class EEPROM(object):
     # Call this to populate an internal array of "write buffers" which may be written back
     # to spectrometers.
     def generate_write_buffers(self):
-        # stub-out 6 blank buffers
+        # stub-out 8 blank buffers
         self.write_buffers = []
-        for page in range(6):
+        for page in range(EEPROM.MAX_PAGES):
             self.write_buffers.append(array.array('B', [0] * 64))
 
-        # ideally we should apply LATEST page revision numbers per ENG-0034, but
-        # for now maintain compatibility with StrokerConsole/ModelConfigurationFormat.cs
+        # Eventually we'll stop worrying about the legacy per-page format versions, but
+        # for now maximize compatibility with StrokerConsole/ModelConfigurationFormat.cs
+        # by making its expected format values the default for each page:
         revs = { 0: 1,
                  1: 1,
                  2: 2, 
                  3: 255,
                  4: 1, 
-                 5: 1 }
-
-        # copy the above revision numbers into the last byte of each buffer
+                 5: 1,
+                 6: 0 }
         for page in list(revs.keys()):
             self.write_buffers[page][63] = revs[page]
 
-        if EEPROM.USE_REV_4:
-            self.write_buffers[0][63] = 5
+        # ...but the truth is that we don't really care about the old per-page formats,
+        # and all modern code should just be looking at this one byte:
+        self.write_buffers[0][63] = EEPROM.LATEST_REV
 
+        # ######################################################################
         # Page 0
+        # ######################################################################
+
         self.pack((0,  0, 16), "s", self.model                       )
         self.pack((0, 16, 16), "s", self.serial_number               )
         self.pack((0, 32,  4), "I", self.baud_rate                   )
@@ -497,7 +541,10 @@ class EEPROM(object):
         self.pack((0, 54,  4), "f", self.detector_gain_odd           )
         self.pack((0, 58,  2), "h", self.detector_offset_odd         )
 
+        # ######################################################################
         # Page 1
+        # ######################################################################
+
         self.pack((1,  0,  4), "f", self.wavelength_coeffs[0]  )
         self.pack((1,  4,  4), "f", self.wavelength_coeffs[1]  )
         self.pack((1,  8,  4), "f", self.wavelength_coeffs[2]  )
@@ -515,7 +562,10 @@ class EEPROM(object):
         self.pack((1, 48, 12), "s", self.calibration_date      )
         self.pack((1, 60,  3), "s", self.calibrated_by         )
                                     
+        # ######################################################################
         # Page 2                    
+        # ######################################################################
+
         self.pack((2,  0, 16), "s", self.detector                    )
         self.pack((2, 16,  2), "H", self.active_pixels_horizontal    )
         #        skip 18
@@ -537,7 +587,10 @@ class EEPROM(object):
         self.pack((2, 55,  4), "f", self.linearity_coeffs[3]         )
         self.pack((2, 59,  4), "f", self.linearity_coeffs[4]         )
 
+        # ######################################################################
         # Page 3
+        # ######################################################################
+
         self.pack((3, 12,  4), "f", self.laser_power_coeffs[0])
         self.pack((3, 16,  4), "f", self.laser_power_coeffs[1])
         self.pack((3, 20,  4), "f", self.laser_power_coeffs[2])
@@ -548,10 +601,16 @@ class EEPROM(object):
         self.pack((3, 40,  4), "I", self.min_integration_time_ms     )
         self.pack((3, 44,  4), "I", self.max_integration_time_ms     )
 
+        # ######################################################################
         # Page 4
+        # ######################################################################
+
         self.pack((4,  0, 63), "s", self.user_text)
 
+        # ######################################################################
         # Page 5
+        # ######################################################################
+
         bad_pixel_set = set()
         for i in self.bad_pixels:
             if i >= 0:
@@ -567,6 +626,28 @@ class EEPROM(object):
 
         self.pack((5, 30, 16), "s", self.product_configuration)
 
+        # ######################################################################
+        # Page 6
+        # ######################################################################
+
+        self.pack((6, 0,  1), "B", self.raman_intensity_calibration_format)
+        if 0 <= self.raman_intensity_calibration_format <= 11:
+            # polynomial regression of up to 11th-order
+            order = self.raman_intensity_calibration_format
+            terms = order + 1
+            for i in range(12):
+                offset = i * 4 + 1
+                if i < terms and self.raman_intensity_coeffs is not None and len(self.raman_intensity_coeffs) < i:
+                    coeff = self.raman_intensity_coeffs[i]
+                else:
+                    coeff = 0.0
+                self.pack((6, offset, 4), "f", coeff)
+        else:
+            log.critical("Unsupported Raman Intensity Calibration format: %d", self.raman_intensity_calibration_format)
+            for i in range(12):
+                offset = i * 4 + 1
+                self.pack((6, offset, 4), "f", 0.0)
+
     ## can be used as a sanity-check for any set of coefficients
     def coeffs_look_valid(self, coeffs, count=None):
 
@@ -576,32 +657,28 @@ class EEPROM(object):
         if count is not None and len(coeffs) != count:
             return False
 
+        # check for NaN
+        for i in range(len(coeffs)):
+            if math.isnan(coeffs[i]):
+                return False 
+
         # check for [0, 1, 0...] default pattern
         all_default = True
         for i in range(len(coeffs)):
-            c = coeffs[i]
-            if math.isnan(c):
-                return False # always invalid
-            if i == 1:
-                if c != 1.0:
-                    all_default = False
-                    break
-            else:
-                if c != 0.0:
-                    all_default = False
-                    break
+            if i == 1 and coeffs[i] != 1.0:
+                all_default = False
+            elif coeffs[i] != 0.0:
+                all_default = False
         if all_default:
-            return false
+            return False
 
-        # check for constants (all negative, all zero, etc)
-        for const in [-1.0, 0.0]:
-            all_const = True
-            for c in coeffs:
-                if c != const:
-                    all_const = False
-                    break
-            if all_const:
-                return False
+        # check for constants (all coefficients the same value)
+        all_const = True
+        for i in range(1, len(coeffs)):
+            if coeffs[0] != coeffs[i]:
+                all_const = False
+        if all_const:
+            return False
 
         return True
 
@@ -613,6 +690,14 @@ class EEPROM(object):
         if self.max_laser_power_mW <= 0:
             return False
         return self.coeffs_look_valid(self.laser_power_coeffs, count=4)
+
+    def has_raman_intensity_calibration(self):
+        if self.format < 6:
+            return False
+
+        if 0 <= self.raman_intensity_calibration_format < EEPROM.MAX_INTENSITY_TERMS:
+            return self.coeffs_look_valid(self.raman_intensity_coeffs, 
+                                          count = self.raman_intensity_calibration_format + 1)
 
     ## convert the given laser output power from milliwatts to percentage
     #  using the configured calibration

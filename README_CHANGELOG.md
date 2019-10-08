@@ -1,5 +1,8 @@
 # Changelog
 
+- 2019-10-08 1.0.43
+    - added raman intensity calibration
+    - added README_SETTINGS.md
 - 2019-09-30 1.0.42
     - added timout to applog listener
     - fixed horizontal ROI limits

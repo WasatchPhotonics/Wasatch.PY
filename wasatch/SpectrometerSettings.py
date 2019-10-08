@@ -55,8 +55,10 @@ class SpectrometerSettings(object):
         # derived attributes
         self.wavelengths = None
         self.wavenumbers = None
+        self.raman_intensity_factors = None
 
         self.update_wavecal()
+        self.update_raman_intensity_factors()
 
     # given a JSON-formatted string, parse and apply FPGAOptions and EEPROM
     # sections if available
@@ -68,6 +70,7 @@ class SpectrometerSettings(object):
         if 'EEPROM' in obj:
             utils.update_obj_from_dict(self.eeprom, obj['EEPROM'])
             self.update_wavecal()
+            self.update_raman_intensity_factors()
 
     # ##########################################################################
     # accessors
@@ -128,6 +131,22 @@ class SpectrometerSettings(object):
     # ##########################################################################
     # methods
     # ##########################################################################
+
+    def update_raman_intensity_factors(self):
+        self.raman_intensity_factors = None
+        if not self.eeprom.has_raman_intensity_calibration():
+            return
+        if 0 <= self.eeprom.raman_intensity_calibration_format < EEPROM.MAX_INTENSITY_TERMS:
+            coeffs = self.eeprom.raman_intensity_coeffs
+            if coeffs is not None:
+                # probably faster numpy way to do this
+                factors = []
+                for pixel in range(self.pixels()):
+                    log10_factor = 0.0
+                    for i in range(len(coeffs)):
+                        log10_factor += coeffs[i] * math.pow(pixel, i)
+                    factors.append(math.pow(10, log10_factor))
+                self.raman_intensity_factors = np.array(factors, dtype=np.float64)
 
     def update_wavecal(self, coeffs=None):
         self.wavelengths = None
