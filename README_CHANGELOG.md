@@ -1,5 +1,13 @@
 # Changelog
 
+- 2019-10-11 1.0.45
+    - added Raman Intensity calibration
+    - added get_battery_register
+    - added SpectrometerSettings.lock_wavecal, has_excitation()
+    - added utils.generate_wavelengths_from_wavenumbers
+    - added utils.generate_excitation
+    - removed unused response_queue
+    - Doxygen
 - 2019-10-08 1.0.44
     - raman intensity calibration fixes
 - 2019-10-08 1.0.43

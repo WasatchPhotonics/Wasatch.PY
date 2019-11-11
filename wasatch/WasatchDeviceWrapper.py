@@ -16,11 +16,11 @@ from .Reading              import Reading
 log = logging.getLogger(__name__)
 
 class SubprocessArgs(object):
-    def __init__(self, 
-            device_id, 
-            log_queue, 
-            command_queue, 
-            response_queue, 
+    def __init__(self,
+            device_id,
+            log_queue,
+            command_queue,
+            response_queue,
             settings_queue,
             message_queue,
             log_level):
@@ -34,39 +34,39 @@ class SubprocessArgs(object):
 
 ##
 # Wrap WasatchDevice in a non-blocking interface run in a separate
-# process, using multiprocess.pipes to exchange data (SpectrometerSettings, 
+# process, using multiprocess.pipes to exchange data (SpectrometerSettings,
 # Readings and StatusMessages) for multiprocessing-safe device communications
 # and acquisition under Windows and Qt.
-# 
+#
 # @par Lifecycle
 #
 # From ENLIGHTEN's standpoint (the original Wasatch.PY caller), here's what's going on:
-# 
-# - MainProcess (enlighten.Controller.setup_bus_listener) instantiates a 
-#   wasatch.WasatchBus (bus) which will be persistent through the application 
-#   lifetime. setup_bus_listener also creates a QTimer (bus_timer) which will 
+#
+# - MainProcess (enlighten.Controller.setup_bus_listener) instantiates a
+#   wasatch.WasatchBus (bus) which will be persistent through the application
+#   lifetime. setup_bus_listener also creates a QTimer (bus_timer) which will
 #   check the USB bus for newly-connected ("hotplug") devices every second or so.
 #
 # - Controller.tick_bus_listener
-#   - does nothing (silently reschedules itself) if any new spectrometers are 
-#     actively in the process of connecting, because things get hairy if we're 
+#   - does nothing (silently reschedules itself) if any new spectrometers are
+#     actively in the process of connecting, because things get hairy if we're
 #     trying to enumerate and configure several spectrometers at once
 #
-#   - calls bus.update(), which will internally instantiate and use a 
+#   - calls bus.update(), which will internally instantiate and use a
 #     wasatch.DeviceFinderUSB to scan the current USB bus and update its internal
 #     list of all Wasatch spectrometers (whether already connected or otherwise)
 #
-#   - then calls Controller.connect_new() to process the updated device list 
+#   - then calls Controller.connect_new() to process the updated device list
 #     (including determining whether any new devices are visible, and if so what
 #     to do about them)
 #
 # - Controller.connect_new()
-#   - if there is at least one new spectrometer on the device list, pull off that 
-#     ONE device for connection (don't iterate over multiple new devices...we'll 
+#   - if there is at least one new spectrometer on the device list, pull off that
+#     ONE device for connection (don't iterate over multiple new devices...we'll
 #     get them on a subsequent bus tick).
 #
 #   - instantiates a WasatchDeviceWrapper and then calls connect() on it
-#   - WasatchDeviceWrapper.connect() 
+#   - WasatchDeviceWrapper.connect()
 #       - forks a child process running the continuous_poll() method of the _same_
 #         WasatchDeviceWrapper instance
 #           - the WDW in the MainProcess then waits (blocks) while waiting for a
@@ -74,10 +74,10 @@ class SubprocessArgs(object):
 #             child process.  This doesn't block the GUI, because this whole sequence
 #             is occuring in a background tick event on the bus_timer QTimer.
 #           - the WDW in the child process is running continuous_poll()
-#               - instantiates a WasatchDevice to access the actual hardware spectrometer 
+#               - instantiates a WasatchDevice to access the actual hardware spectrometer
 #                 over USB (this object will only ever be referenced within this subprocess)
 #               - then calls WasatchDevice.connect()
-#                   - WasatchDevice then instantiates an internal FeatureIdentificationDevice, 
+#                   - WasatchDevice then instantiates an internal FeatureIdentificationDevice,
 #                     FileSpectrometer or other implementation based on the passed DeviceID
 #                   - WasatchDevice then populates a SpectrometerSettings object based on
 #                     the connected device (loading the EEPROM, basic firmware settings etc)
@@ -87,7 +87,7 @@ class SubprocessArgs(object):
 #    - Controller.connect_new() then completes the initialization of the spectrometer
 #      in the GUI by calling Controller.initialize_new_device(), which adds the spectrometer
 #      to Multispec, updates the EEPROMEditor, defaults the TEC controls and so on.
-# - In the background, WasatchDeviceWrapper.continuous_poll() continues running, acting as a 
+# - In the background, WasatchDeviceWrapper.continuous_poll() continues running, acting as a
 #   "free-running mode driver" of the spectrometer, passing down new commands from the
 #   enlighten.Controller, and feeding back Readings or StatusMessages when they appear.
 #
@@ -96,7 +96,7 @@ class SubprocessArgs(object):
 # The whole thing can be shutdown in various ways, using the concept of "poison pill"
 # messages which can be flowed either upstream or downstream:
 #
-#   - if a hardware error occurs in the spectrometer process, it sends a poison 
+#   - if a hardware error occurs in the spectrometer process, it sends a poison
 #     pill upstream (a False value where a Reading is expected), then self-destructs
 #     (Controller is expected to drop the spectrometer from the GUI)
 #   - if the GUI is closing, poison-pills (None values where ControlObjects are expected)
@@ -106,15 +106,15 @@ class SubprocessArgs(object):
 #
 # @par Throughput Considerations
 #
-# It is important to recognize that continuous_poll() updates the command/response 
-# pipes at a relatively leisurely interval (currently 20Hz, set in POLLER_WAIT_SEC).  
-# No matter how short the integration time is (1ms), you're not going to get spectra 
+# It is important to recognize that continuous_poll() updates the command/response
+# pipes at a relatively leisurely interval (currently 20Hz, set in POLLER_WAIT_SEC).
+# No matter how short the integration time is (1ms), you're not going to get spectra
 # faster than 20 per second through this (as ENLIGHTEN was designed as a real-time
 # visualization tool, not a high-speed data collection tool).
 #
-# Now, if you set ACQUISITION_MODE_KEEP_ALL, then you should still get every 
+# Now, if you set ACQUISITION_MODE_KEEP_ALL, then you should still get every
 # spectrum (whatever the spectrometer achieved through its scan-rate, potentially
-# 220/sec or so) -- but you'll get them in chunks (e.g., scan rate of 220/sec 
+# 220/sec or so) -- but you'll get them in chunks (e.g., scan rate of 220/sec
 # polled at 20Hz = 20 chunks of 11 ea).
 #
 # @par Responsiveness
@@ -125,9 +125,9 @@ class SubprocessArgs(object):
 # commands get pushed into the downstream command pipe, continuous_poll won't check for
 # them until the end of the current acquisition.
 #
-# What we'd really like is two threads running in the subprocess, one handling 
+# What we'd really like is two threads running in the subprocess, one handling
 # acquisitions and most commands, and another handling high-priority events like
-# laser_enable.  I'm not sure the pipes are designed for multiple readers, but 
+# laser_enable.  I'm not sure the pipes are designed for multiple readers, but
 # a SEPARATE pipe (or queue) could be setup for high-priority commands, and
 # EXCLUSIVELY read by the secondary thread.  That just leaves open the question
 # of synchronization on WasatchDevice's USBDevice.
@@ -138,7 +138,7 @@ class SubprocessArgs(object):
 # is enabled (ergo, the real leak is likely in applog).
 #
 # - occurs under Python 2.7 and 3.4
-# - correlated to response_queue and get_final_item() 
+# - correlated to response_queue and get_final_item()
 #   - DISABLE_RESPONSE_QUEUE reduced ENLIGHTEN leak by 66% (18MB -> 6MB over 60sec @ 10ms)
 #     (while obviously blocking core functionality)
 # - doesn't show up under memory_profiler
@@ -176,7 +176,7 @@ class WasatchDeviceWrapper(object):
     # reports a DeviceID which has not already connected to the GUI.  The DeviceID
     # is "unique and relevant" to the bus which reported it, but neither the
     # bus class nor instance is passed in to this object.  If the DeviceID looks like
-    # "USB:VID:PID:bus:addr", then it is presumably USB.  If the DeviceID looks like 
+    # "USB:VID:PID:bus:addr", then it is presumably USB.  If the DeviceID looks like
     # "FILE:/path/to/dir", then assume it is a FileSpectrometer.  However, device_id is just
     # a string scalar to this class, and actually parsing / using it should be
     # entirely encapsulated within WasatchDevice and lower using DeviceID.
@@ -193,46 +193,46 @@ class WasatchDeviceWrapper(object):
         self.closing      = False   # Don't permit new acquires during close
         self.poller       = None    # a handle to the subprocess
 
-        # this will contain a populated SpectrometerSettings object from the 
+        # this will contain a populated SpectrometerSettings object from the
         # WasatchDevice, for relay to the instantiating Controller
-        self.settings     = None    
+        self.settings     = None
 
         if WasatchDeviceWrapper.DISABLE_RESPONSE_QUEUE:
             self.previous_reading = None
 
-    ## 
-    # Create a low level device object with the specified identifier, kick off 
-    # the subprocess to attempt to read from it. 
+    ##
+    # Create a low level device object with the specified identifier, kick off
+    # the subprocess to attempt to read from it.
     #
     # Called by Controller.connect_new() immediately after instantiation
-    # 
-    # Fork a child process running the continuous_poll() method on THIS 
+    #
+    # Fork a child process running the continuous_poll() method on THIS
     # object instance.  Each process will end up with a copy of THIS Wrapper
     # instance, but they won't be "the same instance" (as they're in different
-    # processes).  
+    # processes).
     #
     # The two instances are coupled via the 3 queues:
     #
     # @par settings_queue
     #
     #       Lets the subprocess (WasatchDevice) send a single, one-time copy
-    #       of a populated SpectrometerSettings object back through the 
-    #       Wrapper to the calling Controller.  This is the primary way the 
-    #       Controller knows what kind of spectrometer it has connected to, 
-    #       what hardware features and EEPROM settings are applied etc.  
+    #       of a populated SpectrometerSettings object back through the
+    #       Wrapper to the calling Controller.  This is the primary way the
+    #       Controller knows what kind of spectrometer it has connected to,
+    #       what hardware features and EEPROM settings are applied etc.
     #
     #       Thereafter both WasatchDevice and Controller will maintain
-    #       their own copies of SpectrometerSettings, and they are not 
+    #       their own copies of SpectrometerSettings, and they are not
     #       automatically synchronized (is there a clever way to do this?).
-    #       They may well drift out-of-sync regarding state, although the 
-    #       command_queue helps keep them somewhat in sync.  
+    #       They may well drift out-of-sync regarding state, although the
+    #       command_queue helps keep them somewhat in sync.
     #
     # @par command_queue
     #
     #       The Controller will send ControlObject instances (basically
     #       (name, value) pairs) through the Wrapper to the WasatchDevice
     #       to set attributes or commands on the WasatchDevice spectrometer.
-    #       These may be volatile hardware settings (laser power, integration 
+    #       These may be volatile hardware settings (laser power, integration
     #       time), meta-commands to the WasatchDevice class (scan averaging),
     #       or EEPROM updates.
     #
@@ -243,7 +243,7 @@ class WasatchDeviceWrapper(object):
     #       each contain a newly read spectrum, as well as metadata about
     #       the spectrometer at the time the spectrum was taken (integration
     #       time, laser power), plus additional readings from the spectrometer
-    #       (detector and laser temperature, secondary ADC).  
+    #       (detector and laser temperature, secondary ADC).
     #
     def connect(self):
         if self.poller != None:
@@ -251,9 +251,9 @@ class WasatchDeviceWrapper(object):
             return False
 
         # Fork a child process running the continuous_poll() method on this
-        # object instance.  
+        # object instance.
         args = SubprocessArgs(
-            device_id      = self.device_id, 
+            device_id      = self.device_id,
             log_level      = self.log_level, # log.getEffectiveLevel(),
 
             # the all-important message queues
@@ -288,7 +288,7 @@ class WasatchDeviceWrapper(object):
             # note: testing indicates it may take more than 2.5sec for the forked
             # continuous_poll to actually start moving.  5sec timeout may be on the short side?
             # Initial testing with 2 spectrometers showed 2nd spectrometer taking 6+ sec to initialize.
-            # If you kick-off another heavy operation in another window while the spectrometer is 
+            # If you kick-off another heavy operation in another window while the spectrometer is
             # enumerating, this can take even longer.
 
             if self.settings_queue_consumer.poll():
@@ -309,12 +309,12 @@ class WasatchDeviceWrapper(object):
         if self.settings is None:
             log.error("WasatchDeviceWrapper.connect: received poison-pill from forked continuous_poll")
             kill_myself = True
-            
+
         if kill_myself:
             # Apparently something failed in initialization of the subprocess, and it
             # never succeeded in sending a SpectrometerSettings object. Do our best to
             # kill the subprocess (they can be hard to kill), then report upstream
-            # that we were unable to connect (Controller will allow this Wrapper object 
+            # that we were unable to connect (Controller will allow this Wrapper object
             # to exit from scope).
 
             # MZ: should this bit be merged with disconnect()?
@@ -337,7 +337,7 @@ class WasatchDeviceWrapper(object):
             return False
 
         # AttributeError: 'AutoProxy[Queue]' object has no attribute 'close'
-        del self.settings_queue_consumer 
+        del self.settings_queue_consumer
 
         log.info("WasatchDeviceWrapper.connect: received SpectrometerSettings from subprocess")
         self.settings.dump()
@@ -352,7 +352,7 @@ class WasatchDeviceWrapper(object):
         # send poison pill to the subprocess
         self.closing = True
         try:
-            self.command_queue_producer.send(None) # put(None, timeout=2)  
+            self.command_queue_producer.send(None) # put(None, timeout=2)
         except:
             pass
 
@@ -387,15 +387,15 @@ class WasatchDeviceWrapper(object):
         if self.message_queue_consumer.poll():
             return self.message_queue_consumer.recv()
 
-    ## 
+    ##
     # This method is called by the Controller in MainProcess.  It checks
     # the response_queue it shares with the subprocess to see if any
     # Reading objects have been queued from the spectrometer to the GUI.
-    # 
+    #
     # Don't use 'if queue.empty()' for flow control on python 2.7 on
     # windows, as it will hang. Catch the Queue.Empty exception as
     # shown below instead.
-    # 
+    #
     # It is the upstream interface's job to decide how to process the
     # potentially voluminous amount of data returned from the device.
     # get_last by default will make sure the queue is cleared, then
@@ -409,7 +409,7 @@ class WasatchDeviceWrapper(object):
     # - None or True = Keepalive (no-op)
     # - Reading = measured data
     #
-    # @note it is not clear that measurement modes other than 
+    # @note it is not clear that measurement modes other than
     #       ACQUISITION_MODE_KEEP_COMPLETE have been well-tested,
     #       especially in the context of multiple spectrometers,
     #       BatchCollection etc.
@@ -424,7 +424,7 @@ class WasatchDeviceWrapper(object):
         # 1. the NEWEST fully-averaged spectrum (purge the queue), or
         # 2. if no fully-averaged spectra are in the queue, then the NEWEST
         #    incomplete (pre-averaged) spectrum (purging the queue).
-        # 
+        #
         # If we're not doing scan averaging, then take the NEWEST spectrum
         # and purge the queue.
         #
@@ -433,14 +433,14 @@ class WasatchDeviceWrapper(object):
 
         # if mode == self.ACQUISITION_MODE_LATEST:
         #     return self.get_final_item()
-        # 
+        #
         # # presumably mode == self.ACQUISITION_MODE_KEEP_ALL:
-        # 
+        #
         # # Get the oldest entry off of the queue. This expects the Controller to be
         # # able to process them upstream as fast as possible, because otherwise
         # # the queue will grow (we're not currently limiting its size) and the
         # # process will eventually crash with memory issues.
-        # 
+        #
         # # Note that these two calls to response_queue aren't synchronized
         # reading = None
         # qsize = "NA" # self.response_queue.qsize()
@@ -450,14 +450,13 @@ class WasatchDeviceWrapper(object):
         # except Queue.Empty:
         #     log.debug("acquire_data: no data, sending keepalive")
         #     return None
-        # 
+        #
         # return reading
 
-    ## Read from the response queue until empty (or we find an averaged item) 
-    # 
+    ## Read from the response queue until empty (or we find an averaged item)
+    #
     # In the currently implementation, it seems unlikely that a "True" will ever
     # be passed up (we're basically converting them to None here).
-    # @profile
     def get_final_item(self, keep_averaged=False):
         last_reading  = None
         last_averaged = None
@@ -469,7 +468,7 @@ class WasatchDeviceWrapper(object):
             return self.previous_reading
 
         while True:
-            # without waiting (don't block), just get the first item off the 
+            # without waiting (don't block), just get the first item off the
             # queue if there is one
             reading = None
 
@@ -479,7 +478,7 @@ class WasatchDeviceWrapper(object):
                 # If there is nothing more to read, then we've emptied the queue
                 break
 
-            # If we come across a poison-pill, flow that up immediately -- 
+            # If we come across a poison-pill, flow that up immediately --
             # game-over, we're done
             if isinstance(reading, bool) and reading == False:
                 log.critical("get_final_item: poison-pill!")
@@ -531,18 +530,18 @@ class WasatchDeviceWrapper(object):
             last_reading = None
             return last_averaged
 
-        # We've had every opportunity short-cut the process: we could have 
+        # We've had every opportunity short-cut the process: we could have
         # returned potential poison pills or completed averages, but found
         # none of those.  Yet apparently we did read some normal readings.
         # Return the latest of those.
-        
+
         if WasatchDeviceWrapper.DISABLE_RESPONSE_QUEUE:
             self.previous_reading = last_reading
         return last_reading
 
-    ## 
+    ##
     # Add the specified setting and value to the local control queue.
-    # 
+    #
     # called by MainProcess.Controller
     def change_setting(self, setting, value):
         log.debug("WasatchDeviceWrapper.change_setting: %s => %s", setting, value)
@@ -561,10 +560,10 @@ class WasatchDeviceWrapper(object):
     # Continuously process with the simulated device. First setup
     # the log queue handler. While waiting forever for the None poison
     # pill on the command queue, continuously read from the device and
-    # post the results on the response queue. 
-    #    
-    # This is essentially the main() loop in a forked process (not 
-    # thread).  Hopefully we can scale this to one per spectrometer.  
+    # post the results on the response queue.
+    #
+    # This is essentially the main() loop in a forked process (not
+    # thread).  Hopefully we can scale this to one per spectrometer.
     # All communications with the parent process are routed through
     # one of the three queues (cmd inputs, response outputs, and
     # a one-shot SpectrometerSettings).
@@ -575,7 +574,7 @@ class WasatchDeviceWrapper(object):
     #
     # This method doesn't have a return-vaue per-se, but reports upstream
     # via the various queues in SubprocessArgs.  In particular, a value of
-    # None in either the settings_queue or response_queue indicates "this 
+    # None in either the settings_queue or response_queue indicates "this
     # subprocess is shutting down and the spectrometer is going bye-bye."
     def continuous_poll(self, args):
 
@@ -585,7 +584,7 @@ class WasatchDeviceWrapper(object):
         # connect() activity.
         applog.process_log_configure(args.log_queue, logging.DEBUG)
 
-        log.info("continuous_poll: start (device_id %s, log_level %s)", 
+        log.info("continuous_poll: start (device_id %s, log_level %s)",
             args.device_id, args.log_level)
 
         # The second thing we do is actually instantiate a WasatchDevice.  Note
@@ -604,20 +603,19 @@ class WasatchDeviceWrapper(object):
         # instantiate this Wrapper in the first place.)
         #
         # Finally, note that the only hint we are passing into WasatchDevice
-        # in terms of what type of device it should be instantiating is the 
-        # DeviceID.  This parameter is all that WasatchDevice gets to 
-        # decide whether to instantiate a FeatureIdentificationDevice (and which), 
+        # in terms of what type of device it should be instantiating is the
+        # DeviceID.  This parameter is all that WasatchDevice gets to
+        # decide whether to instantiate a FeatureIdentificationDevice (and which),
         # something else, or nothing.
         #
         # Now that we've removed bus_order, we should replace it with "serial_number".
         #
-        # Regardless, if anything goes wrong here, ensure we do our best to 
+        # Regardless, if anything goes wrong here, ensure we do our best to
         # cleanup these processes and queues.
         try:
             wasatch_device = WasatchDevice(
-                device_id = args.device_id, 
-                message_queue = args.message_queue,
-                response_queue = args.response_queue)
+                device_id = args.device_id,
+                message_queue = args.message_queue)
         except:
             log.critical("continuous_poll: exception instantiating WasatchDevice", exc_info=1)
             return args.settings_queue.send(None) # put(None, timeout=2)
@@ -644,7 +642,7 @@ class WasatchDeviceWrapper(object):
 
         # Read forever until the None poison pill is received
         log.debug("continuous_poll: entering loop")
-        
+
         log.debug("resetting commanded log_level %s", args.log_level)
         logging.getLogger().setLevel(args.log_level)
 
@@ -676,9 +674,9 @@ class WasatchDeviceWrapper(object):
                     else:
                         log.debug("continuous_poll: Processing command queue: %s", record.setting)
 
-                        # basically, this simply moves each de-dupped command from 
+                        # basically, this simply moves each de-dupped command from
                         # WasatchDeviceWrapper.command_queue to WasatchDevice.command_queue,
-                        # where it gets read during the next call to 
+                        # where it gets read during the next call to
                         # WasatchDevice.acquire_data.
                         wasatch_device.change_setting(record.setting, record.value)
             else:
@@ -704,7 +702,7 @@ class WasatchDeviceWrapper(object):
                 continue
 
             if reading is None:
-                # FileSpectrometer does this right now...hardware "can't" really, 
+                # FileSpectrometer does this right now...hardware "can't" really,
                 # because we use blocking calls, although we could probably add
                 # timeouts to break those blocks.
                 #
@@ -733,7 +731,7 @@ class WasatchDeviceWrapper(object):
                     log.critical("continuous_poll: received upstream poison pill...exiting")
                     received_poison_pill_response = True
                     break
-                    
+
             elif reading.failure is not None:
                 # this wasn't passed-up as a poison-pill, but we're going to treat it
                 # as one anyway
@@ -748,7 +746,7 @@ class WasatchDeviceWrapper(object):
                     args.response_queue.send(reading) # put(reading, timeout=2)
                 except:
                     log.error("unable to push Reading %d to GUI", reading.session_count, exc_info=1)
-                
+
             else:
                 log.error("continuous_poll: received non-failure Reading without spectrum...ignoring?")
 

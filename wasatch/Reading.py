@@ -31,7 +31,7 @@ class Reading(object):
         self.battery_percentage        = None
         self.battery_charging          = None
 
-    def __init__(self, device_id):
+    def __init__(self, device_id=None):
         self.clear()
 
         self.device_id = str(device_id)

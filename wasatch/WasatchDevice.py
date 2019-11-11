@@ -45,7 +45,7 @@ class WasatchDevice(object):
     ##
     # @param device_id      a DeviceID instance OR string label thereof
     # @param message_queue  if provided, used to send status back to caller
-    def __init__(self, device_id, message_queue=None, response_queue=None):
+    def __init__(self, device_id, message_queue=None):
 
         # if passed a string representation of a DeviceID, deserialize it 
         if type(device_id) is str:
@@ -53,7 +53,6 @@ class WasatchDevice(object):
 
         self.device_id      = device_id
         self.message_queue  = message_queue
-        self.response_queue = response_queue
 
         self.connected = False
 
@@ -676,13 +675,9 @@ class WasatchDevice(object):
             if control_object.setting == "free_running_mode" and not self.hardware.settings.state.free_running_mode:
                 # we just LEFT free-running mode (went on "pause"), so toss any 
                 # queued for the caller (ENLIGHTEN)
-                log.debug("exited free-running mode, so clearing response queue")
-                self.clear_response_queue()
+                log.debug("exited free-running mode")
 
         return retval
-
-    def clear_response_queue(self):
-        return # (doesn't work for unidirectional pipes)
 
     # ######################################################################## #
     #                                                                          #

@@ -41,7 +41,7 @@ log = logging.getLogger(__name__)
 # On successfull connect(), WasatchDeviceWrapper<subprocess> will pass the 
 # SpectrometerSettings object back to WasatchDeviceWrapper, which will then
 # notify Controller that the connection was successful.  Controller.connect_new
-# will retain a reference to the <MainProcess> version of WasatchDeviceWrapper
+# will retain a reference to the "MainProcess" version of WasatchDeviceWrapper
 # as "self.device" (future: member of self.devices) and kick-off 
 # Controller.initialize_new_device to configure the GUI.
 # 

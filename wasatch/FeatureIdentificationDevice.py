@@ -368,6 +368,12 @@ class FeatureIdentificationDevice(object):
     # Accessors
     # ##########################################################################
 
+    ##
+    # @todo test endian order (in and out)
+    def get_battery_register(self, reg):
+        reg = reg & 0xffff
+        return self.get_upper_code(0x14, wIndex=reg, label="GET_BATTERY_REG", msb_len=2)
+
     ## cache values for 1sec
     def get_battery_state_raw(self):
         now = datetime.datetime.now()
@@ -591,6 +597,9 @@ class FeatureIdentificationDevice(object):
         elif pixels == 2048:
             endpoints = [0x82, 0x86]
             block_len_bytes = 2048 # pixels * 2 / 2
+        elif pixels == 1952:
+            endpoints = [0x82]
+            block_len_bytes = pixels * 2
         else:
             log.warn("unusual number of pixels (%d)...guessing at endpoint" % pixels)
             endpoints = [0x82]

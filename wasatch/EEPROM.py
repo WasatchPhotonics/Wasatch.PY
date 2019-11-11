@@ -109,7 +109,9 @@ class EEPROM(object):
                           "roi_vertical_region_2_end",      
                           "roi_vertical_region_2_start",    
                           "roi_vertical_region_3_end",      
-                          "roi_vertical_region_3_start" ]
+                          "roi_vertical_region_3_start",
+                          "raman_intensity_calibration_format",
+                          "raman_intensity_coeffs" ]
 
     def to_dict(self):
         d = {}
@@ -138,8 +140,7 @@ class EEPROM(object):
         pixels = self.active_pixels_horizontal
 
         if 0 <= start and start < end and end < pixels:
-            checked_end = max(start, min(end, pixels-1))
-            return (start, checked_end)
+            return (start, end)
 
     def has_horizontal_roi(self):
         start  = self.roi_horizontal_start
@@ -420,6 +421,7 @@ class EEPROM(object):
     #
     # @param address    a tuple of the form (buf, offset, len)
     # @param data_type  see https://docs.python.org/2/library/struct.html#format-characters
+    # @param label      if provided, is included in debug log output
     def unpack(self, address, data_type, label=None):
         page       = address[0]
         start_byte = address[1]
@@ -701,6 +703,7 @@ class EEPROM(object):
         if 0 < self.raman_intensity_calibration_format < EEPROM.MAX_INTENSITY_TERMS:
             return self.coeffs_look_valid(self.raman_intensity_coeffs, 
                                           count = self.raman_intensity_calibration_format + 1)
+        return False
 
     ## convert the given laser output power from milliwatts to percentage
     #  using the configured calibration

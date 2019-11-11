@@ -32,7 +32,7 @@ explicit_path = None
 
 ##
 # Determine the location to store the log file. Current directory
-# on Linux, or %PROGRAMDATA% on windows - usually C:\ProgramData 
+# on Linux, or %PROGRAMDATA% on windows - usually C:\\ProgramData 
 def get_location():
     if explicit_path is not None:
         return explicit_path
@@ -56,7 +56,7 @@ def get_location():
     # print "applog.get_location: platform.platform() = %s" % platform.platform()
     log_dir = ""
     try:
-        # get pathname to C:\ProgramData (but with a lot more work)
+        # get pathname to C:\\ProgramData (but with a lot more work)
         import ctypes
         from ctypes import wintypes, windll
         CSIDL_COMMON_APPDATA = 35

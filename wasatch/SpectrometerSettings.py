@@ -57,6 +57,8 @@ class SpectrometerSettings(object):
         self.wavenumbers = None
         self.raman_intensity_factors = None
 
+        self.lock_wavecal = False
+
         self.update_wavecal()
         self.update_raman_intensity_factors()
 
@@ -96,6 +98,9 @@ class SpectrometerSettings(object):
             log.debug("excitation wavelength %e outside (200, 2500) - suspect corrupt EEPROM, using %e", new, old)
 
         return old
+
+    def has_excitation(self):
+        return self.excitation() > 0
 
     def is_imx(self):
         return "imx" in self.eeprom.detector.lower()
@@ -139,6 +144,7 @@ class SpectrometerSettings(object):
         if 1 <= self.eeprom.raman_intensity_calibration_format < EEPROM.MAX_INTENSITY_TERMS:
             log.debug("updating raman intensity factors")
             coeffs = self.eeprom.raman_intensity_coeffs
+            log.debug("coeffs = %s", coeffs)
             if coeffs is not None:
                 try:
                     # probably faster numpy way to do this
@@ -157,8 +163,13 @@ class SpectrometerSettings(object):
                 except:
                     log.error("exception generating Raman intensity factors", exc_info=1)
                     self.raman_intensity_factors = None
+        log.debug("factors = %s", self.raman_intensity_factors)
 
     def update_wavecal(self, coeffs=None):
+        if self.lock_wavecal:
+            log.debug("wavecal is locked")
+            return
+
         self.wavelengths = None
         self.wavenumbers = None
 
@@ -189,10 +200,8 @@ class SpectrometerSettings(object):
             len(self.wavelengths), self.wavelengths[0], self.wavelengths[-1])
 
         # keep legacy excitation in sync with floating-point
-        if self.excitation() > 0:
+        if self.has_excitation():
             self.eeprom.excitation_nm = float(round(self.excitation(), 0))
-
-        if self.excitation() > 0:
             self.wavenumbers = utils.generate_wavenumbers(self.excitation(), self.wavelengths)
             log.debug("generated %d wavenumbers from %.2f to %.2f",
                 len(self.wavenumbers), self.wavenumbers[0], self.wavenumbers[-1])

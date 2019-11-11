@@ -30,6 +30,9 @@ def generate_wavelengths(pixels, c0, c1, c2, c3):
         wavelengths.append(wavelength)
     return wavelengths            
 
+def generate_wavelengths_from_wavenumbers(excitation, wavenumbers):
+    return [1.0 / ((1.0 / excitation) - (wavenumber * 1e-7)) for wavenumber in wavenumbers]
+
 ## convert wavelengths into Raman shifts in 1/cm wavenumbers from the given 
 #  excitation wavelength
 def generate_wavenumbers(excitation, wavelengths):
@@ -44,6 +47,21 @@ def generate_wavenumbers(excitation, wavelengths):
         else:
             wavenumbers.append(0)
     return wavenumbers
+
+##
+# If we've loaded a CSV that had wavelength and wavenumber columns, but no
+# metadata, use this to infer the excitation wavelength.  Useful for 
+# interpolation.
+def generate_excitation(wavelengths, wavenumbers):
+    if wavelengths is None or wavenumbers is None or len(wavelengths) != len(wavenumbers) or len(wavelengths) < 1:
+        return None
+
+    total = 0.0
+    count = len(wavelengths)
+    for i in range(count):
+        excitation = 1e7 / (wavenumbers[i] + 1e7/wavelength[i])
+        total += excitation
+    return total / count
 
 ##
 # compute a moving average on array 'a' of width 'n'
