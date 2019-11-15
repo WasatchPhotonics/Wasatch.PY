@@ -14,22 +14,21 @@ repository.
 
 ## History 
 
-This project can be viewed as a conceptual successor to the earlier 
+This project started as a successor to the earlier 
 [WasatchUSB](https://github.com/WasatchPhotonics/WasatchUSB).  The main 
-differences are that while WasatchUSB was a copy-paste of key ENLIGHTEN 
-functionality, Wasatch.PY literally is a dependency of ENLIGHTEN.  As a result, 
-when we fix or add ENLIGHTEN features, Wasatch.PY will be updated by necessity;
-making the same foundational interface available to all our users.  
+difference is that while WasatchUSB was a one-time copy-pasta of legacy ENLIGHTEN 
+classes, Wasatch.PY is an actively maintained and supported HAL (hardware abstraction layer) 
+dependency of the current [ENLIGHTEN](https://wasatchphotonics.com/product-category/software/) 
+application.  As a result, when we add or update ENLIGHTEN features, Wasatch.PY is 
+updated by necessity; making the same foundational interface available to all our users.  
 
-WasatchUSB, in contrast, had the potential to drift out-of-sync with ENLIGHTEN 
-internals, such that customers and company might experience different results.  
-This new shared library exemplifies one of our core values: all about 
+This shared library exemplifies one of our core values: we're all about 
 [dogfooding](https://en.wikipedia.org/wiki/Eating_your_own_dog_food)!
 
 Finally, the updated project name reflects the fact that this is specifically a
 Python binding and implementation; for other USB-capable interfaces, see our
-[WasatchUSB](https://github.com/WasatchPhotonics/Wasatch.NET) or upcoming
-Wasatch.CPP libraries!
+[Wasatch.NET](https://github.com/WasatchPhotonics/Wasatch.NET/tree/master/WasatchNET)
+and other [software drivers](https://wasatchphotonics.com/software-support/software-drivers/)!
 
 # API
 
