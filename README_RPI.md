@@ -100,6 +100,12 @@ Create Conda environment:
     # To deactivate this environment, use:
     # $ source deactivate
 
+    $ cd ~/work/code/Wasatch.PY
+    $ source activate wasatch3
+
+    $ python --version
+    Python 3.6.6
+
 # Test Demo.py
 
 Run demo.py with "--help" for command-line options.  Note that you need to run "source activate wasatch3"
@@ -107,13 +113,8 @@ Run demo.py with "--help" for command-line options.  Note that you need to run "
 order to tell Linux and Miniconda "which version" of Python, and which set of package dependencies,
 you want to use.
 
-    $ cd ~/work/code/Wasatch.PY
-    $ source activate wasatch3
 
-    $ python --version
-    Python 3.6.6
-
-    $ python -u demo.py
+    $ python3 -u demo.py
     2019-05-06 14:25:32,498 MainProcess root WARNING  Top level log configuration (1 handlers)
     2019-05-06 14:25:32,799 MainProcess __main__ INFO     Wasatch.PY 1.0.25 Demo
     2019-05-06 14:25:32,804 MainProcess wasatch.FeatureIdentificationDevice ERROR    unable to control TEC: EEPROM reports no cooling
@@ -134,7 +135,7 @@ See [WasatchShell README](WasatchShell/README.md) for documentation, or type "he
     $ export PYTHONPATH=$PWD
 
     $ cd WasatchShell
-    WasatchShell $ python -u wasatch-shell.py
+    WasatchShell $ python3 -u wasatch-shell.py
     --------------------------------------------------------------------------------
     wasatch-shell version 2.2.1 invoked (Wasatch.PY 1.0.25)
     wp> open
