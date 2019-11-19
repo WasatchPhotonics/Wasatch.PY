@@ -41,6 +41,7 @@ This process was tested with <del>2019-04-08-raspbian-stretch.zip</del> <b>2019-
 
     $ cd ~/work/code/Wasatch.PY
     $ sudo cp udev/10-wasatch.rules /etc/udev/rules.d
+    $ sudo shutdown -r now
 
 # Install Python dependencies
 
@@ -77,22 +78,18 @@ Post-Install Miniconda3 cleanup:
     $ echo 'export PATH=/home/pi/miniconda3/bin:$PATH' >> ~/.bashrc
     $ sudo chown -R pi.pi /home/pi/miniconda3
 
-# Reboot
-
-    $ sudo shutdown -r now
-
-# Add Conda "channels" providing pre-built Raspberry Pi binaries of popular Python packages
+Add Conda "channels" providing pre-built Raspberry Pi binaries of popular Python packages:
 
     $ conda update --all
     $ conda config --add channels raspberrypi
     $ conda config --add channels rpi
 
-# Select Raspberry Pi Conda environment
+Select Raspberry Pi Conda environment:
 
     $ cd ~/work/code/Wasatch.PY
     $ cp environments/conda-rpi.yml environment.yml
 
-# Create Conda environment
+Create Conda environment:
 
     $ cd ~/work/code/Wasatch.PY
     $ conda env create -n wasatch3
