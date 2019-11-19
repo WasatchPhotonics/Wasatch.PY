@@ -4,6 +4,11 @@
 
 Following is a quick-start guide for configuring Wasatch.PY on a brand-new or freshly imaged Raspberry Pi.
 
+# History
+
+- 2019-11-19
+    - updated for Raspbian Buster / Python 3
+
 # Dependencies
 
 If desired, flash a fresh MicroSD card with a clean copy of Raspbian OS from:
@@ -14,8 +19,8 @@ This process was tested with 2019-04-08-raspbian-stretch.zip.
 
 ## Confirm RPi boots up with default Python version
 
-    $ python --version
-    Python 2.7.13
+    $ python3 --version
+    Python 3.7.3
 
 ## Confirm RPi can see Wasatch Photonics spectrometer on USB bus
 
@@ -42,7 +47,20 @@ This process was tested with 2019-04-08-raspbian-stretch.zip.
     $ cd ~/work/code/Wasatch.PY
     $ sudo cp udev/10-wasatch.rules /etc/udev/rules.d
 
-# Install Miniconda3
+# Install Python dependencies
+
+You can do this using either Anaconda3 or pip3.  I normally use Anaconda
+on Windows, MacOS and Ubuntu, and it does work for Wasatch.PY on Raspbian.
+
+However, a full ENLIGHTEN development environment on Raspbian 
+apparently can't be done from Anaconda at writing (needs some apt-get
+packages for PySide2), so you might just use pip3 for ARM at this time.
+
+## Pip3 Process
+
+    $ pip3 install numpy py six psutil future pygtail pyusb requests pexpect
+
+## Miniconda3 Process
 
 Follow the instructions posted here:
 
@@ -59,7 +77,7 @@ Change the installation directory to /home/pi/miniconda3 when prompted:
       - Or specify a different location below
     [/root/miniconda3] >>> /home/pi/miniconda3
 
-## Post-Install Miniconda3 cleanup
+Post-Install Miniconda3 cleanup:
 
     $ echo 'export PATH=/home/pi/miniconda3/bin:$PATH' >> ~/.bashrc
     $ sudo chown -R pi.pi /home/pi/miniconda3
