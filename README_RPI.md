@@ -4,18 +4,13 @@
 
 Following is a quick-start guide for configuring Wasatch.PY on a brand-new or freshly imaged Raspberry Pi.
 
-# History
-
-- 2019-11-19
-    - updated for Raspbian Buster / Python 3
-
 # Dependencies
 
 If desired, flash a fresh MicroSD card with a clean copy of Raspbian OS from:
 
 - https://www.raspberrypi.org/downloads/raspbian/
 
-This process was tested with 2019-04-08-raspbian-stretch.zip.
+This process was tested with <del>2019-04-08-raspbian-stretch.zip</del> <b>2019-09-26-raspbian-buster-full.zip</b>.
 
 ## Confirm RPi boots up with default Python version
 
