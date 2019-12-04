@@ -642,6 +642,7 @@ class WasatchDeviceWrapper(object):
 
         # Read forever until the None poison pill is received
         log.debug("continuous_poll: entering loop")
+        last_heartbeat = datetime.datetime.now()
 
         log.debug("resetting commanded log_level %s", args.log_level)
         logging.getLogger().setLevel(args.log_level)
@@ -652,6 +653,11 @@ class WasatchDeviceWrapper(object):
         sent_good = False
 
         while True:
+
+            # heartbeat logger
+            if (datetime.datetime.now() - last_heartbeat).total_seconds() >= 3:
+                log.info("heartbeat")
+
             # ##################################################################
             # Relay downstream commands (GUI -> Spectrometer)
             # ##################################################################

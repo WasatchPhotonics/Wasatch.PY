@@ -628,7 +628,7 @@ class WasatchDevice(object):
 
         self.last_memory_check = now
         size_in_bytes = psutil.Process(self.process_id).memory_info().rss
-        log.debug("monitor_memory: Process %d memory = %d bytes", self.process_id, size_in_bytes)
+        log.info("monitor_memory: PID %d memory = %d bytes", self.process_id, size_in_bytes)
 
         if False:
             for i in [0, 1, 2, 1, 0]:
