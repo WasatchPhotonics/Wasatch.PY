@@ -657,6 +657,7 @@ class WasatchDeviceWrapper(object):
             # heartbeat logger
             if (datetime.datetime.now() - last_heartbeat).total_seconds() >= 3:
                 log.info("heartbeat")
+                last_heartbeat = datetime.datetime.now()
 
             # ##################################################################
             # Relay downstream commands (GUI -> Spectrometer)
