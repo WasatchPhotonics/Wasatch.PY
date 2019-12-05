@@ -418,7 +418,7 @@ class WasatchDevice(object):
 
         for loop_index in range(0, loop_count):
 
-            # start a new reading
+            # start a new reading (NOTE: reading.timestamp is when reading STARTED, not FINISHED!)
             reading = Reading(self.device_id)
 
             # TODO...just include a copy of SpectrometerState? something to think about.
@@ -448,6 +448,7 @@ class WasatchDevice(object):
 
                 reading.spectrum            = spectrum_and_row.spectrum
                 reading.area_scan_row_count = spectrum_and_row.row
+                reading.timestamp_complete  = datetime.datetime.now()
 
                 log.debug("device.acquire_data: got %s ... (row %d)", reading.spectrum[0:9], reading.area_scan_row_count)
             except Exception as exc:

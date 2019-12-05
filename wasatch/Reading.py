@@ -12,6 +12,7 @@ class Reading(object):
     def clear(self):
         self.device_id                 = None
         self.timestamp                 = None
+        self.timestamp_complete        = None
         self.spectrum                  = None
         self.laser_enabled             = None
         self.laser_temperature_raw     = 0
@@ -35,6 +36,10 @@ class Reading(object):
         self.clear()
 
         self.device_id = str(device_id)
+
+        # NOTE: this will generally indicate when the acquisition STARTS, not ENDS
+        # (WasatchDevice.acquire_spectrum instantiates Reading before calling hardware.get_line,
+        #  and does not overwrite it)
         self.timestamp = datetime.datetime.now()
 
     # def dump(self):
