@@ -1,4 +1,4 @@
-# Settings
+# WasatchDeviceWrapper Settings
 
 ## History
 

@@ -4,12 +4,12 @@ help:
 	@echo "  clean  (delete artifacts)"
 	@echo "  cloc   (count SLOC)"
 
-.PHONY: doc clean cloc
+.PHONY: doc docs clean cloc
 
 cloc:
 	@cloc --include-lang=Python .
 
-doc:
+doc docs:
 	@echo "Rendering Doxygen..."
 	@mkdir -p doxygen
 	@doxygen 1>doxygen.out 2>doxygen.err

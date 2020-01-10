@@ -792,6 +792,9 @@ WARN_LOGFILE           =
 
 INPUT                  = README.md \
                          README_RPI.md \
+                         README_SETTINGS.md \
+                         README_CHANGELOG.md \
+                         WasatchShell/README.md \
                          wasatch
 
 # This tag can be used to specify the character encoding of the source files

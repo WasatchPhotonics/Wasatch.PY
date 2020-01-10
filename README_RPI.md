@@ -1,8 +1,8 @@
-![RPI board](https://www.raspberrypi.org/app/uploads/2017/05/Raspberry-Pi-3-Ports-1-1833x1080.jpg)
-
-# Overview
+# RaspberryPi Instructions
 
 Following is a quick-start guide for configuring Wasatch.PY on a brand-new or freshly imaged Raspberry Pi.
+
+![RPI board](https://www.raspberrypi.org/app/uploads/2017/05/Raspberry-Pi-3-Ports-1-1833x1080.jpg)
 
 # Dependencies
 

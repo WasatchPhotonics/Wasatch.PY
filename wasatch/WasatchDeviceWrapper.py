@@ -542,7 +542,14 @@ class WasatchDeviceWrapper(object):
     ##
     # Add the specified setting and value to the local control queue.
     #
-    # called by MainProcess.Controller
+    # In ENLIGHTEN, this is called by MainProcess.Controller.
+    #
+    # For OEM customers controlling the spectrometer via the non-blocking
+    # WasatchDeviceWrapper interface, this is the method you would call to
+    # change the various spectrometer settings.  
+    #
+    # @see \ref README_SETTINGS.md for a list of valid settings you can
+    #      pass, as well as any parameters expected by each
     def change_setting(self, setting, value):
         log.debug("WasatchDeviceWrapper.change_setting: %s => %s", setting, value)
         control_object = ControlObject(setting, value)
