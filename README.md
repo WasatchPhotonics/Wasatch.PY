@@ -316,6 +316,27 @@ Using [Homebrew](https://brew.sh/), type:
 # Backlog
 
 - update .inf files to deprecate "Stroker"
+- package as a PyPi (pip) module
+
+## PyPi 
+
+Simplify OEM interface to something more like:
+
+    import wasatchphotonics as wp
+    
+    # make everything more like Wasatch.NET
+    spec_count = wp.get_spectrometer_count()
+    if spec_count < 1:
+        raise("no spectrometers found")
+
+    # default to blocking (WasatchDevice), allow override to non-blocking (WasatchDeviceWrapper)
+    spec = wp.get_spectrometer(0, blocking=False) 
+
+    # support both "settings" and functional API either way
+    spec.change_setting("laser_enable", True) 
+    spec.set_integration_time_ms(1000)        
+
+    spectrum = spec.get_spectrum()            
 
 # Version History
 
