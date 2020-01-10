@@ -1,5 +1,7 @@
 # Changelog
 
+- 2020-01-10 1.0.46
+    - updated EEPROM to format 7
 - 2019-10-11 1.0.45
     - added Raman Intensity calibration
     - added get_battery_register

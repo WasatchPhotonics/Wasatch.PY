@@ -183,12 +183,7 @@ class SpectrometerSettings(object):
             self.eeprom.wavelength_coeffs = coeffs
 
         if coeffs:
-            self.wavelengths = utils.generate_wavelengths(
-                self.pixels(),
-                self.eeprom.wavelength_coeffs[0],
-                self.eeprom.wavelength_coeffs[1],
-                self.eeprom.wavelength_coeffs[2],
-                self.eeprom.wavelength_coeffs[3])
+            self.wavelengths = utils.generate_wavelengths(self.pixels(), self.eeprom.wavelength_coeffs)
 
         if self.wavelengths is None:
             # this can happen on Stroker Protocol before/without .ini file,

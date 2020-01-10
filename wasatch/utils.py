@@ -20,13 +20,12 @@ def remove_unicode(s):
     return s
 
 ## expand 3rd-order wavelength polynomial into array of wavelengths
-def generate_wavelengths(pixels, c0, c1, c2, c3):
+def generate_wavelengths(pixels, coeffs):
     wavelengths = []
     for x in range(pixels):
-        wavelength = c0           \
-                   + c1 * x       \
-                   + c2 * x * x   \
-                   + c3 * x * x * x
+        wavelength = 0.0
+        for i in range(len(coeffs)):
+            wavelength += coeffs[i] * pow(x, i)
         wavelengths.append(wavelength)
     return wavelengths            
 

@@ -10,7 +10,7 @@ If desired, flash a fresh MicroSD card with a clean copy of Raspbian OS from:
 
 - https://www.raspberrypi.org/downloads/raspbian/
 
-This process was tested with <del>2019-04-08-raspbian-stretch.zip</del> <b>2019-09-26-raspbian-buster-full.zip</b>.
+This process was tested with 2019-09-26-raspbian-buster-full.zip.
 
 ## Confirm RPi boots up with default Python version
 

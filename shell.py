@@ -1,5 +1,12 @@
 #!/usr/bin/env python -u
 
+##
+# This was a one-off test script created prior to WasatchShell.
+#
+# Any new users should probably prefer WasatchShell/wasatch-shell.py,
+# which has considerably more functionality and is more frequently
+# updated and tested.
+
 import re
 import sys
 import time

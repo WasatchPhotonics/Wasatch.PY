@@ -982,6 +982,9 @@ class FeatureIdentificationDevice(object):
     def get_selected_laser(self):
         return self.settings.state.selected_laser
 
+    ##
+    # Turn the laser on or off.
+    # @param flag (Input) bool (True turns laser on, False turns laser off)
     def set_laser_enable(self, flag):
         if not self.settings.eeprom.has_laser:
             log.error("unable to control laser: EEPROM reports no laser installed")

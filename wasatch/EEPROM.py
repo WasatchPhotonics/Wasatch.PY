@@ -17,9 +17,10 @@ log = logging.getLogger(__name__)
 # This class is normally accessed as an attribute of SpectrometerSettings.
 #
 # @see ENG-0034
+# @see http://ww1.microchip.com/downloads/en/DeviceDoc/20006270A.pdf
 class EEPROM(object):
     
-    LATEST_REV = 6
+    LATEST_REV = 7
     MAX_PAGES = 8
     MAX_INTENSITY_TERMS = 12
 
@@ -82,8 +83,11 @@ class EEPROM(object):
 
         self.raman_intensity_calibration_format = 0
         self.raman_intensity_coeffs      = []
+        self.spline                      = None
                                          
-        self.format = 0
+        self.format                      = 0
+        self.subformat                   = 0 # pages 6-7
+
         self.buffers = []
         self.write_buffers = []
 
@@ -327,8 +331,10 @@ class EEPROM(object):
         self.active_pixels_horizontal        = self.unpack((2, 16,  2), "H", "pixels")
         self.active_pixels_vertical          = self.unpack((2, 19,  2), "H" if self.format >= 4 else "h")
         if self.format < 5:
-            self.min_integration_time_ms         = self.unpack((2, 21,  2), "H", "min_integ(ushort)")
-            self.max_integration_time_ms         = self.unpack((2, 23,  2), "H", "max_integ(ushort)") 
+            self.min_integration_time_ms     = self.unpack((2, 21,  2), "H", "min_integ(ushort)")
+            self.max_integration_time_ms     = self.unpack((2, 23,  2), "H", "max_integ(ushort)") 
+        elif self.format >= 7:
+            self.wavelength_coeffs     .append(self.unpack((2, 21,  4), "f", "wavecal_coeff_4"))
         self.actual_horizontal               = self.unpack((2, 25,  2), "H" if self.format >= 4 else "h", "actual_horiz")
         self.actual_vertical                 = self.active_pixels_vertical  # approximate for now
         self.roi_horizontal_start            = self.unpack((2, 27,  2), "H" if self.format >= 4 else "h")
@@ -386,11 +392,20 @@ class EEPROM(object):
         self.bad_pixels.sort()
 
         self.product_configuration           = self.unpack((5,  30, 16), "s", "product_config")
+        self.subformat                       = self.unpack((5,  63,  1), "B", "subformat")
 
         # ######################################################################
-        # Page 6
+        # Page 6-7
         # ######################################################################
 
+        if self.subformat == 1:
+            self.read_raman_intensity_calibration()
+        elif self.subformat == 2:
+            self.read_spline()
+        else:
+            log.critical("Unsupported EEPROM subformat: %d", self.subformat)
+
+    def read_raman_intensity_calibration(self):
         self.raman_intensity_coeffs = []
         self.raman_intensity_calibration_format = self.unpack((6, 0, 1), "B", "raman_intensity_calibration_format")
         if 0 == self.raman_intensity_calibration_format:
@@ -403,6 +418,57 @@ class EEPROM(object):
                 self.raman_intensity_coeffs.append(self.unpack((6, offset, 4), "f", "raman_intensity_coeff_%d" % i))
         else:
             log.critical("Unsupported Raman Intensity Calibration format: %d", self.raman_intensity_calibration_format)
+
+    ##
+    # @todo: turn into class
+    def read_spline(self):
+        spline = {
+            "wavelengths": [],
+            "y": [],
+            "y2": []
+        }
+        points = self.unpack((6, 0, 1), "B", "spline.points")
+        if points <= 0:
+            log.debug("empty spline")
+            return
+
+        if points > 14:
+            log.error("invalid spline (%d points)", points)
+            return
+
+        for i in len(range(points)):
+            if i < 5:
+                page = 6
+                base = 4
+                first = 0
+            elif i < 10:
+                page = 7
+                base = 0
+                first = 5
+            else:
+                page = 4
+                base = 0
+                first = 10
+
+            offset = base + (i - first) * 12
+            wavelength = self.unpack((page, offset, 4), "f", "spline.wavelength[%d]" % i)
+            y = self.unpack((page, offset + 4, 4), "f", "spline.y[%d]" % i)
+            y2 = self.unpack((page, offset + 8, 4), "f", "spline.y2[%d]" % i)
+
+            spline["wavelengths"].append(wavelength)
+            spline["y"].append(y)
+            spline["y2"].append(y2)
+        
+        lo = self.unpack((4, 56, 4), "f", "spline_wavelength_min")
+        hi = self.unpack((4, 60, 4), "f", "spline_wavelength_max")
+        if lo >= hi:
+            log.error("invalid spline (min %f, max %f)", lo, hi)
+            return
+
+        spline["wavelength_min"] = lo
+        spline["wavelength_max"] = hi
+
+        self.spline = spline
 
     ## make a printable ASCII string out of possibly-binary data
     def printable(self, buf):
@@ -574,8 +640,14 @@ class EEPROM(object):
         self.pack((2, 16,  2), "H", self.active_pixels_horizontal    )
         #        skip 18
         self.pack((2, 19,  2), "H", self.active_pixels_vertical      )
-        self.pack((2, 21,  2), "H", max(0xffff, self.min_integration_time_ms)) # by default, keep populating these with 
-        self.pack((2, 23,  2), "H", max(0xffff, self.max_integration_time_ms)) # old values
+        if self.format < 7:
+            self.pack((2, 21,  2), "H", max(0xffff, self.min_integration_time_ms))
+            self.pack((2, 23,  2), "H", max(0xffff, self.max_integration_time_ms))
+        else:
+            coeff = 0.0
+            if len(self.wavelength_coeffs) > 4:
+                coeff = self.wavelength_coeffs[4]
+            self.pack((2, 21,  4), "f", coeff)
         self.pack((2, 25,  2), "H", self.actual_horizontal           )
         self.pack((2, 27,  2), "H", self.roi_horizontal_start        )
         self.pack((2, 29,  2), "H", self.roi_horizontal_end          )
