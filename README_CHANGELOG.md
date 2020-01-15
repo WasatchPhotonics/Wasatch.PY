@@ -1,5 +1,7 @@
 # Changelog
 
+- 2020-01-15 1.0.47
+    - added demo-simple.py
 - 2020-01-10 1.0.46
     - updated EEPROM to format 7
 - 2019-10-11 1.0.45

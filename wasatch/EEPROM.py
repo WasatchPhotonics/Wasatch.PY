@@ -22,7 +22,7 @@ class EEPROM(object):
     
     LATEST_REV = 7
     MAX_PAGES = 8
-    MAX_INTENSITY_TERMS = 12
+    MAX_RAMAN_INTENSITY_CALIBRATION_ORDER = 7
 
     def __init__(self):
         self.format = 0
@@ -84,6 +84,7 @@ class EEPROM(object):
         self.raman_intensity_calibration_format = 0
         self.raman_intensity_coeffs      = []
         self.spline                      = None
+        self.multi_wavecal               = None
                                          
         self.format                      = 0
         self.subformat                   = 0 # pages 6-7
@@ -402,6 +403,8 @@ class EEPROM(object):
             self.read_raman_intensity_calibration()
         elif self.subformat == 2:
             self.read_spline()
+        elif self.subformat == 3:
+            self.read_multi_wavecal()
         else:
             log.critical("Unsupported EEPROM subformat: %d", self.subformat)
 
@@ -410,7 +413,7 @@ class EEPROM(object):
         self.raman_intensity_calibration_format = self.unpack((6, 0, 1), "B", "raman_intensity_calibration_format")
         if 0 == self.raman_intensity_calibration_format:
             pass
-        elif self.raman_intensity_calibration_format < EEPROM.MAX_INTENSITY_TERMS:
+        elif self.raman_intensity_calibration_format <= EEPROM.MAX_RAMAN_INTENSITY_CALIBRATION_ORDER:
             order = self.raman_intensity_calibration_format
             terms = order + 1
             for i in range(terms):
@@ -419,8 +422,27 @@ class EEPROM(object):
         else:
             log.critical("Unsupported Raman Intensity Calibration format: %d", self.raman_intensity_calibration_format)
 
+    def write_raman_intensity_calibration(self):
+        self.pack((6, 0,  1), "B", self.raman_intensity_calibration_format)
+        if 0 <= self.raman_intensity_calibration_format <= MAX_RAMAN_INTENSITY_CALIBRATION_ORDER:
+            order = self.raman_intensity_calibration_format
+            terms = order + 1
+            for i in range(EEPROM.MAX_RAMAN_INTENSITY_CALIBRATION_ORDER + 1):
+                offset = i * 4 + 1
+                if i < terms and self.raman_intensity_coeffs is not None and i < len(self.raman_intensity_coeffs):
+                    coeff = self.raman_intensity_coeffs[i]
+                else:
+                    coeff = 0.0
+                # log.debug("packing raman_intensity_coeffs[%d] (offset %d, order %d, terms %d) => %e", i, offset, order, terms, coeff)
+                self.pack((6, offset, 4), "f", coeff)
+        else:
+            log.critical("Unsupported Raman Intensity Calibration format: %d", self.raman_intensity_calibration_format)
+            for i in range(EEPROM.MAX_RAMAN_INTENSITY_CALIBRATION_ORDER + 1):
+                offset = i * 4 + 1
+                self.pack((6, offset, 4), "f", 0.0)
+
     ##
-    # @todo: turn into class
+    # @todo turn into EEPROMSpline
     def read_spline(self):
         spline = {
             "wavelengths": [],
@@ -452,7 +474,7 @@ class EEPROM(object):
 
             offset = base + (i - first) * 12
             wavelength = self.unpack((page, offset, 4), "f", "spline.wavelength[%d]" % i)
-            y = self.unpack((page, offset + 4, 4), "f", "spline.y[%d]" % i)
+            y  = self.unpack((page, offset + 4, 4), "f", "spline.y[%d]" % i)
             y2 = self.unpack((page, offset + 8, 4), "f", "spline.y2[%d]" % i)
 
             spline["wavelengths"].append(wavelength)
@@ -469,6 +491,45 @@ class EEPROM(object):
         spline["wavelength_max"] = hi
 
         self.spline = spline
+
+    def write_spline(self):
+        log.critical("EEPROM.write_spline not implemented")
+
+    def multi_wavecal_page_start(self, pos):
+        if pos == 0:
+            page = 1
+            start = 0
+        else:
+            page = 6 if pos < 5 else 7
+            start = ((pos - 1) % 4) * 16
+        return (page, start)
+
+    ##
+    # @todo make EEPROMMultiWavecal
+    def read_multi_wavecal(self):
+
+        # store as dict rather than array in case some positions are invalid
+        self.multi_wavecal = {}
+
+        # parse each of the 9 wavecal positions
+        for pos in range(9):
+            (page, start) = self.multi_wavecal_page_start(pos)
+            try:
+                coeffs = []
+                for i in range(4):
+                    coeffs.append(self.unpack((page, start + i * 4, 4), "f"))
+                log.debug("Multi-Wavecal Pos %d: %s", pos, coeffs)
+                self.multi_wavecal[pos] = coeffs
+            except:
+                log.error("invalid multi-wavecal at position %d", pos, exc_info=1)
+    
+    def write_multi_wavecal(self):
+        if self.multi_wavecal is None:
+            return
+        for pos, coeffs in self.multi_wavecal.items():
+            (page, start) = self.multi_wavecal_page_start(pos)
+            for i in range(len(coeffs)):
+                self.pack((page, start + i * 4, 4), "f", coeffs[i])
 
     ## make a printable ASCII string out of possibly-binary data
     def printable(self, buf):
@@ -549,7 +610,7 @@ class EEPROM(object):
             value = 0
 
         buf = self.write_buffers[page]
-        if buf is None or end_byte > 63: # byte [63] for revision
+        if buf is None or end_byte > 64:
             raise Exception("error packing EEPROM page %d, offset %2d, len %2d as %s: buf is %s" % (
                 page, start_byte, length, data_type, buf))
 
@@ -701,29 +762,20 @@ class EEPROM(object):
             self.pack((5, i * 2, 2), "h", value)
 
         self.pack((5, 30, 16), "s", self.product_configuration)
+        self.pack((5, 63,  1), "B", self.subformat)
 
         # ######################################################################
-        # Page 6
+        # Page 6-7
         # ######################################################################
 
-        self.pack((6, 0,  1), "B", self.raman_intensity_calibration_format)
-        if 0 <= self.raman_intensity_calibration_format <= 11:
-            # polynomial regression of up to 11th-order
-            order = self.raman_intensity_calibration_format
-            terms = order + 1
-            for i in range(EEPROM.MAX_INTENSITY_TERMS):
-                offset = i * 4 + 1
-                if i < terms and self.raman_intensity_coeffs is not None and i < len(self.raman_intensity_coeffs):
-                    coeff = self.raman_intensity_coeffs[i]
-                else:
-                    coeff = 0.0
-                # log.debug("packing raman_intensity_coeffs[%d] (offset %d, order %d, terms %d) => %e", i, offset, order, terms, coeff)
-                self.pack((6, offset, 4), "f", coeff)
+        if self.subformat == 1:
+            self.write_raman_intensity_calibration()
+        elif self.subformat == 2:
+            self.write_spline()
+        elif self.subformat == 3:
+            self.write_multi_wavecal()
         else:
-            log.critical("Unsupported Raman Intensity Calibration format: %d", self.raman_intensity_calibration_format)
-            for i in range(EEPROM.MAX_INTENSITY_TERMS):
-                offset = i * 4 + 1
-                self.pack((6, offset, 4), "f", 0.0)
+            log.critical("Unsupported EEPROM subformat: %d", self.subformat)
 
     ## can be used as a sanity-check for any set of coefficients
     def coeffs_look_valid(self, coeffs, count=None):
@@ -772,7 +824,7 @@ class EEPROM(object):
         if self.format < 6:
             return False
 
-        if 0 < self.raman_intensity_calibration_format < EEPROM.MAX_INTENSITY_TERMS:
+        if 0 < self.raman_intensity_calibration_format < EEPROM.MAX_RAMAN_INTENSITY_CALIBRATION_ORDER:
             return self.coeffs_look_valid(self.raman_intensity_coeffs, 
                                           count = self.raman_intensity_calibration_format + 1)
         return False

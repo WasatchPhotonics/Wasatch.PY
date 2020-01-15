@@ -95,6 +95,10 @@ class SpectrometerState(object):
         self.acquisition_laser_trigger_enable = False
         self.acquisition_laser_trigger_delay_ms = 0
 
+        # mechanical articulation (e.g. Sandbox optics); this is currently 
+        # treated as an integer with discrete steps
+        self.position = 0
+
         # ######################################################################
         # What about truly internal settings like last_applied_laser_power or 
         # detector_tec_setpoint_has_been_set?  It's okay for StrokerProtocolDevice,
@@ -143,6 +147,7 @@ class SpectrometerState(object):
         log.debug("  Invert X-Axis:          %s", self.invert_x_axis)
         log.debug("  Laser Power Ramping:    %s", self.laser_power_ramping_enabled)
         log.debug("  Laser Power Ramp Incr:  %d", self.laser_power_ramp_increments)
+        log.debug("  Position:               %s", self.position)
 
     def to_dict(self):
         return self.__dict__
