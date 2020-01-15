@@ -31,7 +31,7 @@ if not device.connect():
     print("connection failed")
     sys.exit(1)
 
-print("connected to %s %s with %d pixels from (%2f, %.2f)" % (
+print("connected to %s %s with %d pixels from (%.2f, %.2f)" % (
     device.settings.eeprom.model,
     device.settings.eeprom.serial_number,
     device.settings.pixels(),
