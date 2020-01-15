@@ -39,15 +39,12 @@ print("connected to %s %s with %d pixels from (%2f, %.2f)" % (
     device.settings.wavelengths[-1]))
 
 print("setting integration time")
-device.change_setting("integration_time_ms", 10)
+device.hardware.set_integration_time_ms(10)
+# or: device.change_setting("integration_time_ms", 10)
 
-print("reading one measurement")
-
-# can read spectrum like this:
+print("reading spectrum")
 spectrum = device.hardware.get_line().spectrum
-
-# ...or like this:
-# spectrum = device.acquire_data().spectrum
+# or: spectrum = device.acquire_data().spectrum
 
 for pixel in range(device.settings.pixels()):
     print("%8.2f %8.2f" % (device.settings.wavelengths[pixel], spectrum[pixel]))
