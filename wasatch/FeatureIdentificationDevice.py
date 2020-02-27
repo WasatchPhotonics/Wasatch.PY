@@ -81,11 +81,13 @@ class FeatureIdentificationDevice(object):
         self.raise_exceptions = False
         self.inject_random_errors = False
         self.random_error_perc = 0.001   # 0.1%
-        self.shutdown_requested = False
         self.allow_default_gain_reset = True
         self.swap_alternating_pixels = False
 
-        # YOU ARE HERE
+        self.connected = False
+        self.connecting = False
+        self.shutdown_requested = False
+
         self.last_spectrum = None
         self.spectrum_count = 0
 
@@ -96,6 +98,8 @@ class FeatureIdentificationDevice(object):
     # @warning this causes a problem in non-blocking mode (WasatchDeviceWrapper) 
     #          on MacOS
     def connect(self):
+
+        self.connecting = True
 
         # Generate a fresh listing of USB devices with the requested VID and PID.
         # Note that this is NOT how WasatchBus traverses the list.  It actually 
@@ -118,6 +122,7 @@ class FeatureIdentificationDevice(object):
 
         if device is None:
             log.debug("FID.connect: unable to find DeviceID %s", str(self.device_id))
+            self.connecting = False
             return False
         else:
             log.debug("FID.connect: matched DeviceID %s", str(self.device_id))
@@ -126,12 +131,14 @@ class FeatureIdentificationDevice(object):
             result = device.set_configuration(1)
         except Exception as exc:
             log.warn("Hardware Failure in setConfiguration", exc_info=1)
+            self.connecting = False
             raise
 
         try:
             result = usb.util.claim_interface(device, 0)
         except Exception as exc:
             log.warn("Hardware Failure in claimInterface", exc_info=1)
+            self.connecting = False
             raise
 
         self.device = device
@@ -149,17 +156,24 @@ class FeatureIdentificationDevice(object):
         if self.is_ingaas() and not self.is_arm():
             self.settings.eeprom.active_pixels_horizontal = 512
 
-        self.read_eeprom()
+        if not self.read_eeprom():
+            log.error("failed to read EEPROM")
+            self.connecting = False
+            return False
         self.read_fpga_compilation_options()
 
         log.debug("default timeout = %d ms", device.default_timeout)
 
-        return True
+        self.connected = True
+        self.connecting = False
+        return self.connected
 
     def disconnect(self):
         if self.last_applied_laser_power:
             log.debug("fid.disconnect: disabling laser")
-            self.set_laser_enable_immediate(False)
+            self._set_laser_enable_immediate(False)
+
+        self.connected = False
 
         log.critical("fid.disconnect: releasing interface")
         try:
@@ -249,7 +263,8 @@ class FeatureIdentificationDevice(object):
         return False
 
     def send_code(self, bmRequest, wValue=0, wIndex=0, data_or_wLength=None, label="", dry_run=False):
-        if self.shutdown_requested:
+        if self.shutdown_requested or (not self.connected and not self.connecting):
+            log.debug("send_code: not attempting because not connected")
             return
 
         prefix = "" if not label else ("%s: " % label)
@@ -291,13 +306,15 @@ class FeatureIdentificationDevice(object):
 
     ## @note weird that so few calls to this function override the default wLength
     def get_code(self, bmRequest, wValue=0, wIndex=0, wLength=64, label="", msb_len=None, lsb_len=None):
-        if self.shutdown_requested:
-            return
-
         prefix = "" if not label else ("%s: " % label)
         result = None
 
+        if self.shutdown_requested or (not self.connected and not self.connecting):
+            log.debug("get_code: not attempting because not connected")
+            return result
+
         if self.check_for_random_error():
+            log.debug("random error")
             return False
 
         try:
@@ -346,8 +363,16 @@ class FeatureIdentificationDevice(object):
     def read_eeprom(self):
         buffers = []
         for page in range(EEPROM.MAX_PAGES):
-            buffers.append(self.get_upper_code(0x01, page, label="GET_MODEL_CONFIG(%d)" % page))
-        self.settings.eeprom.parse(buffers)
+            buf = None
+            try:
+                buf = self.get_upper_code(0x01, page, label="GET_MODEL_CONFIG(%d)" % page)
+            except:
+                log.error("exception reading upper_code 0x01 with page %d", page, exc_info=1)
+            if buf is None:
+                log.error("unable to read EEPROM")
+                return False
+            buffers.append(buf)
+        return self.settings.eeprom.parse(buffers)
 
     ##
     # at least one linearity coeff is other than 0 or -1
@@ -409,6 +434,17 @@ class FeatureIdentificationDevice(object):
             log.debug("declining to initialize session integration_time_ms from spectrometer")
 
         return ms
+
+    ##
+    # Puts ARM-based spectrometers into Device Firmware Update (DFU) mode.
+    # 
+    # @warning reflashing spectrometer firmware without specific instruction and 
+    #          support from Wasatch Photonics will void your warranty
+    def set_dfu_enable(self, value=None):
+        if not self.is_arm():
+            return log.error("DFU mode only supported for ARM-based spectrometers")
+
+        self.send_code(0xfe, label="SET_DFU_ENABLE")
 
     def set_detector_offset(self, value):
         word = max(-32768, min(32767, int(value))) # clamp to Int16
@@ -609,6 +645,8 @@ class FeatureIdentificationDevice(object):
 
         spectrum = []
         timeout_ms = self.settings.state.integration_time_ms * 2 + 100
+
+        # due to additional firmware processing time for area scan?
         if self.settings.state.area_scan_enabled:
             timeout_ms += 250
 
@@ -625,6 +663,11 @@ class FeatureIdentificationDevice(object):
                         # log.debug("still waiting for external trigger")
                         return None
                     else:        
+                        # YOU ARE HERE: is there something we can do here to 
+                        # flush a buffer / discard any late-appearing remnants 
+                        # of the current, apparently incomplete spectrum so that
+                        # when the NEXT one starts, it's at pixel 0 of the new
+                        # one?
                         raise exc
 
             # This is a convoluted way to iterate across the received bytes in 'data' as 
@@ -673,6 +716,7 @@ class FeatureIdentificationDevice(object):
 
             # override row counter to smooth data and avoid a weird peak/trough 
             # which could affect other smoothing, normalization or min/max algos.
+            # (could extrapolate backwards from spectrum[2])
             spectrum[0] = spectrum[1]
             log.debug("get_line: area_scan_row_count = %d", area_scan_row_count)
 
@@ -984,30 +1028,65 @@ class FeatureIdentificationDevice(object):
 
     ##
     # Turn the laser on or off.
+    #
+    # If laser power hasn't yet been externally configured, applies the default
+    # of full-power.
+    #
+    # If the new laser state is on, AND if laser ramping has been enabled, then
+    # the function will internally use the (blocking) software laser ramping 
+    # algorithm; otherwise the new state will be applied immediately.
+    #
     # @param flag (Input) bool (True turns laser on, False turns laser off)
+    # @returns whether the new state was applied
     def set_laser_enable(self, flag):
         if not self.settings.eeprom.has_laser:
             log.error("unable to control laser: EEPROM reports no laser installed")
             return False
 
-        # perhaps ARM doesn't like the laser enabled before laser power is configured?
+        # ARM seems to require that laser power be set before the laser is enabled
         if self.next_applied_laser_power is None:
             self.set_laser_power_perc(100.0)
 
         self.settings.state.laser_enabled = flag
         if flag and self.get_laser_power_ramping_enabled():
-            self.set_laser_enable_ramp()
+            self._set_laser_enable_ramp()
         else:
-            self.set_laser_enable_immediate(flag)
+            self._set_laser_enable_immediate(flag)
         return True
 
+    ##
+    # Enable software (blocking) laser power ramping algorithm.
+    # @param flag (Input) whether laser ramping is enabled (default False)
+    # @see _set_laser_enable_ramp
     def set_laser_power_ramping_enable(self, flag):
         self.settings.state.laser_power_ramping_enabled = flag
 
+    ##
+    # @returns whether software laser power ramping is enabled
+    # @see _set_laser_enable_ramp
     def get_laser_power_ramping_enabled(self):
         return self.settings.state.laser_power_ramping_enabled
 
-    def set_laser_enable_immediate(self, flag):
+    ##
+    # The user has requested to update the laser firing state (on or off), and
+    # either laser power ramping is not enabled, or the requested state is "off",
+    # so apply the new laser state to the spectrometer immediately.
+    #
+    # Because the ability to immediately disable a laser is a safety-related
+    # feature (noting that truly safety-critical capabilities should be 
+    # implemented in hardware, and generally can't be robustly achieved through
+    # Python scripts), this function takes the unusual step of looping over
+    # multiple attempts to set the laser state until either the command succeeds,
+    # or 3 consecutive failures have occured.  
+    #
+    # This behavior was added after a developmental, unreleased prototype was 
+    # found to occasionally drop USB packets, and was therefore susceptible to 
+    # inadvertently failing to disable the laser upon command.
+    #
+    # @private (as callers are recommended to use set_laser_enable)
+    # @param flag (Input) whether the laser should be on (true) or off (false)
+    # @returns true if new state was successfully applied
+    def _set_laser_enable_immediate(self, flag):
         value = 1 if flag else 0
         log.debug("Send laser enable: %d", value)
         if flag:
@@ -1019,8 +1098,6 @@ class FeatureIdentificationDevice(object):
         msb = 0
         buf = [0] * 8 
 
-        # prototype has been observed to drop the odd laser commands...let's make
-        # the fix general as this is pretty important functionality
         tries = 0
         while True:
             self.send_code(0xbe, lsb, msb, buf, label="SET_LASER_ENABLE")
@@ -1034,33 +1111,108 @@ class FeatureIdentificationDevice(object):
                 return False
             else:
                 log.error("laser_enable %s command failed, re-trying", flag)
+
     ##
-    # Does not currently support "second laser"
-    def set_laser_enable_ramp(self):
+    # EXPERIMENTAL: Enable the laser (turn it on), and then gradually step the 
+    # laser power from the previously-applied power level to the most recently-
+    # requested power level.
+    #
+    # This function was added for one OEM using one particular 100mW single-mode
+    # 830nm laser, and likely would add little value to newer systems using
+    # multi-mode lasers.
+    #
+    # Different Wasatch Photonics spectrometers have used various internal lasers
+    # in different models over time.  Some low-power, single-mode lasers in
+    # particular took a few seconds for the measured output power to stabilize
+    # after a change in requested laser power.  For instance, if the laser had
+    # been at 50% power, and the user changed it to 60%, there could be a short
+    # over-power surge to 62%, followed by a quick drop to 58%, before the power
+    # would gradually converge to 60% over a period of 5+ seconds.  Graphically,
+    # a sample measured power trace might resemble the following:
+    #
+    # \verbatim
+    # 60%       ^  ____------->
+    #          | \/
+    #          |
+    # 50% _____|
+    #    (sample measured laser power over time)
+    # \endverbatim
+    #
+    # At customer request, a software algorithm was provided to provide marginal 
+    # reduction in stabilization time by manually stepping the laser power to the 
+    # desired value.  In testing, this could reduce the average stabilization 
+    # period from ~6sec to ~4sec.  The revised power trace might resemble the
+    # following:
+    #
+    # \verbatim
+    # 60%        ' _,--------->
+    #           / '
+    #          |
+    # 50% _____|
+    #    (sample measured laser power over time)
+    # \endverbatim
+    #
+    # The algorithm essentially functions by jumping the laser power to a mid-
+    # point 80% of the way between the previous power level and the new level,
+    # and then stepping the laser incrementally from the 80% midpoint to the
+    # final level in a curve with exponential die-off.  The number of steps used 
+    # to ramp the laser is defined in SpectrometerState.laser_power_ramp_increments,
+    # and a hardcoded 10ms delay is applied after each jump.  
+    #
+    # This is a blocking function (does not internally spawn a background thread),
+    # and so will block the caller for the duration of the ramp (typically 4sec+).
+    # 
+    # Users are not recommended to call this method directly; it will be used
+    # internally by set_laser_enable() if laser ramping has been configured,
+    # which is not enabled by default.
+    #
+    # @note does not currently support second / external laser
+    # @note currently hard-coded to use 1% power resolution (100µs period), 
+    #       while driver default is 0.1% (1000µs period)
+    # 
+    # @private (use set_laser_enable)
+    def _set_laser_enable_ramp(self):
+        prefix = "set_laser_enable_ramp"
+
+        # todo: should make enums for all opcodes
         SET_LASER_ENABLE          = 0xbe
         SET_LASER_MOD_ENABLE      = 0xbd
         SET_LASER_MOD_PERIOD      = 0xc7
         SET_LASER_MOD_PULSE_WIDTH = 0xdb
+       #SET_LASER_MOD_DURATION    = 0xb9 # MZ: what is this for?
 
-        # MZ: so if we never use SET_LASER_MOD_DURATION (0xb9), what's it for?
-
+        # prepare 
         current_laser_setpoint = self.last_applied_laser_power
         target_laser_setpoint = self.next_applied_laser_power
-        log.debug("set_laser_enable_ramp: ramping from %s to %s", current_laser_setpoint, target_laser_setpoint)
+        log.debug("%s: ramping from %s to %s", prefix, current_laser_setpoint, target_laser_setpoint)
 
-        timeStart = datetime.datetime.now()
+        time_start = datetime.datetime.now()
 
-        # start at current point
-        self.send_code(SET_LASER_MOD_PERIOD, 100, 0, 100, label="SET_LASER_MOD_PERIOD (ramp)") # Sets the modulation period to 100us
+        ########################################################################
+        # start at current (last applied) power level
+        ########################################################################
+
+        # set modulation period to 100us
+        self.send_code(SET_LASER_MOD_PERIOD, 100, 0, 100, label="SET_LASER_MOD_PERIOD (ramp)") 
 
         width = int(round(current_laser_setpoint))
         buf = [0] * 8
 
+        # re-apply current power (possibly redundant, but also enabling laser)
         self.send_code(SET_LASER_MOD_ENABLE, 1, 0, buf, label="SET_LASER_MOD_ENABLE (ramp)")
         self.send_code(SET_LASER_MOD_PULSE_WIDTH, width, 0, buf, label="SET_LASER_MOD_PULSE_WIDTH (ramp)")
         self.send_code(SET_LASER_ENABLE, 1, label="SET_LASER_ENABLE (ramp)") # no buf
 
+        # are we done?
+        if current_laser_setpoint == target_laser_setpoint:
+            return
+
+        ########################################################################
         # apply first 80% jump
+        ########################################################################
+
+        # compute the 80% midpoint between the current (previous) power level,
+        # and the new target 
         if current_laser_setpoint < target_laser_setpoint:
             laser_setpoint = ((float(target_laser_setpoint) - float(current_laser_setpoint)) / 100.0) * 80.0
             laser_setpoint += float(current_laser_setpoint)
@@ -1073,6 +1225,10 @@ class FeatureIdentificationDevice(object):
         self.send_code(SET_LASER_MOD_PULSE_WIDTH, int(round(eighty_percent_start)), 0, buf, label="SET_LASER_MOD_PULSE_WIDTH (80%)")
         sleep(0.02) # 20ms
 
+        ########################################################################
+        # gradually step to the final value in exponential die-off curve
+        ########################################################################
+
         x = float(self.settings.state.laser_power_ramp_increments)
         MAX_X3 = x * x * x
         for counter in range(self.settings.state.laser_power_ramp_increments):
@@ -1082,20 +1238,18 @@ class FeatureIdentificationDevice(object):
             scalar = (MAX_X3 - (x * x * x)) / MAX_X3
             target_loop_setpoint = eighty_percent_start \
                                  + (scalar * (float(target_laser_setpoint) - eighty_percent_start))
-
             # apply the incremental pulse width
             width = int(round(target_loop_setpoint))
             self.send_code(SET_LASER_MOD_PULSE_WIDTH, width, 0, buf, label="SET_LASER_MOD_PULSE_WIDTH (ramp)")
 
             # allow 10ms to settle
-            log.debug("set_laser_enable_ramp: counter = %3d, width = 0x%04x, target_loop_setpoint = %8.2f", counter, width, target_loop_setpoint)
+            log.debug("%s: counter = %3d, width = 0x%04x, target_loop_setpoint = %8.2f", prefix, counter, width, target_loop_setpoint)
             sleep(0.01) # 10ms
 
-        timeEnd = datetime.datetime.now()
-        log.debug("set_laser_enable_ramp: ramp time %.3f sec", (timeEnd - timeStart).total_seconds())
+        log.debug("%s: ramp time %.3f sec", prefix, (datetime.datetime.now() - time_start).total_seconds())
 
         self.last_applied_laser_power = self.next_applied_laser_power
-        log.debug("set_laser_enable_ramp: last_applied_laser_power = %d", self.next_applied_laser_power)
+        log.debug("%s: last_applied_laser_power = %d", prefix, self.next_applied_laser_power)
 
     def has_laser_power_calibration(self):
         return self.settings.eeprom.has_laser_power_calibration()
@@ -1139,7 +1293,7 @@ class FeatureIdentificationDevice(object):
 
         if self.get_laser_power_ramping_enabled() and self.settings.state.laser_enabled:
             self.next_applied_laser_power = value
-            return self.set_laser_enable_ramp()
+            return self._set_laser_enable_ramp()
         else:
             # otherwise, set the power level more abruptly
             return self.set_laser_power_perc_immediate(value)
@@ -1704,6 +1858,7 @@ class FeatureIdentificationDevice(object):
 
         elif setting == "allow_default_gain_reset":             self.allow_default_gain_reset = True if value else False
         elif setting == "swap_alternating_pixels":              self.swap_alternating_pixels = True if value else False
+        elif setting == "dfu_enable":                           self.set_dfu_enable()
 
         else:
             log.critical("Unknown setting to write: %s", setting)

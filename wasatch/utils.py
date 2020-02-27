@@ -402,3 +402,47 @@ def truthy(flag):
         pass
 
     return True if flag else False
+
+## 
+# Can be used as a sanity-check for any set of coefficients.
+#
+# Checks that coeffs:
+#
+# - are not None
+# - have no NaN
+# - are not all the same (zeros, -1 etc)
+# - are not [0, 1, 0, 0]
+# - checks count if provided
+def coeffs_look_valid(self, coeffs, count=None):
+
+    if coeffs is None:
+        return False
+
+    if count is not None and len(coeffs) != count:
+        return False
+
+    # check for NaN
+    for i in range(len(coeffs)):
+        if math.isnan(coeffs[i]):
+            return False 
+
+    # check for [0, 1, 0...] default pattern
+    all_default = True
+    for i in range(len(coeffs)):
+        if i == 1 and coeffs[i] != 1.0:
+            all_default = False
+        elif coeffs[i] != 0.0:
+            all_default = False
+    if all_default:
+        return False
+
+    # check for constants (all coefficients the same value)
+    all_const = True
+    for i in range(1, len(coeffs)):
+        if coeffs[0] != coeffs[i]:
+            all_const = False
+    if all_const:
+        return False
+
+    return True
+

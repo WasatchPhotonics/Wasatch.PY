@@ -164,7 +164,7 @@ class SpectrometerSettings(object):
         self.raman_intensity_factors = None
         if not self.eeprom.has_raman_intensity_calibration():
             return
-        if 1 <= self.eeprom.raman_intensity_calibration_format < EEPROM.MAX_INTENSITY_TERMS:
+        if 1 <= self.eeprom.raman_intensity_calibration_order <= EEPROM.MAX_RAMAN_INTENSITY_CALIBRATION_ORDER:
             log.debug("updating raman intensity factors")
             coeffs = self.eeprom.raman_intensity_coeffs
             log.debug("coeffs = %s", coeffs)

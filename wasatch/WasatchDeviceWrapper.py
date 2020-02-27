@@ -190,6 +190,7 @@ class WasatchDeviceWrapper(object):
         (self.message_queue_consumer,  self.message_queue_producer)  = multiprocessing.Pipe(False) # spectrometer -> GUI (StatusMessages)
         (self.command_queue_consumer,  self.command_queue_producer)  = multiprocessing.Pipe(False) # GUI -> spectrometer (ControlObjects)
 
+        self.connected    = False
         self.closing      = False   # Don't permit new acquires during close
         self.poller       = None    # a handle to the subprocess
 
@@ -346,6 +347,8 @@ class WasatchDeviceWrapper(object):
         # settings object, and will keep a reference to this Wrapper object for sending
         # commands and reading spectra.
         log.debug("WasatchDeviceWrapper.connect: succeeded")
+        self.connected = True
+
         return True
 
     def disconnect(self):
@@ -374,6 +377,8 @@ class WasatchDeviceWrapper(object):
         time.sleep(0.1)
         log.debug("WasatchDeviceWrapper.disconnect: done")
 
+        self.connected = False
+
         return True
 
     ##
@@ -381,7 +386,7 @@ class WasatchDeviceWrapper(object):
     # MainProcess to dequeue a StatusMessage from the spectrometer sub-
     # process, if one is available.
     def acquire_status_message(self):
-        if self.closing:
+        if self.closing or not self.connected:
             return None
 
         if self.message_queue_consumer.poll():
@@ -414,8 +419,7 @@ class WasatchDeviceWrapper(object):
     #       especially in the context of multiple spectrometers,
     #       BatchCollection etc.
     def acquire_data(self, mode=None):
-
-        if self.closing:
+        if self.closing or not self.connected:
             log.critical("WasatchDeviceWrapper.acquire_data: closing (sending poison-pill upstream)")
             return False
 
@@ -551,6 +555,9 @@ class WasatchDeviceWrapper(object):
     # @see \ref README_SETTINGS.md for a list of valid settings you can
     #      pass, as well as any parameters expected by each
     def change_setting(self, setting, value):
+        if not self.connected:
+            return
+
         log.debug("WasatchDeviceWrapper.change_setting: %s => %s", setting, value)
         control_object = ControlObject(setting, value)
 
