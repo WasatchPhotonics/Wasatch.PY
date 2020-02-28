@@ -121,11 +121,63 @@ def dump(foo, indent=0):
 ## given a destination object and a source dictionary, update any existing 
 #  attributes of the destination object from like-named keys in the source 
 #  dictionary
-def update_obj_from_dict(dest_obj, src_dict):
-    for k in sorted(dest_obj.__dict__.keys()):
-        if k in src_dict:
-            log.debug("%s -> %s", k, src_dict[k])
-            setattr(dest_obj, k, src_dict[k])
+#
+# @param obj (In/Out) the object whose attributes to update
+# @param d   (Input)  the dictionary whose keys should be treated as attributes
+def update_obj_from_dict(obj, d):
+    if obj is None or d is None:
+        return
+    for k in sorted(obj.__dict__.keys()):
+        v = dict_get_norm(d, k)
+        if v is not None:
+            log.debug("%s -> %s", k, v)
+            setattr(obj, k, v)
+
+##
+# Similar to dict.get(), but case-insensitive and normalizes-out spaces, 
+# underscores, periods and hyphens.
+#
+# @param d (input) dictionary
+# @param k (input) case-insensitive key (can be prioritized list)
+#
+# Note that this function does not distiguish between the dictionary not having
+# a key, and the value of the key being None.
+def dict_get_norm(d, keys):
+
+    # if we weren't passed a list, make it one
+    if not isinstance(keys, list):
+        keys = [ keys ]
+
+    try:
+        pat = r"[ ._-]"
+        for key in keys:
+            key = re.sub(pat, "", key).lower()
+            for k, v in d.items():
+                k = re.sub(pat, "", k).lower()
+                if k == key:
+                    return v
+    except:
+        log.error("dict_get_norm: %s", keys, exc_info=1)
+        return
+
+##
+# Similar to dict.get(), but takes a list of keys to be traversed in sequence.
+#
+# @param d    (input) dictionary
+# @param keys (input) list of case-insensitive keys
+def dict_get_path(d, keys):
+    try:
+        while len(keys) > 0:
+            k = keys.pop(0)
+            v = dict_get_norm(d, k)
+            if v is None:
+                return
+            elif len(keys) == 0:
+                return v
+            else:
+                d = v
+    except:
+        return
 
 ## convenience wrapper to load a JSON file
 def load_json(pathname):
@@ -350,3 +402,47 @@ def truthy(flag):
         pass
 
     return True if flag else False
+
+## 
+# Can be used as a sanity-check for any set of coefficients.
+#
+# Checks that coeffs:
+#
+# - are not None
+# - have no NaN
+# - are not all the same (zeros, -1 etc)
+# - are not [0, 1, 0, 0]
+# - checks count if provided
+def coeffs_look_valid(self, coeffs, count=None):
+
+    if coeffs is None:
+        return False
+
+    if count is not None and len(coeffs) != count:
+        return False
+
+    # check for NaN
+    for i in range(len(coeffs)):
+        if math.isnan(coeffs[i]):
+            return False 
+
+    # check for [0, 1, 0...] default pattern
+    all_default = True
+    for i in range(len(coeffs)):
+        if i == 1 and coeffs[i] != 1.0:
+            all_default = False
+        elif coeffs[i] != 0.0:
+            all_default = False
+    if all_default:
+        return False
+
+    # check for constants (all coefficients the same value)
+    all_const = True
+    for i in range(1, len(coeffs)):
+        if coeffs[0] != coeffs[i]:
+            all_const = False
+    if all_const:
+        return False
+
+    return True
+

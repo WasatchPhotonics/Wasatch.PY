@@ -6,6 +6,8 @@ import copy
 import json
 import re
 
+from . import utils
+
 log = logging.getLogger(__name__)
 
 ##
@@ -81,10 +83,16 @@ class EEPROM(object):
         self.bad_pixels                  = [] # should be set, not list
         self.product_configuration       = None
 
-        self.raman_intensity_calibration_format = 0
+        self.raman_intensity_calibration_order = 0
         self.raman_intensity_coeffs      = []
-        self.spline                      = None
         self.multi_wavecal               = None
+
+        self.spline_points               = 0
+        self.spline_min                  = 0
+        self.spline_max                  = 0
+        self.spline_wavelengths          = []
+        self.spline_y                    = []
+        self.spline_y2                   = []
                                          
         self.format                      = 0
         self.subformat                   = 0 # pages 6-7
@@ -115,7 +123,7 @@ class EEPROM(object):
                           "roi_vertical_region_2_start",    
                           "roi_vertical_region_3_end",      
                           "roi_vertical_region_3_start",
-                          "raman_intensity_calibration_format",
+                          "raman_intensity_calibration_order",
                           "raman_intensity_coeffs" ]
 
     def to_dict(self):
@@ -173,13 +181,18 @@ class EEPROM(object):
     def parse(self, buffers):
         if len(buffers) < EEPROM.MAX_PAGES:
             log.error("EEPROM.parse expects at least %d buffers", EEPROM.MAX_PAGES)
-            return
+            return False
 
         # store these locally so self.unpack() can access them
         self.buffers = buffers
 
         # unpack all the fields we know about
-        self.read_eeprom()
+        try:
+            self.read_eeprom()
+            return True
+        except:
+            log.error("failed to parse EEPROM", exc_info=1)
+            return False
 
     ## render the attributes of this object as a JSON string
     #
@@ -255,7 +268,7 @@ class EEPROM(object):
         log.debug("  Bad Pixels:       %s", self.bad_pixels)
         log.debug("  Product Config:   %s", self.product_configuration)
         log.debug("")
-        log.debug("  Raman Int Fmt:    %d", self.raman_intensity_calibration_format)
+        log.debug("  Raman Int Order:  %d", self.raman_intensity_calibration_order)
         log.debug("  Raman Int Coeffs: %s", self.raman_intensity_coeffs)
 
     # ##########################################################################
@@ -410,22 +423,22 @@ class EEPROM(object):
 
     def read_raman_intensity_calibration(self):
         self.raman_intensity_coeffs = []
-        self.raman_intensity_calibration_format = self.unpack((6, 0, 1), "B", "raman_intensity_calibration_format")
-        if 0 == self.raman_intensity_calibration_format:
+        self.raman_intensity_calibration_order = self.unpack((6, 0, 1), "B", "raman_intensity_calibration_order")
+        if 0 == self.raman_intensity_calibration_order:
             pass
-        elif self.raman_intensity_calibration_format <= EEPROM.MAX_RAMAN_INTENSITY_CALIBRATION_ORDER:
-            order = self.raman_intensity_calibration_format
+        elif self.raman_intensity_calibration_order <= EEPROM.MAX_RAMAN_INTENSITY_CALIBRATION_ORDER:
+            order = self.raman_intensity_calibration_order
             terms = order + 1
             for i in range(terms):
                 offset = i * 4 + 1
                 self.raman_intensity_coeffs.append(self.unpack((6, offset, 4), "f", "raman_intensity_coeff_%d" % i))
         else:
-            log.critical("Unsupported Raman Intensity Calibration format: %d", self.raman_intensity_calibration_format)
+            log.critical("Unsupported Raman Intensity Calibration order: %d", self.raman_intensity_calibration_order)
 
     def write_raman_intensity_calibration(self):
-        self.pack((6, 0,  1), "B", self.raman_intensity_calibration_format)
-        if 0 <= self.raman_intensity_calibration_format <= MAX_RAMAN_INTENSITY_CALIBRATION_ORDER:
-            order = self.raman_intensity_calibration_format
+        self.pack((6, 0,  1), "B", self.raman_intensity_calibration_order)
+        if 0 <= self.raman_intensity_calibration_order <= MAX_RAMAN_INTENSITY_CALIBRATION_ORDER:
+            order = self.raman_intensity_calibration_order
             terms = order + 1
             for i in range(EEPROM.MAX_RAMAN_INTENSITY_CALIBRATION_ORDER + 1):
                 offset = i * 4 + 1
@@ -436,7 +449,7 @@ class EEPROM(object):
                 # log.debug("packing raman_intensity_coeffs[%d] (offset %d, order %d, terms %d) => %e", i, offset, order, terms, coeff)
                 self.pack((6, offset, 4), "f", coeff)
         else:
-            log.critical("Unsupported Raman Intensity Calibration format: %d", self.raman_intensity_calibration_format)
+            log.critical("Unsupported Raman Intensity Calibration order: %d", self.raman_intensity_calibration_order)
             for i in range(EEPROM.MAX_RAMAN_INTENSITY_CALIBRATION_ORDER + 1):
                 offset = i * 4 + 1
                 self.pack((6, offset, 4), "f", 0.0)
@@ -444,21 +457,20 @@ class EEPROM(object):
     ##
     # @todo turn into EEPROMSpline
     def read_spline(self):
-        spline = {
-            "wavelengths": [],
-            "y": [],
-            "y2": []
-        }
-        points = self.unpack((6, 0, 1), "B", "spline.points")
-        if points <= 0:
+        self.spline_wavelengths = []
+        self.spline_y = []
+        self.splint_y2 = []
+
+        self.spline_points = self.unpack((6, 0, 1), "B", "spline.points")
+        if self.spline_points <= 0:
             log.debug("empty spline")
             return
 
-        if points > 14:
-            log.error("invalid spline (%d points)", points)
+        if self.spline_points > 14:
+            log.error("invalid spline (%d points)", self.spline_points)
             return
 
-        for i in len(range(points)):
+        for i in len(range(self.spline_points)):
             if i < 5:
                 page = 6
                 base = 4
@@ -477,20 +489,15 @@ class EEPROM(object):
             y  = self.unpack((page, offset + 4, 4), "f", "spline.y[%d]" % i)
             y2 = self.unpack((page, offset + 8, 4), "f", "spline.y2[%d]" % i)
 
-            spline["wavelengths"].append(wavelength)
-            spline["y"].append(y)
-            spline["y2"].append(y2)
+            self.spline_wavelengths.append(wavelength)
+            self.spline_y.append(y)
+            self.spline_y2.append(y2)
         
-        lo = self.unpack((4, 56, 4), "f", "spline_wavelength_min")
-        hi = self.unpack((4, 60, 4), "f", "spline_wavelength_max")
+        self.spline_min = self.unpack((4, 56, 4), "f", "spline_wavelength_min")
+        self.spline_max = self.unpack((4, 60, 4), "f", "spline_wavelength_max")
         if lo >= hi:
-            log.error("invalid spline (min %f, max %f)", lo, hi)
+            log.error("invalid spline (min %f, max %f)", self.spline_min, self.spline_max)
             return
-
-        spline["wavelength_min"] = lo
-        spline["wavelength_max"] = hi
-
-        self.spline = spline
 
     def write_spline(self):
         log.critical("EEPROM.write_spline not implemented")
@@ -509,7 +516,7 @@ class EEPROM(object):
     def read_multi_wavecal(self):
 
         # store as dict rather than array in case some positions are invalid
-        self.multi_wavecal = {}
+        tmp = {}
 
         # parse each of the 9 wavecal positions
         for pos in range(9):
@@ -518,10 +525,16 @@ class EEPROM(object):
                 coeffs = []
                 for i in range(4):
                     coeffs.append(self.unpack((page, start + i * 4, 4), "f"))
-                log.debug("Multi-Wavecal Pos %d: %s", pos, coeffs)
-                self.multi_wavecal[pos] = coeffs
+
+                if utils.coeffs_look_valid(coeffs):
+                    tmp[pos] = coeffs
             except:
                 log.error("invalid multi-wavecal at position %d", pos, exc_info=1)
+
+        if len(tmp) > 0:
+            self.multi_wavecal = tmp
+        else:
+            self.multi_wavecal = None
     
     def write_multi_wavecal(self):
         if self.multi_wavecal is None:
@@ -777,40 +790,6 @@ class EEPROM(object):
         else:
             log.critical("Unsupported EEPROM subformat: %d", self.subformat)
 
-    ## can be used as a sanity-check for any set of coefficients
-    def coeffs_look_valid(self, coeffs, count=None):
-
-        if coeffs is None:
-            return False
-
-        if count is not None and len(coeffs) != count:
-            return False
-
-        # check for NaN
-        for i in range(len(coeffs)):
-            if math.isnan(coeffs[i]):
-                return False 
-
-        # check for [0, 1, 0...] default pattern
-        all_default = True
-        for i in range(len(coeffs)):
-            if i == 1 and coeffs[i] != 1.0:
-                all_default = False
-            elif coeffs[i] != 0.0:
-                all_default = False
-        if all_default:
-            return False
-
-        # check for constants (all coefficients the same value)
-        all_const = True
-        for i in range(1, len(coeffs)):
-            if coeffs[0] != coeffs[i]:
-                all_const = False
-        if all_const:
-            return False
-
-        return True
-
     # ##########################################################################
     # Laser Power convenience accessors
     # ##########################################################################
@@ -818,15 +797,14 @@ class EEPROM(object):
     def has_laser_power_calibration(self):
         if self.max_laser_power_mW <= 0:
             return False
-        return self.coeffs_look_valid(self.laser_power_coeffs, count=4)
+        return utils.coeffs_look_valid(self.laser_power_coeffs, count=4)
 
     def has_raman_intensity_calibration(self):
         if self.format < 6:
             return False
 
-        if 0 < self.raman_intensity_calibration_format < EEPROM.MAX_RAMAN_INTENSITY_CALIBRATION_ORDER:
-            return self.coeffs_look_valid(self.raman_intensity_coeffs, 
-                                          count = self.raman_intensity_calibration_format + 1)
+        if 0 < self.raman_intensity_calibration_order <= EEPROM.MAX_RAMAN_INTENSITY_CALIBRATION_ORDER:
+            return utils.coeffs_look_valid(self.raman_intensity_coeffs, count = self.raman_intensity_calibration_order + 1)
         return False
 
     ## convert the given laser output power from milliwatts to percentage

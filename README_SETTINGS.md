@@ -59,6 +59,7 @@ wasatch.WasatchDevice.change_setting():
     - (bool) turns the detector TEC on or off
 - detector_tec_setpoint_degC 
     - (float) detector TEC setpoint in degC
+- dfu_enable (no arguments)
 - enable_secondary_adc 
     - (bool) experimental (photodiode support)
 - free_running_mode 

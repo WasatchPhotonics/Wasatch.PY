@@ -29,7 +29,10 @@ log = logging.getLogger(__name__)
 #
 class SpectrometerSettings(object):
 
-    def __init__(self, device_id=None):
+    ##
+    # @param device_id (Input) where the spectrometer was found (optional)
+    # @param d         (Input) input dictionary (optional)
+    def __init__(self, device_id=None, d=None):
         # populate this if the settings came from a real device
         self.device_id = device_id
 
@@ -62,17 +65,37 @@ class SpectrometerSettings(object):
         self.update_wavecal()
         self.update_raman_intensity_factors()
 
+        if d is not None:
+            self.load_from_dict(d)
+
     # given a JSON-formatted string, parse and apply FPGAOptions and EEPROM
     # sections if available
     def update_from_json(self, s):
         log.debug("updating SpectrometerSettings from JSON: %s", s)
-        obj = json.loads(s)
-        if 'FPGAOptions' in obj:
-            utils.update_obj_from_dict(self.fpga_options, obj['FPGAOptions'])
-        if 'EEPROM' in obj:
-            utils.update_obj_from_dict(self.eeprom, obj['EEPROM'])
+        d = json.loads(s)
+        self.load_from_dict(d)
+
+    ##
+    # Assuming that we've loaded a Measurement from JSON, or received a 
+    # Measurement-like structure externally via JSON, update whatever we can
+    # from it.
+    def load_from_dict(self, d):
+        utils.update_obj_from_dict(self.fpga_options, utils.dict_get_norm(d, "FPGAOptions"))
+        utils.update_obj_from_dict(self.state,        utils.dict_get_norm(d, ["SpectrometerState", "State"]))
+            
+        d2 = utils.dict_get_norm(d, "EEPROM")
+        if d2 is not None:
+            utils.update_obj_from_dict(self.eeprom, d2)
             self.update_wavecal()
             self.update_raman_intensity_factors()
+
+        a = utils.dict_get_norm(d, "wavelengths")
+        if a is not None:
+            self.wavelengths = a
+
+        a = utils.dict_get_norm(d, "wavenumbers")
+        if a is not None:
+            self.wavenumbers = a
 
     # ##########################################################################
     # accessors
@@ -141,7 +164,7 @@ class SpectrometerSettings(object):
         self.raman_intensity_factors = None
         if not self.eeprom.has_raman_intensity_calibration():
             return
-        if 1 <= self.eeprom.raman_intensity_calibration_format < EEPROM.MAX_INTENSITY_TERMS:
+        if 1 <= self.eeprom.raman_intensity_calibration_order <= EEPROM.MAX_RAMAN_INTENSITY_CALIBRATION_ORDER:
             log.debug("updating raman intensity factors")
             coeffs = self.eeprom.raman_intensity_coeffs
             log.debug("coeffs = %s", coeffs)

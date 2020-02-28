@@ -1,5 +1,13 @@
 # Changelog
 
+- 2020-02-28 1.0.49
+    - EEPROM fix
+- 2020-02-27 1.0.48
+    - refactored spline
+    - updated laser ramping docs
+    - added connection state checks
+    - updated raman intensity calibration definition
+    - added DFU docs
 - 2020-01-15 1.0.47
     - added demo-simple.py
 - 2020-01-10 1.0.46

@@ -117,6 +117,8 @@ class WasatchDevice(object):
             log.critical("Issue disconnecting hardware", exc_info=1)
 
         time.sleep(0.1)
+
+        self.connected = False
         return True
 
     def connect_file_spectrometer(self):
@@ -138,11 +140,14 @@ class WasatchDevice(object):
 
         dev = None
         try:
-            log.debug("connect_fid: Attempt connection to device_id %s pid %s", self.device_id, pid_hex)
+            log.debug("connect_fid: instantiating FID with device_id %s pid %s", self.device_id, pid_hex)
             dev = FeatureIdentificationDevice(device_id=self.device_id, message_queue=self.message_queue)
+            log.debug("connect_fid: instantiated")
 
             try:
+                log.debug("connect_fid: connecting")
                 ok = dev.connect()
+                log.debug("connect_fid: connected")
             except Exception as exc:
                 log.critical("connect_feature_identification: %s", exc, exc_info=1)
                 return False
@@ -161,7 +166,7 @@ class WasatchDevice(object):
         return True
 
     def initialize_settings(self):
-        if self.connected == False:
+        if not self.connected:
             return
 
         self.settings = self.hardware.settings
