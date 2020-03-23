@@ -1,5 +1,11 @@
 # Changelog
 
+- 2020-03-23 1.0.50
+    - added SpectrometerState.acquisition\_take\_dark\_enable
+    - moved 5th wavecal coeff to EEPROM rev 8
+    - added retries on read of spectral bulk endpoint
+    - stubbing retry logic for FID.send\_code 
+    - fixed some bugs from moving coeffs\_look\_valid to utils
 - 2020-02-28 1.0.49
     - EEPROM fix
 - 2020-02-27 1.0.48

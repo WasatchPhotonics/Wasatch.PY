@@ -94,6 +94,7 @@ class SpectrometerState(object):
         self.free_running_mode = True
         self.acquisition_laser_trigger_enable = False
         self.acquisition_laser_trigger_delay_ms = 0
+        self.acquisition_take_dark_enable = False
 
         # mechanical articulation (e.g. Sandbox optics); this is currently 
         # treated as an integer with discrete steps

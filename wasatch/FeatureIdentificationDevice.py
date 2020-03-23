@@ -91,6 +91,11 @@ class FeatureIdentificationDevice(object):
         self.last_spectrum = None
         self.spectrum_count = 0
 
+        # in case of I2C collisions within the spectrometer, e.g. due to battery-LED status
+        self.retry_enabled = True
+        self.retry_ms = 5
+        self.retry_max = 3
+
     ## 
     # Attempt to connect to the specified device. Log any failures and
     # return False if there is a problem, otherwise return True.
@@ -262,7 +267,7 @@ class FeatureIdentificationDevice(object):
             return True
         return False
 
-    def send_code(self, bmRequest, wValue=0, wIndex=0, data_or_wLength=None, label="", dry_run=False):
+    def send_code(self, bmRequest, wValue=0, wIndex=0, data_or_wLength=None, label="", dry_run=False, retry_on_error=False, success_result=0x00):
         if self.shutdown_requested or (not self.connected and not self.connecting):
             log.debug("send_code: not attempting because not connected")
             return
@@ -271,15 +276,14 @@ class FeatureIdentificationDevice(object):
         result = None
 
         # MZ: need this?
-        doL = data_or_wLength
         if data_or_wLength is None:
             if self.is_arm():
                 data_or_wLength = [0] * 8
             else:
                 data_or_wLength = ""
 
-        log.debug("%ssend_code: request 0x%02x value 0x%04x index 0x%04x data/len %s (orig %s)",
-            prefix, bmRequest, wValue, wIndex, data_or_wLength, doL)
+        log.debug("%ssend_code: request 0x%02x value 0x%04x index 0x%04x data/len %s",
+            prefix, bmRequest, wValue, wIndex, data_or_wLength)
 
         if dry_run:
             return True
@@ -287,24 +291,53 @@ class FeatureIdentificationDevice(object):
         if self.check_for_random_error():
             return False
 
-        try:
-            self.wait_for_usb_available()
-            result = self.device.ctrl_transfer(0x40,        # HOST_TO_DEVICE
-                                               bmRequest,
-                                               wValue,
-                                               wIndex,
-                                               data_or_wLength) # add TIMEOUT_MS parameter?
-        except Exception as exc:
-            log.critical("Hardware Failure FID Send Code Problem with ctrl transfer", exc_info=1)
-            self.schedule_disconnect(exc)
-            return False
+        retry_count = 0
+        while True:
+            try:
+                self.wait_for_usb_available()
+                result = self.device.ctrl_transfer(0x40,        # HOST_TO_DEVICE
+                                                   bmRequest,
+                                                   wValue,
+                                                   wIndex,
+                                                   data_or_wLength) # add TIMEOUT_MS parameter?
+            except Exception as exc:
+                log.critical("Hardware Failure FID Send Code Problem with ctrl transfer", exc_info=1)
+                self.schedule_disconnect(exc)
+                return False
 
-        log.debug("%sSend Raw result: [%s]", prefix, result)
-        log.debug("%ssend_code: request 0x%02x value 0x%04x index 0x%04x data/len %s: result %s",
-            prefix, bmRequest, wValue, wIndex, data_or_wLength, result)
-        return result
+            log.debug("%ssend_code: request 0x%02x value 0x%04x index 0x%04x data/len %s: result %s",
+                prefix, bmRequest, wValue, wIndex, data_or_wLength, result)
+
+            if not retry_on_error:
+                # no retries, just return what we got
+                return result
+            else:
+                # retry logic enabled, so compare result to expected
+                matched_expected = True
+                if len(success_result) < len(result):
+                    matched_expected = False
+                else:
+                    for i in range(len(success_result)):
+                        if result[i] != success_result[i]:
+                            matched_expected = False
+                            break
+                
+                if matched_expected:
+                    return result
+
+                # apparently it didn't match expected
+                retry_count += 1
+                if retry_count > self.retry_max:
+                    log.error("giving up after %d retries", retry_count)
+                    return result
+
+                # try again
+                log.error("retrying (attempt %d)", retry_count + 1)
+                continue
+
 
     ## @note weird that so few calls to this function override the default wLength
+    # @todo consider adding retry logic as well
     def get_code(self, bmRequest, wValue=0, wIndex=0, wLength=64, label="", msb_len=None, lsb_len=None):
         prefix = "" if not label else ("%s: " % label)
         result = None
@@ -1687,7 +1720,8 @@ class FeatureIdentificationDevice(object):
                 self.send_code(bmRequest       = 0xa2,   # dangerous
                                wValue          = offset, # arguably an index but hey
                                wIndex          = 0, 
-                               data_or_wLength = self.settings.eeprom.write_buffers[page])
+                               data_or_wLength = self.settings.eeprom.write_buffers[page],
+                               label           = "WRITE_EEPROM")
 
         self.queue_message("marquee_info", "EEPROM successfully updated")
 
@@ -1841,6 +1875,7 @@ class FeatureIdentificationDevice(object):
         elif setting == "free_running_mode":                    self.settings.state.free_running_mode = True if value else False 
         elif setting == "acquisition_laser_trigger_enable":     self.settings.state.acquisition_laser_trigger_enable = True if value else False 
         elif setting == "acquisition_laser_trigger_delay_ms":   self.settings.state.acquisition_laser_trigger_delay_ms = int(value) 
+        elif setting == "acquisition_take_dark_enable":         self.settings.state.acquisition_take_dark_enable = True if value else False 
 
         elif setting == "update_eeprom":                        self.update_session_eeprom(value) 
         elif setting == "replace_eeprom":                       self.replace_session_eeprom(value) 

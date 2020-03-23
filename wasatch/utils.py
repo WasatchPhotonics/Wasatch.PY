@@ -8,6 +8,7 @@ import datetime
 import logging
 import numpy
 import json
+import math
 import os
 import re
 
@@ -413,7 +414,7 @@ def truthy(flag):
 # - are not all the same (zeros, -1 etc)
 # - are not [0, 1, 0, 0]
 # - checks count if provided
-def coeffs_look_valid(self, coeffs, count=None):
+def coeffs_look_valid(coeffs, count=None):
 
     if coeffs is None:
         return False

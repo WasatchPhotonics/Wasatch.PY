@@ -32,6 +32,9 @@ wasatch.WasatchDevice.change_setting():
 
 - acquire 
     - (value ignored) triggers an acquisition
+- acquisition_take_dark_enable
+    - (bool) if acquisition_laser_trigger_enable, automatically takes a dark before 
+      enabling the laser and attach to Reading
 - acquisition_laser_trigger_delay_ms 
     - (delay in ms) sets the delay AFTER firing the laser BEFORE the acquisition 
       starts

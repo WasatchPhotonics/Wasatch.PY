@@ -32,6 +32,10 @@ class Reading(object):
         self.battery_percentage        = None
         self.battery_charging          = None
 
+        # for the rare case (BatchCollection with LaserMode "Spectrum") where the 
+        # driver is asked to collect a dark just before enabling the laser
+        self.dark                      = None
+
     def __init__(self, device_id=None):
         self.clear()
 

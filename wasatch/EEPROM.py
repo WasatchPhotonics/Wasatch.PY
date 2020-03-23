@@ -347,7 +347,7 @@ class EEPROM(object):
         if self.format < 5:
             self.min_integration_time_ms     = self.unpack((2, 21,  2), "H", "min_integ(ushort)")
             self.max_integration_time_ms     = self.unpack((2, 23,  2), "H", "max_integ(ushort)") 
-        elif self.format >= 7:
+        elif self.format >= 8:
             self.wavelength_coeffs     .append(self.unpack((2, 21,  4), "f", "wavecal_coeff_4"))
         self.actual_horizontal               = self.unpack((2, 25,  2), "H" if self.format >= 4 else "h", "actual_horiz")
         self.actual_vertical                 = self.active_pixels_vertical  # approximate for now
@@ -437,7 +437,7 @@ class EEPROM(object):
 
     def write_raman_intensity_calibration(self):
         self.pack((6, 0,  1), "B", self.raman_intensity_calibration_order)
-        if 0 <= self.raman_intensity_calibration_order <= MAX_RAMAN_INTENSITY_CALIBRATION_ORDER:
+        if 0 <= self.raman_intensity_calibration_order <= EEPROM.MAX_RAMAN_INTENSITY_CALIBRATION_ORDER:
             order = self.raman_intensity_calibration_order
             terms = order + 1
             for i in range(EEPROM.MAX_RAMAN_INTENSITY_CALIBRATION_ORDER + 1):

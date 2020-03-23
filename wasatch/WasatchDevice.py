@@ -392,8 +392,10 @@ class WasatchDevice(object):
     def acquire_spectrum(self):
         averaging_enabled = (self.settings.state.scans_to_average > 1)
 
-        # for Batch Collection
-        #
+        ########################################################################
+        # Batch Collection silliness
+        ########################################################################
+        
         # We could move this up into ENLIGHTEN.BatchCollection: have it enable
         # the laser, wait a bit, and then send the "acquire" command.  But since
         # WasatchDeviceWrapper.continuous_poll ticks at its own interval, that
@@ -403,6 +405,15 @@ class WasatchDevice(object):
         # for now I'm putting this delay here, so it will be exactly the same
         # (given sleep()'s precision) for each acquisition.  For true precision
         # this should all go into the firmware anyway.
+
+        dark_reading = None
+        if self.settings.state.acquisition_take_dark_enable:
+            log.debug("taking internal dark")
+            dark_reading = self.take_one_averaged_reading()
+            if isinstance(dark_reading, bool):
+                return dark_reading
+            log.debug("done taking internal dark")
+
         auto_enable_laser = self.settings.state.acquisition_laser_trigger_enable # and not self.settings.state.free_running_mode
         log.debug("acquire_spectrum: auto_enable_laser = %s", auto_enable_laser)
         if auto_enable_laser:
@@ -413,109 +424,20 @@ class WasatchDevice(object):
 
             time.sleep(self.settings.state.acquisition_laser_trigger_delay_ms / 1000.0)
 
-        if averaging_enabled and not self.settings.state.free_running_mode:
-            # collect the entire averaged spectrum at once (added for BatchCollection with laser delay))
-            loop_count = self.settings.state.scans_to_average
-            self.sum_count = 0
-        else:
-            # we're in free-running mode
-            loop_count = 1
+        ########################################################################
+        # Take a Reading (possibly averaged)
+        ########################################################################
 
-        for loop_index in range(0, loop_count):
+        log.debug("taking averaged reading")
+        reading = self.take_one_averaged_reading()
+        if isinstance(reading, bool):
+            return reading
 
-            # start a new reading (NOTE: reading.timestamp is when reading STARTED, not FINISHED!)
-            reading = Reading(self.device_id)
-
-            # TODO...just include a copy of SpectrometerState? something to think about.
-            # That would actually provide a reason to roll all the temperature etc readouts
-            # into the SpectrometerState class...
-            reading.integration_time_ms = self.settings.state.integration_time_ms
-            reading.laser_enabled       = self.settings.state.laser_enabled
-            reading.laser_power         = self.settings.state.laser_power
-            reading.laser_power_in_mW   = self.settings.state.laser_power_in_mW
-
-            # collect next spectrum
-            externally_triggered = self.settings.state.trigger_source == SpectrometerState.TRIGGER_SOURCE_EXTERNAL
-            try:
-                while True:
-                    spectrum_and_row = self.hardware.get_line()
-                    if self.hardware.shutdown_requested: 
-                        return False
-
-                    if spectrum_and_row.spectrum is None:
-                        # FeatureIdentificationDevice can return None when waiting
-                        # on an external trigger.  FileSpectrometer can as well if 
-                        # there is no new spectrum to read.
-                        log.debug("device.acquire_data: get_line None, sending keepalive for now")
-                        return True
-                    else:
-                        break
-
-                reading.spectrum            = spectrum_and_row.spectrum
-                reading.area_scan_row_count = spectrum_and_row.row
-                reading.timestamp_complete  = datetime.datetime.now()
-
-                log.debug("device.acquire_data: got %s ... (row %d)", reading.spectrum[0:9], reading.area_scan_row_count)
-            except Exception as exc:
-                # if we got the timeout after switching from externally triggered back to internal, let it ride
-                if externally_triggered:
-                    log.debug("caught exception from get_line while externally triggered...sending keepalive")
-                    return True
-
-                log.critical("Error reading hardware data", exc_info=1)
-                reading.spectrum = None
-                reading.failure = str(exc)
-
-            if not reading.failure:
-                # InGaAs even/odd kludge
-                self.correct_ingaas_gain_and_offset(reading)
-
-                # bad pixel correction
-                if self.settings.state.bad_pixel_mode == SpectrometerState.BAD_PIXEL_MODE_AVERAGE:
-                    self.correct_bad_pixels(reading.spectrum)
-                # reading.spectrum = list(reading.spectrum)
-
-                log.debug("device.acquire_data: after bad_pixel correction: %s ...", reading.spectrum[0:9])
-
-                # update summed spectrum
-                if averaging_enabled:
-                    if self.sum_count == 0:
-                        self.summed_spectra = [float(i) for i in reading.spectrum]
-                    else:
-                        log.debug("device.acquire_data: summing spectra")
-                        for i in range(len(self.summed_spectra)):
-                            self.summed_spectra[i] += reading.spectrum[i]
-                    self.sum_count += 1
-                    log.debug("device.acquire_data: summed_spectra : %s ...", self.summed_spectra[0:9])
-
-            # count spectra
-            self.session_reading_count += 1
-            reading.session_count = self.session_reading_count
-            reading.sum_count = self.sum_count
-
-            # have we completed the averaged reading?
-            if averaging_enabled:
-                if self.sum_count >= self.settings.state.scans_to_average:
-                    reading.spectrum = []
-                    for i in range(len(self.summed_spectra)):
-                        reading.spectrum.append(self.summed_spectra[i] / self.sum_count)
-                    log.debug("device.acquire_data: averaged_spectrum : %s ...", reading.spectrum[0:9])
-                    reading.averaged = True
-
-                    # reset for next average
-                    self.summed_spectra = None
-                    self.sum_count = 0
-            else:
-                # if averaging isn't enabled...then a single reading is the 
-                # "averaged" final measurement (check reading.sum_count to confirm)
-                reading.averaged = True
-
-            # were we told to only take one (potentially averaged) measurement?
-            if self.take_one and reading.averaged:
-                log.debug("completed take_one")
-                self.change_setting("cancel_take_one", True)
-
-        # end of loop_index
+        # don't perform dark subtraction, but pass the dark measurement along
+        # with the averaged reading
+        if dark_reading is not None:
+            log.debug("attaching dark to reading")
+            reading.dark = dark_reading.spectrum
 
         ########################################################################
         # provide early exit-ramp if we've been asked to return bare Readings 
@@ -624,6 +546,119 @@ class WasatchDevice(object):
                     return False
 
                 log.debug("battery: level %.2f%% (%s)", reading.battery_percentage, "charging" if reading.battery_charging else "not charging")
+
+        return reading
+
+    ## 
+    # @returns Reading on success, true or false on "stop processing" conditions
+    def take_one_averaged_reading(self):
+
+        averaging_enabled = (self.settings.state.scans_to_average > 1)
+
+        if averaging_enabled and not self.settings.state.free_running_mode:
+            # collect the entire averaged spectrum at once (added for BatchCollection with laser delay))
+            self.sum_count = 0
+            loop_count = self.settings.state.scans_to_average
+        else:
+            # we're in free-running mode
+            loop_count = 1
+
+        log.debug("take_one_averaged_reading: loop_count = %d", loop_count)
+
+        reading = None
+        for loop_index in range(0, loop_count):
+
+            # start a new reading (NOTE: reading.timestamp is when reading STARTED, not FINISHED!)
+            reading = Reading(self.device_id)
+
+            # TODO...just include a copy of SpectrometerState? something to think about.
+            # That would actually provide a reason to roll all the temperature etc readouts
+            # into the SpectrometerState class...
+            reading.integration_time_ms = self.settings.state.integration_time_ms
+            reading.laser_enabled       = self.settings.state.laser_enabled
+            reading.laser_power         = self.settings.state.laser_power
+            reading.laser_power_in_mW   = self.settings.state.laser_power_in_mW
+
+            # collect next spectrum
+            externally_triggered = self.settings.state.trigger_source == SpectrometerState.TRIGGER_SOURCE_EXTERNAL
+            try:
+                while True:
+                    spectrum_and_row = self.hardware.get_line()
+                    if self.hardware.shutdown_requested: 
+                        return False
+
+                    if spectrum_and_row.spectrum is None:
+                        # FeatureIdentificationDevice can return None when waiting
+                        # on an external trigger.  FileSpectrometer can as well if 
+                        # there is no new spectrum to read.
+                        log.debug("device.take_one_averaged_spectrum: get_line None, sending keepalive for now")
+                        return True
+                    else:
+                        break
+
+                reading.spectrum            = spectrum_and_row.spectrum
+                reading.area_scan_row_count = spectrum_and_row.row
+                reading.timestamp_complete  = datetime.datetime.now()
+
+                log.debug("device.take_one_averaged_spectrum: got %s ... (row %d)", reading.spectrum[0:9], reading.area_scan_row_count)
+            except Exception as exc:
+                # if we got the timeout after switching from externally triggered back to internal, let it ride
+                if externally_triggered:
+                    log.debug("caught exception from get_line while externally triggered...sending keepalive")
+                    return True
+
+                log.critical("Error reading hardware data", exc_info=1)
+                reading.spectrum = None
+                reading.failure = str(exc)
+
+            if not reading.failure:
+                # InGaAs even/odd kludge
+                self.correct_ingaas_gain_and_offset(reading)
+
+                # bad pixel correction
+                if self.settings.state.bad_pixel_mode == SpectrometerState.BAD_PIXEL_MODE_AVERAGE:
+                    self.correct_bad_pixels(reading.spectrum)
+                # reading.spectrum = list(reading.spectrum)
+
+                log.debug("device.acquire_data: after bad_pixel correction: %s ...", reading.spectrum[0:9])
+
+                # update summed spectrum
+                if averaging_enabled:
+                    if self.sum_count == 0:
+                        self.summed_spectra = [float(i) for i in reading.spectrum]
+                    else:
+                        log.debug("device.acquire_data: summing spectra")
+                        for i in range(len(self.summed_spectra)):
+                            self.summed_spectra[i] += reading.spectrum[i]
+                    self.sum_count += 1
+                    log.debug("device.acquire_data: summed_spectra : %s ...", self.summed_spectra[0:9])
+
+            # count spectra
+            self.session_reading_count += 1
+            reading.session_count = self.session_reading_count
+            reading.sum_count = self.sum_count
+
+            # have we completed the averaged reading?
+            if averaging_enabled:
+                if self.sum_count >= self.settings.state.scans_to_average:
+                    reading.spectrum = []
+                    for i in range(len(self.summed_spectra)):
+                        reading.spectrum.append(self.summed_spectra[i] / self.sum_count)
+                    log.debug("device.acquire_data: averaged_spectrum : %s ...", reading.spectrum[0:9])
+                    reading.averaged = True
+
+                    # reset for next average
+                    self.summed_spectra = None
+                    self.sum_count = 0
+            else:
+                # if averaging isn't enabled...then a single reading is the 
+                # "averaged" final measurement (check reading.sum_count to confirm)
+                reading.averaged = True
+
+            # were we told to only take one (potentially averaged) measurement?
+            if self.take_one and reading.averaged:
+                log.debug("completed take_one")
+                self.change_setting("cancel_take_one", True)
 
         return reading
 
