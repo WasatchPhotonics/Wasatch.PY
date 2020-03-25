@@ -54,7 +54,6 @@ class SpectrometerSettings(object):
             if self.device_id.is_usb():
                 self.hardware_info = HardwareInfo(vid = self.device_id.vid,
                                                   pid = self.device_id.pid)
-
         # derived attributes
         self.wavelengths = None
         self.wavenumbers = None
@@ -64,6 +63,9 @@ class SpectrometerSettings(object):
 
         self.update_wavecal()
         self.update_raman_intensity_factors()
+
+        # ENLIGHTEN sends this so individual driver processes can adaptively scale USB timeouts
+        self.num_connected_devices = 1
 
         if d is not None:
             self.load_from_dict(d)

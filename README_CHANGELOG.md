@@ -1,5 +1,8 @@
 # Changelog
 
+- 2020-03-25 1.0.51
+    - increased timeout for multiple devices
+    - added EEPROM.avg\_resolution
 - 2020-03-23 1.0.50
     - added SpectrometerState.acquisition\_take\_dark\_enable
     - moved 5th wavecal coeff to EEPROM rev 8

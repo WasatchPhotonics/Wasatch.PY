@@ -677,7 +677,7 @@ class FeatureIdentificationDevice(object):
         self.wait_for_usb_available()
 
         spectrum = []
-        timeout_ms = self.settings.state.integration_time_ms * 2 + 100
+        timeout_ms = self.settings.state.integration_time_ms * 2 + 100 * self.settings.num_connected_devices
 
         # due to additional firmware processing time for area scan?
         if self.settings.state.area_scan_enabled:
@@ -1894,6 +1894,7 @@ class FeatureIdentificationDevice(object):
         elif setting == "allow_default_gain_reset":             self.allow_default_gain_reset = True if value else False
         elif setting == "swap_alternating_pixels":              self.swap_alternating_pixels = True if value else False
         elif setting == "dfu_enable":                           self.set_dfu_enable()
+        elif setting == "num_connected_devices":                self.settings.num_connected_devices = int(value)
 
         else:
             log.critical("Unknown setting to write: %s", setting)
