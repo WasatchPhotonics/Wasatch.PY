@@ -97,14 +97,18 @@ class FeatureIdentificationDevice(object):
         self.retry_max = 3
 
     ## 
-    # Attempt to connect to the specified device. Log any failures and
-    # return False if there is a problem, otherwise return True.
+    # Connect to the device and initialize basic settings.
     #
+    # @returns True on success
     # @warning this causes a problem in non-blocking mode (WasatchDeviceWrapper) 
     #          on MacOS
     def connect(self):
 
         self.connecting = True
+
+        # ######################################################################
+        # USB Connection
+        # ######################################################################
 
         # Generate a fresh listing of USB devices with the requested VID and PID.
         # Note that this is NOT how WasatchBus traverses the list.  It actually 
@@ -149,25 +153,40 @@ class FeatureIdentificationDevice(object):
         self.device = device
 
         # ######################################################################
-        # PID-specific settings
+        # model-specific settings
         # ######################################################################
-
-        if self.is_arm():
-            self.settings.state.min_usb_interval_ms = 0
-            self.settings.state.max_usb_interval_ms = 0
 
         # This must be for some very old InGaAs spectrometers? 
         # Will probably want to remove this for SiG...
         if self.is_ingaas() and not self.is_arm():
             self.settings.eeprom.active_pixels_horizontal = 512
 
+        # ######################################################################
+        # EEPROM
+        # ######################################################################
+
         if not self.read_eeprom():
             log.error("failed to read EEPROM")
             self.connecting = False
             return False
+
+        # ######################################################################
+        # FPGA 
+        # ######################################################################
+
         self.read_fpga_compilation_options()
 
-        log.debug("default timeout = %d ms", device.default_timeout)
+        # automatically push EEPROM values to the FPGA (on modern EEPROMs)
+        if self.settings.eeprom.format >= 4:
+            log.debug("sending gain/offset to FPGA")
+            self.set_detector_gain      (self.settings.eeprom.detector_gain)
+            self.set_detector_offset    (self.settings.eeprom.detector_offset)
+            self.set_detector_gain_odd  (self.settings.eeprom.detector_gain_odd)
+            self.set_detector_offset_odd(self.settings.eeprom.detector_offset_odd)
+
+        # ######################################################################
+        # Done
+        # ######################################################################
 
         self.connected = True
         self.connecting = False
@@ -677,7 +696,7 @@ class FeatureIdentificationDevice(object):
         self.wait_for_usb_available()
 
         spectrum = []
-        timeout_ms = self.settings.state.integration_time_ms * 2 + 100 * self.settings.num_connected_devices
+        timeout_ms = self.settings.state.integration_time_ms * 2 + 500 * self.settings.num_connected_devices
 
         # due to additional firmware processing time for area scan?
         if self.settings.state.area_scan_enabled:

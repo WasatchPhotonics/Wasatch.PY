@@ -404,6 +404,11 @@ def truthy(flag):
 
     return True if flag else False
 
+def clean_nan(a):
+    for i in range(len(a)):
+        if math.isnan(a[i]):
+            a[i] = 0
+
 ## 
 # Can be used as a sanity-check for any set of coefficients.
 #

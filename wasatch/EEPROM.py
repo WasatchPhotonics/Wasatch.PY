@@ -433,11 +433,17 @@ class EEPROM(object):
         # sanity checks
         # ######################################################################
 
+        utils.clean_nan(self.wavelength_coeffs)
+
         if self.min_integration_time_ms == 0xffff:
             self.min_integration_time_ms = 1 
             self.max_integration_time_ms = 60000
-        elif self.min_integration_time_ms > self.max_integration_time_ms:
+
+        if self.min_integration_time_ms > self.max_integration_time_ms:
             (self.min_integration_time_ms, self.max_integration_time_ms) = (self.max_integration_time_ms, self.min_integration_time_ms)
+
+        if self.min_temp_degC > self.max_temp_degC:
+            (self.min_temp_degC, self.max_temp_degC) = (self.max_temp_degC, self.mmintemp_degC) 
 
 
     def read_raman_intensity_calibration(self):
@@ -647,6 +653,8 @@ class EEPROM(object):
                 page, start_byte, length, data_type, buf))
 
         if data_type == "s":
+            if value is None:
+                value = ""
             for i in range(min(length, len(value))):
                 if i < len(value):
                     buf[start_byte + i] = ord(value[i])

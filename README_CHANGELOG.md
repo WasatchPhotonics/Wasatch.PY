@@ -1,5 +1,9 @@
 # Changelog
 
+- 2020-03-27 1.0.52
+    - increased timeout for multiple devices
+    - added gain/offset initialization from EEPROM
+    - zero NaN wavecal coeffs
 - 2020-03-25 1.0.51
     - increased timeout for multiple devices
     - added EEPROM.avg\_resolution
