@@ -103,6 +103,11 @@ class SpectrometerSettings(object):
     # accessors
     # ##########################################################################
 
+    def full_model(self):
+        a = self.eeprom.model.strip()
+        b = self.eeprom.product_configuration.strip()
+        return a + b
+
     def pixels(self):
         return self.eeprom.active_pixels_horizontal
 
@@ -232,6 +237,9 @@ class SpectrometerSettings(object):
         elif self.fpga_options.has_cf_select:
             return True
         return False
+
+    def is_sig(self):
+        return "sig" in self.full_model().lower() or "imx" in self.eeprom.detector.lower()
 
     # probably a simpler way to do this...
     def to_dict(self):

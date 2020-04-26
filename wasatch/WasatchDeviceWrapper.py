@@ -562,6 +562,7 @@ class WasatchDeviceWrapper(object):
         control_object = ControlObject(setting, value)
 
         self.command_queue_producer.send(control_object)
+
         return
 
     # ##########################################################################
@@ -665,6 +666,7 @@ class WasatchDeviceWrapper(object):
         received_poison_pill_response = False # from WasatchDevice
 
         sent_good = False
+        num_connected_devices = 1
 
         while True:
 
@@ -700,6 +702,11 @@ class WasatchDeviceWrapper(object):
                         # where it gets read during the next call to
                         # WasatchDevice.acquire_data.
                         wasatch_device.change_setting(record.setting, record.value)
+
+                        # peek in some settings locally
+                        if record.setting == "num_connected_devices":
+                            num_connected_devices = record.value
+
             else:
                 log.debug("continuous_poll: Command queue empty")
 
@@ -772,8 +779,9 @@ class WasatchDeviceWrapper(object):
                 log.error("continuous_poll: received non-failure Reading without spectrum...ignoring?")
 
             # only poll hardware at 20Hz
-            log.debug("continuous_poll: sleeping %.2f sec", WasatchDeviceWrapper.POLLER_WAIT_SEC)
-            time.sleep(WasatchDeviceWrapper.POLLER_WAIT_SEC)
+            sleep_sec = WasatchDeviceWrapper.POLLER_WAIT_SEC * num_connected_devices
+            log.debug("continuous_poll: sleeping %.2f sec", sleep_sec)
+            time.sleep(sleep_sec)
 
         if received_poison_pill_response:
             # send poison-pill notification upstream to Controller

@@ -20,7 +20,7 @@ class HardwareInfo(object):
     # supports this feature other than via its USB PID (ergo architecture), 
     # which isn't something ENLIGHTEN should be using in business logic.
     def supports_triggering(self):
-        return self.is_arm()
+        return True # self.is_arm()
 
     ## 
     # Maybe we don't need this as it's kind of logically available from these other

@@ -185,6 +185,13 @@ class FeatureIdentificationDevice(object):
             self.set_detector_offset_odd(self.settings.eeprom.detector_offset_odd)
 
         # ######################################################################
+        # post-connection defaults
+        # ######################################################################
+
+        # default to internal triggering
+        self.set_trigger_source(SpectrometerState.TRIGGER_SOURCE_INTERNAL)
+
+        # ######################################################################
         # Done
         # ######################################################################
 
@@ -696,7 +703,12 @@ class FeatureIdentificationDevice(object):
         self.wait_for_usb_available()
 
         spectrum = []
-        timeout_ms = self.settings.state.integration_time_ms * 2 + 500 * self.settings.num_connected_devices
+        if self.settings.is_sig():
+            # we have no idea if SiG has to "wake up" the sensor, so wait long 
+            # enough for 6 throwaway frames if need be
+            timeout_ms = self.settings.state.integration_time_ms * 8 + 500 * self.settings.num_connected_devices
+        else:
+            timeout_ms = self.settings.state.integration_time_ms * 2 + 500 * self.settings.num_connected_devices
 
         # due to additional firmware processing time for area scan?
         if self.settings.state.area_scan_enabled:
@@ -1516,6 +1528,24 @@ class FeatureIdentificationDevice(object):
         self.settings.state.trigger_source = value
         return value
 
+    ##
+    # Enable "Raman mode" (automatic laser) in the spectrometer firmware.
+    def set_raman_mode_enable(self, flag):
+        if not self.settings.is_sig():
+            log.error("Raman mode only supported on SiG")
+            return
+
+        self.send_code(bmRequest       = 0xff, 
+                       wValue          = 0x16,  
+                       wIndex          = 1 if flag else 0,
+                       data_or_wLength = [0] * 8,
+                       label           = "SET_RAMAN_MODE_ENABLE")
+
+    ##
+    # @note not called by ENLIGHTEN
+    def get_raman_mode_enable(self):
+        return (0 != self.get_upper_code(0x15, label="GET_RAMAN_MODE_ENABLE", msb_len=1))
+
     # ##########################################################################
     # newly added for wasatch-shell
     # ##########################################################################
@@ -1885,6 +1915,7 @@ class FeatureIdentificationDevice(object):
         elif setting == "laser_power_high_resolution":          self.set_laser_power_high_resolution(value)
         elif setting == "laser_power_require_modulation":       self.set_laser_power_require_modulation(value)
         elif setting == "selected_laser":                       self.set_selected_laser(int(value))
+        elif setting == "raman_mode_enable":                    self.set_raman_mode_enable(True if value else False)
 
         elif setting == "high_gain_mode_enable":                self.set_high_gain_mode_enable(True if value else False) 
         elif setting == "trigger_source":                       self.set_trigger_source(int(value)) 

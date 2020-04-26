@@ -39,7 +39,7 @@ wasatch.WasatchDevice.change_setting():
     - (delay in ms) sets the delay AFTER firing the laser BEFORE the acquisition 
       starts
 - acquisition_laser_trigger_enable 
-    - (bool) dis/enable automatic laser triggering
+    - (bool) dis/enable automatic laser triggering (in driver; raman_mode_enable is in firmware))
 - allow_default_gain_reset 
     - (bool) allow the legacy "default" gain of 1.9 to be "set", as this is 
       traditionally disabled
@@ -106,6 +106,9 @@ wasatch.WasatchDevice.change_setting():
     - (custom) experimental (raw sensor control)
 - raise_exceptions 
     - (bool) in the event of an exception, raise() rather than simply log()
+- raman_mode_enable
+    - (bool) if enabled, automatically turn on laser before an acquisition, and turn off after 
+      (in fw; acquisition_laser_trigger_enable is in driver)
 - replace_eeprom 
     - (serial, EEPROM tuple) replace the in-memory EEPROM instance with that passed
 - reset_fpga 

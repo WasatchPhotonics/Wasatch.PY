@@ -1,5 +1,13 @@
 # Changelog
 
+- 2020-04-26 1.0.53
+    - added raman\_mode\_enable
+    - support subformat 0
+    - better handling of 5th wavecal coeff
+    - extend timeouts for SiG sensor waking
+    - allow external triggering on FX2
+    - added SpectrometerSettings.full_model()
+    - added SpectrometerSettings.is_sig()
 - 2020-03-27 1.0.52
     - increased timeout for multiple devices
     - added gain/offset initialization from EEPROM

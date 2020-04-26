@@ -346,11 +346,16 @@ class EEPROM(object):
         self.detector                        = self.unpack((2,  0, 16), "s", "detector")
         self.active_pixels_horizontal        = self.unpack((2, 16,  2), "H", "pixels")
         self.active_pixels_vertical          = self.unpack((2, 19,  2), "H" if self.format >= 4 else "h")
-        if self.format < 5:
-            self.min_integration_time_ms     = self.unpack((2, 21,  2), "H", "min_integ(ushort)")
-            self.max_integration_time_ms     = self.unpack((2, 23,  2), "H", "max_integ(ushort)") 
-        elif self.format >= 8:
+
+        if self.format >= 8:
             self.wavelength_coeffs     .append(self.unpack((2, 21,  4), "f", "wavecal_coeff_4"))
+        else:
+            # just go ahead and initialize the 5th coeff to zero
+            self.wavelength_coeffs.append(0)
+            if self.format < 5:
+                self.min_integration_time_ms     = self.unpack((2, 21,  2), "H", "min_integ(ushort)")
+                self.max_integration_time_ms     = self.unpack((2, 23,  2), "H", "max_integ(ushort)") 
+
         self.actual_horizontal               = self.unpack((2, 25,  2), "H" if self.format >= 4 else "h", "actual_horiz")
         self.actual_vertical                 = self.active_pixels_vertical  # approximate for now
         self.roi_horizontal_start            = self.unpack((2, 27,  2), "H" if self.format >= 4 else "h")
@@ -420,7 +425,10 @@ class EEPROM(object):
         # Page 6-7
         # ######################################################################
 
-        if self.subformat == 1:
+        if self.subformat == 0:
+            # todo: extend user_data
+            pass
+        elif self.subformat == 1:
             self.read_raman_intensity_calibration()
         elif self.subformat == 2:
             self.read_spline()
@@ -440,11 +448,16 @@ class EEPROM(object):
             self.max_integration_time_ms = 60000
 
         if self.min_integration_time_ms > self.max_integration_time_ms:
-            (self.min_integration_time_ms, self.max_integration_time_ms) = (self.max_integration_time_ms, self.min_integration_time_ms)
+            (self.min_integration_time_ms, self.max_integration_time_ms) = \
+            (self.max_integration_time_ms, self.min_integration_time_ms)
 
         if self.min_temp_degC > self.max_temp_degC:
-            (self.min_temp_degC, self.max_temp_degC) = (self.max_temp_degC, self.mmintemp_degC) 
+            (self.min_temp_degC, self.max_temp_degC) = \
+            (self.max_temp_degC, self.min_temp_degC) 
 
+        if self.min_laser_power_mW > self.max_laser_power_mW:
+            (self.min_laser_power_mW, self.max_laser_power_mW) = \
+            (self.max_laser_power_mW, self.min_laser_power_mW)
 
     def read_raman_intensity_calibration(self):
         self.raman_intensity_coeffs = []

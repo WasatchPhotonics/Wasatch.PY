@@ -273,6 +273,11 @@ class MainLogger(object):
             except queue.Empty:
                 print("wasatch.applog shutting down after %s sec of no log messages" % timeout_sec)
                 break
+            except ValueError:
+                # semaphore or lock released too many times
+                print("wasatch.applog received log_queue.get exception")
+                traceback.print_exc(file=sys.stderr)
+                break
             except (KeyboardInterrupt, SystemExit):
                 break
             except:
