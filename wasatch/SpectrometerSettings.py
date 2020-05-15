@@ -103,10 +103,20 @@ class SpectrometerSettings(object):
     # accessors
     # ##########################################################################
 
+    ##
+    # Originally model names fit within the 16-char EEPROM field of that name.
+    # Now that we're extending model names to 30 characters, append the value
+    # of EEPROM.productConfiguration if non-empty.
     def full_model(self):
         a = self.eeprom.model.strip()
-        b = self.eeprom.product_configuration.strip()
-        return a + b
+        b = self.eeprom.product_configuration
+
+        if b is not None and len(b) > 0:
+            b = b.strip()
+            if re.match(r'^[-_A-Za-z0-9]+$', b):
+                return a + b
+
+        return a
 
     def pixels(self):
         return self.eeprom.active_pixels_horizontal
@@ -131,9 +141,6 @@ class SpectrometerSettings(object):
 
     def has_excitation(self):
         return self.excitation() > 0
-
-    def is_imx(self):
-        return "imx" in self.eeprom.detector.lower()
 
     ##
     # @note S11510 is ambient so shouldn't have a TEC
@@ -232,14 +239,27 @@ class SpectrometerSettings(object):
                 len(self.wavenumbers), self.wavenumbers[0], self.wavenumbers[-1])
 
     def is_InGaAs(self):
-        if re.match('ingaas|g9214', self.eeprom.detector.lower()):
+        if re.match(r'ingaas|g9214', self.eeprom.detector.lower()):
             return True
         elif self.fpga_options.has_cf_select:
             return True
         return False
 
+    def is_imx(self):
+        return "imx" in self.eeprom.detector.lower()
+
+    def is_micro(self):
+        return self.is_imx() or \
+               "micro" in self.full_model().lower() or \
+               "sig" in self.full_model().lower() 
+
+    # @todo add this to EEPROM.feature_mask
+    def has_marker(self):
+        return self.eeprom.model == "WPX-8CHANNEL"
+
+    ## @todo deprecate
     def is_sig(self):
-        return "sig" in self.full_model().lower() or "imx" in self.eeprom.detector.lower()
+        return self.is_micro()
 
     # probably a simpler way to do this...
     def to_dict(self):

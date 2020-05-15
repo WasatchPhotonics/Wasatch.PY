@@ -106,9 +106,12 @@ wasatch.WasatchDevice.change_setting():
     - (custom) experimental (raw sensor control)
 - raise_exceptions 
     - (bool) in the event of an exception, raise() rather than simply log()
+- raman_delay_ms
+    - (uint) when Raman Mode is enabled, the delay between firing the laser and 
+      starting the integration
 - raman_mode_enable
-    - (bool) if enabled, automatically turn on laser before an acquisition, and turn off after 
-      (in fw; acquisition_laser_trigger_enable is in driver)
+    - (bool) if enabled, automatically turn on laser before an acquisition, and 
+      turn off after (in fw; acquisition_laser_trigger_enable is in driver)
 - replace_eeprom 
     - (serial, EEPROM tuple) replace the in-memory EEPROM instance with that passed
 - reset_fpga 

@@ -191,6 +191,10 @@ class FeatureIdentificationDevice(object):
         # default to internal triggering
         self.set_trigger_source(SpectrometerState.TRIGGER_SOURCE_INTERNAL)
 
+        # probably the default, but just to be sure
+        if self.settings.is_micro():
+            self.set_laser_watchdog_sec(10)
+
         # ######################################################################
         # Done
         # ######################################################################
@@ -505,6 +509,10 @@ class FeatureIdentificationDevice(object):
 
         self.send_code(0xfe, label="SET_DFU_ENABLE")
 
+        self.queue_message("marquee_info", "%s in DFU mode" % self.settings.eeprom.serial_number)
+
+        self.schedule_disconnect(Exception("DFU Mode"))
+
     def set_detector_offset(self, value):
         word = max(-32768, min(32767, int(value))) # clamp to Int16
         word = word & 0xffff
@@ -535,6 +543,10 @@ class FeatureIdentificationDevice(object):
     # E.g., 231 dec == 0x01e7 == 1.90234375
     def get_detector_gain(self):
         result = self.get_code(0xc5, label="GET_DETECTOR_GAIN")
+
+        if result is None:
+            log.error("GET_DETECTOR_GAIN returned NULL!")
+            return 1.9
 
         lsb = result[0] # LSB-MSB
         msb = result[1]
@@ -703,12 +715,12 @@ class FeatureIdentificationDevice(object):
         self.wait_for_usb_available()
 
         spectrum = []
-        if self.settings.is_sig():
-            # we have no idea if SiG has to "wake up" the sensor, so wait long 
+        if self.settings.is_micro():
+            # we have no idea if microRaman has to "wake up" the sensor, so wait long 
             # enough for 6 throwaway frames if need be
             timeout_ms = self.settings.state.integration_time_ms * 8 + 500 * self.settings.num_connected_devices
         else:
-            timeout_ms = self.settings.state.integration_time_ms * 2 + 500 * self.settings.num_connected_devices
+            timeout_ms = self.settings.state.integration_time_ms * 2 + 1000 * self.settings.num_connected_devices
 
         # due to additional firmware processing time for area scan?
         if self.settings.state.area_scan_enabled:
@@ -751,6 +763,25 @@ class FeatureIdentificationDevice(object):
             else:
                 spectrum = spectrum[:-pixels]
 
+        # check and track the "start of spectrum" marker
+        if self.settings.has_marker():
+            marker = 0xffff
+            if spectrum[0] == marker:
+                # good, so overwrite
+                spectrum[0] = spectrum[1]
+            else:
+                log.error("get_line: missing marker")
+                for i in range(pixels):
+                    if spectrum[i] == marker:
+                        log.error("get_line: marker found at pixel %d", i)
+                # don't do anything else in Python at this time (examining issue in Wasatch.NET)
+
+        # on microRaman, ignore first 3 and last pixel
+        if self.settings.is_micro():
+            spectrum[-1] = spectrum[-2]
+            for i in range(3):
+                spectrum[i] = spectrum[3]
+
         # a prototype model output spectra with alternating pixels swapped, and this was
         # quicker than changing in firmware (do this BEFORE grabbing first pixel for area
         # scan index)
@@ -770,8 +801,17 @@ class FeatureIdentificationDevice(object):
         # is NOT sufficient to perform a genuine 180-degree rotation of
         # 2-D imaging mode; if area scan is enabled, the user would likewise
         # need to reverse the display order of the rows.
-        if self.settings.state.invert_x_axis:
+        if self.settings.eeprom.invert_x_axis:
             spectrum.reverse()
+
+        # apply 2x2 pixel binning (don't worry about vertical axis at this time)
+        if self.settings.eeprom.bin_2x2:
+            log.debug("applying bin_2x2")
+            binned = []
+            for i in range(len(spectrum)-1):
+                binned.append((spectrum[i] + spectrum[i+1]) / 2.0)
+            binned.append(spectrum[-1])
+            spectrum = binned
 
         # if we're in area scan mode, use first pixel as row index (leave pixel in spectrum)
         area_scan_row_count = -1
@@ -1529,10 +1569,15 @@ class FeatureIdentificationDevice(object):
         return value
 
     ##
+    # @note not called by ENLIGHTEN
+    def get_raman_mode_enable(self):
+        return (0 != self.get_upper_code(0x15, label="GET_RAMAN_MODE_ENABLE", msb_len=1))
+
+    ##
     # Enable "Raman mode" (automatic laser) in the spectrometer firmware.
     def set_raman_mode_enable(self, flag):
-        if not self.settings.is_sig():
-            log.error("Raman mode only supported on SiG")
+        if not self.settings.is_micro():
+            log.error("Raman mode only supported on microRaman")
             return
 
         self.send_code(bmRequest       = 0xff, 
@@ -1541,10 +1586,51 @@ class FeatureIdentificationDevice(object):
                        data_or_wLength = [0] * 8,
                        label           = "SET_RAMAN_MODE_ENABLE")
 
-    ##
-    # @note not called by ENLIGHTEN
-    def get_raman_mode_enable(self):
-        return (0 != self.get_upper_code(0x15, label="GET_RAMAN_MODE_ENABLE", msb_len=1))
+    def get_raman_delay_ms(self):
+        self.settings.state.raman_delay_ms = \
+            self.get_upper_code(0x19, label="GET_RAMAN_DELAY_MS", msb_len=2)
+        return self.settings.state.raman_delay_ms
+
+    def set_raman_delay_ms(self, ms):
+        if not self.settings.is_micro():
+            log.error("Raman delay only supported on microRaman")
+            return
+
+        # send value as big-endian
+        msb = (ms >> 8) & 0xff
+        lsb =  ms       & 0xff
+        value = (msb << 8) | lsb
+
+        self.send_code(bmRequest       = 0xff, 
+                       wValue          = 0x20,  
+                       wIndex          = value,
+                       data_or_wLength = [0] * 8,
+                       label           = "SET_RAMAN_DELAY_MS")
+         
+        self.settings.state.raman_delay_ms = ms
+
+    def get_laser_watchdog_sec(self):
+        self.settings.state.laser_watchdog_sec = \
+            self.get_upper_code(0x17, label="GET_LASER_WATCHDOG_SEC", msb_len=2)
+        return self.settings.state.laser_watchdog_sec 
+
+    def set_laser_watchdog_sec(self, sec):
+        if not self.settings.is_micro():
+            log.error("Laser watchdog only supported on microRaman")
+            return
+
+        # send value as big-endian
+        msb = (sec >> 8) & 0xff
+        lsb =  sec       & 0xff
+        value = (msb << 8) | lsb
+
+        self.send_code(bmRequest       = 0xff, 
+                       wValue          = 0x18,  
+                       wIndex          = value,
+                       data_or_wLength = [0] * 8,
+                       label           = "SET_LASER_WATCHDOG_SEC")
+         
+        self.settings.state.laser_watchdog_sec = sec
 
     # ##########################################################################
     # newly added for wasatch-shell
@@ -1916,6 +2002,8 @@ class FeatureIdentificationDevice(object):
         elif setting == "laser_power_require_modulation":       self.set_laser_power_require_modulation(value)
         elif setting == "selected_laser":                       self.set_selected_laser(int(value))
         elif setting == "raman_mode_enable":                    self.set_raman_mode_enable(True if value else False)
+        elif setting == "raman_delay_ms":                       self.set_raman_delay_ms(int(round(value)))
+        elif setting == "laser_watchdog_sec":                   self.set_laser_watchdog_sec(int(round(value)))
 
         elif setting == "high_gain_mode_enable":                self.set_high_gain_mode_enable(True if value else False) 
         elif setting == "trigger_source":                       self.set_trigger_source(int(value)) 
@@ -1937,7 +2025,7 @@ class FeatureIdentificationDevice(object):
         elif setting == "bad_pixel_mode":                       self.settings.state.bad_pixel_mode = int(value) 
         elif setting == "min_usb_interval_ms":                  self.settings.state.min_usb_interval_ms = int(round(value)) 
         elif setting == "max_usb_interval_ms":                  self.settings.state.max_usb_interval_ms = int(round(value)) 
-        elif setting == "invert_x_axis":                        self.settings.state.invert_x_axis = True if value else False 
+        elif setting == "invert_x_axis":                        self.settings.eeprom.invert_x_axis = True if value else False 
         elif setting == "overrides":                            self.set_overrides(value) 
         elif setting == "reset_fpga":                           self.reset_fpga() 
 
@@ -1945,6 +2033,9 @@ class FeatureIdentificationDevice(object):
         elif setting == "swap_alternating_pixels":              self.swap_alternating_pixels = True if value else False
         elif setting == "dfu_enable":                           self.set_dfu_enable()
         elif setting == "num_connected_devices":                self.settings.num_connected_devices = int(value)
+
+        elif setting == "subprocess_timeout_sec":               pass
+        elif setting == "heartbeat":                            pass
 
         else:
             log.critical("Unknown setting to write: %s", setting)

@@ -1,5 +1,13 @@
 # Changelog
 
+- 2020-05-15 1.0.54
+    - added EEPROM.feature_mask
+    - added FeatureMask.invert_x_axis
+    - added FeatureMask.bin2x2
+    - bumped EEPROM to rev 9
+    - support start-of-frame markers
+    - schedule_disconnect on DFU mode
+    - added Raman Mode, Raman Delay, Laser Watchdog
 - 2020-04-26 1.0.53
     - added raman\_mode\_enable
     - support subformat 0

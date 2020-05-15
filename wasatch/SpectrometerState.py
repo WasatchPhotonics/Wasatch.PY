@@ -38,6 +38,8 @@ class SpectrometerState(object):
         self.laser_power_high_resolution = False
         self.laser_power_require_modulation = False
         self.raman_mode_enabled = False
+        self.raman_delay_ms = 0
+        self.laser_watchdog_sec = 0 
 
         # triggering
         self.trigger_source = self.TRIGGER_SOURCE_INTERNAL
@@ -82,7 +84,7 @@ class SpectrometerState(object):
         self.secondary_adc_enabled = False
 
         # detector inversion (typically applied in Wasatch.PY)
-        self.invert_x_axis = False
+        # self.invert_x_axis = False # moved to EEPROM
 
         # laser power ramping
         self.laser_power_ramping_enabled = False
@@ -146,7 +148,6 @@ class SpectrometerState(object):
         log.debug("  Bad Pixel Mode:         %s", self.stringify_bad_pixel_mode())
         log.debug("  USB Interval:           (%d, %dms)", self.min_usb_interval_ms, self.max_usb_interval_ms)
         log.debug("  Secondary ADC Enabled:  %s", self.secondary_adc_enabled)
-        log.debug("  Invert X-Axis:          %s", self.invert_x_axis)
         log.debug("  Laser Power Ramping:    %s", self.laser_power_ramping_enabled)
         log.debug("  Laser Power Ramp Incr:  %d", self.laser_power_ramp_increments)
         log.debug("  Position:               %s", self.position)

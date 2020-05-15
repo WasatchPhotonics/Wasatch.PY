@@ -82,6 +82,7 @@ class WasatchShell(object):
             "get_laser_power_ramping_enabled",
             "get_laser_temperature_degC",
             "get_laser_temperature_raw",
+            "get_laser_watchdog_sec",
             "get_link_laser_mod_to_integration_time",
             "get_microcontroller_firmware_version",
             "get_opt_actual_integration_time",
@@ -92,6 +93,8 @@ class WasatchShell(object):
             "get_opt_integration_time_resolution",
             "get_opt_has_laser",
             "get_opt_laser_control",
+            "get_raman_delay_ms",
+            "get_raman_mode",
             "get_secondary_adc_calibrated",
             "get_secondary_adc_raw",
             "get_selected_adc",
@@ -126,12 +129,15 @@ class WasatchShell(object):
         set_laser_power_mw                     - takes float argument
         set_laser_power_perc                   - takes int argument
         set_laser_power_ramping_enable         - gradually ramp laser power in software
+        set_laser_watchdog_sec                 - takes integer argument
         set_acquisition_laser_trigger_enable   - takes bool argument
         set_acquisition_laser_trigger_delay_ms - takes float argument
         set_tec_enable                         - takes bool argument
         set_detector_tec_setpoint_degc         - takes float argument
         set_detector_offset                    - override the "offset" added to pixel readings
         set_selected_laser                     - takes 0 or 1
+        set_raman_mode                         - takes 0 or 1
+        set_raman_delay_ms                     - takes integer argument
                                                
         set_interpolated_x_axis_cm             - takes start, end, incr (zero incr to disable)
         set_interpolated_x_axis_nm             - takes start, end, incr (zero incr to disable)
@@ -299,6 +305,18 @@ class WasatchShell(object):
 
                         elif command == "set_integration_time_ms":
                             self.device.change_setting("integration_time_ms", self.read_int())
+                            self.display(1)
+
+                        elif command == "set_laser_watchdog_sec":
+                            self.device.change_setting("laser_watchdog_sec", self.read_int())
+                            self.display(1)
+
+                        elif command == "set_raman_delay_ms":
+                            self.device.change_setting("raman_delay_ms", self.read_int())
+                            self.display(1)
+
+                        elif command == "set_raman_mode":
+                            self.device.change_setting("raman_mode_enable", self.read_bool())
                             self.display(1)
 
                         elif command == "set_laser_power_mw":

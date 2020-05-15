@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
 # @see http://ww1.microchip.com/downloads/en/DeviceDoc/20006270A.pdf
 class EEPROM(object):
     
-    LATEST_REV = 8
+    LATEST_REV = 9
     MAX_PAGES = 8
     MAX_RAMAN_INTENSITY_CALIBRATION_ORDER = 7
 
@@ -35,6 +35,9 @@ class EEPROM(object):
         self.has_cooling                 = False
         self.has_battery                 = False
         self.has_laser                   = False
+        self.feature_mask                = 0
+        self.invert_x_axis               = False
+        self.bin_2x2                     = False
         self.excitation_nm               = 0.0
         self.excitation_nm_float         = 0.0
         self.slit_size_um                = 0
@@ -300,8 +303,17 @@ class EEPROM(object):
         self.has_cooling                     = self.unpack((0, 36,  1), "?", "cooling")
         self.has_battery                     = self.unpack((0, 37,  1), "?", "battery")
         self.has_laser                       = self.unpack((0, 38,  1), "?", "laser")
-        self.excitation_nm                   = self.unpack((0, 39,  2), "H" if self.format >= 3 else "h", "excitation(ushort)")
-        self.slit_size_um                    = self.unpack((0, 41,  2), "H" if self.format >= 4 else "h", "slit")
+        if self.format >= 9:
+            self.feature_mask                = self.unpack((0, 39,  2), "H", "feature_mask")
+        elif self.format >= 3:
+            self.excitation_nm               = self.unpack((0, 39,  2), "H", "excitation_nm (unsigned)")
+        else:
+            self.excitation_nm               = self.unpack((0, 39,  2), "h", "excitation_nm (signed)")
+
+        if self.format >= 4:
+            self.slit_size_um                = self.unpack((0, 41,  2), "H", "slit (unsigned)")
+        else:
+            self.slit_size_um                = self.unpack((0, 41,  2), "h", "slit (signed)")
 
         # NOTE: the new InGaAs detector gain/offset won't be usable from 
         #       EEPROM until we start bumping production spectrometers to
@@ -438,6 +450,13 @@ class EEPROM(object):
             log.critical("Unsupported EEPROM subformat: %d", self.subformat)
 
         # ######################################################################
+        # feature mask
+        # ######################################################################
+
+        self.invert_x_axis = 0 != self.feature_mask & 0x0001
+        self.bin_2x2       = 0 != self.feature_mask & 0x0002
+
+        # ######################################################################
         # sanity checks
         # ######################################################################
 
@@ -450,6 +469,9 @@ class EEPROM(object):
         if self.min_integration_time_ms > self.max_integration_time_ms:
             (self.min_integration_time_ms, self.max_integration_time_ms) = \
             (self.max_integration_time_ms, self.min_integration_time_ms)
+
+        if self.startup_integration_time_ms < self.min_integration_time_ms:
+            self.startup_integration_time_ms = self.min_integration_time_ms
 
         if self.min_temp_degC > self.max_temp_degC:
             (self.min_temp_degC, self.max_temp_degC) = \
@@ -679,6 +701,12 @@ class EEPROM(object):
         log.debug("Packed (%d, %2d, %2d) '%s' value %s -> %s", 
             page, start_byte, length, data_type, value, buf[start_byte:end_byte])
 
+    def generate_feature_mask(self):
+        mask = 0
+        mask |= 0x0001 if self.invert_x_axis else 0
+        mask |= 0x0002 if self.bin_2x2       else 0
+        return mask
+
     ##
     # Call this to populate an internal array of "write buffers" which may be written back
     # to spectrometers.
@@ -715,7 +743,7 @@ class EEPROM(object):
         self.pack((0, 36,  1), "?", self.has_cooling)
         self.pack((0, 37,  1), "?", self.has_battery)
         self.pack((0, 38,  1), "?", self.has_laser)
-        self.pack((0, 39,  2), "H", int(round(self.excitation_nm, 0)))
+        self.pack((0, 39,  2), "H", self.generate_feature_mask())
         self.pack((0, 41,  2), "H", self.slit_size_um)
         self.pack((0, 43,  2), "H", self.startup_integration_time_ms)
         self.pack((0, 45,  2), "h", self.startup_temp_degC)

@@ -354,12 +354,13 @@ class WasatchDeviceWrapper(object):
     def disconnect(self):
         # send poison pill to the subprocess
         self.closing = True
+        log.debug("disconnect: sending poison pill downstream")
         try:
             self.command_queue_producer.send(None) # put(None, timeout=2)
         except:
             pass
 
-        log.debug("joining poller")
+        log.debug("disconnect: joining poller")
         try:
             self.poller.join(timeout=2)
         except NameError as exc:
@@ -658,6 +659,8 @@ class WasatchDeviceWrapper(object):
         # Read forever until the None poison pill is received
         log.debug("continuous_poll: entering loop")
         last_heartbeat = datetime.datetime.now()
+        last_command = datetime.datetime.now()
+        subprocess_timeout_sec = 10 # None
 
         log.debug("resetting commanded log_level %s", args.log_level)
         logging.getLogger().setLevel(args.log_level)
@@ -670,10 +673,21 @@ class WasatchDeviceWrapper(object):
 
         while True:
 
-            # heartbeat logger
-            if (datetime.datetime.now() - last_heartbeat).total_seconds() >= 3:
+            now = datetime.datetime.now()
+
+            # has ENLIGHTEN crashed and stopped sending us heartbeats?
+            if subprocess_timeout_sec is not None:
+                sec_since_last_command = (now - last_command).total_seconds()
+                log.debug("sec_since_last_command = %d sec", sec_since_last_command)
+                if sec_since_last_command > subprocess_timeout_sec:
+                    log.critical("subprocess killing self (%d sec since last command, timeout %d sec)",
+                        sec_since_last_command, subprocess_timeout_sec)
+                    break
+
+            # heartbeat logger (outgoing keepalives to logger)
+            if (now - last_heartbeat).total_seconds() >= 3:
                 log.info("heartbeat")
-                last_heartbeat = datetime.datetime.now()
+                last_heartbeat = now
 
             # ##################################################################
             # Relay downstream commands (GUI -> Spectrometer)
@@ -697,6 +711,8 @@ class WasatchDeviceWrapper(object):
                     else:
                         log.debug("continuous_poll: Processing command queue: %s", record.setting)
 
+                        last_command = now
+
                         # basically, this simply moves each de-dupped command from
                         # WasatchDeviceWrapper.command_queue to WasatchDevice.command_queue,
                         # where it gets read during the next call to
@@ -706,6 +722,8 @@ class WasatchDeviceWrapper(object):
                         # peek in some settings locally
                         if record.setting == "num_connected_devices":
                             num_connected_devices = record.value
+                        elif record.setting == "subprocess_timeout_sec":
+                            subprocess_timeout_sec = record.value
 
             else:
                 log.debug("continuous_poll: Command queue empty")

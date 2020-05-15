@@ -113,7 +113,7 @@ class DeviceID(object):
         else:
             raise Exception("DeviceID: needs usb.device OR device_id label OR directory")
 
-        log.debug("instantiated DeviceID: %s", str(self))
+        #log.debug("instantiated DeviceID: %s", str(self))
 
     def determine_bus_and_address(self, device):
         # this seems to work on tested platforms, but is not guaranteed by the 
