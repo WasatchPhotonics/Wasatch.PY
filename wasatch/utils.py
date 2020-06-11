@@ -452,3 +452,5 @@ def coeffs_look_valid(coeffs, count=None):
 
     return True
 
+def clamp_to_int16(n):
+    return max(-32768, min(32767, int(n)))

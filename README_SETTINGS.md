@@ -4,7 +4,7 @@
 
 Unlike the more "functional" and "property-based" Wasatch.NET, for historical
 reasons much of Wasatch.PY functionality is exposed through (name, value) key-value
-pairs which can be sent through WasatchDevice.change_setting().  
+pairs which can be sent through WasatchDevice.change\_setting().  
 
 Essentially, this is because Wasatch.PY started as the hardware-facing "back-end"
 to ENLIGHTEN, running in a separate process, and so ENLIGHTEN would send 
@@ -16,7 +16,7 @@ What this means to you as a third-party developer is that the Wasatch.PY
 interface may feel a little weird, bloated and inelegant, because it was 
 designed for a specific use-case that you may not share.
 
-As you can see in wasatch.FeatureIdentificationDevice.write_setting(), most
+As you can see in wasatch.FeatureIdentificationDevice.init\_lambdas(), most
 of these settings tuples are simply pass-throughs to more traditional method
 calls on FeatureIdentificationDevice.  You may well find it simpler simply
 to instantiate a FeatureIdentificationDevice directly and interact with the
@@ -126,7 +126,9 @@ wasatch.WasatchDevice.change_setting():
     - (SpectrometerState.TRIGGER_SOURCE) set hardware or software acquisition 
       triggering
 - update_eeprom 
-    - (serial, EEPROM tuple) updates the "editable" fields of the in-memory 
+    - ((serial, EEPROM) tuple) updates the "editable" fields of the in-memory 
       EEPROM from the passed object
+- vertical_binning
+    - ((start, stop) tuple) sets start- and end-line for vertical binning on the detector
 - write_eeprom 
     - (no arg) writes the in-memory EEPROM to the spectrometer (voids warranty)

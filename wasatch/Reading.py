@@ -36,6 +36,16 @@ class Reading(object):
         # driver is asked to collect a dark just before enabling the laser
         self.dark                      = None
 
+    def __str__(self):
+        return "wasatch.Reading {device_id %s, spectrum %s, averaged %s, session_count %d, timestamp %s, timestamp_complete %s, failure %s}" % (
+            self.device_id, 
+            "None" if self.spectrum is None else ("%d values" % len(self.spectrum)),
+            self.averaged, 
+            self.session_count, 
+            self.timestamp, 
+            self.timestamp_complete, 
+            self.failure)
+
     def __init__(self, device_id=None):
         self.clear()
 

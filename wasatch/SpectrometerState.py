@@ -92,6 +92,7 @@ class SpectrometerState(object):
 
         # pixel binning
         self.graph_alternating_pixels = False
+        self.swap_alternating_pixels = False
 
         # Batch Collection
         self.free_running_mode = True
@@ -154,3 +155,6 @@ class SpectrometerState(object):
 
     def to_dict(self):
         return self.__dict__
+
+    def set(self, name, value):
+        setattr(self, name, value)

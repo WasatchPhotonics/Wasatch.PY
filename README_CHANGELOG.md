@@ -1,5 +1,13 @@
 # Changelog
 
+- 2020-06-11 1.0.55
+    - moved settings to lambdas
+    - added vertical ROI
+    - clamp offset
+    - move area scan from 0xe9 to 0xeb
+    - support 2048px ARM
+    - moved bad pixel correction into get\_line
+    - added Reading.__str__
 - 2020-05-15 1.0.54
     - added EEPROM.feature_mask
     - added FeatureMask.invert_x_axis

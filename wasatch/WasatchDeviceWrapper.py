@@ -660,7 +660,8 @@ class WasatchDeviceWrapper(object):
         log.debug("continuous_poll: entering loop")
         last_heartbeat = datetime.datetime.now()
         last_command = datetime.datetime.now()
-        subprocess_timeout_sec = 10 # None
+        min_subprocess_timeout_sec = 10 
+        subprocess_timeout_sec = min_subprocess_timeout_sec 
 
         log.debug("resetting commanded log_level %s", args.log_level)
         logging.getLogger().setLevel(args.log_level)
@@ -674,15 +675,6 @@ class WasatchDeviceWrapper(object):
         while True:
 
             now = datetime.datetime.now()
-
-            # has ENLIGHTEN crashed and stopped sending us heartbeats?
-            if subprocess_timeout_sec is not None:
-                sec_since_last_command = (now - last_command).total_seconds()
-                log.debug("sec_since_last_command = %d sec", sec_since_last_command)
-                if sec_since_last_command > subprocess_timeout_sec:
-                    log.critical("subprocess killing self (%d sec since last command, timeout %d sec)",
-                        sec_since_last_command, subprocess_timeout_sec)
-                    break
 
             # heartbeat logger (outgoing keepalives to logger)
             if (now - last_heartbeat).total_seconds() >= 3:
@@ -724,6 +716,10 @@ class WasatchDeviceWrapper(object):
                             num_connected_devices = record.value
                         elif record.setting == "subprocess_timeout_sec":
                             subprocess_timeout_sec = record.value
+                        # elif record.setting == "integration_time_ms":
+                        #     if subprocess_timeout_sec is not None:
+                        #         subprocess_timeout_sec = max(subprocess_timeout_sec_min, record.value * 3)
+                        #         log.debug("continuous_poll: auto-adjusted subprocess_timeout_sec to %.2f", subprocess_timeout_sec)
 
             else:
                 log.debug("continuous_poll: Command queue empty")
@@ -732,13 +728,26 @@ class WasatchDeviceWrapper(object):
                 log.critical("continuous_poll: Exiting per command queue (poison pill received)")
                 break
 
+            # has ENLIGHTEN crashed and stopped sending us heartbeats?
+            if subprocess_timeout_sec is not None:
+                sec_since_last_command = (now - last_command).total_seconds()
+                log.debug("sec_since_last_command = %d sec", sec_since_last_command)
+                if sec_since_last_command > subprocess_timeout_sec:
+                    log.critical("subprocess killing self (%d sec since last command, timeout %d sec)",
+                        sec_since_last_command, subprocess_timeout_sec)
+                    break
+
             # ##################################################################
             # Relay one upstream reading (Spectrometer -> GUI)
             # ##################################################################
 
             try:
+                # Note: this is a BLOCKING CALL.  If integration time is longer
+                # than subprocess_timeout_sec, this call itself will trigger 
+                # shutdown.
                 log.debug("continuous_poll: acquiring data")
                 reading = wasatch_device.acquire_data()
+                #log.debug("continuous_poll: acquire_data returned %s", str(reading))
             except Exception as exc:
                 log.critical("continuous_poll: Exception", exc_info=1)
                 break
@@ -759,6 +768,7 @@ class WasatchDeviceWrapper(object):
 
             elif isinstance(reading, bool):
                 # we received either a True (keepalive) or False (upstream poison pill)
+                log.debug("continuous_poll: reading was bool")
 
                 # was it just a keepalive?
                 if reading == True:
@@ -800,6 +810,10 @@ class WasatchDeviceWrapper(object):
             sleep_sec = WasatchDeviceWrapper.POLLER_WAIT_SEC * num_connected_devices
             log.debug("continuous_poll: sleeping %.2f sec", sleep_sec)
             time.sleep(sleep_sec)
+
+        ########################################################################
+        # we have exited the loop
+        ########################################################################
 
         if received_poison_pill_response:
             # send poison-pill notification upstream to Controller

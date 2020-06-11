@@ -82,7 +82,6 @@ class FeatureIdentificationDevice(object):
         self.inject_random_errors = False
         self.random_error_perc = 0.001   # 0.1%
         self.allow_default_gain_reset = True
-        self.swap_alternating_pixels = False
 
         self.connected = False
         self.connecting = False
@@ -95,6 +94,9 @@ class FeatureIdentificationDevice(object):
         self.retry_enabled = True
         self.retry_ms = 5
         self.retry_max = 3
+
+        # initialize the table of lambdas used to process setting changes
+        self.init_lambdas()
 
     ## 
     # Connect to the device and initialize basic settings.
@@ -183,6 +185,11 @@ class FeatureIdentificationDevice(object):
             self.set_detector_offset    (self.settings.eeprom.detector_offset)
             self.set_detector_gain_odd  (self.settings.eeprom.detector_gain_odd)
             self.set_detector_offset_odd(self.settings.eeprom.detector_offset_odd)
+
+        if self.settings.is_micro():
+            roi = self.settings.get_vertical_roi()
+            if roi is not None:
+                self.set_vertical_binning(roi)
 
         # ######################################################################
         # post-connection defaults
@@ -514,23 +521,21 @@ class FeatureIdentificationDevice(object):
         self.schedule_disconnect(Exception("DFU Mode"))
 
     def set_detector_offset(self, value):
-        word = max(-32768, min(32767, int(value))) # clamp to Int16
-        word = word & 0xffff
+        word = utils.clamp_to_int16(value)
         self.settings.eeprom.detector_offset = word
         return self.send_code(0xb6, word, label="SET_DETECTOR_OFFSET")
 
     def set_detector_offset_odd(self, value):
-        word = max(-32768, min(32767, int(value))) # clamp to Int16
-        word = word & 0xffff
+        word = utils.clamp_to_int16(value) 
         self.settings.eeprom.detector_offset_odd = word
 
         log.debug("SET_DETECTOR_OFFSET_ODD NOT IMPLEMENTED: %04x", word)
         return
 
-        if self.is_ingaas():
-            return self.send_code(0x9c, word, label="SET_DETECTOR_OFFSET")
-        else:
-            log.debug("SET_DETECTOR_OFFSET_ODD NOT IMPLEMENTED ON %s", self.settings.eeprom.model)
+        if not self.is_ingaas():
+            log.error("SET_DETECTOR_OFFSET_ODD only supported on InGaAs detectors")
+
+        return self.send_code(0x9c, word, label="SET_DETECTOR_OFFSET")
 
     ##
     # Read the device stored gain.  Convert from binary "half-precision" float.
@@ -628,10 +633,10 @@ class FeatureIdentificationDevice(object):
 
     def set_detector_gain_odd(self, gain):
         if not self.is_ingaas():
-            log.debug("set_detector_gain_odd not implemented on %s", self.settings.eeprom.model)
+            log.debug("set_detector_gain_odd only supported on InGaAs")
             return
 
-        log.debug("set_detector_gain_odd not implemented (%s)", gain)
+        log.debug("set_detector_gain_odd not implemented")
         return
 
         msb = int(gain) & 0xff
@@ -645,13 +650,18 @@ class FeatureIdentificationDevice(object):
         self.settings.eeprom.detector_gain_odd = gain
 
     ## 
-    # Historically, this opcode moved around a bit.  At one point it may have 
-    # been 0xeb (now CF_SELECT).  Some firmwares used 0xe9 for LASER_RAMP_ENABLE.
-    # This seems to be what we're standardizing on henceforth.
+    # Historically, this opcode moved around a bit.  At one point it was 0xeb 
+    # (and is now again), which conflicts with CF_SELECT).  At other times it
+    # was 0xe9, which conflicted with LASER_RAMP_ENABLE.  This seems to be what 
+    # we're standardizing on henceforth.
     def set_area_scan_enable(self, flag):
+        if self.is_ingaas():
+            log.error("area scan is not supported on InGaAs detectors (single line array)")
+            return False
+
         value = 1 if flag else 0
         self.settings.state.area_scan_enabled = flag
-        self.send_code(0xe9, value, label="SET_AREA_SCAN_ENABLE")
+        return self.send_code(0xeb, value, label="SET_AREA_SCAN_ENABLE")
 
     def get_sensor_line_length(self):
         value = self.get_upper_code(0x03, label="GET_LINE_LENGTH", lsb_len=2)
@@ -698,19 +708,11 @@ class FeatureIdentificationDevice(object):
         # regardless of pixel count, assume uint16
         pixels = self.settings.pixels()
 
-        if pixels in (512, 1024):
-            endpoints = [0x82]
-            block_len_bytes = pixels * 2
-        elif pixels == 2048:
+        endpoints = [0x82]
+        block_len_bytes = pixels * 2
+        if pixels == 2048 and not self.is_arm():
             endpoints = [0x82, 0x86]
             block_len_bytes = 2048 # pixels * 2 / 2
-        elif pixels == 1952:
-            endpoints = [0x82]
-            block_len_bytes = pixels * 2
-        else:
-            log.warn("unusual number of pixels (%d)...guessing at endpoint" % pixels)
-            endpoints = [0x82]
-            block_len_bytes = pixels * 2
 
         self.wait_for_usb_available()
 
@@ -763,8 +765,25 @@ class FeatureIdentificationDevice(object):
             else:
                 spectrum = spectrum[:-pixels]
 
+        # if we're in area scan mode, use first pixel as row index (leave pixel in spectrum)
+        # (do this before any horizontal averaging which might corrupt first pixel)
+        area_scan_row_count = -1
+        if self.settings.state.area_scan_enabled:
+            area_scan_row_count = spectrum[0]
+
+            # override row counter to smooth data and avoid a weird peak/trough 
+            # which could affect other smoothing, normalization or min/max algos.
+            # (could extrapolate backwards from spectrum[2])
+            spectrum[0] = spectrum[1]
+
+            # MZ: KLUDGE: SiG
+            width = 125
+            log.debug("area scan: overwriting first %d pixels", width)
+            spectrum[0:width] = [0] * (width)
+            log.debug("get_line: area_scan_row_count = %d", area_scan_row_count)
+
         # check and track the "start of spectrum" marker
-        if self.settings.has_marker():
+        if self.settings.has_marker() and not self.settings.state.area_scan_enabled:
             marker = 0xffff
             if spectrum[0] == marker:
                 # good, so overwrite
@@ -776,6 +795,10 @@ class FeatureIdentificationDevice(object):
                         log.error("get_line: marker found at pixel %d", i)
                 # don't do anything else in Python at this time (examining issue in Wasatch.NET)
 
+        # bad pixel correction
+        if self.settings.state.bad_pixel_mode == SpectrometerState.BAD_PIXEL_MODE_AVERAGE:
+            self.correct_bad_pixels(spectrum)
+
         # on microRaman, ignore first 3 and last pixel
         if self.settings.is_micro():
             spectrum[-1] = spectrum[-2]
@@ -785,7 +808,7 @@ class FeatureIdentificationDevice(object):
         # a prototype model output spectra with alternating pixels swapped, and this was
         # quicker than changing in firmware (do this BEFORE grabbing first pixel for area
         # scan index)
-        if self.swap_alternating_pixels:
+        if self.settings.state.swap_alternating_pixels:
             log.debug("swapping alternating pixels: spectrum = %s", spectrum[:10])
             corrected = []
             for a, b in zip(spectrum[0::2], spectrum[1::2]):
@@ -813,30 +836,6 @@ class FeatureIdentificationDevice(object):
             binned.append(spectrum[-1])
             spectrum = binned
 
-        # if we're in area scan mode, use first pixel as row index (leave pixel in spectrum)
-        area_scan_row_count = -1
-        if self.settings.state.area_scan_enabled:
-            area_scan_row_count = spectrum[0]
-
-            # override row counter to smooth data and avoid a weird peak/trough 
-            # which could affect other smoothing, normalization or min/max algos.
-            # (could extrapolate backwards from spectrum[2])
-            spectrum[0] = spectrum[1]
-            log.debug("get_line: area_scan_row_count = %d", area_scan_row_count)
-
-        # Moving vignetting to ENLIGHTEN, as several BaselineCorrection algos get
-        # confused by those sharp corners at the ends
-        #
-        # # don't support vignetting in Area Scan mode
-        # else:
-        #     roi = self.settings.eeprom.get_horizontal_roi()
-        #     if roi is not None:
-        #         log.debug("get_line: vignetting to (%d, %d)", roi[0], roi[1])
-        #         for i in range(roi[0]):
-        #             spectrum[i] = 0
-        #         for i in range(roi[1] + 1, pixels):
-        #             spectrum[i] = 0
-
         # When integrating new sensors, sometimes we want to only look at even-
         # numbered pixels to flatten-out irregularities in Bayer filters or InGaAs 
         # arrays.  However, we don't want to disrupt the expected pixel-count, so 
@@ -855,6 +854,74 @@ class FeatureIdentificationDevice(object):
             spectrum = smoothed
 
         return SpectrumAndRow(spectrum, area_scan_row_count)
+
+    ## 
+    # If a spectrometer has bad_pixels configured in the EEPROM, then average 
+    # over them in the driver.
+    #
+    # Note this function modifies the passed array in-place, rather than
+    # returning a modified copy.
+    #
+    # @note assumes bad_pixels is previously sorted
+    def correct_bad_pixels(self, spectrum):
+
+        if self.settings is None or \
+                self.settings.eeprom is None or \
+                self.settings.eeprom.bad_pixels is None or \
+                len(self.settings.eeprom.bad_pixels) == 0:
+            return
+
+        if spectrum is None or len(spectrum) == 0:
+            return
+
+        pixels = len(spectrum)
+        bad_pixels = self.settings.eeprom.bad_pixels
+
+        # iterate over each bad pixel
+        i = 0
+        while i < len(bad_pixels):
+
+            bad_pix = bad_pixels[i]
+
+            if bad_pix == 0:
+                # handle the left edge
+                next_good = bad_pix + 1
+                while next_good in bad_pixels and next_good < pixels:
+                    next_good += 1
+                    i += 1
+                if next_good < pixels:
+                    for j in range(next_good):
+                        spectrum[j] = spectrum[next_good]
+            else:
+
+                # find previous good pixel
+                prev_good = bad_pix - 1
+                while prev_good in bad_pixels and prev_good >= 0:
+                    prev_good -= 1
+
+                if prev_good >= 0:
+                    # find next good pixel
+                    next_good = bad_pix + 1
+                    while next_good in bad_pixels and next_good < pixels:
+                        next_good += 1
+                        i += 1
+
+                    if next_good < pixels:
+                        # for now, draw a line between previous and next_good pixels
+                        # TODO: consider some kind of curve-fit
+                        delta = float(spectrum[next_good] - spectrum[prev_good])
+                        rng   = next_good - prev_good
+                        step  = delta / rng
+                        for j in range(rng - 1):
+                            #spectrum[prev_good + j + 1] = int(spectrum[prev_good] + round(step * (j + 1), 0))
+                            spectrum[prev_good + j + 1] = spectrum[prev_good] + step * (j + 1)
+                    else:
+                        # we ran off the high end, so copy-right
+                        for j in range(bad_pix, pixels):
+                            spectrum[j] = spectrum[prev_good]
+
+            # advance to next bad pixel
+            i += 1
 
     ## Send the updated integration time in a control message to the device
     # 
@@ -1632,6 +1699,36 @@ class FeatureIdentificationDevice(object):
          
         self.settings.state.laser_watchdog_sec = sec
 
+    def set_vertical_binning(self, lines):
+        if not self.settings.is_micro():
+            log.error("Vertical Binning only configurable on microRaman")
+            return
+
+        try:
+            start = lines[0]
+            end   = lines[1]
+        except:
+            return log.error("set_vertical_binning requires a tuple of (start, stop) lines")
+
+        if start < 0 or end < 0:
+            return log.error("set_vertical_binning requires a tuple of POSITIVE (start, stop) lines")
+
+        # enforce ascending order
+        if start > end:
+            (start, end) = (end, start)
+
+        self.send_code(bmRequest       = 0xff, 
+                       wValue          = 0x21,  
+                       wIndex          = start,
+                       data_or_wLength = [0] * 8,
+                       label           = "SET_CCD_START_LINE")
+
+        self.send_code(bmRequest       = 0xff, 
+                       wValue          = 0x23,  
+                       wIndex          = end,
+                       data_or_wLength = [0] * 8,
+                       label           = "SET_CCD_STOP_LINE")
+
     # ##########################################################################
     # newly added for wasatch-shell
     # ##########################################################################
@@ -1970,75 +2067,94 @@ class FeatureIdentificationDevice(object):
     ##
     # Perform the specified setting such as physically writing the laser
     # on, changing the integration time, turning the cooler on, etc. 
-    #
-    # implemented subset of WasatchDeviceWrapper.DEVICE_CONTROL_COMMANDS
-    #
-    # Might be time to change this into a dict (setting -> lambda)
     def write_setting(self, record):
-
         setting = record.setting
         value   = record.value
 
         log.debug("fid.write_setting: %s -> %s", setting, value)
 
-        if self.overrides and self.overrides.has_override(setting): self.apply_override(setting, value) 
-        elif setting == "laser_enable":                         self.set_laser_enable(True if value else False) 
-        elif setting == "integration_time_ms":                  self.set_integration_time_ms(int(round(value))) 
-
-        elif setting == "detector_tec_setpoint_degC":           self.set_detector_tec_setpoint_degC(int(round(value))) 
-        elif setting == "detector_tec_enable":                  self.set_tec_enable(True if value else False) 
-        elif setting == "detector_gain":                        self.set_detector_gain(float(value)) 
-        elif setting == "detector_offset":                      self.set_detector_offset(int(round(value))) 
-        elif setting == "detector_gain_odd":                    self.set_detector_gain_odd(float(value)) 
-        elif setting == "detector_offset_odd":                  self.set_detector_offset_odd(int(round(value))) 
-        elif setting == "degC_to_dac_coeffs":                   self.settings.eeprom.degC_to_dac_coeffs = value 
-
-        elif setting == "laser_power_perc":                     self.set_laser_power_perc(value) 
-        elif setting == "laser_power_mW":                       self.set_laser_power_mW(value) 
-        elif setting == "laser_temperature_setpoint_raw":       self.set_laser_temperature_setpoint_raw(int(round(value))) 
-        elif setting == "laser_power_ramping_enable":           self.set_laser_power_ramping_enable(True if value else False) 
-        elif setting == "laser_power_ramp_increments":          self.settings.state.laser_power_ramp_increments = int(value) 
-        elif setting == "laser_power_high_resolution":          self.set_laser_power_high_resolution(value)
-        elif setting == "laser_power_require_modulation":       self.set_laser_power_require_modulation(value)
-        elif setting == "selected_laser":                       self.set_selected_laser(int(value))
-        elif setting == "raman_mode_enable":                    self.set_raman_mode_enable(True if value else False)
-        elif setting == "raman_delay_ms":                       self.set_raman_delay_ms(int(round(value)))
-        elif setting == "laser_watchdog_sec":                   self.set_laser_watchdog_sec(int(round(value)))
-
-        elif setting == "high_gain_mode_enable":                self.set_high_gain_mode_enable(True if value else False) 
-        elif setting == "trigger_source":                       self.set_trigger_source(int(value)) 
-        elif setting == "enable_secondary_adc":                 self.settings.state.secondary_adc_enabled = True if value else False 
-        elif setting == "area_scan_enable":                     self.set_area_scan_enable(True if value else False) 
-
-        elif setting == "free_running_mode":                    self.settings.state.free_running_mode = True if value else False 
-        elif setting == "acquisition_laser_trigger_enable":     self.settings.state.acquisition_laser_trigger_enable = True if value else False 
-        elif setting == "acquisition_laser_trigger_delay_ms":   self.settings.state.acquisition_laser_trigger_delay_ms = int(value) 
-        elif setting == "acquisition_take_dark_enable":         self.settings.state.acquisition_take_dark_enable = True if value else False 
-
-        elif setting == "update_eeprom":                        self.update_session_eeprom(value) 
-        elif setting == "replace_eeprom":                       self.replace_session_eeprom(value) 
-        elif setting == "write_eeprom":                         self.write_eeprom() 
-
-        elif setting == "log_level":                            self.set_log_level(value) 
-        elif setting == "graph_alternating_pixels":             self.settings.state.graph_alternating_pixels = True if value else False 
-        elif setting == "raise_exceptions":                     self.raise_exceptions = True if value else False 
-        elif setting == "bad_pixel_mode":                       self.settings.state.bad_pixel_mode = int(value) 
-        elif setting == "min_usb_interval_ms":                  self.settings.state.min_usb_interval_ms = int(round(value)) 
-        elif setting == "max_usb_interval_ms":                  self.settings.state.max_usb_interval_ms = int(round(value)) 
-        elif setting == "invert_x_axis":                        self.settings.eeprom.invert_x_axis = True if value else False 
-        elif setting == "overrides":                            self.set_overrides(value) 
-        elif setting == "reset_fpga":                           self.reset_fpga() 
-
-        elif setting == "allow_default_gain_reset":             self.allow_default_gain_reset = True if value else False
-        elif setting == "swap_alternating_pixels":              self.swap_alternating_pixels = True if value else False
-        elif setting == "dfu_enable":                           self.set_dfu_enable()
-        elif setting == "num_connected_devices":                self.settings.num_connected_devices = int(value)
-
-        elif setting == "subprocess_timeout_sec":               pass
-        elif setting == "heartbeat":                            pass
-
+        if self.overrides and self.overrides.has_override(setting): 
+            return self.apply_override(setting, value) 
+        elif setting in self.lambdas:
+            self.lambdas[setting](value)
+            return True
         else:
             log.critical("Unknown setting to write: %s", setting)
             return False
 
-        return True
+    ##
+    # Please keep this list in sync with README_SETTINGS.md
+    def init_lambdas(self):
+        f = {}
+
+        def clean_bool(x): return True if x else False
+
+        # spectrometer control
+        f["laser_enable"]                       = lambda x: self.set_laser_enable(clean_bool(x))
+        f["integration_time_ms"]                = lambda x: self.set_integration_time_ms(int(round(x))) 
+
+        f["detector_tec_setpoint_degC"]         = lambda x: self.set_detector_tec_setpoint_degC(int(round(x))) 
+        f["detector_tec_enable"]                = lambda x: self.set_tec_enable(clean_bool(x))
+        f["detector_gain"]                      = lambda x: self.set_detector_gain(float(x)) 
+        f["detector_offset"]                    = lambda x: self.set_detector_offset(int(round(x))) 
+        f["detector_gain_odd"]                  = lambda x: self.set_detector_gain_odd(float(x)) 
+        f["detector_offset_odd"]                = lambda x: self.set_detector_offset_odd(int(round(x))) 
+        f["degC_to_dac_coeffs"]                 = lambda x: self.settings.eeprom.set("degC_to_dac_coeffs", x)
+
+        f["laser_power_perc"]                   = lambda x: self.set_laser_power_perc(x) 
+        f["laser_power_mW"]                     = lambda x: self.set_laser_power_mW(x) 
+        f["laser_temperature_setpoint_raw"]     = lambda x: self.set_laser_temperature_setpoint_raw(int(round(x))) 
+        f["laser_power_ramping_enable"]         = lambda x: self.set_laser_power_ramping_enable(clean_bool(x))
+        f["laser_power_ramp_increments"]        = lambda x: self.settings.state.set("laser_power_ramp_increments", int(x))
+        f["laser_power_high_resolution"]        = lambda x: self.set_laser_power_high_resolution(x)
+        f["laser_power_require_modulation"]     = lambda x: self.set_laser_power_require_modulation(x)
+        f["selected_laser"]                     = lambda x: self.set_selected_laser(int(x))
+
+        f["high_gain_mode_enable"]              = lambda x: self.set_high_gain_mode_enable(clean_bool(x))
+        f["trigger_source"]                     = lambda x: self.set_trigger_source(int(x)) 
+        f["enable_secondary_adc"]               = lambda x: self.settings.state.set("secondary_adc_enabled", clean_bool(x))
+        f["area_scan_enable"]                   = lambda x: self.set_area_scan_enable(clean_bool(x))
+
+        f["bad_pixel_mode"]                     = lambda x: self.settings.state.set("bad_pixel_mode", int(x))
+        f["min_usb_interval_ms"]                = lambda x: self.settings.state.set("min_usb_interval_ms", int(round(x)))
+        f["max_usb_interval_ms"]                = lambda x: self.settings.state.set("max_usb_interval_ms", int(round(x)))
+
+        # BatchCollection
+        f["free_running_mode"]                  = lambda x: self.settings.state.set("free_running_mode", clean_bool(x))
+        f["acquisition_laser_trigger_enable"]   = lambda x: self.settings.state.set("acquisition_laser_trigger_enable", clean_bool(x))
+        f["acquisition_laser_trigger_delay_ms"] = lambda x: self.settings.state.set("acquisition_laser_trigger_delay_ms", int(x))
+        f["acquisition_take_dark_enable"]       = lambda x: self.settings.state.set("acquisition_take_dark_enable", clean_bool(x))
+
+        # microRaman
+        f["raman_mode_enable"]                  = lambda x: self.set_raman_mode_enable(clean_bool(x))
+        f["raman_delay_ms"]                     = lambda x: self.set_raman_delay_ms(int(round(x)))
+        f["laser_watchdog_sec"]                 = lambda x: self.set_laser_watchdog_sec(int(round(x)))
+        f["vertical_binning"]                   = lambda x: self.set_vertical_binning(x)
+
+        # EEPROM updates
+        f["update_eeprom"]                      = lambda x: self.update_session_eeprom(x) 
+        f["replace_eeprom"]                     = lambda x: self.replace_session_eeprom(x) 
+        f["write_eeprom"]                       = lambda x: self.write_eeprom() 
+
+        # manufacturing
+        f["reset_fpga"]                         = lambda x: self.reset_fpga() 
+        f["dfu_enable"]                         = lambda x: self.set_dfu_enable()
+
+        # legacy
+        f["allow_default_gain_reset"]           = lambda x: setattr(self, "allow_default_gain_reset", clean_bool(x))
+
+        # experimental (R&D)
+        f["graph_alternating_pixels"]           = lambda x: self.settings.state.set("graph_alternating_pixels", clean_bool(x))
+        f["swap_alternating_pixels"]            = lambda x: self.settings.state.set("swap_alternating_pixels", clean_bool(x))
+        f["overrides"]                          = lambda x: self.set_overrides(x) 
+        f["invert_x_axis"]                      = lambda x: self.settings.eeprom.set("settings.eeprom.invert_x_axis", clean_bool(x))
+
+        # heartbeats & connectiond data
+        f["raise_exceptions"]                   = lambda x: setattr(self, "raise_exceptions", clean_bool(x))
+        f["log_level"]                          = lambda x: self.set_log_level(x) 
+        f["num_connected_devices"]              = lambda x: self.settings.set_num_connected_devices(int(x))
+        f["subprocess_timeout_sec"]             = lambda x: None
+        f["heartbeat"]                          = lambda x: None
+
+        self.lambdas = f
+

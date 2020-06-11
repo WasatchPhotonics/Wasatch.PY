@@ -888,3 +888,6 @@ class EEPROM(object):
              + self.laser_power_coeffs[3] * mW * mW * mW
 
         return perc
+
+    def set(self, name, value):
+        setattr(self, name, value)

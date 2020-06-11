@@ -70,6 +70,9 @@ class SpectrometerSettings(object):
         if d is not None:
             self.load_from_dict(d)
 
+    def set_num_connected_devices(self, n):
+        self.num_connected_devices = n
+
     # given a JSON-formatted string, parse and apply FPGAOptions and EEPROM
     # sections if available
     def update_from_json(self, s):
@@ -142,6 +145,17 @@ class SpectrometerSettings(object):
     def has_excitation(self):
         return self.excitation() > 0
 
+    def has_vertical_roi(self):
+        start = self.eeprom.roi_vertical_region_1_start
+        stop  = self.eeprom.roi_vertical_region_1_end
+        height = self.eeprom.active_pixels_vertical
+        return start < stop and start >= 0 and stop < height
+
+    def get_vertical_roi(self):
+        if self.has_vertical_roi():
+            return (self.eeprom.roi_vertical_region_1_start, 
+                    self.eeprom.roi_vertical_region_1_end)
+
     ##
     # @note S11510 is ambient so shouldn't have a TEC
     def default_detector_setpoint_degC(self):
@@ -192,9 +206,9 @@ class SpectrometerSettings(object):
                             x_to_i = math.pow(pixel, i)
                             scaled = coeffs[i] * x_to_i
                             log10_factor += scaled
-                            # log.debug("pixel %4d: px_to_i %e, coeff[%d] %e, scaled %e, log10_factor %e", pixel, x_to_i, i, coeffs[i], scaled, log10_factor)
+                            #log.debug("pixel %4d: px_to_i %e, coeff[%d] %e, scaled %e, log10_factor %e", pixel, x_to_i, i, coeffs[i], scaled, log10_factor)
                         expanded = math.pow(10, log10_factor)
-                        # log.debug("pixel %4d: expanded = %e", pixel, expanded)
+                        #log.debug("pixel %4d: expanded = %e", pixel, expanded)
                         factors.append(expanded)
                     self.raman_intensity_factors = np.array(factors, dtype=np.float64)
                 except:

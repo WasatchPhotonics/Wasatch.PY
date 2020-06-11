@@ -202,76 +202,6 @@ class WasatchDevice(object):
     #                                                                          #
     # ######################################################################## #
 
-    ## 
-    # If a spectrometer has bad_pixels configured in the EEPROM, then average 
-    # over them in the driver.
-    #
-    # Even though we're doing spatial averaging here, we round the result to
-    # a uint16 rather than return a float.  That's because most pixels normally
-    # return uint16, and it looks weird if a few scattered pixels are floats.
-    # When we're doing scan-averaging, ALL the pixels are returned as floats,
-    # which is okay.
-    #
-    # @note assumes bad_pixels is previously sorted
-    def correct_bad_pixels(self, spectrum):
-
-        if self.settings is None or \
-                self.settings.eeprom is None or \
-                self.settings.eeprom.bad_pixels is None or \
-                len(self.settings.eeprom.bad_pixels) == 0:
-            return
-
-        if spectrum is None or len(spectrum) == 0:
-            return
-
-        pixels = len(spectrum)
-        bad_pixels = self.settings.eeprom.bad_pixels
-
-        # iterate over each bad pixel
-        i = 0
-        while i < len(bad_pixels):
-
-            bad_pix = bad_pixels[i]
-
-            if bad_pix == 0:
-                # handle the left edge
-                next_good = bad_pix + 1
-                while next_good in bad_pixels and next_good < pixels:
-                    next_good += 1
-                    i += 1
-                if next_good < pixels:
-                    for j in range(next_good):
-                        spectrum[j] = spectrum[next_good]
-            else:
-
-                # find previous good pixel
-                prev_good = bad_pix - 1
-                while prev_good in bad_pixels and prev_good >= 0:
-                    prev_good -= 1
-
-                if prev_good >= 0:
-                    # find next good pixel
-                    next_good = bad_pix + 1
-                    while next_good in bad_pixels and next_good < pixels:
-                        next_good += 1
-                        i += 1
-
-                    if next_good < pixels:
-                        # for now, draw a line between previous and next_good pixels
-                        # TODO: consider some kind of curve-fit
-                        delta = float(spectrum[next_good] - spectrum[prev_good])
-                        rng   = next_good - prev_good
-                        step  = delta / rng
-                        for j in range(rng - 1):
-                            spectrum[prev_good + j + 1] = int(spectrum[prev_good] + round(step * (j + 1), 0))
-                    else:
-                        # we ran off the high end, so copy-right
-                        for j in range(bad_pix, pixels):
-                            spectrum[j] = spectrum[prev_good]
-
-            # advance to next bad pixel
-            i += 1
-
     ##
     # Until support for even/odd InGaAs gain and offset have been added to the 
     # firmware, apply the correction in software.
@@ -312,6 +242,8 @@ class WasatchDevice(object):
     ##
     # Process all enqueued settings, then read actual data (spectrum and
     # temperatures) from the device.
+    #
+    # This function is called by WasatchDeviceWrapper.continuous_poll.
     #
     # Somewhat confusingly, this function can return any of the following:
     #
@@ -547,6 +479,7 @@ class WasatchDevice(object):
 
                 log.debug("battery: level %.2f%% (%s)", reading.battery_percentage, "charging" if reading.battery_charging else "not charging")
 
+        # log.debug("device.acquire_spectrum: returning %s", reading)
         return reading
 
     ## 
@@ -575,9 +508,13 @@ class WasatchDevice(object):
             # That would actually provide a reason to roll all the temperature etc readouts
             # into the SpectrometerState class...
             reading.integration_time_ms = self.settings.state.integration_time_ms
-            reading.laser_enabled       = self.settings.state.laser_enabled
             reading.laser_power         = self.settings.state.laser_power
             reading.laser_power_in_mW   = self.settings.state.laser_power_in_mW
+
+            # note that on microRaman, this is really "whether we COMMANDED the 
+            # laser to be enabled"...a genuine read is done at the end of the 
+            # averaged measurement
+            reading.laser_enabled       = self.settings.state.laser_enabled  
 
             # collect next spectrum
             externally_triggered = self.settings.state.trigger_source == SpectrometerState.TRIGGER_SOURCE_EXTERNAL
@@ -600,7 +537,7 @@ class WasatchDevice(object):
                 reading.area_scan_row_count = spectrum_and_row.row
                 reading.timestamp_complete  = datetime.datetime.now()
 
-                log.debug("device.take_one_averaged_spectrum: got %s ... (row %d)", reading.spectrum[0:9], reading.area_scan_row_count)
+                log.debug("device.take_one_averaged_reading: got %s ... (row %d)", reading.spectrum[0:9], reading.area_scan_row_count)
             except Exception as exc:
                 # if we got the timeout after switching from externally triggered back to internal, let it ride
                 if externally_triggered:
@@ -615,23 +552,16 @@ class WasatchDevice(object):
                 # InGaAs even/odd kludge
                 self.correct_ingaas_gain_and_offset(reading)
 
-                # bad pixel correction
-                if self.settings.state.bad_pixel_mode == SpectrometerState.BAD_PIXEL_MODE_AVERAGE:
-                    self.correct_bad_pixels(reading.spectrum)
-                # reading.spectrum = list(reading.spectrum)
-
-                log.debug("device.acquire_data: after bad_pixel correction: %s ...", reading.spectrum[0:9])
-
                 # update summed spectrum
                 if averaging_enabled:
                     if self.sum_count == 0:
                         self.summed_spectra = [float(i) for i in reading.spectrum]
                     else:
-                        log.debug("device.acquire_data: summing spectra")
+                        log.debug("device.take_one_averaged_reading: summing spectra")
                         for i in range(len(self.summed_spectra)):
                             self.summed_spectra[i] += reading.spectrum[i]
                     self.sum_count += 1
-                    log.debug("device.acquire_data: summed_spectra : %s ...", self.summed_spectra[0:9])
+                    log.debug("device.take_one_averaged_reading: summed_spectra : %s ...", self.summed_spectra[0:9])
 
             # count spectra
             self.session_reading_count += 1
@@ -644,7 +574,7 @@ class WasatchDevice(object):
                     reading.spectrum = []
                     for i in range(len(self.summed_spectra)):
                         reading.spectrum.append(self.summed_spectra[i] / self.sum_count)
-                    log.debug("device.acquire_data: averaged_spectrum : %s ...", reading.spectrum[0:9])
+                    log.debug("device.take_one_averaged_reading: averaged_spectrum : %s ...", reading.spectrum[0:9])
                     reading.averaged = True
 
                     # reset for next average
@@ -660,6 +590,7 @@ class WasatchDevice(object):
                 log.debug("completed take_one")
                 self.change_setting("cancel_take_one", True)
 
+        # log.debug("device.take_one_averaged_reading: returning %s", reading)
         return reading
 
     def monitor_memory(self):
