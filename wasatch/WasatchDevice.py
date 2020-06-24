@@ -207,7 +207,7 @@ class WasatchDevice(object):
     # firmware, apply the correction in software.
     #
     # @todo delete this function when firmware has been updated!
-    def correct_ingaas_gain_and_offset(self, reading):
+    def correct_ingaas_gain_and_offset_NOT_USED(self, reading):
         if not self.settings.is_InGaAs():
             return
 
@@ -360,6 +360,10 @@ class WasatchDevice(object):
         # Take a Reading (possibly averaged)
         ########################################################################
 
+        # IMX sensors are free-running, so make sure we collect one full 
+        # integration after turning on the laser
+        self.perform_optional_throwaways()
+
         log.debug("taking averaged reading")
         reading = self.take_one_averaged_reading()
         if isinstance(reading, bool):
@@ -482,6 +486,22 @@ class WasatchDevice(object):
         # log.debug("device.acquire_spectrum: returning %s", reading)
         return reading
 
+    ##
+    # It's unclear how many throwaways are really needed for a stable Raman spectrum, and whether they're 
+    # really based on number of integrations (sensor stabilization) or time (laser warmup); I suspect
+    # both.  Also note the potential need for sensor warm-up, but I think that's handled inside FW.
+    #
+    # Optimal would probably be something like "As many integrations as it takes to span 2sec, but not
+    # fewer than two."
+    def perform_optional_throwaways(self):
+        if self.settings.is_micro() and self.take_one:
+            count = 2
+            readout_ms = 5
+            while count * (self.settings.state.integration_time_ms + readout_ms) < 2000:
+                count += 1
+            for i in range(count):
+                log.debug("performing optional throwaway %d of %d before ramanMicro TakeOne", i, count)
+                spectrum_and_row = self.hardware.get_line()
     ## 
     # @returns Reading on success, true or false on "stop processing" conditions
     def take_one_averaged_reading(self):
@@ -550,7 +570,7 @@ class WasatchDevice(object):
 
             if not reading.failure:
                 # InGaAs even/odd kludge
-                self.correct_ingaas_gain_and_offset(reading)
+                # self.correct_ingaas_gain_and_offset(reading)
 
                 # update summed spectrum
                 if averaging_enabled:

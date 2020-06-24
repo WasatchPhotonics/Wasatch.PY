@@ -105,6 +105,41 @@ class SpectrometerState(object):
         self.position = 0
 
         # ######################################################################
+        # gain (dB) (IMX only)
+        # ######################################################################
+
+        # This attribute is confusing, because Hamamatsu silicon, Hamamatsu 
+        # InGaAs, and Sony IMX detectors all treat it differently.  
+        #
+        # At the moment, all Hamamatsu gain (and offset) is handled through the 
+        # EEPROM, as those are not considered to be "user-facing, change-during-
+        # measurements" attributes -- they are designed to be pre-set in the 
+        # factory and then, for the most part, left alone.  
+        #
+        # Also, Hamamatsu gain is a unitless floating-point (float32) scalar, 
+        # which is multiplied into the detector's pixel read-out (AFTER being 
+        # digitized by the ADC) within the FPGA.  (Note that a completely 
+        # different analog, "hardware" gain is already applied at the board level
+        # via op-amps -- the "analog front end" -- BEFORE going into the ADC).  
+        # Hamamatsu gain has a legacy default value of approximately 1.9.
+        #
+        # IMX gain, on the other hand, is very much a "live" parameter, similar
+        # to integration time, which users can adjust and change at any time.
+        # Also, IMX gain is an integral value in the range (1, 39) representing
+        # an objective gain in decibels (dB).  
+        #
+        # For space reasons, we still store the "startup" IMX gain in the same 
+        # EEPROM field (detector_gain).  We COULD (and have, in the past) use
+        # that same EEPROM field for "state", but...that seems hokey and 
+        # confusing, especially when there is no intent typically to "write" the
+        # currently configured gain to the EEPROM, nor does the current gain dB
+        # value necessarily or even likely represent the hardware state of the
+        # EEPROM.  So, as with integration time, it is made a fully "stateful"
+        # attribute of this class.
+
+        self.gain_db = 8
+
+        # ######################################################################
         # What about truly internal settings like last_applied_laser_power or 
         # detector_tec_setpoint_has_been_set?  It's okay for StrokerProtocolDevice,
         # FeatureIdentificationDevice and control.py to have "some" internal state.
@@ -137,6 +172,7 @@ class SpectrometerState(object):
         log.debug("  TEC Setpoint:           %.2f degC", self.tec_setpoint_degC)
         log.debug("  TEC Enabled:            %s", self.tec_enabled)
         log.debug("  High Gain Mode Enabled: %s", self.high_gain_mode_enabled)
+        log.debug("  Gain (dB):              %d", self.gain_db)
         log.debug("  Laser Enabled:          %s", self.laser_enabled)
         log.debug("  Laser Power:            %.2f", self.laser_power)
         log.debug("  Laser Temp Setpoint:    0x%04x", self.laser_temperature_setpoint_raw)

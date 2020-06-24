@@ -523,19 +523,18 @@ class FeatureIdentificationDevice(object):
     def set_detector_offset(self, value):
         word = utils.clamp_to_int16(value)
         self.settings.eeprom.detector_offset = word
+        # log.debug("value %d (%s) = 0x%04x (%s)", value, format(value, 'b'), word, format(word, 'b'))
         return self.send_code(0xb6, word, label="SET_DETECTOR_OFFSET")
 
     def set_detector_offset_odd(self, value):
+        if not self.is_ingaas():
+            log.error("SET_DETECTOR_OFFSET_ODD only supported on InGaAs")
+            return
+
         word = utils.clamp_to_int16(value) 
         self.settings.eeprom.detector_offset_odd = word
 
-        log.debug("SET_DETECTOR_OFFSET_ODD NOT IMPLEMENTED: %04x", word)
-        return
-
-        if not self.is_ingaas():
-            log.error("SET_DETECTOR_OFFSET_ODD only supported on InGaAs detectors")
-
-        return self.send_code(0x9c, word, label="SET_DETECTOR_OFFSET")
+        return self.send_code(0x9c, word, label="SET_DETECTOR_OFFSET_ODD")
 
     ##
     # Read the device stored gain.  Convert from binary "half-precision" float.
@@ -564,9 +563,8 @@ class FeatureIdentificationDevice(object):
 
     def get_detector_gain_odd(self):
         if not self.is_ingaas():
-            log.debug("get_detector_gain_odd not implemented on %s", self.settings.eeprom.model)
-            self.settings.eeprom.detctor_gain_odd = 0
-            return 0
+            log.debug("GET_DETECTOR_GAIN_ODD only supported on InGaAs")
+            return self.settings.eeprom.detctor_gain_odd
 
         result = self.get_code(0x9f, label="GET_DETECTOR_GAIN_ODD")
 
@@ -633,11 +631,8 @@ class FeatureIdentificationDevice(object):
 
     def set_detector_gain_odd(self, gain):
         if not self.is_ingaas():
-            log.debug("set_detector_gain_odd only supported on InGaAs")
+            log.debug("SET_DETECTOR_GAIN_ODD only supported on InGaAs")
             return
-
-        log.debug("set_detector_gain_odd not implemented")
-        return
 
         msb = int(gain) & 0xff
         lsb = int((gain - msb) * 256) & 0xff
@@ -702,6 +697,7 @@ class FeatureIdentificationDevice(object):
         # Only send ACQUIRE (internal SW trigger) if external HW trigger is disabled (the default)
         log.debug("get_line: requesting spectrum")
 
+        acquisition_timestamp = datetime.datetime.now()
         if self.settings.state.trigger_source == SpectrometerState.TRIGGER_SOURCE_INTERNAL:
             self.send_code(0xad, label="ACQUIRE_SPECTRUM")
 
@@ -727,6 +723,9 @@ class FeatureIdentificationDevice(object):
         # due to additional firmware processing time for area scan?
         if self.settings.state.area_scan_enabled:
             timeout_ms += 250
+
+        # wait for integration to complete (only do this for micro?)
+        # sleep(self.settings.state.integration_time_ms * 1000)
 
         for endpoint in endpoints:
             data = None 
@@ -754,6 +753,10 @@ class FeatureIdentificationDevice(object):
             subspectrum = [int(i | (j << 8)) for i, j in zip(data[::2], data[1::2])] # LSB-MSB
 
             spectrum.extend(subspectrum)
+
+        log.debug("get_line: completed in %.2f sec (vs integration time %d ms)",
+            (datetime.datetime.now() - acquisition_timestamp).total_seconds(),
+            self.settings.state.integration_time_ms)
 
         log.debug("get_line: pixels %d, endpoints %s, block %d, spectrum %s ...", 
             len(spectrum), endpoints, block_len_bytes, spectrum[0:9])
@@ -941,6 +944,9 @@ class FeatureIdentificationDevice(object):
         result = self.send_code(0xB2, lsw, msw, label="SET_INTEGRATION_TIME_MS")
         log.debug("SET_INTEGRATION_TIME_MS: now %d", ms)
         self.settings.state.integration_time_ms = ms
+
+        if self.settings.is_micro():
+            self.update_laser_watchdog();
         return result
 
     # ##########################################################################
@@ -1637,12 +1643,12 @@ class FeatureIdentificationDevice(object):
 
     ##
     # @note not called by ENLIGHTEN
-    def get_raman_mode_enable(self):
+    def get_raman_mode_enable_NOT_USED(self):
         return (0 != self.get_upper_code(0x15, label="GET_RAMAN_MODE_ENABLE", msb_len=1))
 
     ##
     # Enable "Raman mode" (automatic laser) in the spectrometer firmware.
-    def set_raman_mode_enable(self, flag):
+    def set_raman_mode_enable_NOT_USED(self, flag):
         if not self.settings.is_micro():
             log.error("Raman mode only supported on microRaman")
             return
@@ -1699,6 +1705,21 @@ class FeatureIdentificationDevice(object):
          
         self.settings.state.laser_watchdog_sec = sec
 
+    ##
+    # Automatically set the laser watchdog long enough to handle the current
+    # integration time, assuming we have to perform 6 throwaways on the sensor
+    # in case it went to sleep.
+    #
+    # @todo don't override if the user has "manually" set in ENLIGHTEN
+    def update_laser_watchdog(self):
+        if not self.settings.is_micro():
+            return
+
+        throwaways = self.settings.state.integration_time_ms * 8 / 1000
+        floor = int(max(10, throwaways))
+        if self.settings.state.laser_watchdog_sec < floor:
+            self.set_laser_watchdog_sec(floor)
+
     def set_vertical_binning(self, lines):
         if not self.settings.is_micro():
             log.error("Vertical Binning only configurable on microRaman")
@@ -1750,10 +1771,12 @@ class FeatureIdentificationDevice(object):
 
     def get_detector_offset_odd(self):
         if not self.is_ingaas():
-            log.debug("get_detector_offset_odd is not implemented on %s", self.settings.eeprom.model)
-            return 0
+            log.debug("GET_DETECTOR_OFFSET_ODD only supported on InGaAs")
+            return self.settings.eeprom.detctor_offset_odd
 
-        return self.get_code(0x9e, label="GET_DETECTOR_OFFSET_ODD", lsb_len=2) 
+        value = self.get_code(0x9e, label="GET_DETECTOR_OFFSET_ODD", lsb_len=2) 
+        self.settings.eeprom.detctor_offset_odd = value
+        return value
 
     def get_ccd_sensing_threshold(self):
         return self.get_code(0xd1, label="GET_CCD_SENSING_THRESHOLD", lsb_len=2)
@@ -2126,7 +2149,7 @@ class FeatureIdentificationDevice(object):
         f["acquisition_take_dark_enable"]       = lambda x: self.settings.state.set("acquisition_take_dark_enable", clean_bool(x))
 
         # microRaman
-        f["raman_mode_enable"]                  = lambda x: self.set_raman_mode_enable(clean_bool(x))
+       #f["raman_mode_enable"]                  = lambda x: self.set_raman_mode_enable(clean_bool(x))
         f["raman_delay_ms"]                     = lambda x: self.set_raman_delay_ms(int(round(x)))
         f["laser_watchdog_sec"]                 = lambda x: self.set_laser_watchdog_sec(int(round(x)))
         f["vertical_binning"]                   = lambda x: self.set_vertical_binning(x)

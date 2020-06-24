@@ -1,5 +1,12 @@
 # Changelog
 
+- 2020-06-24 1.0.56
+    - removed SW implementation of odd gain/offset
+    - added get\_line profiling
+    - automatically update laser watchdog timeout on ramanMicro
+    - deprecated HW laserDelay and ramanMode on ramanMicro
+    - added throwaways in TakeOne for ramanMicro
+    - added SpectrometerState.gainDb for ramanMicro
 - 2020-06-11 1.0.55
     - moved settings to lambdas
     - added vertical ROI
