@@ -312,7 +312,6 @@ class FeatureIdentificationDevice(object):
         prefix = "" if not label else ("%s: " % label)
         result = None
 
-        # MZ: need this?
         if data_or_wLength is None:
             if self.is_arm():
                 data_or_wLength = [0] * 8
@@ -348,30 +347,28 @@ class FeatureIdentificationDevice(object):
             if not retry_on_error:
                 # no retries, just return what we got
                 return result
+
+            # retry logic enabled, so compare result to expected
+            matched_expected = True
+            if len(success_result) < len(result):
+                matched_expected = False
             else:
-                # retry logic enabled, so compare result to expected
-                matched_expected = True
-                if len(success_result) < len(result):
-                    matched_expected = False
-                else:
-                    for i in range(len(success_result)):
-                        if result[i] != success_result[i]:
-                            matched_expected = False
-                            break
-                
-                if matched_expected:
-                    return result
+                for i in range(len(success_result)):
+                    if result[i] != success_result[i]:
+                        matched_expected = False
+                        break
+            
+            if matched_expected:
+                return result
 
-                # apparently it didn't match expected
-                retry_count += 1
-                if retry_count > self.retry_max:
-                    log.error("giving up after %d retries", retry_count)
-                    return result
+            # apparently it didn't match expected
+            retry_count += 1
+            if retry_count > self.retry_max:
+                log.error("giving up after %d retries", retry_count)
+                return result
 
-                # try again
-                log.error("retrying (attempt %d)", retry_count + 1)
-                continue
-
+            # try again
+            log.error("retrying (attempt %d)", retry_count + 1)
 
     ## @note weird that so few calls to this function override the default wLength
     # @todo consider adding retry logic as well
@@ -410,21 +407,18 @@ class FeatureIdentificationDevice(object):
         # demarshall or return raw array
         value = 0
         if msb_len is not None:
-            # this will barf if result is None
             for i in range(msb_len):
                 value = value << 8 | result[i]
             return value                    
         elif lsb_len is not None:
-            # this will barf if result is None
             for i in range(lsb_len):
                 value = (result[i] << (8 * i)) | value
             return value
         else:
             return result
 
-    ## @note doesn't relay wLength, so ALWAYS expects 64-byte response!
-    def get_upper_code(self, wValue, wIndex=0, label="", msb_len=None, lsb_len=None):
-        return self.get_code(0xff, wValue, wIndex, label=label, msb_len=msb_len, lsb_len=lsb_len)
+    def get_upper_code(self, wValue, wIndex=0, wLength=64, label="", msb_len=None, lsb_len=None):
+        return self.get_code(0xff, wValue, wIndex, wLength, label=label, msb_len=msb_len, lsb_len=lsb_len)
 
     # ##########################################################################
     # initialization
@@ -1166,23 +1160,26 @@ class FeatureIdentificationDevice(object):
 
     ##
     # CF_SELECT is configured using bit 2 of the FPGA configuration register
-    # 0x12.  This bit can be set using vendor commands 0xEB to SET and 0xEC
+    # 0x12.  This bit can be set using vendor commands 0xeb to SET and 0xec
     # to GET.  Note that the set command is expecting a 5-byte unsigned
     # value, the highest byte of which we pass as part of an 8-byte buffer.
     # Not sure why.
     def set_high_gain_mode_enable(self, flag):
         log.debug("Set high gain mode: %s", flag)
 
-        msb = 0
-        lsb = 1 if flag else 0
-        buf = [0] * 8
-        self.send_code(0xeb, lsb, msb, buf, label="SET_CF_SELECT")
+        value = 1 if flag else 0
+
+        # this is done automatically on ARM, but for this opcode we do it on FX2 as well
+        buf = [0] * 8 
+
+        self.send_code(0xeb, wValue=value, wIndex=0, data_or_wLength=buf, label="SET_CF_SELECT")
         self.settings.state.high_gain_mode_enabled = flag
 
     ##
     # On spectrometers supporting two lasers, select the primary (0) or
     # secondary (1).  Laser Enable, laser power etc should all then 
     # affect the currently-selected laser.
+    # @warning conflicts with GET_RAMAN_MODE_ENABLE
     def set_selected_laser(self, value):
         n = 1 if value else 0
 
@@ -1567,23 +1564,15 @@ class FeatureIdentificationDevice(object):
         # pulse width can't be longer than period, or shorter than 1us
         width_us = max(1, min(width_us, period_us))
 
-        # Change the pulse period to 100 us
-        # MZ: this doesn't seem to agree with ENG-0001's comment about "square root"
-        if True or self.is_arm():
-            buf = [0] * 8
-        else:
-            buf = [0] * period_us
+        # Change the pulse period 
+        buf = [0] * 8
         result = self.send_code(0xc7, wValue=period_us, wIndex=0, data_or_wLength=buf, label="SET_MOD_PERIOD (immediate)")
         if result is None:
             log.critical("Hardware Failure to send laser mod. pulse period")
             return False
 
-        # Set the pulse width to the 0-100 percentage of power;
-        # note on FX2, we send width_us as wValue AND wLength_or_data
-        if True or self.is_arm():
-            buf = [0] * 8
-        else:
-            buf = [0] * max(8, width_us)
+        # Set the pulse width to the 0-100 percentage of power
+        buf = [0] * 8
         result = self.send_code(0xdb, wValue=width_us, wIndex=0, data_or_wLength=buf, label="SET_LASER_MOD_PULSE_WIDTH (immediate)")
         if result is None:
             log.critical("Hardware Failure to send pulse width")
@@ -1643,6 +1632,7 @@ class FeatureIdentificationDevice(object):
 
     ##
     # @note not called by ENLIGHTEN
+    # @warning conflicts with GET_SELECTED_LASER
     def get_raman_mode_enable_NOT_USED(self):
         return (0 != self.get_upper_code(0x15, label="GET_RAMAN_MODE_ENABLE", msb_len=1))
 
@@ -1715,10 +1705,11 @@ class FeatureIdentificationDevice(object):
         if not self.settings.is_micro():
             return
 
-        throwaways = self.settings.state.integration_time_ms * 8 / 1000
-        floor = int(max(10, throwaways))
-        if self.settings.state.laser_watchdog_sec < floor:
-            self.set_laser_watchdog_sec(floor)
+        throwaways_sec = self.settings.state.integration_time_ms    \
+                       * (8 + self.settings.state.scans_to_average) \
+                       / 1000.0
+        watchdog_sec = int(max(10, throwaways_sec)) * 2
+        self.set_laser_watchdog_sec(watchdog_sec)
 
     def set_vertical_binning(self, lines):
         if not self.settings.is_micro():
@@ -1874,12 +1865,116 @@ class FeatureIdentificationDevice(object):
 
     def get_opt_laser_control(self):
         return self.get_upper_code(0x09, label="GET_OPT_LASER_CONTROL", msb_len=1)
+
+    # ##########################################################################
+    # Analog output
+    # ##########################################################################
+
+    ## @param value (Input) tuple of (bool enable, int mode)
+    def set_analog_output_mode(self, value):
+        if not self.is_arm():
+            logger.error("analog output only available on ARM")
+            return
+
+        wIndex = 0
+
+        # parse enable and mode from value tuple
+        try:
+            if isinstance(value[0], bool):
+                enable = value[0]
+            else:
+                enable = value[0] != 0
+
+            mode = int(value[1])
+            if (mode != 0 and mode != 1):
+                logger.error("invalid analog output mode 0x%02x, disabling", mode)
+                enable = False
+                mode = 0
+
+            if enable:
+                wIndex = 0x02 | mode # 0x02 sets the "enable" bit
+                self.state.analog_out_enable = True
+                self.state.analog_out_mode = mode
+                self.state.analog_out_value = 0 if mode == 0 else 40 # 4mA default current in deci-mA
+            else:
+                wIndex = 0
+                self.state.analog_out_enable = False
+                self.state.analog_out_mode = 0
+                self.state.analog_out_value = 0
+
+        except:
+            logger.error("set_analog_output_mode takes tuple of (bool, int), disabling")
+            wIndex = 0
+
+        return self.send_code(self, 
+            bmRequest = 0xff, 
+            wValue    = 0x11, 
+            wIndex    = wIndex, 
+            label     = "SET_ANALOG_OUT_MODE")
+
+    def set_analog_output_value(self, value):
+        if not self.is_arm():
+            logger.error("analog output only available on ARM")
+            return
+
+        # spectrometer should range-limit, but just to codify:
+        if self.state.analog_out_mode == 0:
+            # voltage (decivolts, range 0-50 (0-5V))
+            if value < 0:
+                value = 0
+            if value > 50:
+                value = 50
+        elif self.state.analog_out_mode == 1:
+            # current (deci-mA, range 40-200 (4-20mA))
+            if value < 40:
+                value = 40
+            elif value > 200:
+                value = 200
+        else:
+            log.error("invalid analog out mode %d, ignoring value", self.state.analog_out_mode)
+            return
+
+        return self.send_code(self, 
+            bmRequest = 0xff, 
+            wValue    = 0x12, 
+            wIndex    = value, 
+            label     = "SET_ANALOG_OUT_VALUE")
+
+    ## @returns triplet of (bool enable, int mode, int value)
+    def get_analog_output_state(self):
+        if not self.is_arm():
+            logger.error("analog output only available on ARM")
+            return 
+
+        data = self.get_upper_code(0x1a, wLength=3, label="GET_ANALOG_OUT_STATE")
+        if (data is None or len(data) != 3):
+            logger.error("invalid analog out state read: %s", data)
+            return
+
+        if data[0] != 0 and data[0] != 1:
+            logger.error("received invalid analog out enable: %d", data[0])
+        if data[1] != 0 and data[1] != 1:
+            logger.error("received invalid analog out mode: %d", data[1])
+
+        self.state.analog_out_enable = data[0] != 0
+        self.state.analog_out_mode = data[1]
+        self.state.analog_out_value = data[2] # no range-checking applied
+
+        return (self.state.analog_out_enable,
+                self.state.analog_out_mode,
+                self.state.analog_out_value)
+
     ##
-    # @todo move string-to-enum converter to AppLog
-    def set_log_level(self, s):
-        lvl = logging.DEBUG if s == "DEBUG" else logging.INFO
-        log.debug("fid.set_log_level: setting to %s", lvl)
-        logging.getLogger().setLevel(lvl)
+    # @returns decivolts
+    def get_analog_input_value(self):
+        if not self.is_arm():
+            logger.error("analog input only available on ARM")
+            return 
+        return self.get_upper_code(0x1b, lsb_len=1, label="GET_ANALOG_IN_VALUE")
+
+    # ##########################################################################
+    # EEPROM Cruft
+    # ##########################################################################
 
     def validate_eeprom(self, pair):
         try:
@@ -1980,6 +2075,10 @@ class FeatureIdentificationDevice(object):
 
         self.queue_message("marquee_info", "EEPROM successfully updated")
 
+    # ##########################################################################
+    # Overrides
+    # ##########################################################################
+
     def set_overrides(self, overrides):
         log.debug("received overrides %s", overrides)
         self.overrides = overrides
@@ -1990,7 +2089,12 @@ class FeatureIdentificationDevice(object):
                 self.apply_override(pair[0], pair[1])
             log.debug("done applying startup overrides")
 
+    ##
+    # @warning feature disabled as 0xff 0x11 has been reallocated to analog out
     def apply_override(self, setting, value):
+        log.error("apply_override: feature disabled")
+        return
+
         if not self.overrides or not self.overrides.has_override(setting):
             log.error("no override for %s", setting)
             return
@@ -2033,20 +2137,12 @@ class FeatureIdentificationDevice(object):
             log.debug("integration_time_ms: now %d (apply_override)", int(value))
             self.settings.state.integration_time_ms = int(value)
 
-    def queue_message(self, setting, value):
-        if self.message_queue is None:
-            return
-
-        msg = StatusMessage(setting, value)
-        try:
-            self.message_queue.send(msg) # put_nowait(msg)
-        except:
-            log.error("failed to enqueue StatusMessage (%s, %s)", setting, value, exc_info=1)
-
     ## 
     # assumes 'bytes' is an array of strings, where each string is a 
     # comma-delimited tuple like "2,0A,F0" or "DELAY_US,5" 
-    def apply_override_byte_strings(self, byte_strings):
+    #
+    # @warning disabled because 0xff 0x11 has been reallocated to analog out
+    def apply_override_byte_strings_NOT_USED(self, byte_strings):
         string_count = len(byte_strings)                
         log.debug("sending %d byte strings over I2C", string_count)
         self.queue_message("progress_bar_max", string_count)
@@ -2086,6 +2182,27 @@ class FeatureIdentificationDevice(object):
             if self.overrides.min_delay_us > 0:
                 sleep(self.overrides.min_delay_us * MICROSEC_TO_SEC)
             count += 1
+
+    # ##########################################################################
+    # Interprocess Communications
+    # ##########################################################################
+
+    ##
+    # @todo move string-to-enum converter to AppLog
+    def set_log_level(self, s):
+        lvl = logging.DEBUG if s == "DEBUG" else logging.INFO
+        log.debug("fid.set_log_level: setting to %s", lvl)
+        logging.getLogger().setLevel(lvl)
+
+    def queue_message(self, setting, value):
+        if self.message_queue is None:
+            return
+
+        msg = StatusMessage(setting, value)
+        try:
+            self.message_queue.send(msg) # put_nowait(msg)
+        except:
+            log.error("failed to enqueue StatusMessage (%s, %s)", setting, value, exc_info=1)
 
     ##
     # Perform the specified setting such as physically writing the laser
@@ -2180,4 +2297,3 @@ class FeatureIdentificationDevice(object):
         f["heartbeat"]                          = lambda x: None
 
         self.lambdas = f
-

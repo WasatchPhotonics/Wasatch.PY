@@ -1,5 +1,12 @@
 # Changelog
 
+- 2020-07-28 1.0.57
+    - deprecated get\_raman\_mode from WasatchShell
+    - simplified retry logic
+    - simplified set\_high\_gain\_mode
+    - increased laser watchdog on micro
+    - drafted get/set\_analog\_state/value
+    - disabled I2C overrides
 - 2020-06-24 1.0.56
     - removed SW implementation of odd gain/offset
     - added get\_line profiling

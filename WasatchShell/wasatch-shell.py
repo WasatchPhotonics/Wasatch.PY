@@ -94,7 +94,6 @@ class WasatchShell(object):
             "get_opt_has_laser",
             "get_opt_laser_control",
             "get_raman_delay_ms",
-            "get_raman_mode",
             "get_secondary_adc_calibrated",
             "get_secondary_adc_raw",
             "get_selected_adc",

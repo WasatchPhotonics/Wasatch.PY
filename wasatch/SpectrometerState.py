@@ -53,6 +53,11 @@ class SpectrometerState(object):
         self.battery_timestamp = None
         self.battery_raw = None        
 
+        # accessory connector
+        self.analog_out_enabled = False
+        self.analog_out_mode = 0 # 0 = voltage, 1 = current
+        self.analog_out_value = 0 # decivolts or deci-mA
+
         # ######################################################################
         # What about "application state", which is never actually set in the
         # hardware?  Move these later to ".software" or ".processing" or whatever?
