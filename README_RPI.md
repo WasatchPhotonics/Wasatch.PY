@@ -10,7 +10,12 @@ If desired, flash a fresh MicroSD card with a clean copy of Raspbian OS from:
 
 - https://www.raspberrypi.org/downloads/raspbian/
 
-This process was tested with 2019-09-26-raspbian-buster-full.zip.
+Test log:
+
+- This process was tested with 2019-09-26-raspbian-buster-full.zip
+- This process was re-tested on 2020-08-04 using Raspberry Pi OS Imager 1.4 for MacOS
+    - PRETTY\_NAME = Raspbian GNU/Linux 10 "buster" 
+    - uname -a = Linux raspberrypi 5.4.51-v7l+ #1327 SMP Th Jul 23 11:04:39 BST 2020 armv7l GNU/Linux
 
 ## Confirm RPi boots up with default Python version
 

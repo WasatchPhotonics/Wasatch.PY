@@ -773,10 +773,10 @@ class FeatureIdentificationDevice(object):
             # (could extrapolate backwards from spectrum[2])
             spectrum[0] = spectrum[1]
 
-            # MZ: KLUDGE: SiG
-            width = 125
+            # MZ: KLUDGE: SiG (reduced for VIS)
+            width = 1
             log.debug("area scan: overwriting first %d pixels", width)
-            spectrum[0:width] = [0] * (width)
+            spectrum[0:width] = [0] * width
             log.debug("get_line: area_scan_row_count = %d", area_scan_row_count)
 
         # check and track the "start of spectrum" marker

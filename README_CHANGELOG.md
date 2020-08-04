@@ -1,5 +1,7 @@
 # Changelog
 
+- 2020-08-04 1.0.58
+    - reduced area scan "prefix overwrite" for non-IMX detectors
 - 2020-07-28 1.0.57
     - deprecated get\_raman\_mode from WasatchShell
     - simplified retry logic
