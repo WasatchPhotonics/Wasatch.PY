@@ -1,5 +1,7 @@
 # Changelog
 
+- 2020-08-06 1.0.59
+    - removed SiG Area Scan "stomp first 125px" kludge
 - 2020-08-04 1.0.58
     - reduced area scan "prefix overwrite" for non-IMX detectors
 - 2020-07-28 1.0.57

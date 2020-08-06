@@ -766,18 +766,16 @@ class FeatureIdentificationDevice(object):
         # (do this before any horizontal averaging which might corrupt first pixel)
         area_scan_row_count = -1
         if self.settings.state.area_scan_enabled:
-            area_scan_row_count = spectrum[0]
+            area_scan_row_count = spectrum[0] 
+
+            # temporary kludge to support 1-indexed Hamamatsu FPGA FW
+            # if not self.settings.is_micro():
+            #     area_scan_row_count -= 1 
 
             # override row counter to smooth data and avoid a weird peak/trough 
             # which could affect other smoothing, normalization or min/max algos.
             # (could extrapolate backwards from spectrum[2])
             spectrum[0] = spectrum[1]
-
-            # MZ: KLUDGE: SiG (reduced for VIS)
-            width = 1
-            log.debug("area scan: overwriting first %d pixels", width)
-            spectrum[0:width] = [0] * width
-            log.debug("get_line: area_scan_row_count = %d", area_scan_row_count)
 
         # check and track the "start of spectrum" marker
         if self.settings.has_marker() and not self.settings.state.area_scan_enabled:
