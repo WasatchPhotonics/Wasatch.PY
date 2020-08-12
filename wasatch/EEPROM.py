@@ -229,6 +229,8 @@ class EEPROM(object):
         log.debug("  Has Cooling:      %s", self.has_cooling)
         log.debug("  Has Battery:      %s", self.has_battery)
         log.debug("  Has Laser:        %s", self.has_laser)
+        log.debug("  Invert X-Axis:    %s", self.invert_x_axis)
+        log.debug("  Bin 2x2:          %s", self.bin_2x2)
         log.debug("  Excitation:       %s nm", self.excitation_nm)
         log.debug("  Excitation (f):   %.2f nm", self.excitation_nm_float)
         log.debug("  Slit size:        %s um", self.slit_size_um)

@@ -1,5 +1,7 @@
 # Changelog
 
+- 2020-??-?? 1.0.60
+    - added invertXAxis, bin2x2 to EEPROM.dump
 - 2020-08-06 1.0.59
     - removed SiG Area Scan "stomp first 125px" kludge
 - 2020-08-04 1.0.58
