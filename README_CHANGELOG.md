@@ -1,5 +1,7 @@
 # Changelog
 
+- 2020-11-12 1.0.61
+    - added demo.py --version, stdev, debug output
 - 2020-??-?? 1.0.60
     - added invertXAxis, bin2x2 to EEPROM.dump
 - 2020-08-06 1.0.59

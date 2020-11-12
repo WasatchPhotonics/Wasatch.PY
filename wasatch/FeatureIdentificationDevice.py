@@ -522,7 +522,7 @@ class FeatureIdentificationDevice(object):
 
     def set_detector_offset_odd(self, value):
         if not self.is_ingaas():
-            log.error("SET_DETECTOR_OFFSET_ODD only supported on InGaAs")
+            log.debug("SET_DETECTOR_OFFSET_ODD only supported on InGaAs")
             return
 
         word = utils.clamp_to_int16(value) 

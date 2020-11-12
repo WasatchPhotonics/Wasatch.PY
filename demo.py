@@ -72,9 +72,13 @@ class WasatchDemo(object):
         parser.add_argument("--max",                 type=int, default=0,      help="max spectra to acquire (default 0, unlimited)")
         parser.add_argument("--non-blocking",        action="store_true",      help="non-blocking USB interface (WasatchDeviceWrapper instead of WasatchDevice)")
         parser.add_argument("--ascii-art",           action="store_true",      help="graph spectra in ASCII")
+        parser.add_argument("--version",             action="store_true",      help="display Wasatch.PY version and exit")
 
         # parse argv into dict
         args = parser.parse_args(argv[1:])
+        if args.version:
+            print("Wasatch.PY %s" % wasatch.version)
+            sys.exit(0)
 
         # normalize log level
         args.log_level = args.log_level.upper()
@@ -232,15 +236,18 @@ class WasatchDemo(object):
             spectrum_min = numpy.amin(spectrum)
             spectrum_max = numpy.amax(spectrum)
             spectrum_avg = numpy.mean(spectrum)
+            spectrum_std = numpy.std (spectrum)
             size_in_bytes = psutil.Process(os.getpid()).memory_info().rss
 
-            print("Reading: %4d  Detector: %5.2f degC  Min: %8.2f  Max: %8.2f  Avg: %8.2f  Memory: %11d" % (
+            print("Reading: %4d  Detector: %5.2f degC  Min: %8.2f  Max: %8.2f  Avg: %8.2f  StdDev: %8.2f  Memory: %11d" % (
                 self.reading_count,
                 reading.detector_temperature_degC,
                 spectrum_min,
                 spectrum_max,
                 spectrum_avg,
+                spectrum_std,
                 size_in_bytes))
+            print("DEBUG: %s" % str(reading))
 
         if self.outfile:
             self.outfile.write("%s,%.2f,%s\n" % (datetime.datetime.now(),
