@@ -1,5 +1,7 @@
 # Changelog
 
+- 2020-11-20 1.0.62
+    - added docs about Unicode logger warnings
 - 2020-11-12 1.0.61
     - added demo.py --version, stdev, debug output
 - 2020-??-?? 1.0.60

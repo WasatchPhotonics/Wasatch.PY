@@ -13,6 +13,9 @@
 # The overall level of support for this file is basically "someone borrowed and
 # modified it from an open-source example on the internet, and it basically works
 # so I haven't putzed with it much" (except to try to understand when it breaks).
+#
+# @note on Windows, define PYTHONUTF8 environment variable to avoid error messages
+#       when log messages contain Unicode (default stdout/stderr streams are cp1252)
 
 import os
 import sys
@@ -190,7 +193,7 @@ class QueueHandler(logging.Handler):
 # (would only support one producer) while queues can have multiple producers
 # (e.g. Controller + WasatchDeviceWrapper instances) feeding one consumer.
 class MainLogger(object):
-    FORMAT = '%(asctime)s %(processName)-10s %(name)s %(levelname)-8s %(message)s'
+    FORMAT = u'%(asctime)s %(processName)-10s %(name)s %(levelname)-8s %(message)s'
 
     def __init__(self, 
             log_level=logging.DEBUG, 
@@ -239,7 +242,7 @@ class MainLogger(object):
             pathname = get_location()
 
         root_logger = logging.getLogger()
-        fh = logging.FileHandler(pathname, 'w') # Overwrite previous run (does not append!)
+        fh = logging.FileHandler(pathname, mode='w', encoding='utf-8') # Overwrite previous run (does not append!)
         formatter = logging.Formatter(self.FORMAT)
         fh.setFormatter(formatter)
         root_logger.addHandler(fh)
