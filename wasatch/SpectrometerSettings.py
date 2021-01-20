@@ -253,7 +253,12 @@ class SpectrometerSettings(object):
                 len(self.wavenumbers), self.wavenumbers[0], self.wavenumbers[-1])
 
     def is_InGaAs(self):
-        if re.match(r'ingaas|g9214', self.eeprom.detector.lower()):
+        return self.is_ingaas()
+
+    def is_ingaas(self):
+        if self.hardware_info is not None and self.hardware_info.is_ingaas():
+            return True
+        elif re.match(r'ingaas|g9214|g9206|g14237', self.eeprom.detector.lower()):
             return True
         elif self.fpga_options.has_cf_select:
             return True

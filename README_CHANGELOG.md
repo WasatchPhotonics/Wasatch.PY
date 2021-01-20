@@ -1,5 +1,10 @@
 # Changelog
 
+- 2021-01-05 1.0.63
+    - added get_high_gain_mode_enable()
+    - added G9206 and G14237 to InGaAs detection
+    - made InGaAs detection more robust
+    - added parabolic approximation
 - 2020-11-20 1.0.62
     - added docs about Unicode logger warnings
 - 2020-11-12 1.0.61

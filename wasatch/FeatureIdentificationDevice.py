@@ -158,10 +158,14 @@ class FeatureIdentificationDevice(object):
         # model-specific settings
         # ######################################################################
 
-        # This must be for some very old InGaAs spectrometers? 
-        # Will probably want to remove this for SiG...
-        if self.is_ingaas() and not self.is_arm():
-            self.settings.eeprom.active_pixels_horizontal = 512
+        if self.is_ingaas():
+            # This must be for some very old InGaAs spectrometers? 
+            # Will probably want to remove this for SiG...
+            if not self.is_arm():
+                self.settings.eeprom.active_pixels_horizontal = 512
+
+            if not self.get_high_gain_mode_enable():
+                self.set_high_gain_mode_enable(True)
 
         # ######################################################################
         # EEPROM
@@ -316,7 +320,7 @@ class FeatureIdentificationDevice(object):
             if self.is_arm():
                 data_or_wLength = [0] * 8
             else:
-                data_or_wLength = ""
+                data_or_wLength = 0
 
         log.debug("%ssend_code: request 0x%02x value 0x%04x index 0x%04x data/len %s",
             prefix, bmRequest, wValue, wIndex, data_or_wLength)
@@ -790,26 +794,11 @@ class FeatureIdentificationDevice(object):
                         log.error("get_line: marker found at pixel %d", i)
                 # don't do anything else in Python at this time (examining issue in Wasatch.NET)
 
-        # bad pixel correction
-        if self.settings.state.bad_pixel_mode == SpectrometerState.BAD_PIXEL_MODE_AVERAGE:
-            self.correct_bad_pixels(spectrum)
-
         # on microRaman, ignore first 3 and last pixel
         if self.settings.is_micro():
             spectrum[-1] = spectrum[-2]
             for i in range(3):
                 spectrum[i] = spectrum[3]
-
-        # a prototype model output spectra with alternating pixels swapped, and this was
-        # quicker than changing in firmware (do this BEFORE grabbing first pixel for area
-        # scan index)
-        if self.settings.state.swap_alternating_pixels:
-            log.debug("swapping alternating pixels: spectrum = %s", spectrum[:10])
-            corrected = []
-            for a, b in zip(spectrum[0::2], spectrum[1::2]):
-                corrected.extend([b, a])
-            spectrum = corrected
-            log.debug("swapped alternating pixels: spectrum = %s", spectrum[:10])
 
         # For custom benches where the detector is essentially rotated
         # 180-deg from our typical orientation with regard to the grating
@@ -821,6 +810,21 @@ class FeatureIdentificationDevice(object):
         # need to reverse the display order of the rows.
         if self.settings.eeprom.invert_x_axis:
             spectrum.reverse()
+
+        # bad pixel correction
+        if self.settings.state.bad_pixel_mode == SpectrometerState.BAD_PIXEL_MODE_AVERAGE:
+            self.correct_bad_pixels(spectrum)
+
+        # a prototype model output spectra with alternating pixels swapped, and this was
+        # quicker than changing in firmware (do this BEFORE grabbing first pixel for area
+        # scan index)
+        if self.settings.state.swap_alternating_pixels:
+            log.debug("swapping alternating pixels: spectrum = %s", spectrum[:10])
+            corrected = []
+            for a, b in zip(spectrum[0::2], spectrum[1::2]):
+                corrected.extend([b, a])
+            spectrum = corrected
+            log.debug("swapped alternating pixels: spectrum = %s", spectrum[:10])
 
         # apply 2x2 pixel binning (don't worry about vertical axis at this time)
         if self.settings.eeprom.bin_2x2:
@@ -1164,14 +1168,25 @@ class FeatureIdentificationDevice(object):
     # Not sure why.
     def set_high_gain_mode_enable(self, flag):
         log.debug("Set high gain mode: %s", flag)
+        if not self.is_ingaas():
+            log.debug("SET_HIGH_GAIN_MODE_ENABLE only supported on InGaAs")
+            return 
 
         value = 1 if flag else 0
 
         # this is done automatically on ARM, but for this opcode we do it on FX2 as well
         buf = [0] * 8 
 
-        self.send_code(0xeb, wValue=value, wIndex=0, data_or_wLength=buf, label="SET_CF_SELECT")
+        self.send_code(0xeb, wValue=value, wIndex=0, data_or_wLength=buf, label="SET_HIGH_GAIN_MODE_ENABLE")
         self.settings.state.high_gain_mode_enabled = flag
+
+    def get_high_gain_mode_enable(self):
+        if not self.is_ingaas():
+            log.debug("GET_HIGH_GAIN_MODE_ENABLE only supported on InGaAs")
+            return self.settings.eeprom.high_gain_mode_enabled
+
+        self.settings.state.high_gain_mode_enabled = 0 != self.get_code(0xec, lsb_len=1, label="GET_HIGH_GAIN_MODE_ENABLE")
+        return self.settings.state.high_gain_mode_enabled 
 
     ##
     # On spectrometers supporting two lasers, select the primary (0) or
@@ -1975,6 +1990,8 @@ class FeatureIdentificationDevice(object):
     # ##########################################################################
 
     def validate_eeprom(self, pair):
+        return True
+
         try:
             if len(pair) != 2:
                 raise Exception("pair had %d items" % len(pair))

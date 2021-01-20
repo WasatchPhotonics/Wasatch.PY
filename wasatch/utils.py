@@ -48,6 +48,10 @@ def generate_wavenumbers(excitation, wavelengths):
             wavenumbers.append(0)
     return wavenumbers
 
+## convert a single wavenumber to wavelength
+def wavenumber_to_wavelength(excitation, wavenumber):
+    return 1.0 / ((1.0 / excitation) - (wavenumber * 1e-7)) 
+
 ##
 # If we've loaded a CSV that had wavelength and wavenumber columns, but no
 # metadata, use this to infer the excitation wavelength.  Useful for 
@@ -454,3 +458,74 @@ def coeffs_look_valid(coeffs, count=None):
 
 def clamp_to_int16(n):
     return max(-32768, min(32767, int(n)))
+
+##
+# Given an array of doubles and a peak index, use the peak and its two
+# neighbors to form a parabola and return the interpolated maximum height of the
+# parabola.
+#
+# "pixel" is ideally the array index of the pinnacle of a previously-
+# identified peak within the spectrum, although though this will 
+# technically generate a parabola through any pixel and its two 
+# neighbors.
+#
+# @param pixel  index of a point on the spectrum
+# @param x      x-axis (wavelengths or wavenumbers)
+# @param y      y-axis (intensity)
+#
+# @see https://stackoverflow.com/a/717833
+#
+# @returns a point representing the interpolated vertex of a parabola drawn 
+#          through the specified pixel and its two neighbors (in x-axis space)
+#
+def parabolic_approximation(pixel, x, y):
+    if len(x) != len(y):
+        log.error("parabolic approximation array lengths differ")
+        return 0, 0
+    if pixel - 1 < 0:
+        return y[0]
+    elif pixel + 1 >= len(y):
+        return y[-1]
+
+    x1 = pixel - 1
+    x2 = pixel
+    x3 = pixel + 1
+
+    y1 = y[x1]
+    y2 = y[x2]
+    y3 = y[x3]
+
+    if y1 >= y2 or y3 >= y2:
+        log.debug("parabolic approximation: peak misformed or saturated")
+
+    denom = (x1 - x2) * (x1 - x3) * (x2 - x3)
+    A = (x3 * (y2 - y1) + x2 * (y1 - y3) + x1 * (y3 - y2)) / denom
+    B = (x3 * x3 * (y1 - y2) + x2 * x2 * (y3 - y1) + x1 * x1 * (y2 - y3)) / denom
+    C = (x2 * x3 * (x2 - x3) * y1 + x3 * x1 * (x3 - x1) * y2 + x1 * x2 * (x1 - x2) * y3) / denom
+
+    vertex_x = -B / (2 * A) # pixel space
+    vertex_y = C - B * B / (4 * A)
+
+    if vertex_x < x1 or vertex_x > x3:
+        log.error("parabolic approximation failed (x exceeded limits)")
+        return (0, 0)
+
+    if vertex_x == x2:
+        return (x[vertex_x], vertex_y)
+    elif vertex_x < x2:
+        left = x1
+        right = x2
+    else:
+        left = x2
+        right = x3
+    x_coord = x[left] + (x[right] - x[left]) * (vertex_x - left)
+
+    log.debug("parabolic approximation: x1 %d, x2 %d, x3 %d", x1, x2, x3)
+    log.debug("parabolic approximation: x.x1 %.2f, x.x2 %.2f, x.x3 %.2f", x[x1], x[x2], x[x3])
+    log.debug("parabolic approximation: y.x1 %.2f, y.x2 %.2f, y.x3 %.2f", y[x1], y[x2], y[x3])
+    log.debug("parabolic approximation: vertex_x %.2f, vertex_y %.2f", vertex_x, vertex_y)
+    log.debug("parabolic approximation: left %d, right %d", left, right)
+    log.debug("parabolic approximation: x.left %.2f, x.right %.2f", x[left], x[right])
+    log.debug("parabolic approximation: x.coord %.2f", x_coord)
+
+    return (x_coord, vertex_y)
