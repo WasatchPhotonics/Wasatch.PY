@@ -62,7 +62,7 @@ log = logging.getLogger(__name__)
 # ALSO we want to eventually support BLE (which has unique UUID), and perhaps
 # TCP/IP (which has IP addresses), and of course FileSpectrometer paths are
 # unique...basically I think objects on a "bus" should be uniquely identifiable
-# and addressable from their from their bus address, WITHOUT making guesses
+# and addressable from their bus address, WITHOUT making guesses
 # based on position or ordering or claim-state or anything like that.
 #
 # So yeah, I think this is useful and a good design.

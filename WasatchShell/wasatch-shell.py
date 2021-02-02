@@ -59,9 +59,13 @@ class WasatchShell(object):
         for func_name in [ 
             "get_actual_frames",
             "get_actual_integration_time_us",
+            "get_ambient_temperature_degC"
             "get_ccd_sensing_threshold",
             "get_ccd_threshold_sensing_mode",
             "get_ccd_trigger_source",
+            "get_cont_strobe_enable",
+            "get_cont_strobe_period_us",
+            "get_cont_strobe_width_us",
             "get_dac",
             "get_detector_gain",
             "get_detector_offset",
@@ -72,8 +76,8 @@ class WasatchShell(object):
             "get_external_trigger_output",
             "get_fpga_firmware_version",
             "get_integration_time_ms",
-            "get_laser_interlock",
             "get_laser_enabled",
+            "get_laser_interlock",
             "get_laser_mod_duration",
             "get_laser_mod_enabled",
             "get_laser_mod_period",
@@ -89,9 +93,9 @@ class WasatchShell(object):
             "get_opt_area_scan",
             "get_opt_cf_select",
             "get_opt_data_header_tab",
+            "get_opt_has_laser",
             "get_opt_horizontal_binning",
             "get_opt_integration_time_resolution",
-            "get_opt_has_laser",
             "get_opt_laser_control",
             "get_raman_delay_ms",
             "get_secondary_adc_calibrated",
@@ -99,12 +103,13 @@ class WasatchShell(object):
             "get_selected_adc",
             "get_selected_laser",
             "get_sensor_line_length",
+            "get_shutter_enable"
             "get_tec_enabled",
             "get_trigger_delay",
             "get_vr_continuous_ccd",
             "get_vr_num_frames",
-            "has_linearity_coeffs",
-            "has_laser_power_calibration"]:
+            "has_laser_power_calibration",
+            "has_linearity_coeffs" ]:
             self.gettors[func_name.lower()] = func_name
 
     # ##############################################################################
@@ -138,6 +143,11 @@ class WasatchShell(object):
         set_raman_mode                         - takes 0 or 1
         set_raman_delay_ms                     - takes integer argument
                                                
+        set_shutter_enable                     - takes bool argument
+        set_cont_strobe_enable                 - takes bool argument
+        set_cont_strobe_period_us              - takes int argument
+        set_cont_strobe_width_us               - takes int argument
+
         set_interpolated_x_axis_cm             - takes start, end, incr (zero incr to disable)
         set_interpolated_x_axis_nm             - takes start, end, incr (zero incr to disable)
         balance_acquisition                    - takes mode [integ, laser, laser_and_integ], 
@@ -363,6 +373,22 @@ class WasatchShell(object):
 
                         elif command == "set_selected_laser":
                             self.device.change_setting("selected_laser", self.read_int())
+                            self.display(1)
+
+                        elif command == "set_shutter_enable":
+                            self.device.change_setting("shutter_enable", self.read_bool())
+                            self.display(1)
+
+                        elif command == "set_cont_strobe_enable":
+                            self.device.change_setting("cont_strobe_enable", self.read_bool())
+                            self.display(1)
+
+                        elif command == "set_cont_strobe_period_us":
+                            self.device.change_setting("cont_strobe_period_us", self.read_int())
+                            self.display(1)
+
+                        elif command == "set_cont_strobe_width_us":
+                            self.device.change_setting("cont_strobe_width_us", self.read_int())
                             self.display(1)
 
                         elif command == "open":

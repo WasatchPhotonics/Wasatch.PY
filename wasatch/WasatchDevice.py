@@ -206,9 +206,10 @@ class WasatchDevice(object):
     # Until support for even/odd InGaAs gain and offset have been added to the 
     # firmware, apply the correction in software.
     #
-    # @todo delete this function when firmware has been updated!
+    # @todo delete this function when firmware has been updated (we could 
+    #       probably do this now)
     def correct_ingaas_gain_and_offset_NOT_USED(self, reading):
-        if not self.settings.is_InGaAs():
+        if not self.settings.is_ingaas():
             return
 
         # if even and odd pixels have the same settings, there's no point in doing anything
@@ -536,37 +537,73 @@ class WasatchDevice(object):
             # averaged measurement
             reading.laser_enabled       = self.settings.state.laser_enabled  
 
-            # collect next spectrum
-            externally_triggered = self.settings.state.trigger_source == SpectrometerState.TRIGGER_SOURCE_EXTERNAL
-            try:
-                while True:
-                    spectrum_and_row = self.hardware.get_line()
-                    if self.hardware.shutdown_requested: 
-                        return False
+            # are we reading one spectrum (normal mode, or "slow" area scan), or
+            # doing a batch-read of a whole frame ("fast" area scan)?
+            if self.settings.state.area_scan_enabled and self.settings.state.area_scan_fast:
 
-                    if spectrum_and_row.spectrum is None:
-                        # FeatureIdentificationDevice can return None when waiting
-                        # on an external trigger.  FileSpectrometer can as well if 
-                        # there is no new spectrum to read.
-                        log.debug("device.take_one_averaged_spectrum: get_line None, sending keepalive for now")
+                # YOU ARE HERE
+
+                # collect a whole frame of area scan data
+                reading.area_scan_data = []
+                try:
+                    rows = self.settings.eeprom.active_pixels_vertical
+                    log.debug("trying to read a fast area scan frame of %d rows", rows)
+                    for i in range(rows):
+                        spectrum_and_row = self.hardware.get_line(trigger=(i==0))
+                        if self.hardware.shutdown_requested: 
+                            return False
+                        elif spectrum_and_row.spectrum is None:
+                            log.debug("device.take_one_averaged_spectrum: get_line None, sending keepalive for now (area scan fast)")
+                            return True
+
+                        # mimic "slow" results to minimize downstream fuss
+                        reading.spectrum = spectrum_and_row.spectrum 
+                        reading.area_scan_row_count = spectrum_and_row.row
+                        reading.timestamp_complete  = datetime.datetime.now()
+
+                        # accumulate the frame here
+                        reading.area_scan_data.append(spectrum_and_row.spectrum)
+                        log.debug("device.take_one_averaged_reading(area scan fast): got %s ... (row %d)", 
+                            reading.spectrum[0:9], reading.area_scan_row_count)
+
+                except Exception as exc:
+                    log.critical("Error reading hardware data", exc_info=1)
+                    reading.spectrum = None
+                    reading.failure = str(exc)
+
+            else:
+
+                # collect next spectrum
+                externally_triggered = self.settings.state.trigger_source == SpectrometerState.TRIGGER_SOURCE_EXTERNAL
+                try:
+                    while True:
+                        spectrum_and_row = self.hardware.get_line()
+                        if self.hardware.shutdown_requested: 
+                            return False
+
+                        if spectrum_and_row.spectrum is None:
+                            # FeatureIdentificationDevice can return None when waiting
+                            # on an external trigger.  FileSpectrometer can as well if 
+                            # there is no new spectrum to read.
+                            log.debug("device.take_one_averaged_spectrum: get_line None, sending keepalive for now")
+                            return True
+                        else:
+                            break
+
+                    reading.spectrum            = spectrum_and_row.spectrum
+                    reading.area_scan_row_count = spectrum_and_row.row
+                    reading.timestamp_complete  = datetime.datetime.now()
+
+                    log.debug("device.take_one_averaged_reading: got %s ... (row %d)", reading.spectrum[0:9], reading.area_scan_row_count)
+                except Exception as exc:
+                    # if we got the timeout after switching from externally triggered back to internal, let it ride
+                    if externally_triggered:
+                        log.debug("caught exception from get_line while externally triggered...sending keepalive")
                         return True
-                    else:
-                        break
 
-                reading.spectrum            = spectrum_and_row.spectrum
-                reading.area_scan_row_count = spectrum_and_row.row
-                reading.timestamp_complete  = datetime.datetime.now()
-
-                log.debug("device.take_one_averaged_reading: got %s ... (row %d)", reading.spectrum[0:9], reading.area_scan_row_count)
-            except Exception as exc:
-                # if we got the timeout after switching from externally triggered back to internal, let it ride
-                if externally_triggered:
-                    log.debug("caught exception from get_line while externally triggered...sending keepalive")
-                    return True
-
-                log.critical("Error reading hardware data", exc_info=1)
-                reading.spectrum = None
-                reading.failure = str(exc)
+                    log.critical("Error reading hardware data", exc_info=1)
+                    reading.spectrum = None
+                    reading.failure = str(exc)
 
             if not reading.failure:
                 # InGaAs even/odd kludge

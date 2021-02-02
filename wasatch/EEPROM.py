@@ -119,6 +119,7 @@ class EEPROM(object):
                           "min_laser_power_mW",
                           "laser_power_coeffs",
                           "bad_pixels",
+                          "bin_2x2",
                           "roi_horizontal_end",             
                           "roi_horizontal_start",           
                           "roi_vertical_region_1_end",      

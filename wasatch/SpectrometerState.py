@@ -46,6 +46,7 @@ class SpectrometerState(object):
 
         # area scan mode
         self.area_scan_enabled = False
+        self.area_scan_fast = False
 
         # battery
         self.battery_percentage = 0.0
@@ -53,7 +54,21 @@ class SpectrometerState(object):
         self.battery_timestamp = None
         self.battery_raw = None        
 
+        # ######################################################################
         # accessory connector
+        # ######################################################################
+
+        # NOTE: we're re-using self.laser_enabled for lamp_enabled, as these 
+        # serve the same function and share the same opcode
+
+        self.shutter_enabled = False
+        self.cont_strobe_enabled = False
+
+        # these are NOT currently used by laser power settings, though they could be
+        self.cont_strobe_period_us = 0 
+        self.cont_strobe_width_us = 0
+
+        # (gen 2.0 stuff, not yet used)
         self.analog_out_enabled = False
         self.analog_out_mode = 0 # 0 = voltage, 1 = current
         self.analog_out_value = 0 # decivolts or deci-mA
@@ -75,7 +90,7 @@ class SpectrometerState(object):
         # boxcar 
         self.boxcar_half_width = 0
 
-        # background subtraction
+        # background subtraction (no longer used)
         self.background_subtraction_half_width = 0
 
         # bad pixel removal
@@ -87,9 +102,6 @@ class SpectrometerState(object):
 
         # secondary ADC
         self.secondary_adc_enabled = False
-
-        # detector inversion (typically applied in Wasatch.PY)
-        # self.invert_x_axis = False # moved to EEPROM
 
         # laser power ramping
         self.laser_power_ramping_enabled = False
@@ -108,6 +120,10 @@ class SpectrometerState(object):
         # mechanical articulation (e.g. Sandbox optics); this is currently 
         # treated as an integer with discrete steps
         self.position = 0
+
+        # wavenumber correction (ADDED to the default wavenumber axis generated
+        # from the wavelength calibration at the specified excitation wavelength)
+        self.wavenumber_correction = 0
 
         # ######################################################################
         # gain (dB) (IMX only)
@@ -193,6 +209,7 @@ class SpectrometerState(object):
         log.debug("  Laser Power Ramping:    %s", self.laser_power_ramping_enabled)
         log.debug("  Laser Power Ramp Incr:  %d", self.laser_power_ramp_increments)
         log.debug("  Position:               %s", self.position)
+        log.debug("  Wavenumber Correction:  %d", self.wavenumber_correction)
 
     def to_dict(self):
         return self.__dict__

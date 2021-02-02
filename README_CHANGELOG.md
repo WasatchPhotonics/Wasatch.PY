@@ -1,5 +1,26 @@
 # Changelog
 
+- 2021-02-02 1.0.64
+    - consolidated spectrometer feature queries into SpectrometerSettings
+    - added support for "fast" area scan
+    - added support for raman_correction
+    - fixed invert_x_axis bug
+    - accessory connector (initial ICD, testing pending FW)
+        - SpectrometerState
+            - shutter_enabled
+            - cont_strobe_enabled
+            - cont_strobe_width_us
+            - cont_strobe_period_us
+        - FeatureIdentificationDevice (and WasatchShell)
+            - set_shutter_enable
+            - get_shutter_enable
+            - set_cont_strobe_enable
+            - get_cont_strobe_enable
+            - set_cont_strobe_period_us
+            - get_cont_strobe_period_us
+            - set_cont_strobe_width_us
+            - get_cont_strobe_width_us
+            - get_ambient_temperature_degC
 - 2021-01-05 1.0.63
     - added get_high_gain_mode_enable()
     - added G9206 and G14237 to InGaAs detection

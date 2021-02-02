@@ -216,6 +216,10 @@ class SpectrometerSettings(object):
                     self.raman_intensity_factors = None
         log.debug("factors = %s", self.raman_intensity_factors)
 
+    def set_wavenumber_correction(self, cm):
+        self.state.wavenumber_correction = cm
+        self.update_wavecal()
+
     def update_wavecal(self, coeffs=None):
         if self.lock_wavecal:
             log.debug("wavecal is locked")
@@ -248,16 +252,28 @@ class SpectrometerSettings(object):
         # keep legacy excitation in sync with floating-point
         if self.has_excitation():
             self.eeprom.excitation_nm = float(round(self.excitation(), 0))
-            self.wavenumbers = utils.generate_wavenumbers(self.excitation(), self.wavelengths)
-            log.debug("generated %d wavenumbers from %.2f to %.2f",
-                len(self.wavenumbers), self.wavenumbers[0], self.wavenumbers[-1])
+            self.wavenumbers = utils.generate_wavenumbers(self.excitation(), self.wavelengths,
+                wavenumber_correction=self.state.wavenumber_correction)
+            log.debug("generated %d wavenumbers from %.2f to %.2f (after correction %.2f)",
+                len(self.wavenumbers), self.wavenumbers[0], self.wavenumbers[-1], self.state.wavenumber_correction)
 
-    def is_InGaAs(self):
-        return self.is_ingaas()
+    # ##########################################################################
+    #
+    # We're kind of using SpectrometerSettings as a "universal interface" for 
+    # applications to query for things, so let's just consolidate some obvious
+    # and common checks here (even if wrapping calls elsewhere).
+    #
+    # ##########################################################################
+
+    def is_arm(self):
+        if self.hardware_info is not None and self.hardware_info.is_arm():
+            return True
 
     def is_ingaas(self):
         if self.hardware_info is not None and self.hardware_info.is_ingaas():
             return True
+        elif self.eeprom is None or self.eeprom.detector is None:
+            return False 
         elif re.match(r'ingaas|g9214|g9206|g14237', self.eeprom.detector.lower()):
             return True
         elif self.fpga_options.has_cf_select:
@@ -267,12 +283,22 @@ class SpectrometerSettings(object):
     def is_imx(self):
         return "imx" in self.eeprom.detector.lower()
 
+    def is_imx392(self):
+        return "imx392" in self.eeprom.detector.lower()
+
     def is_micro(self):
         return self.is_imx() or \
                "micro" in self.full_model().lower() or \
                "sig" in self.full_model().lower() 
 
-    # @todo add this to EEPROM.feature_mask
+    def is_non_raman(self):
+        return not self.has_excitation()
+
+    ## will probably add something in EEPROM.FeatureMask for this
+    def is_gen15(self):
+        return self.is_non_raman() or self.eeprom.serial_number == "WP-00561" # kludge
+
+    ## @todo add this to EEPROM.feature_mask
     def has_marker(self):
         return self.eeprom.model == "WPX-8CHANNEL"
 

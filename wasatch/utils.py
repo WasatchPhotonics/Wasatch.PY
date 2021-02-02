@@ -35,20 +35,20 @@ def generate_wavelengths_from_wavenumbers(excitation, wavenumbers):
 
 ## convert wavelengths into Raman shifts in 1/cm wavenumbers from the given 
 #  excitation wavelength
-def generate_wavenumbers(excitation, wavelengths):
+def generate_wavenumbers(excitation, wavelengths, wavenumber_correction=0):
     wavenumbers = []
     if not wavelengths or excitation < 1:
         return wavenumbers
 
     base = 1e7 / float(excitation)
     for i in range(len(wavelengths)):
+        wavenumber = 0
         if wavelengths[i] != 0:
-            wavenumbers.append(base - 1e7 / wavelengths[i])
-        else:
-            wavenumbers.append(0)
+            wavenumber = base - 1e7 / wavelengths[i]
+        wavenumbers.append(wavenumber + wavenumber_correction)
     return wavenumbers
 
-## convert a single wavenumber to wavelength
+## convert a single (uncorrected) wavenumber to wavelength
 def wavenumber_to_wavelength(excitation, wavenumber):
     return 1.0 / ((1.0 / excitation) - (wavenumber * 1e-7)) 
 
@@ -455,6 +455,21 @@ def coeffs_look_valid(coeffs, count=None):
         return False
 
     return True
+
+## 
+# "Stomps" the first "count" elements with the first non-stomped value.
+#
+# @param a     (Input) array to modify
+# @param count (Input) HOW MANY leading elements to stomp, so the index of the
+#              first GOOD pixel should be one more than this
+def stomp_first(a, count):
+    for i in range(count):
+        a[i] = a[count]
+
+## "stomps" the last "count" elements with the last non-stomped value
+def stomp_last(a, count):
+    for i in range(count):
+        a[-(i+1)] = a[-(count+1)]
 
 def clamp_to_int16(n):
     return max(-32768, min(32767, int(n)))
