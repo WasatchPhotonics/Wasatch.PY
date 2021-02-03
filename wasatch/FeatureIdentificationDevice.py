@@ -303,7 +303,7 @@ class FeatureIdentificationDevice(object):
             return True
         return False
 
-    def send_code(self, bmRequest, wValue=0, wIndex=0, data_or_wLength=None, label="", dry_run=False, retry_on_error=False, success_result=0x00):
+    def send_code(self, bRequest, wValue=0, wIndex=0, data_or_wLength=None, label="", dry_run=False, retry_on_error=False, success_result=0x00):
         if self.shutdown_requested or (not self.connected and not self.connecting):
             log.debug("send_code: not attempting because not connected")
             return
@@ -318,7 +318,7 @@ class FeatureIdentificationDevice(object):
                 data_or_wLength = 0
 
         log.debug("%ssend_code: request 0x%02x value 0x%04x index 0x%04x data/len %s",
-            prefix, bmRequest, wValue, wIndex, data_or_wLength)
+            prefix, bRequest, wValue, wIndex, data_or_wLength)
 
         if dry_run:
             return True
@@ -331,7 +331,7 @@ class FeatureIdentificationDevice(object):
             try:
                 self.wait_for_usb_available()
                 result = self.device.ctrl_transfer(0x40,        # HOST_TO_DEVICE
-                                                   bmRequest,
+                                                   bRequest,
                                                    wValue,
                                                    wIndex,
                                                    data_or_wLength) # add TIMEOUT_MS parameter?
@@ -341,7 +341,7 @@ class FeatureIdentificationDevice(object):
                 return False
 
             log.debug("%ssend_code: request 0x%02x value 0x%04x index 0x%04x data/len %s: result %s",
-                prefix, bmRequest, wValue, wIndex, data_or_wLength, result)
+                prefix, bRequest, wValue, wIndex, data_or_wLength, result)
 
             if not retry_on_error:
                 # no retries, just return what we got
@@ -371,7 +371,7 @@ class FeatureIdentificationDevice(object):
 
     ## @note weird that so few calls to this function override the default wLength
     # @todo consider adding retry logic as well
-    def get_code(self, bmRequest, wValue=0, wIndex=0, wLength=64, label="", msb_len=None, lsb_len=None):
+    def get_code(self, bRequest, wValue=0, wIndex=0, wLength=64, label="", msb_len=None, lsb_len=None):
         prefix = "" if not label else ("%s: " % label)
         result = None
 
@@ -386,7 +386,7 @@ class FeatureIdentificationDevice(object):
         try:
             self.wait_for_usb_available()
             result = self.device.ctrl_transfer(0xc0,        # DEVICE_TO_HOST
-                                               bmRequest,
+                                               bRequest,
                                                wValue,
                                                wIndex,
                                                wLength)
@@ -396,7 +396,7 @@ class FeatureIdentificationDevice(object):
             return None
 
         log.debug("%sget_code: request 0x%02x value 0x%04x index 0x%04x = [%s]",
-            prefix, bmRequest, wValue, wIndex, result)
+            prefix, bRequest, wValue, wIndex, result)
 
         if result is None:
             log.critical("get_code[%s, %s]: received null", label, self.device_id)
@@ -1209,7 +1209,7 @@ class FeatureIdentificationDevice(object):
         log.debug("selecting laser %d", n)
         self.settings.state.selected_laser = n
 
-        self.send_code(bmRequest       = 0xff, 
+        self.send_code(bRequest        = 0xff, 
                        wValue          = 0x15,  
                        wIndex          = n,
                        data_or_wLength = [0] * 8,
@@ -1510,7 +1510,7 @@ class FeatureIdentificationDevice(object):
     # command:
     #
     # device.ctrl_transfer(bmRequestType=device_to_host,
-    #                      bmRequest=0xDB,
+    #                      bRequest=0xDB,
     #                      wValue=100,
     #                      wIndex=0,
     #                      data_or_wLength=0)
@@ -1665,7 +1665,7 @@ class FeatureIdentificationDevice(object):
             log.error("Raman mode only supported on microRaman")
             return
 
-        self.send_code(bmRequest       = 0xff, 
+        self.send_code(bRequest        = 0xff, 
                        wValue          = 0x16,  
                        wIndex          = 1 if flag else 0,
                        data_or_wLength = [0] * 8,
@@ -1686,7 +1686,7 @@ class FeatureIdentificationDevice(object):
         lsb =  ms       & 0xff
         value = (msb << 8) | lsb
 
-        self.send_code(bmRequest       = 0xff, 
+        self.send_code(bRequest        = 0xff, 
                        wValue          = 0x20,  
                        wIndex          = value,
                        data_or_wLength = [0] * 8,
@@ -1709,7 +1709,7 @@ class FeatureIdentificationDevice(object):
         lsb =  sec       & 0xff
         value = (msb << 8) | lsb
 
-        self.send_code(bmRequest       = 0xff, 
+        self.send_code(bRequest        = 0xff, 
                        wValue          = 0x18,  
                        wIndex          = value,
                        data_or_wLength = [0] * 8,
@@ -1751,13 +1751,13 @@ class FeatureIdentificationDevice(object):
         if start > end:
             (start, end) = (end, start)
 
-        self.send_code(bmRequest       = 0xff, 
+        self.send_code(bRequest        = 0xff, 
                        wValue          = 0x21,  
                        wIndex          = start,
                        data_or_wLength = [0] * 8,
                        label           = "SET_CCD_START_LINE")
 
-        self.send_code(bmRequest       = 0xff, 
+        self.send_code(bRequest        = 0xff, 
                        wValue          = 0x23,  
                        wIndex          = end,
                        data_or_wLength = [0] * 8,
@@ -1774,7 +1774,7 @@ class FeatureIdentificationDevice(object):
             log.error("shutter requires Gen 1.5")
             return 
         value = 1 if flag else 0
-        self.send_code(bmRequest       = 0xff, 
+        self.send_code(bRequest        = 0xff, 
                        wValue          = 0x17,  
                        wIndex          = value,
                        data_or_wLength = [0] * 8,
@@ -1982,7 +1982,7 @@ class FeatureIdentificationDevice(object):
             wIndex = 0
 
         return self.send_code(self, 
-            bmRequest = 0xff, 
+            bRequest  = 0xff, 
             wValue    = 0x11, 
             wIndex    = wIndex, 
             label     = "SET_ANALOG_OUT_MODE")
@@ -2010,7 +2010,7 @@ class FeatureIdentificationDevice(object):
             return
 
         return self.send_code(self, 
-            bmRequest = 0xff, 
+            bRequest  = 0xff, 
             wValue    = 0x12, 
             wIndex    = value, 
             label     = "SET_ANALOG_OUT_VALUE")
@@ -2135,7 +2135,7 @@ class FeatureIdentificationDevice(object):
         for page in range(EEPROM.MAX_PAGES):
             if self.settings.is_arm():
                 log.debug("writing page %d: %s", page, self.settings.eeprom.write_buffers[page])
-                self.send_code(bmRequest       = 0xff, # second-tier
+                self.send_code(bRequest        = 0xff, # second-tier
                                wValue          = 0x02,  
                                wIndex          = page,
                                data_or_wLength = self.settings.eeprom.write_buffers[page],
@@ -2144,7 +2144,7 @@ class FeatureIdentificationDevice(object):
                 DATA_START = 0x3c00
                 offset = DATA_START + page * 64
                 log.debug("writing page %d at offset 0x%04x: %s", page, offset, self.settings.eeprom.write_buffers[page])
-                self.send_code(bmRequest       = 0xa2,   # dangerous
+                self.send_code(bRequest        = 0xa2,   # dangerous
                                wValue          = offset, # arguably an index but hey
                                wIndex          = 0, 
                                data_or_wLength = self.settings.eeprom.write_buffers[page],
@@ -2248,7 +2248,7 @@ class FeatureIdentificationDevice(object):
             buf[0] = chip_value
 
             log.debug("sending byte string %d of %d", count + 1, string_count)
-            self.send_code(bmRequest       = 0xff, 
+            self.send_code(bRequest        = 0xff, 
                            wValue          = 0x11, 
                            wIndex          = wIndex,
                            data_or_wLength = buf,
