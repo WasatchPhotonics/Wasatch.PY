@@ -58,9 +58,8 @@ class SpectrometerState(object):
         # accessory connector
         # ######################################################################
 
-        # NOTE: we're re-using self.laser_enabled for lamp_enabled, as these 
-        # serve the same function and share the same opcode
-
+        self.fan_enabled = False
+        self.lamp_enabled = False
         self.shutter_enabled = False
         self.cont_strobe_enabled = False
 

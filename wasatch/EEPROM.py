@@ -38,6 +38,7 @@ class EEPROM(object):
         self.feature_mask                = 0
         self.invert_x_axis               = False
         self.bin_2x2                     = False
+        self.gen15                       = False
         self.excitation_nm               = 0.0
         self.excitation_nm_float         = 0.0
         self.slit_size_um                = 0
@@ -120,6 +121,7 @@ class EEPROM(object):
                           "laser_power_coeffs",
                           "bad_pixels",
                           "bin_2x2",
+                          "gen15",
                           "roi_horizontal_end",             
                           "roi_horizontal_start",           
                           "roi_vertical_region_1_end",      
@@ -232,6 +234,7 @@ class EEPROM(object):
         log.debug("  Has Laser:        %s", self.has_laser)
         log.debug("  Invert X-Axis:    %s", self.invert_x_axis)
         log.debug("  Bin 2x2:          %s", self.bin_2x2)
+        log.debug("  Gen 1.5:          %s", self.gen15)
         log.debug("  Excitation:       %s nm", self.excitation_nm)
         log.debug("  Excitation (f):   %.2f nm", self.excitation_nm_float)
         log.debug("  Slit size:        %s um", self.slit_size_um)
@@ -458,6 +461,7 @@ class EEPROM(object):
 
         self.invert_x_axis = 0 != self.feature_mask & 0x0001
         self.bin_2x2       = 0 != self.feature_mask & 0x0002
+        self.gen15         = 0 != self.feature_mask & 0x0004
 
         # ######################################################################
         # sanity checks
@@ -708,6 +712,7 @@ class EEPROM(object):
         mask = 0
         mask |= 0x0001 if self.invert_x_axis else 0
         mask |= 0x0002 if self.bin_2x2       else 0
+        mask |= 0x0004 if self.gen15         else 0
         return mask
 
     ##

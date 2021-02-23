@@ -1,5 +1,11 @@
 # Changelog
 
+- 2021-02-24 1.0.65
+    - docs
+    - accessory connector 
+        - added get/set_fan_enable
+        - added get/set_lamp_enable
+        - added FeatureMask.gen15
 - 2021-02-02 1.0.64
     - consolidated spectrometer feature queries into SpectrometerSettings
     - added support for "fast" area scan

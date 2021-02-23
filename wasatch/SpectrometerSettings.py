@@ -296,7 +296,7 @@ class SpectrometerSettings(object):
 
     ## will probably add something in EEPROM.FeatureMask for this
     def is_gen15(self):
-        return self.is_non_raman() or self.eeprom.serial_number == "WP-00561" # kludge
+        return self.eeprom.gen15
 
     ## @todo add this to EEPROM.feature_mask
     def has_marker(self):

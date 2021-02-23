@@ -451,7 +451,7 @@ class WasatchDevice(object):
         # finish collecting any metadata that doesn't require the laser
         ########################################################################
 
-        # read detector temperature if applicable (should we do this for Ambient as well?)
+        # read detector temperature if applicable 
         if self.settings.eeprom.has_cooling:
             try:
                 reading.detector_temperature_raw  = self.hardware.get_detector_temperature_raw()
@@ -464,8 +464,13 @@ class WasatchDevice(object):
 
             except Exception as exc:
                 log.debug("Error reading detector temperature", exc_info=1)
-            if reading.detector_temperature_raw is None:
-                return reading
+
+        # read ambient temperature if applicable 
+        if self.settings.is_gen15():
+            try:
+                reading.ambient_temperature_degC = self.hardware.get_ambient_temperature_degC()
+            except Exception as exc:
+                log.debug("Error reading ambient temperature", exc_info=1)
 
         # read battery every 10sec
         if self.settings.eeprom.has_battery:
@@ -507,10 +512,38 @@ class WasatchDevice(object):
     # @returns Reading on success, true or false on "stop processing" conditions
     def take_one_averaged_reading(self):
 
+        # Okay, let's talk about averaging.  Normally we don't perform averaging
+        # as a blocking batch process inside Wasatch.PY.  However, ENLIGHTEN's
+        # BatchCollection requirements pulled this architecture in weird 
+        # directions and we tried to accommodate responsively rather than refactor
+        # each time requirements changed...hence the current strangeness.
+        # 
+        # Normally this process (the background process dedicated to a forked
+        # WasatchDeviceWrapper object) is in "free-running" mode, taking spectra
+        # just as fast as it can in an endless loop, feeding them back to the
+        # consumer (ENLIGHTEN) over a multiprocess pipe.  To keep that pipeline
+        # "moving," generally we don't do heavy blocking operations down here
+        # in the background thread.
+        #
+        # However, the use-case for BatchCollection was very specific: to
+        # take an averaged series of darks, then enable the laser, wait for the
+        # laser to warmup, take an averaged series of dark-corrected measurements,
+        # and return the average as one spectrum.  
+        #
+        # That is VERY different from what this code was originally written to 
+        # do.  There are cleaner ways to do this, but I haven't gone back to
+        # tidy things up.
+
         averaging_enabled = (self.settings.state.scans_to_average > 1)
 
         if averaging_enabled and not self.settings.state.free_running_mode:
-            # collect the entire averaged spectrum at once (added for BatchCollection with laser delay))
+            # collect the entire averaged spectrum at once (added for 
+            # BatchCollection with laser delay)
+            #
+            # So: we're NOT in "free-running" mode, so we're basically being
+            # slaved to parent process and doing exactly what is requested
+            # "on command."  That means we can perform a big, heavy blocking
+            # scan average all at once, because they requested it.
             self.sum_count = 0
             loop_count = self.settings.state.scans_to_average
         else:
@@ -519,29 +552,29 @@ class WasatchDevice(object):
 
         log.debug("take_one_averaged_reading: loop_count = %d", loop_count)
 
+        # either take one measurement (normal), or a bunch (blocking averaging)
         reading = None
         for loop_index in range(0, loop_count):
 
-            # start a new reading (NOTE: reading.timestamp is when reading STARTED, not FINISHED!)
+            # start a new reading 
+            # NOTE: reading.timestamp is when reading STARTED, not FINISHED!
             reading = Reading(self.device_id)
 
-            # TODO...just include a copy of SpectrometerState? something to think about.
-            # That would actually provide a reason to roll all the temperature etc readouts
-            # into the SpectrometerState class...
+            # TODO...just include a copy of SpectrometerState? something to think 
+            # about. That would actually provide a reason to roll all the 
+            # temperature etc readouts into the SpectrometerState class...
             reading.integration_time_ms = self.settings.state.integration_time_ms
             reading.laser_power         = self.settings.state.laser_power
             reading.laser_power_in_mW   = self.settings.state.laser_power_in_mW
-
-            # note that on microRaman, this is really "whether we COMMANDED the 
-            # laser to be enabled"...a genuine read is done at the end of the 
-            # averaged measurement
             reading.laser_enabled       = self.settings.state.laser_enabled  
 
-            # are we reading one spectrum (normal mode, or "slow" area scan), or
+            # Are we reading one spectrum (normal mode, or "slow" area scan), or
             # doing a batch-read of a whole frame ("fast" area scan)?
+            #
+            # It's a bit confusing that this is INSIDE the scan averaging loop...
+            # there is NO use-case for "averaged" area scan.  We should move this
+            # up and out of take_one_averaged_reading().
             if self.settings.state.area_scan_enabled and self.settings.state.area_scan_fast:
-
-                # YOU ARE HERE
 
                 # collect a whole frame of area scan data
                 reading.area_scan_data = []
@@ -573,7 +606,9 @@ class WasatchDevice(object):
 
             else:
 
-                # collect next spectrum
+                # collect ONE spectrum (it's in a while loop because we may have
+                # to wait for an external trigger, and must wait through a series
+                # of timeouts)
                 externally_triggered = self.settings.state.trigger_source == SpectrometerState.TRIGGER_SOURCE_EXTERNAL
                 try:
                     while True:
@@ -605,11 +640,55 @@ class WasatchDevice(object):
                     reading.spectrum = None
                     reading.failure = str(exc)
 
-            if not reading.failure:
-                # InGaAs even/odd kludge
-                # self.correct_ingaas_gain_and_offset(reading)
+            # we have now collected ONE of the 
 
-                # update summed spectrum
+            ####################################################################
+            # Apply InGaAs even/odd gain/offset in software (until FPGA impl)
+            ####################################################################
+
+            if not reading.failure:
+                # We used to apply InGaAs even/odd gain and offset here in the
+                # driver, but then moved it to firmware when integrating the 
+                # G14237...except that implementation apparently has some bugs.
+                # Watch this space.
+                #
+                # self.correct_ingaas_gain_and_offset(reading)
+                pass
+
+            ####################################################################
+            # Aggregate scan averaging
+            ####################################################################
+
+            # It's important to note here that the scan averaging "sum" buffer
+            # here (self.summed_spectra) and counter (self.sum_count) are 
+            # attributes of this WasatchDevice object: they are not part of the
+            # Reading being sent back to the caller.
+            #
+            # The current architecture in Wasatch.PY, which is a little different
+            # than other Wasatch drivers, is that even when scan averaging is
+            # enabled, EVERY SPECTRUM will be flowed back to the caller.  
+            #
+            # This is because early versions of ENLIGHTEN showed the "individual" 
+            # (pre-averaged) spectra as a faint grey trace in the background, 
+            # updating with each integration, showing the higher noise level of 
+            # "raw" spectra while an on-screen counter showed the incrementing
+            # tally of summed spectra in the buffer.
+            #
+            # Then, when the FINAL raw spectrum had been read and the complete
+            # average could be computed, that averaged spectrum was returned
+            # with a special flag in the Reading object to indicate "fully
+            # averaged."
+            #
+            # We no longer show the "background" spectral trace in ENLIGHTEN,
+            # so this is kind of wasting some intra-process bandwidth, but we
+            # do still increment the on-screen tally as feedback while the
+            # averaging is taking place, so the in-process Reading messages
+            # sent during an averaged collection are not entirely wasted.
+            #
+            # Still, this is not the way we would have designed a Python driver
+            # "from a blank sheet," and our other driver architectures show that.
+
+            if not reading.failure:
                 if averaging_enabled:
                     if self.sum_count == 0:
                         self.summed_spectra = [float(i) for i in reading.spectrum]
