@@ -1439,10 +1439,10 @@ class FeatureIdentificationDevice(object):
 
         # todo: should make enums for all opcodes
         SET_LASER_ENABLE          = 0xbe
-        SET_LASER_MOD_ENABLE      = 0xbd
-        SET_LASER_MOD_PERIOD      = 0xc7
-        SET_LASER_MOD_PULSE_WIDTH = 0xdb
-       #SET_LASER_MOD_DURATION    = 0xb9 # MZ: what is this for?
+        SET_MOD_ENABLE      = 0xbd
+        SET_MOD_PERIOD      = 0xc7
+        SET_MOD_PULSE_WIDTH = 0xdb
+       #SET_MOD_DURATION    = 0xb9 # MZ: what is this for?
 
         # prepare 
         current_laser_setpoint = self.last_applied_laser_power
@@ -1456,14 +1456,14 @@ class FeatureIdentificationDevice(object):
         ########################################################################
 
         # set modulation period to 100us
-        self.send_code(SET_LASER_MOD_PERIOD, 100, 0, 100, label="SET_LASER_MOD_PERIOD (ramp)") 
+        self.send_code(SET_MOD_PERIOD, 100, 0, 100, label="SET_MOD_PERIOD (ramp)") 
 
         width = int(round(current_laser_setpoint))
         buf = [0] * 8
 
         # re-apply current power (possibly redundant, but also enabling laser)
-        self.send_code(SET_LASER_MOD_ENABLE, 1, 0, buf, label="SET_LASER_MOD_ENABLE (ramp)")
-        self.send_code(SET_LASER_MOD_PULSE_WIDTH, width, 0, buf, label="SET_LASER_MOD_PULSE_WIDTH (ramp)")
+        self.send_code(SET_MOD_ENABLE, 1, 0, buf, label="SET_MOD_ENABLE (ramp)")
+        self.send_code(SET_MOD_PULSE_WIDTH, width, 0, buf, label="SET_MOD_PULSE_WIDTH (ramp)")
         self.send_code(SET_LASER_ENABLE, 1, label="SET_LASER_ENABLE (ramp)") # no buf
 
         # are we done?
@@ -1485,7 +1485,7 @@ class FeatureIdentificationDevice(object):
             laser_setpoint = float(current_laser_setpoint) - laser_setpoint
             eighty_percent_start = laser_setpoint
 
-        self.send_code(SET_LASER_MOD_PULSE_WIDTH, int(round(eighty_percent_start)), 0, buf, label="SET_LASER_MOD_PULSE_WIDTH (80%)")
+        self.send_code(SET_MOD_PULSE_WIDTH, int(round(eighty_percent_start)), 0, buf, label="SET_MOD_PULSE_WIDTH (80%)")
         sleep(0.02) # 20ms
 
         ########################################################################
@@ -1503,7 +1503,7 @@ class FeatureIdentificationDevice(object):
                                  + (scalar * (float(target_laser_setpoint) - eighty_percent_start))
             # apply the incremental pulse width
             width = int(round(target_loop_setpoint))
-            self.send_code(SET_LASER_MOD_PULSE_WIDTH, width, 0, buf, label="SET_LASER_MOD_PULSE_WIDTH (ramp)")
+            self.send_code(SET_MOD_PULSE_WIDTH, width, 0, buf, label="SET_MOD_PULSE_WIDTH (ramp)")
 
             # allow 10ms to settle
             log.debug("%s: counter = %3d, width = 0x%04x, target_loop_setpoint = %8.2f", prefix, counter, width, target_loop_setpoint)
@@ -1645,7 +1645,7 @@ class FeatureIdentificationDevice(object):
                 lsw = 0 # disabled
                 msw = 0
                 buf = [0] * 8
-                return self.send_code(0xbd, lsw, msw, buf, label="SET_LASER_MOD_ENABLED (full)")
+                return self.send_code(0xbd, lsw, msw, buf, label="SET_MOD_ENABLED (full)")
 
         period_us = 1000 if self.settings.state.laser_power_high_resolution else 100
         width_us = int(round(1.0 * value * period_us / 100.0, 0)) # note that value is in range (0, 100) not (0, 1)
@@ -1664,7 +1664,7 @@ class FeatureIdentificationDevice(object):
 
         # Set the pulse width to the 0-100 percentage of power
         buf = [0] * 8
-        result = self.send_code(0xdb, wValue=width_us, wIndex=0, data_or_wLength=buf, label="SET_LASER_MOD_PULSE_WIDTH (immediate)")
+        result = self.send_code(0xdb, wValue=width_us, wIndex=0, data_or_wLength=buf, label="SET_MOD_PULSE_WIDTH (immediate)")
         if result is None:
             log.critical("Hardware Failure to send pulse width")
             return False
@@ -1673,7 +1673,7 @@ class FeatureIdentificationDevice(object):
         lsw = 1 # enabled
         msw = 0
         buf = [0] * 8
-        result = self.send_code(0xbd, lsw, msw, buf, label="SET_LASER_MOD_ENABLED (immediate)")
+        result = self.send_code(0xbd, lsw, msw, buf, label="SET_MOD_ENABLED (immediate)")
 
         if result is None:
             log.critical("Hardware Failure to send laser modulation")
@@ -1819,7 +1819,8 @@ class FeatureIdentificationDevice(object):
 
         # enforce ascending order
         if start > end:
-            (start, end) = (end, start)
+            # (start, end) = (end, start)
+            return log.error("set_vertical_binning requires ascending order (ignoring %d, %d)", start, end)
 
         self.send_code(bRequest        = 0xff, 
                        wValue          = 0x21,  
@@ -1908,7 +1909,7 @@ class FeatureIdentificationDevice(object):
         
     def set_cont_strobe_enable(self, flag):
         value = 1 if flag else 0
-        return self.send_code(0xbd, value, 0, buf, label="SET_CONT_STROBE_ENABLE")
+        return self.send_code(0xbd, value, label="SET_CONT_STROBE_ENABLE")
 
     def get_cont_strobe_enabled(self, flag):
         return self.get_code(0xe3, label="GET_CONT_STROBE_ENABLED", msb_len=1)
@@ -1937,10 +1938,16 @@ class FeatureIdentificationDevice(object):
             log.error("ambient temperature requires Gen 1.5")
             return -999
 
+        # there seems to be something wrong here...skip for now
+        # return -6
+
+        log.debug("attempting to read ambient temperature")
         result = self.get_code(0x35, label="GET_AMBIENT_TEMPERATURE", msb_len=2) # endian order unconfirmed
         if result is None or len(result) != 2:
             log.error("failed to read ambient temperature")
             return
+        log.debug("ambient temperature raw: %s", result)
+        return -5
 
         msb = (raw >> 8) & 0xff
         lsb = raw & 0xff
@@ -1997,23 +2004,23 @@ class FeatureIdentificationDevice(object):
         log.debug("get_laser_enabled: %s", enabled)
         return enabled
         
-    def get_link_laser_mod_to_integration_time(self):
-        return self.get_code(0xde, label="GET_LINK_LASER_MOD_TO_INTEGRATION_TIME", msb_len=1)
+    def get_mod_linked_to_integration(self):
+        return self.get_code(0xde, label="GET_MOD_LINKED_TO_INTEGRATION", msb_len=1)
 
-    def get_laser_mod_enabled(self):
-        return self.get_code(0xe3, label="GET_LASER_MOD_ENABLED", msb_len=1)
+    def get_mod_enabled(self):
+        return self.get_code(0xe3, label="GET_MOD_ENABLED", msb_len=1)
 
-    def get_laser_mod_pulse_width(self):
-        return self.get_code(0xdc, label="GET_LASER_MOD_PULSE_WIDTH", lsb_len=5)
+    def get_mod_pulse_width(self):
+        return self.get_code(0xdc, label="GET_MOD_PULSE_WIDTH", lsb_len=5)
 
-    def get_laser_mod_duration(self):
-        return self.get_code(0xc3, label="GET_LASER_MOD_DURATION", lsb_len=5)
+    def get_mod_duration(self):
+        return self.get_code(0xc3, label="GET_MOD_DURATION", lsb_len=5)
 
-    def get_laser_mod_period(self):
-        return self.get_code(0xcb, label="GET_LASER_MOD_PERIOD", lsb_len=5)
+    def get_mod_period(self):
+        return self.get_code(0xcb, label="GET_MOD_PERIOD", lsb_len=5)
 
-    def get_laser_mod_pulse_delay(self): 
-        return self.get_code(0xca, label="GET_LASER_MOD_PULSE_DELAY", lsb_len=5)
+    def get_mod_pulse_delay(self): 
+        return self.get_code(0xca, label="GET_MOD_PULSE_DELAY", lsb_len=5)
 
     def get_selected_adc(self):
         value = self.get_code(0xee, label="GET_SELECTED_ADC", msb_len=1)

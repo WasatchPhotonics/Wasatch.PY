@@ -1,5 +1,10 @@
 # Changelog
 
+- 2021-03-15 1.0.66
+    - added FeatureMask.cutoff_filter_installed
+    - added EEPROM.laser_warmup_sec
+    - added Gen 1.5 to WasatchShell
+    - made Fast Area Scan the default
 - 2021-02-24 1.0.65
     - docs
     - accessory connector 

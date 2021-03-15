@@ -39,6 +39,7 @@ class EEPROM(object):
         self.invert_x_axis               = False
         self.bin_2x2                     = False
         self.gen15                       = False
+        self.cutoff_filter_installed     = False
         self.excitation_nm               = 0.0
         self.excitation_nm_float         = 0.0
         self.slit_size_um                = 0
@@ -49,6 +50,7 @@ class EEPROM(object):
         self.detector_offset             = 0
         self.detector_gain_odd           = 1.9
         self.detector_offset_odd         = 0
+        self.laser_warmup_sec            = 0
                                          
         self.wavelength_coeffs           = []
         self.degC_to_dac_coeffs          = []
@@ -122,6 +124,8 @@ class EEPROM(object):
                           "bad_pixels",
                           "bin_2x2",
                           "gen15",
+                          "cutoff_filter_installed",
+                          "laser_warmup_sec",
                           "roi_horizontal_end",             
                           "roi_horizontal_start",           
                           "roi_vertical_region_1_end",      
@@ -172,16 +176,13 @@ class EEPROM(object):
     # "editable" fields to this one
     def update_editable(self, new_eeprom):
         for field in self.editable:
-            log.debug("Updating %s", field)
             old = getattr(self, field)
             new = copy.deepcopy(getattr(new_eeprom, field))
-
             if old == new:
-                log.debug("  no change")
+                log.debug("  %s: no change (%s == %s)", field, old, new)
             else:
                 setattr(self, field, new)
-                log.debug("  old: %s", old)
-                log.debug("  new: %s", getattr(self, field))
+                log.debug("  %s: changed %s --> %s", field, old, new)
     ## 
     # given a set of the 8 buffers read from a spectrometer via USB,
     # parse those into the approrpriate fields and datatypes
@@ -235,8 +236,10 @@ class EEPROM(object):
         log.debug("  Invert X-Axis:    %s", self.invert_x_axis)
         log.debug("  Bin 2x2:          %s", self.bin_2x2)
         log.debug("  Gen 1.5:          %s", self.gen15)
+        log.debug("  Cutoff Filter:    %s", self.cutoff_filter_installed)
         log.debug("  Excitation:       %s nm", self.excitation_nm)
         log.debug("  Excitation (f):   %.2f nm", self.excitation_nm_float)
+        log.debug("  Laser Warmup Sec: %d", self.laser_warmup_sec)
         log.debug("  Slit size:        %s um", self.slit_size_um)
         log.debug("  Start Integ Time: %d ms", self.startup_integration_time_ms)
         log.debug("  Start Temp:       %.2f degC", self.startup_temp_degC)
@@ -363,6 +366,8 @@ class EEPROM(object):
 
         self.detector                        = self.unpack((2,  0, 16), "s", "detector")
         self.active_pixels_horizontal        = self.unpack((2, 16,  2), "H", "pixels")
+        if self.format >= 10:
+            self.laser_warmup_sec            = self.unpack((2, 18,  1), "B", "laser_warmup_sec")
         self.active_pixels_vertical          = self.unpack((2, 19,  2), "H" if self.format >= 4 else "h")
 
         if self.format >= 8:
@@ -459,9 +464,10 @@ class EEPROM(object):
         # feature mask
         # ######################################################################
 
-        self.invert_x_axis = 0 != self.feature_mask & 0x0001
-        self.bin_2x2       = 0 != self.feature_mask & 0x0002
-        self.gen15         = 0 != self.feature_mask & 0x0004
+        self.invert_x_axis           = 0 != self.feature_mask & 0x0001
+        self.bin_2x2                 = 0 != self.feature_mask & 0x0002
+        self.gen15                   = 0 != self.feature_mask & 0x0004
+        self.cutoff_filter_installed = 0 != self.feature_mask & 0x0008
 
         # ######################################################################
         # sanity checks
@@ -673,7 +679,7 @@ class EEPROM(object):
     # @param address    a tuple of the form (buf, offset, len)
     # @param data_type  see https://docs.python.org/2/library/struct.html#format-characters
     # @param value      value to serialize
-    def pack(self, address, data_type, value):
+    def pack(self, address, data_type, value, label=None):
         page       = address[0]
         start_byte = address[1]
         length     = address[2]
@@ -705,14 +711,16 @@ class EEPROM(object):
         else:
             struct.pack_into(data_type, buf, start_byte, value)
 
-        log.debug("Packed (%d, %2d, %2d) '%s' value %s -> %s", 
-            page, start_byte, length, data_type, value, buf[start_byte:end_byte])
+        extra = "" if label is None else (" (%s)" % label)
+        log.debug("Packed (%d, %2d, %2d) '%s' value %s -> %s%s", 
+            page, start_byte, length, data_type, value, buf[start_byte:end_byte], extra)
 
     def generate_feature_mask(self):
         mask = 0
-        mask |= 0x0001 if self.invert_x_axis else 0
-        mask |= 0x0002 if self.bin_2x2       else 0
-        mask |= 0x0004 if self.gen15         else 0
+        mask |= 0x0001 if self.invert_x_axis           else 0
+        mask |= 0x0002 if self.bin_2x2                 else 0
+        mask |= 0x0004 if self.gen15                   else 0
+        mask |= 0x0008 if self.cutoff_filter_installed else 0
         return mask
 
     ##
@@ -751,7 +759,7 @@ class EEPROM(object):
         self.pack((0, 36,  1), "?", self.has_cooling)
         self.pack((0, 37,  1), "?", self.has_battery)
         self.pack((0, 38,  1), "?", self.has_laser)
-        self.pack((0, 39,  2), "H", self.generate_feature_mask())
+        self.pack((0, 39,  2), "H", self.generate_feature_mask(), "FeatureMask")
         self.pack((0, 41,  2), "H", self.slit_size_um)
         self.pack((0, 43,  2), "H", self.startup_integration_time_ms)
         self.pack((0, 45,  2), "h", self.startup_temp_degC)
@@ -788,7 +796,7 @@ class EEPROM(object):
 
         self.pack((2,  0, 16), "s", self.detector)
         self.pack((2, 16,  2), "H", self.active_pixels_horizontal)
-        #        skip 18
+        self.pack((2, 18,  1), "B", self.laser_warmup_sec)
         self.pack((2, 19,  2), "H", self.active_pixels_vertical)
         if self.format < 7:
             self.pack((2, 21,  2), "H", max(0xffff, self.min_integration_time_ms))

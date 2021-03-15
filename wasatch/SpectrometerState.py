@@ -46,7 +46,7 @@ class SpectrometerState(object):
 
         # area scan mode
         self.area_scan_enabled = False
-        self.area_scan_fast = False
+        self.area_scan_fast = True # now the default
 
         # battery
         self.battery_percentage = 0.0
