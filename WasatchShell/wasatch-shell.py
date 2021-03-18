@@ -59,11 +59,11 @@ class WasatchShell(object):
         for func_name in [ 
             "get_actual_frames",
             "get_actual_integration_time_us",
-            "get_ambient_temperature_degC"
+            "get_ambient_temperature_degC",
             "get_ccd_sensing_threshold",
             "get_ccd_threshold_sensing_mode",
             "get_ccd_trigger_source",
-            "get_cont_strobe_enable",
+            "get_cont_strobe_enabled",
             "get_cont_strobe_period_us",
             "get_cont_strobe_width_us",
             "get_dac",
@@ -74,20 +74,23 @@ class WasatchShell(object):
             "get_detector_temperature_degC",
             "get_detector_temperature_raw",
             "get_external_trigger_output",
+            "get_fan_enabled",
             "get_fpga_firmware_version",
+            "get_high_gain_mode_enabled",
             "get_integration_time_ms",
+            "get_lamp_enabled",
             "get_laser_enabled",
             "get_laser_interlock",
-            "get_laser_mod_duration",
-            "get_laser_mod_enabled",
-            "get_laser_mod_period",
-            "get_laser_mod_pulse_delay",
-            "get_laser_mod_pulse_width",
+            "get_mod_duration",
+            "get_mod_enabled",
+            "get_mod_period",
+            "get_mod_pulse_delay",
+            "get_mod_pulse_width",
             "get_laser_power_ramping_enabled",
             "get_laser_temperature_degC",
             "get_laser_temperature_raw",
             "get_laser_watchdog_sec",
-            "get_link_laser_mod_to_integration_time",
+            "get_mod_linked_to_integration",
             "get_microcontroller_firmware_version",
             "get_opt_actual_integration_time",
             "get_opt_area_scan",
@@ -103,7 +106,7 @@ class WasatchShell(object):
             "get_selected_adc",
             "get_selected_laser",
             "get_sensor_line_length",
-            "get_shutter_enable"
+            "get_shutter_enabled",
             "get_tec_enabled",
             "get_trigger_delay",
             "get_vr_continuous_ccd",
@@ -143,6 +146,8 @@ class WasatchShell(object):
         set_raman_mode                         - takes 0 or 1
         set_raman_delay_ms                     - takes integer argument
                                                
+        set_fan_enable                         - takes bool argument
+        set_lamp_enable                        - takes bool argument
         set_shutter_enable                     - takes bool argument
         set_cont_strobe_enable                 - takes bool argument
         set_cont_strobe_period_us              - takes int argument
@@ -373,6 +378,14 @@ class WasatchShell(object):
 
                         elif command == "set_selected_laser":
                             self.device.change_setting("selected_laser", self.read_int())
+                            self.display(1)
+
+                        elif command == "set_fan_enable":
+                            self.device.change_setting("fan_enable", self.read_bool())
+                            self.display(1)
+
+                        elif command == "set_lamp_enable":
+                            self.device.change_setting("lamp_enable", self.read_bool())
                             self.display(1)
 
                         elif command == "set_shutter_enable":

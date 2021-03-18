@@ -544,3 +544,10 @@ def parabolic_approximation(pixel, x, y):
     log.debug("parabolic approximation: x.coord %.2f", x_coord)
 
     return (x_coord, vertex_y)
+
+##
+# @see https://stackoverflow.com/a/9147327/6436775
+def twos_complement(val, bits):
+    if (val & (1 << (bits - 1))) != 0: # if sign bit is set e.g., 8bit: 128-255
+        val = val - (1 << bits)        # compute negative value
+    return val    

@@ -46,7 +46,7 @@ class SpectrometerState(object):
 
         # area scan mode
         self.area_scan_enabled = False
-        self.area_scan_fast = False
+        self.area_scan_fast = True # now the default
 
         # battery
         self.battery_percentage = 0.0
@@ -58,9 +58,8 @@ class SpectrometerState(object):
         # accessory connector
         # ######################################################################
 
-        # NOTE: we're re-using self.laser_enabled for lamp_enabled, as these 
-        # serve the same function and share the same opcode
-
+        self.fan_enabled = False
+        self.lamp_enabled = False
         self.shutter_enabled = False
         self.cont_strobe_enabled = False
 

@@ -1,5 +1,18 @@
 # Changelog
 
+- 2021-03-18 1.0.67
+    - fixed InGaAs bug on get\_high\_gain\_mode\_enabled
+- 2021-03-15 1.0.66
+    - added FeatureMask.cutoff_filter_installed
+    - added EEPROM.laser_warmup_sec
+    - added Gen 1.5 to WasatchShell
+    - made Fast Area Scan the default
+- 2021-02-24 1.0.65
+    - docs
+    - accessory connector 
+        - added get/set_fan_enable
+        - added get/set_lamp_enable
+        - added FeatureMask.gen15
 - 2021-02-02 1.0.64
     - consolidated spectrometer feature queries into SpectrometerSettings
     - added support for "fast" area scan

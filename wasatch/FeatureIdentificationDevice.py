@@ -164,7 +164,7 @@ class FeatureIdentificationDevice(object):
             if not self.settings.is_arm():
                 self.settings.eeprom.active_pixels_horizontal = 512
 
-            if not self.get_high_gain_mode_enable():
+            if not self.get_high_gain_mode_enabled():
                 self.set_high_gain_mode_enable(True)
 
         # ######################################################################
@@ -684,31 +684,49 @@ class FeatureIdentificationDevice(object):
         self.settings.fpga_firmware_version = s
         return s
 
-    ## send "acquire", then immediately read the bulk endpoint(s).
+    ## 
+    # Send "acquire", then immediately read the bulk endpoint(s).
+    #
+    # Probably the most important method in this class, more commonly called
+    # "getSpectrum" in most drivers.
+    #
+    # @param trigger (Input) send an initial ACQUIRE 
+    #
+    # @returns tuple of (spectrum[], area_scan_row_count) for success
+    # @returns None when it times-out while waiting for an external trigger
+    #          (interpret as, "didn't find any fish this time, try again in a bit")
     # @throws exception on timeout (unless external triggering enabled)
     def get_line(self, trigger=True):
+
+        ########################################################################
+        # send the ACQUIRE
+        ########################################################################
+
+        # main use-case for NOT sending a trigger would be when reading 
+        # subsequent lines of data from area scan "fast" mode
+
         acquisition_timestamp = datetime.datetime.now()
         if trigger and self.settings.state.trigger_source == SpectrometerState.TRIGGER_SOURCE_INTERNAL:
-            # Only send ACQUIRE (internal SW trigger) if external HW trigger is disabled (the default)
+            # Only send ACQUIRE (internal SW trigger) if external HW trigger is disabled (default)
             log.debug("get_line: requesting spectrum")
             self.send_code(0xad, label="ACQUIRE_SPECTRUM")
 
+        ########################################################################
+        # prepare to read spectrum 
+        ########################################################################
+
         pixels = self.settings.pixels()
 
-        # regardless of pixel count, assume uint16
+        # all models return spectra as [uint16]
         endpoints = [0x82]
         block_len_bytes = pixels * 2
         if pixels == 2048 and not self.settings.is_arm():
-            # 1024 pixels apiece read from two endpoints
             endpoints = [0x82, 0x86]
-            block_len_bytes = 2048 
+            block_len_bytes = 2048 # 1024 pixels apiece from two endpoints
 
-        self.wait_for_usb_available()
-
-        spectrum = []
         if self.settings.is_micro():
-            # we have no idea if microRaman has to "wake up" the sensor, so wait long 
-            # enough for 6 throwaway frames if need be
+            # we have no idea if microRaman has to "wake up" the sensor, so wait 
+            # long enough for 6 throwaway frames if need be
             timeout_ms = self.settings.state.integration_time_ms * 8 + 500 * self.settings.num_connected_devices
         else:
             timeout_ms = self.settings.state.integration_time_ms * 2 + 1000 * self.settings.num_connected_devices
@@ -717,9 +735,13 @@ class FeatureIdentificationDevice(object):
         if self.settings.state.area_scan_enabled:
             timeout_ms += 250
 
-        # wait for integration to complete (only do this for micro?)
-        # sleep(self.settings.state.integration_time_ms * 1000)
+        self.wait_for_usb_available()
 
+        ########################################################################
+        # read the data from bulk endpoint(s)
+        ########################################################################
+
+        spectrum = []
         for endpoint in endpoints:
             data = None 
             while data is None:
@@ -747,6 +769,10 @@ class FeatureIdentificationDevice(object):
 
             spectrum.extend(subspectrum)
 
+        ########################################################################
+        # error-check the received spectrum
+        ########################################################################
+
         log.debug("get_line: completed in %.2f sec (vs integration time %d ms)",
             (datetime.datetime.now() - acquisition_timestamp).total_seconds(),
             self.settings.state.integration_time_ms)
@@ -761,42 +787,63 @@ class FeatureIdentificationDevice(object):
             else:
                 spectrum = spectrum[:-pixels]
 
+        ########################################################################
+        #
+        #                   post-process the spectrum
+        #
+        ########################################################################
+
+        ########################################################################
+        # Area Scan (rare)
+        ########################################################################
+
         # if we're in area scan mode, use first pixel as row index (leave pixel in spectrum)
         # (do this before any horizontal averaging which might corrupt first pixel)
         area_scan_row_count = -1
         if self.settings.state.area_scan_enabled:
             area_scan_row_count = spectrum[0] 
 
-            # temporary kludge to support 1-indexed Hamamatsu FPGA FW
-            # if not self.settings.is_micro():
-            #     area_scan_row_count -= 1 
-
+            # Leave the row counter in place if we're in "Fast" Area Scan mode, 
+            # since downstream software can use it to assemble the final image.
+            # ("Slow" Area Scan mode sent this value back as a separate field in
+            # the Reading, but this isn't possible in Fast mode.  Just delete
+            # Slow mode when Fast is widely deployed.)
             if not self.settings.state.area_scan_fast:
-                # override row counter to smooth data and avoid a weird peak/trough 
-                # which could affect other smoothing, normalization or min/max algos.
-                # (could extrapolate backwards from spectrum[2])
                 spectrum[0] = spectrum[1]
 
-            if self.settings.eeprom.serial_number == "WP-00646":
-                log.debug("get_line: stomping first 123 pixels in Area Scan")
-                utils.stomp_first(spectrum, 123) # kludge for "overly aggressive" early SiG FW
+        ########################################################################
+        # Start-of-Spectrum Marker (rare)
+        ########################################################################
 
-        # check and track the "start of spectrum" marker
+        # Check and track the "start of spectrum" marker.  This is very rare and 
+        # only for experimental units.  Currently Wasatch does not have any
+        # "standard" spectrum framing data, although such would be useful. This
+        # is only enabled in FPGAs when trying to debug rare timing issues. The
+        # "Marker" is simply a pixel with the value 0xffff.  On FPGA FW where the
+        # marker is enabled, spectral data is clamped to 0xfffe, meaning such 
+        # markers can ONLY appear as the first pixel in a spectrum.
         if self.settings.has_marker() and not self.settings.state.area_scan_enabled:
             marker = 0xffff
             if spectrum[0] == marker:
-                # good, so overwrite
+                # marker found where expected, so all is good (overwrite for a 
+                # clean graph)
                 spectrum[0] = spectrum[1]
             else:
+                # we DIDN'T find the marker where it was expected, so flag and
+                # go hunting
                 log.error("get_line: missing marker")
                 for i in range(pixels):
                     if spectrum[i] == marker:
                         log.error("get_line: marker found at pixel %d", i)
-                # don't do anything else in Python at this time (examining issue in Wasatch.NET)
 
         # consider skipping much of the following if in area scan mode
 
-        # special handling for various detectors
+        ########################################################################
+        # Stomp array ends
+        ########################################################################
+
+        # some detectors have "garbage" pixels at the front or end of every
+        # spectrum (sync bytes and what-not)
         if self.settings.is_micro():
             if self.settings.is_imx392():
                 utils.stomp_first(spectrum, 3)
@@ -805,6 +852,10 @@ class FeatureIdentificationDevice(object):
                 # presumably IMX385
                 utils.stomp_first(spectrum, 3)
                 utils.stomp_last (spectrum, 1)
+
+        ########################################################################
+        # Invert X-Axis (rare)
+        ########################################################################
 
         # For custom benches where the detector is essentially rotated
         # 180-deg from our typical orientation with regard to the grating
@@ -817,13 +868,20 @@ class FeatureIdentificationDevice(object):
         if self.settings.eeprom.invert_x_axis:
             spectrum.reverse()
 
-        # bad pixel correction
+        ########################################################################
+        # Bad Pixel Correction
+        ########################################################################
+
         if self.settings.state.bad_pixel_mode == SpectrometerState.BAD_PIXEL_MODE_AVERAGE:
             self.correct_bad_pixels(spectrum)
 
-        # a prototype model output spectra with alternating pixels swapped, and this was
-        # quicker than changing in firmware (do this BEFORE grabbing first pixel for area
-        # scan index)
+        ########################################################################
+        # Swap Alternating Pixels (very rare)
+        ########################################################################
+
+        # a prototype model output spectra with alternating pixels swapped, and 
+        # this was quicker than changing in firmware 
+
         if self.settings.state.swap_alternating_pixels:
             log.debug("swapping alternating pixels: spectrum = %s", spectrum[:10])
             corrected = []
@@ -832,7 +890,11 @@ class FeatureIdentificationDevice(object):
             spectrum = corrected
             log.debug("swapped alternating pixels: spectrum = %s", spectrum[:10])
 
-        # apply 2x2 pixel binning (don't worry about vertical axis at this time)
+        ########################################################################
+        # 2x2 binning
+        ########################################################################
+
+        # apply so-called "2x2 pixel binning" (even though we're in 1D space...)
         if self.settings.eeprom.bin_2x2:
             log.debug("applying bin_2x2")
             binned = []
@@ -841,10 +903,15 @@ class FeatureIdentificationDevice(object):
             binned.append(spectrum[-1])
             spectrum = binned
 
-        # When integrating new sensors, sometimes we want to only look at even-
-        # numbered pixels to flatten-out irregularities in Bayer filters or InGaAs 
-        # arrays.  However, we don't want to disrupt the expected pixel-count, so 
-        # just average-over the odd pixels.
+        ########################################################################
+        # Graph Alternating Pixels
+        ########################################################################
+
+        # When integrating new sensors, or testing "interleaved" detectors like
+        # the InGaAs, sometimes we want to only look at "every other" pixel to 
+        # flatten-out irregularities in Bayer filters or photodiode arrays.  
+        # However, we don't want to disrupt the expected pixel-count, so just 
+        # average-over the skipped pixels.
         if self.settings.state.graph_alternating_pixels:
             smoothed = []
             for i in range(len(spectrum)):
@@ -858,6 +925,9 @@ class FeatureIdentificationDevice(object):
                     smoothed.append(averaged)
             spectrum = smoothed
 
+        # Somewhat oddly, we're currently returning a TUPLE of the spectrum and
+        # the area scan row count.  When "Fast" mode is more commonplace we'll
+        # change this back to just returning the spectrum array directly.
         return SpectrumAndRow(spectrum, area_scan_row_count)
 
     ## 
@@ -1186,12 +1256,12 @@ class FeatureIdentificationDevice(object):
         self.send_code(0xeb, wValue=value, wIndex=0, data_or_wLength=buf, label="SET_HIGH_GAIN_MODE_ENABLE")
         self.settings.state.high_gain_mode_enabled = flag
 
-    def get_high_gain_mode_enable(self):
+    def get_high_gain_mode_enabled(self):
         if not self.settings.is_ingaas():
             log.debug("GET_HIGH_GAIN_MODE_ENABLE only supported on InGaAs")
             return self.settings.eeprom.high_gain_mode_enabled
 
-        self.settings.state.high_gain_mode_enabled = 0 != self.get_code(0xec, lsb_len=1, label="GET_HIGH_GAIN_MODE_ENABLE")
+        self.settings.state.high_gain_mode_enabled = 0 != self.get_code(0xec, lsb_len=1, label="GET_HIGH_GAIN_MODE_ENABLED")
         return self.settings.state.high_gain_mode_enabled 
 
     ##
@@ -1369,10 +1439,10 @@ class FeatureIdentificationDevice(object):
 
         # todo: should make enums for all opcodes
         SET_LASER_ENABLE          = 0xbe
-        SET_LASER_MOD_ENABLE      = 0xbd
-        SET_LASER_MOD_PERIOD      = 0xc7
-        SET_LASER_MOD_PULSE_WIDTH = 0xdb
-       #SET_LASER_MOD_DURATION    = 0xb9 # MZ: what is this for?
+        SET_MOD_ENABLE      = 0xbd
+        SET_MOD_PERIOD      = 0xc7
+        SET_MOD_PULSE_WIDTH = 0xdb
+       #SET_MOD_DURATION    = 0xb9 # MZ: what is this for?
 
         # prepare 
         current_laser_setpoint = self.last_applied_laser_power
@@ -1386,14 +1456,14 @@ class FeatureIdentificationDevice(object):
         ########################################################################
 
         # set modulation period to 100us
-        self.send_code(SET_LASER_MOD_PERIOD, 100, 0, 100, label="SET_LASER_MOD_PERIOD (ramp)") 
+        self.send_code(SET_MOD_PERIOD, 100, 0, 100, label="SET_MOD_PERIOD (ramp)") 
 
         width = int(round(current_laser_setpoint))
         buf = [0] * 8
 
         # re-apply current power (possibly redundant, but also enabling laser)
-        self.send_code(SET_LASER_MOD_ENABLE, 1, 0, buf, label="SET_LASER_MOD_ENABLE (ramp)")
-        self.send_code(SET_LASER_MOD_PULSE_WIDTH, width, 0, buf, label="SET_LASER_MOD_PULSE_WIDTH (ramp)")
+        self.send_code(SET_MOD_ENABLE, 1, 0, buf, label="SET_MOD_ENABLE (ramp)")
+        self.send_code(SET_MOD_PULSE_WIDTH, width, 0, buf, label="SET_MOD_PULSE_WIDTH (ramp)")
         self.send_code(SET_LASER_ENABLE, 1, label="SET_LASER_ENABLE (ramp)") # no buf
 
         # are we done?
@@ -1415,7 +1485,7 @@ class FeatureIdentificationDevice(object):
             laser_setpoint = float(current_laser_setpoint) - laser_setpoint
             eighty_percent_start = laser_setpoint
 
-        self.send_code(SET_LASER_MOD_PULSE_WIDTH, int(round(eighty_percent_start)), 0, buf, label="SET_LASER_MOD_PULSE_WIDTH (80%)")
+        self.send_code(SET_MOD_PULSE_WIDTH, int(round(eighty_percent_start)), 0, buf, label="SET_MOD_PULSE_WIDTH (80%)")
         sleep(0.02) # 20ms
 
         ########################################################################
@@ -1433,7 +1503,7 @@ class FeatureIdentificationDevice(object):
                                  + (scalar * (float(target_laser_setpoint) - eighty_percent_start))
             # apply the incremental pulse width
             width = int(round(target_loop_setpoint))
-            self.send_code(SET_LASER_MOD_PULSE_WIDTH, width, 0, buf, label="SET_LASER_MOD_PULSE_WIDTH (ramp)")
+            self.send_code(SET_MOD_PULSE_WIDTH, width, 0, buf, label="SET_MOD_PULSE_WIDTH (ramp)")
 
             # allow 10ms to settle
             log.debug("%s: counter = %3d, width = 0x%04x, target_loop_setpoint = %8.2f", prefix, counter, width, target_loop_setpoint)
@@ -1575,7 +1645,7 @@ class FeatureIdentificationDevice(object):
                 lsw = 0 # disabled
                 msw = 0
                 buf = [0] * 8
-                return self.send_code(0xbd, lsw, msw, buf, label="SET_LASER_MOD_ENABLED (full)")
+                return self.send_code(0xbd, lsw, msw, buf, label="SET_MOD_ENABLED (full)")
 
         period_us = 1000 if self.settings.state.laser_power_high_resolution else 100
         width_us = int(round(1.0 * value * period_us / 100.0, 0)) # note that value is in range (0, 100) not (0, 1)
@@ -1594,7 +1664,7 @@ class FeatureIdentificationDevice(object):
 
         # Set the pulse width to the 0-100 percentage of power
         buf = [0] * 8
-        result = self.send_code(0xdb, wValue=width_us, wIndex=0, data_or_wLength=buf, label="SET_LASER_MOD_PULSE_WIDTH (immediate)")
+        result = self.send_code(0xdb, wValue=width_us, wIndex=0, data_or_wLength=buf, label="SET_MOD_PULSE_WIDTH (immediate)")
         if result is None:
             log.critical("Hardware Failure to send pulse width")
             return False
@@ -1603,7 +1673,7 @@ class FeatureIdentificationDevice(object):
         lsw = 1 # enabled
         msw = 0
         buf = [0] * 8
-        result = self.send_code(0xbd, lsw, msw, buf, label="SET_LASER_MOD_ENABLED (immediate)")
+        result = self.send_code(0xbd, lsw, msw, buf, label="SET_MOD_ENABLED (immediate)")
 
         if result is None:
             log.critical("Hardware Failure to send laser modulation")
@@ -1655,8 +1725,8 @@ class FeatureIdentificationDevice(object):
     ##
     # @note not called by ENLIGHTEN
     # @warning conflicts with GET_SELECTED_LASER
-    def get_raman_mode_enable_NOT_USED(self):
-        return (0 != self.get_upper_code(0x15, label="GET_RAMAN_MODE_ENABLE", msb_len=1))
+    def get_raman_mode_enabled_NOT_USED(self):
+        return (0 != self.get_upper_code(0x15, label="GET_RAMAN_MODE_ENABLED", msb_len=1))
 
     ##
     # Enable "Raman mode" (automatic laser) in the spectrometer firmware.
@@ -1749,7 +1819,8 @@ class FeatureIdentificationDevice(object):
 
         # enforce ascending order
         if start > end:
-            (start, end) = (end, start)
+            # (start, end) = (end, start)
+            return log.error("set_vertical_binning requires ascending order (ignoring %d, %d)", start, end)
 
         self.send_code(bRequest        = 0xff, 
                        wValue          = 0x21,  
@@ -1764,34 +1835,84 @@ class FeatureIdentificationDevice(object):
                        label           = "SET_CCD_STOP_LINE")
 
     # ##########################################################################
-    # Accessory Connector
+    #
+    #                           Accessory Connector
+    #
     # ##########################################################################
 
-    # TESTING PENDING HARDWARE AND FIRMWARE
+    # ##########################################################################
+    # Fan
+    # ##########################################################################
+
+    def set_fan_enable(self, flag):
+        if not self.settings.is_gen15():
+            log.error("fan requires Gen 1.5")
+            return 
+        value = 1 if flag else 0
+        self.send_code(bRequest        = 0x36, 
+                       wValue          = value,
+                       wIndex          = 0,
+                       data_or_wLength = [0] * 8,
+                       label           = "SET_FAN_ENABLE")
+
+    def get_fan_enabled(self):
+        if not self.settings.is_gen15():
+            log.error("fan requires Gen 1.5")
+            return False
+        return self.get_code(0x37, label="GET_FAN_ENABLED", msb_len=1)
+        
+    # ##########################################################################
+    # Lamp
+    # ##########################################################################
+
+    def set_lamp_enable(self, flag):
+        if not self.settings.is_gen15():
+            log.error("lamp requires Gen 1.5")
+            return 
+        value = 1 if flag else 0
+        self.send_code(bRequest        = 0x32, 
+                       wValue          = value,
+                       wIndex          = 0,
+                       data_or_wLength = [0] * 8,
+                       label           = "SET_LAMP_ENABLE")
+
+    def get_lamp_enabled(self):
+        if not self.settings.is_gen15():
+            log.error("lamp requires Gen 1.5")
+            return False
+        return self.get_code(0x33, label="GET_LAMP_ENABLED", msb_len=1)
+        
+    # ##########################################################################
+    # Shutter
+    # ##########################################################################
 
     def set_shutter_enable(self, flag):
         if not self.settings.is_gen15():
             log.error("shutter requires Gen 1.5")
             return 
         value = 1 if flag else 0
-        self.send_code(bRequest        = 0xff, 
-                       wValue          = 0x17,  
-                       wIndex          = value,
+        self.send_code(bRequest        = 0x30, 
+                       wValue          = value,
+                       wIndex          = 0,
                        data_or_wLength = [0] * 8,
                        label           = "SET_SHUTTER_ENABLE")
 
-    def get_shutter_enable(self):
+    def get_shutter_enabled(self):
         if not self.settings.is_gen15():
             log.error("shutter requires Gen 1.5")
             return False
-        return self.get_upper_code(0x18, label="GET_SHUTTER_ENABLE", msb_len=1)
+        return self.get_code(0x31, label="GET_SHUTTER_ENABLED", msb_len=1)
+
+    # ##########################################################################
+    # Continuous Strobe
+    # ##########################################################################
         
     def set_cont_strobe_enable(self, flag):
         value = 1 if flag else 0
-        return self.send_code(0xbd, value, 0, buf, label="SET_CONT_STROBE_ENABLE")
+        return self.send_code(0xbd, value, label="SET_CONT_STROBE_ENABLE")
 
-    def get_cont_strobe_enable(self, flag):
-        return self.get_code(0xe3, label="GET_CONT_STROBE_ENABLE", msb_len=1)
+    def get_cont_strobe_enabled(self, flag):
+        return self.get_code(0xe3, label="GET_CONT_STROBE_ENABLED", msb_len=1)
 
     def set_cont_strobe_period_us(self, us):
         (lsw, msw, buf) = self.to40bit(us)
@@ -1807,13 +1928,32 @@ class FeatureIdentificationDevice(object):
     def get_cont_strobe_width_us(self, us):
         return self.get_code(0xdc, label="GET_CONT_STROBE_WIDTH", lsb_len=5) # endian order unconfirmed
 
+    # ##########################################################################
+    # Ambient Temperature
+    # ##########################################################################
+
+    ## @see https://www.nxp.com/docs/en/data-sheet/LM75B.pdf
     def get_ambient_temperature_degC(self):
         if not self.settings.is_gen15():
             log.error("ambient temperature requires Gen 1.5")
             return -999
-        result = self.get_upper_code(0x19, label="GET_AMBIENT_TEMPERATURE", msb_len=2) # endian order unconfirmed
-        degC = struct.unpack("h", result)[0] / 2.0
-        log.debug("parsed ambient temperature from raw %s to %.2f", result, degC)
+
+        # there seems to be something wrong here...skip for now
+        # return -6
+
+        log.debug("attempting to read ambient temperature")
+        result = self.get_code(0x35, label="GET_AMBIENT_TEMPERATURE", msb_len=2) # endian order unconfirmed
+        if result is None or len(result) != 2:
+            log.error("failed to read ambient temperature")
+            return
+        log.debug("ambient temperature raw: %s", result)
+        return -5
+
+        msb = (raw >> 8) & 0xff
+        lsb = raw & 0xff
+        degC = 0.125 * utils.twos_comp(raw, 11)
+
+        log.debug("parsed ambient temperature from raw %s to %.3f degC", result, degC)
         return degC
 
     # ##########################################################################
@@ -1824,7 +1964,7 @@ class FeatureIdentificationDevice(object):
         if not self.settings.eeprom.has_cooling:
             log.error("unable to control TEC: EEPROM reports no cooling")
             return False
-        return self.get_code(0xda, label="GET_CCD_TEC_ENABLE", msb_len=1)
+        return self.get_code(0xda, label="GET_CCD_TEC_ENABLED", msb_len=1)
         
     def get_actual_frames(self):
         return self.get_code(0xe4, label="GET_ACTUAL_FRAMES", lsb_len=2)
@@ -1864,23 +2004,23 @@ class FeatureIdentificationDevice(object):
         log.debug("get_laser_enabled: %s", enabled)
         return enabled
         
-    def get_link_laser_mod_to_integration_time(self):
-        return self.get_code(0xde, label="GET_LINK_LASER_MOD_TO_INTEGRATION_TIME", msb_len=1)
+    def get_mod_linked_to_integration(self):
+        return self.get_code(0xde, label="GET_MOD_LINKED_TO_INTEGRATION", msb_len=1)
 
-    def get_laser_mod_enabled(self):
-        return self.get_code(0xe3, label="GET_LASER_MOD_ENABLED", msb_len=1)
+    def get_mod_enabled(self):
+        return self.get_code(0xe3, label="GET_MOD_ENABLED", msb_len=1)
 
-    def get_laser_mod_pulse_width(self):
-        return self.get_code(0xdc, label="GET_LASER_MOD_PULSE_WIDTH", lsb_len=5)
+    def get_mod_pulse_width(self):
+        return self.get_code(0xdc, label="GET_MOD_PULSE_WIDTH", lsb_len=5)
 
-    def get_laser_mod_duration(self):
-        return self.get_code(0xc3, label="GET_LASER_MOD_DURATION", lsb_len=5)
+    def get_mod_duration(self):
+        return self.get_code(0xc3, label="GET_MOD_DURATION", lsb_len=5)
 
-    def get_laser_mod_period(self):
-        return self.get_code(0xcb, label="GET_LASER_MOD_PERIOD", lsb_len=5)
+    def get_mod_period(self):
+        return self.get_code(0xcb, label="GET_MOD_PERIOD", lsb_len=5)
 
-    def get_laser_mod_pulse_delay(self): 
-        return self.get_code(0xca, label="GET_LASER_MOD_PULSE_DELAY", lsb_len=5)
+    def get_mod_pulse_delay(self): 
+        return self.get_code(0xca, label="GET_MOD_PULSE_DELAY", lsb_len=5)
 
     def get_selected_adc(self):
         value = self.get_code(0xee, label="GET_SELECTED_ADC", msb_len=1)
@@ -2337,6 +2477,8 @@ class FeatureIdentificationDevice(object):
         f["min_usb_interval_ms"]                = lambda x: self.settings.state.set("min_usb_interval_ms", int(round(x)))
         f["max_usb_interval_ms"]                = lambda x: self.settings.state.set("max_usb_interval_ms", int(round(x)))
 
+        f["fan_enable"]                         = lambda x: self.set_fan_enable(clean_bool(x))
+        f["lamp_enable"]                        = lambda x: self.set_lamp_enable(clean_bool(x))
         f["shutter_enable"]                     = lambda x: self.set_shutter_enable(clean_bool(x))
         f["cont_strobe_enable"]                 = lambda x: self.set_cont_strobe_enable(clean_bool(x))
         f["cont_strobe_period_us"]              = lambda x: self.set_cont_strobe_period_us(int(x))

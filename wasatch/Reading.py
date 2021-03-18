@@ -19,6 +19,7 @@ class Reading(object):
         self.laser_temperature_degC    = 0
         self.detector_temperature_raw  = 0
         self.detector_temperature_degC = 0
+        self.ambient_temperature_degC  = 0
         self.secondary_adc_raw         = None
         self.secondary_adc_calibrated  = None
         self.laser_status              = None   
