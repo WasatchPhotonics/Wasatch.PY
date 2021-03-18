@@ -164,7 +164,7 @@ class FeatureIdentificationDevice(object):
             if not self.settings.is_arm():
                 self.settings.eeprom.active_pixels_horizontal = 512
 
-            if not self.get_high_gain_mode_enable():
+            if not self.get_high_gain_mode_enabled():
                 self.set_high_gain_mode_enable(True)
 
         # ######################################################################
