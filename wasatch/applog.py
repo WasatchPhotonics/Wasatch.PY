@@ -24,6 +24,7 @@ import logging
 import platform
 import traceback
 import multiprocessing
+from queue import Queue
 
 # ##############################################################################
 #                                                                              #
@@ -193,14 +194,14 @@ class QueueHandler(logging.Handler):
 # (would only support one producer) while queues can have multiple producers
 # (e.g. Controller + WasatchDeviceWrapper instances) feeding one consumer.
 class MainLogger(object):
-    FORMAT = u'%(asctime)s %(processName)-10s %(name)s %(levelname)-8s %(message)s thread: %(thread)s'
+    FORMAT = u'%(asctime)s %(processName)-10s %(name)s %(levelname)-8s thread: %(thread)s %(message)s'
 
     def __init__(self, 
             log_level=logging.DEBUG, 
             enable_stdout=True,
             logfile=None,
             timeout_sec=5):
-        self.log_queue     = multiprocessing.Queue() 
+        self.log_queue     = Queue() 
         self.log_level     = log_level
         self.enable_stdout = enable_stdout
         self.explicit_path = logfile
@@ -210,10 +211,10 @@ class MainLogger(object):
         # Specifically, create a process running the listener_process() function
         # and pass it the arguments log_queue and listener_configurer (which is the
         # first function it will call)
-        self.listener = multiprocessing.Process(target=self.listener_process,
-                                                args=(self.log_queue, self.listener_configurer, self.explicit_path, self.timeout_sec))
-        self.listener.start()
-
+        #self.listener = multiprocessing.Process(target=self.listener_process,
+                                               # args=(self.log_queue, self.listener_configurer, self.explicit_path, self.timeout_sec))
+        #self.listener.start()
+        self.listener_process(self.log_queue, self.listener_configurer, self.explicit_path, self.timeout_sec)
         # Remember you have to add a local log configurator for each
         # process, including this, the parent process
         root_log = logging.getLogger()

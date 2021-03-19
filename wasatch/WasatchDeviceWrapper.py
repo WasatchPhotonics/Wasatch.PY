@@ -360,6 +360,10 @@ class WasatchDeviceWrapper(object):
         log.debug("WasatchDeviceWrapper.disconnect: done")
 
         self.connected = False
+        self.settings_queue = Queue() # spectrometer -> GUI (SpectrometerSettings, one-time)
+        self.response_queue = Queue()# spectrometer -> GUI (Readings)
+        self.message_queue = Queue() # spectrometer -> GUI (StatusMessages)
+        self.command_queue = Queue() # GUI -> spectrometer (ControlObjects)
 
         return True
 
