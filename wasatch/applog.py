@@ -193,7 +193,7 @@ class QueueHandler(logging.Handler):
 # (would only support one producer) while queues can have multiple producers
 # (e.g. Controller + WasatchDeviceWrapper instances) feeding one consumer.
 class MainLogger(object):
-    FORMAT = u'%(asctime)s %(processName)-10s %(name)s %(levelname)-8s %(message)s'
+    FORMAT = u'%(asctime)s %(processName)-10s %(name)s %(levelname)-8s %(message)s thread: %(thread)s'
 
     def __init__(self, 
             log_level=logging.DEBUG, 
