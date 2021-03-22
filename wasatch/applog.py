@@ -135,34 +135,6 @@ def explicit_log_close():
         handler.close()
         root_log.removeHandler(handler)
 
-# ##############################################################################
-#                                                                              #
-#                                QueueHandler                                  #
-#                                                                              #
-# ##############################################################################
-
-##
-# Copied verbatim from PlumberJack (see above).  This is a logging handler 
-# which sends events to a multiprocessing queue.  
-# 
-# The plan is to add it to Python 3.2, but this can be copy pasted into
-# user code for use with earlier Python versions.
-class QueueHandler(logging.Handler):
-    def __init__(self, log_queue):
-        logging.Handler.__init__(self)
-        self.log_queue = log_queue
-
-    def emit(self, record):
-        try:
-            ei = record.exc_info
-            if ei:
-                dummy = self.format(record) # just to get traceback text into record.exc_text
-                record.exc_info = None  # not needed any more
-            self.log_queue.put_nowait(record)
-        except (KeyboardInterrupt, SystemExit):
-            raise
-        except:
-            self.handleError(record)
 
 # ##############################################################################
 #                                                                              #
@@ -203,27 +175,21 @@ class MainLogger(object):
         #self.listener = multiprocessing.Process(target=self.listener_process,
                                                # args=(self.log_queue, self.listener_configurer, self.explicit_path, self.timeout_sec))
         #self.listener.start()
-        self.listener_process(self.log_queue, self.listener_configurer, self.explicit_path, self.timeout_sec)
+        #self.listener_process(self.log_queue, self.listener_configurer, self.explicit_path, self.timeout_sec)
+        root_log = logging.getLogger()
+        self.log_configurer(self.explicit_path)
         # Remember you have to add a local log configurator for each
         # process, including this, the parent process
-        root_log = logging.getLogger()
-
+        
         #top_handler = QueueHandler(self.log_queue)
         #root_log.addHandler(top_handler)
         root_log.setLevel(self.log_level)
         root_log.warning("Top level log configuration (%d handlers)", len(root_log.handlers))
 
-    ## @see https://stackoverflow.com/a/14058475
-    def add_handler(self, fh):
-        channel = logging.StreamHandler(fh)
-        channel.setLevel(self.log_level)
-        formatter = logging.Formatter(self.FORMAT)
-        channel.setFormatter(formatter)
-        self.root.addHandler(channel)
 
     ## Setup file handler and command window stream handlers. Every log
     #  message received on the queue handler will use these log configurers. 
-    def listener_configurer(self, explicit_path=None):
+    def log_configurer(self, explicit_path=None):
         if explicit_path is not None:
             pathname = explicit_path
         elif self.explicit_path is not None:
@@ -235,7 +201,7 @@ class MainLogger(object):
         fh = logging.FileHandler(pathname, mode='w', encoding='utf-8') # Overwrite previous run (does not append!)
         formatter = logging.Formatter(self.FORMAT)
         fh.setFormatter(formatter)
-        root_logger.addHandler(fh)
+        root_logger.addHandler(fh) # For some reason this line is causing a memory leak
 
         # Specifing stderr as the log output location will cause the creation of
         # a _module_name_.exe.log file when run as a post-freeze windows
@@ -247,44 +213,3 @@ class MainLogger(object):
 
         self.root = root_logger
 
-    # This is the listener process top-level loop: wait for logging events
-    # (LogRecords) on the queue and handle them, quit when you get a None for a
-    # LogRecord (poison pill).
-    def listener_process(self, log_queue, configurer, explicit_path, timeout_sec):
-        configurer(explicit_path=explicit_path)
-        
-        while True:
-            try:
-                if timeout_sec <= 0:
-                    record = log_queue.get()
-                else:
-                    record = log_queue.get(timeout=timeout_sec)
-
-                if record is None: # We send this as a sentinel to tell the listener to quit.
-                    break
-                logger = logging.getLogger(record.name)
-                logger.handle(record) # No level or filter logic applied - just do it!
-            #except queue.Empty:
-                #print("wasatch.applog shutting down after %s sec of no log messages" % timeout_sec)
-                #break
-            except ValueError:
-                # semaphore or lock released too many times
-                print("wasatch.applog received log_queue.get exception")
-                traceback.print_exc(file=sys.stderr)
-                break
-            except (KeyboardInterrupt, SystemExit):
-                break
-            except:
-                print('wasatch.applog exception:', file=sys.stderr)
-                traceback.print_exc(file=sys.stderr)
-                break
-
-    ## Wrapper to add a None poison pill to the listener process queue to
-    #  ensure it exits. 
-    def close(self):
-        self.log_queue.put_nowait(None)
-        # causes problem with Demo.py on Linux?
-        try:
-            self.listener.join()
-        except:
-            pass
