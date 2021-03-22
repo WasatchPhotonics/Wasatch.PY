@@ -92,17 +92,6 @@ def get_location():
 # amongst processes as expected, so if you add another queue handler you 
 # will get double log prints.
 #
-def process_log_configure(log_queue, log_level=logging.DEBUG):
-    root_log = logging.getLogger()
-    if "Windows" in platform.platform():
-        queue_handler = QueueHandler(log_queue)
-        root_log.addHandler(queue_handler)
-
-    root_log.setLevel(log_level)
-
-    # MZ: how to log from the logger
-    root_log.debug("applog.process_log_configure: process_id %s", os.getpid())
-
 ## 
 # Mimic the capturelog style of just slurping the entire log file contents.
 #
@@ -219,8 +208,8 @@ class MainLogger(object):
         # process, including this, the parent process
         root_log = logging.getLogger()
 
-        top_handler = QueueHandler(self.log_queue)
-        root_log.addHandler(top_handler)
+        #top_handler = QueueHandler(self.log_queue)
+        #root_log.addHandler(top_handler)
         root_log.setLevel(self.log_level)
         root_log.warning("Top level log configuration (%d handlers)", len(root_log.handlers))
 
@@ -263,6 +252,7 @@ class MainLogger(object):
     # LogRecord (poison pill).
     def listener_process(self, log_queue, configurer, explicit_path, timeout_sec):
         configurer(explicit_path=explicit_path)
+        
         while True:
             try:
                 if timeout_sec <= 0:
@@ -274,9 +264,9 @@ class MainLogger(object):
                     break
                 logger = logging.getLogger(record.name)
                 logger.handle(record) # No level or filter logic applied - just do it!
-            except queue.Empty:
-                print("wasatch.applog shutting down after %s sec of no log messages" % timeout_sec)
-                break
+            #except queue.Empty:
+                #print("wasatch.applog shutting down after %s sec of no log messages" % timeout_sec)
+                #break
             except ValueError:
                 # semaphore or lock released too many times
                 print("wasatch.applog received log_queue.get exception")

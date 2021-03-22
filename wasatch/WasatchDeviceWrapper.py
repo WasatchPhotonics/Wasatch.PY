@@ -347,7 +347,7 @@ class WasatchDeviceWrapper(object):
             #need to investigate more, must have 1 sec delay or else crashed
             time.sleep(1)
             self.thread.terminate()
-            log.info(f"disconnect: thread stopped {self.thread.isFinished()}")
+            log.info(f"wrapper disconnect: thread stopped {self.thread.isFinished()}")
         except Exception as exc:
             log.critical("disconnect: Cannot terminate thread", exc_info=1)
         log.debug("disconnect: sending poison pill downstream")
@@ -358,6 +358,7 @@ class WasatchDeviceWrapper(object):
 
         time.sleep(0.1)
         log.debug("WasatchDeviceWrapper.disconnect: done")
+        self.thread = None
 
         self.connected = False
         self.settings_queue = Queue() # spectrometer -> GUI (SpectrometerSettings, one-time)
@@ -671,7 +672,7 @@ class Wrapper_Worker(QObject):
         while True:
 
             now = datetime.datetime.now()
-
+            #log.debug(f"Queue sizes are command:{self.command_queue.qsize()} response:{self.response_queue.qsize()} message:{self.message_queue.qsize()} settings:{self.settings_queue.qsize()}")
             #heartbeat logger (outgoing keepalives to logger)
             if (now - last_heartbeat).total_seconds() >= 3:
                 log.info("heartbeat")
@@ -825,34 +826,31 @@ class Wrapper_Worker(QObject):
 
 
     def dedupe(self, q):
-        try:
-            keep = [] # list, not a set, because we want to keep it ordered
-            while True:
-                # try:
-                if not q.empty():
-                    control_object = q.get_nowait() # get_nowait()
+        keep = [] # list, not a set, because we want to keep it ordered
+        while True:
+            # try:
+            if not q.empty():
+                control_object = q.get_nowait() # get_nowait()
 
-                    # treat None elements (poison pills) same as everything else
-                    if control_object is None:
-                        setting = None
-                        value = None
-                    else:
-                        setting = control_object.setting
-                        value = control_object.value
-
-                    # remove previous setting if duplicate
-                    new_keep = []
-                    for co in keep:
-                        if co.setting != setting:
-                            new_keep.append(co)
-                    keep = new_keep
-
-                    # append the setting to the de-dupped list and track index
-                    keep.append(control_object)
-
+                # treat None elements (poison pills) same as everything else
+                if control_object is None:
+                    setting = None
+                    value = None
                 else:
-                    break
+                    setting = control_object.setting
+                    value = control_object.value
 
-            return keep
-        except Exception as e:
-            log.error(f"Found an error of {e}")
+                # remove previous setting if duplicate
+                new_keep = []
+                for co in keep:
+                    if co.setting != setting:
+                        new_keep.append(co)
+                keep = new_keep
+
+                # append the setting to the de-dupped list and track index
+                keep.append(control_object)
+
+            else:
+                break
+
+        return keep

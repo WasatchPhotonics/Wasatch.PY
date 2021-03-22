@@ -72,7 +72,7 @@ class USBBus(object):
         try:
             log.debug("USBBus.update: instantiating DeviceFinderUSB")
             # finder = DeviceFinderUSB()
-            device_ids.extend(USBBus.finder.find_usb_devices())
+            device_ids.extend(self.finder.find_usb_devices())
         except USBError:
             # MZ: this seems to happen when I run from Git Bash shell
             #     (resolved on MacOS with 'brew install libusb')
