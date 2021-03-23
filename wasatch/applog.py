@@ -49,7 +49,7 @@ def get_location():
     if "Linux" in platform.platform():
         return filename
 
-    if "Darwin" in platform.platform():
+    if "Darwin" in platform.system():
         return filename
 
     pathname = os.path.join("C:\\ProgramData", filename)
@@ -213,3 +213,12 @@ class MainLogger(object):
 
         self.root = root_logger
 
+    ## Wrapper to add a None poison pill to the listener process queue to
+    #  ensure it exits. 
+    def close(self):
+        self.log_queue.put_nowait(None)
+        # causes problem with Demo.py on Linux?
+        try:
+            self.listener.join()
+        except:
+            pass
