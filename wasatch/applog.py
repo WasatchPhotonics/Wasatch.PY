@@ -155,7 +155,7 @@ def explicit_log_close():
 # (would only support one producer) while queues can have multiple producers
 # (e.g. Controller + WasatchDeviceWrapper instances) feeding one consumer.
 class MainLogger(object):
-    FORMAT = u'%(asctime)s %(processName)-10s %(name)s %(levelname)-8s thread: %(thread)s %(message)s'
+    FORMAT = u'%(asctime)s %(processName)-10s %(name)s %(levelname)-8s thread: 0x%(thread)x %(message)s'
 
     def __init__(self, 
             log_level=logging.DEBUG, 
