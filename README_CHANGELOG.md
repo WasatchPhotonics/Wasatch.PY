@@ -1,5 +1,7 @@
 # Changelog
 
+- 2021-03-23 1.0.68
+    - added macOS to Darwin exclusion in applog.py
 - 2021-03-18 1.0.67
     - fixed InGaAs bug on get\_high\_gain\_mode\_enabled
 - 2021-03-15 1.0.66

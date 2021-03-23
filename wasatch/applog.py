@@ -51,6 +51,9 @@ def get_location():
     if "Darwin" in platform.platform():
         return filename
 
+    if "macOS" in platform.platform():
+        return filename
+
     pathname = os.path.join("C:\\ProgramData", filename)
     return pathname
 
