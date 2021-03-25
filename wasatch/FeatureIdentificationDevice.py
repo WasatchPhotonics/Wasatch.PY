@@ -794,6 +794,22 @@ class FeatureIdentificationDevice(object):
         ########################################################################
 
         ########################################################################
+        # Apply InGaAs even/odd gain/offset in software (until FPGA impl)
+        ########################################################################
+
+        # - We used to apply InGaAs even/odd gain and offset here in the
+        #   driver, but then moved it to firmware when integrating the 
+        #   G14237...except that implementation apparently has some bugs.
+        #   Watch this space.
+        #
+        # - 2021-03-25 MZ re-enabled feature per MM, moved from WasatchDevice
+        #
+        # Note that we do this VERY EARLY in the post-processing sequence,
+        # because eventually this will be done inside the FPGA.
+        if self.settings.is_ingaas():
+            self.correct_ingaas_gain_and_offset(spectrum)
+
+        ########################################################################
         # Area Scan (rare)
         ########################################################################
 
@@ -930,6 +946,41 @@ class FeatureIdentificationDevice(object):
         # change this back to just returning the spectrum array directly.
         return SpectrumAndRow(spectrum, area_scan_row_count)
 
+    ##
+    # Until support for even/odd InGaAs gain and offset have been added to the 
+    # firmware, apply the correction in software.
+    #
+    # @todo delete this function when firmware has been updated 
+    def correct_ingaas_gain_and_offset(self, spectrum):
+        if not self.settings.is_ingaas():
+            return
+
+        # if even and odd pixels have the same settings, there's no point in doing anything
+        if self.settings.eeprom.detector_gain_odd   == self.settings.eeprom.detector_gain and \
+           self.settings.eeprom.detector_offset_odd == self.settings.eeprom.detector_offset:
+            return
+
+        log.debug("rescaling InGaAs odd pixels from even gain %.2f, offset %d to odd gain %.2f, offset %d",
+            self.settings.eeprom.detector_gain,
+            self.settings.eeprom.detector_offset,
+            self.settings.eeprom.detector_gain_odd,
+            self.settings.eeprom.detector_offset_odd)
+
+        # iterate over the ODD pixels of the spectrum
+        for i in range(1, len(spectrum), 2):
+
+            # back-out the incorrectly applied "even" gain and offset
+            old = float(spectrum[i])
+            raw = (old - self.settings.eeprom.detector_offset) / self.settings.eeprom.detector_gain
+
+            # apply the correct "odd" gain and offset
+            new = (raw * self.settings.eeprom.detector_gain_odd) + self.settings.eeprom.detector_offset_odd
+
+            # convert back to uint16 so the spectrum is all of one type
+            spectrum[i] = int(round(max(0, min(new, 0xffff))))
+
+            if i < 5:
+                log.debug("  pixel %4d: old %.2f raw %.2f new %.2f final %5d", i, old, raw, new, spectrum[i])
     ## 
     # If a spectrometer has bad_pixels configured in the EEPROM, then average 
     # over them in the driver.

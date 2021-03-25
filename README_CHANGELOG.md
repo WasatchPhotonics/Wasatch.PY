@@ -1,5 +1,7 @@
 # Changelog
 
+- 2021-03-25 1.0.69
+    - restored even/odd InGaAs gain/offset correction
 - 2021-03-23 1.0.68
     - added macOS to Darwin exclusion in applog.py
 - 2021-03-18 1.0.67
