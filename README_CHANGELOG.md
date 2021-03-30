@@ -1,5 +1,7 @@
 # Changelog
 
+- 2021-03-30 1.0.70
+    - prevent vertical binning start/stop lines from matching (stop must be > start)
 - 2021-03-25 1.0.69
     - restored even/odd InGaAs gain/offset correction
 - 2021-03-23 1.0.68
