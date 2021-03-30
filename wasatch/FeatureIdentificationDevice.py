@@ -1869,7 +1869,7 @@ class FeatureIdentificationDevice(object):
             return log.error("set_vertical_binning requires a tuple of POSITIVE (start, stop) lines")
 
         # enforce ascending order
-        if start > end:
+        if start >= end:
             # (start, end) = (end, start)
             return log.error("set_vertical_binning requires ascending order (ignoring %d, %d)", start, end)
 
