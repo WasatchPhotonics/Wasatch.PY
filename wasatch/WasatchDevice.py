@@ -431,7 +431,8 @@ class WasatchDevice(object):
         # read ambient temperature if applicable 
         if self.settings.is_gen15():
             try:
-                reading.ambient_temperature_degC = self.hardware.get_ambient_temperature_degC()
+                # reading.ambient_temperature_degC = self.hardware.get_ambient_temperature_degC()
+                pass
             except Exception as exc:
                 log.debug("Error reading ambient temperature", exc_info=1)
 

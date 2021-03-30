@@ -552,6 +552,9 @@ class FeatureIdentificationDevice(object):
         log.debug("Gain is: %f (msb %d, lsb %d)" % (gain, msb, lsb))
         self.settings.eeprom.detctor_gain = gain
 
+        if self.settings.is_micro():
+            self.settings.state.gain_db = gain
+
         return gain
 
     def get_detector_gain_odd(self):
