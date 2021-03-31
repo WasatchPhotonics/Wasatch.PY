@@ -328,18 +328,16 @@ class WasatchDeviceWrapper(object):
     def disconnect(self):
         # send poison pill to the subprocess
         self.closing = True
-        try:
-            #need to investigate more, must have 1 sec delay or else crashed
-            time.sleep(1)
-            self.thread.terminate()
-            log.info(f"wrapper disconnect: thread stopped {self.thread.isFinished()}")
-        except Exception as exc:
-            log.critical("disconnect: Cannot terminate thread", exc_info=1)
         log.debug("disconnect: sending poison pill downstream")
         try:
             self.command_queue.put(None) # put(None, timeout=2)
         except:
             pass
+        try:
+            self.wrapper_worker.join()
+        except Exception as exc:
+            log.critical("disconnect: Cannot terminate thread", exc_info=1)
+
 
         time.sleep(0.1)
         log.debug("WasatchDeviceWrapper.disconnect: done")
