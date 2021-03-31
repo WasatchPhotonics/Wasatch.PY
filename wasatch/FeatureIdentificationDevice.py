@@ -139,7 +139,7 @@ class FeatureIdentificationDevice(object):
             log.debug("FID.connect: matched DeviceID %s", str(self.device_id))
 
         try:
-            result = device.set_configuration(1)
+            result = device.set_configuration()
         except Exception as exc:
             log.warn("Hardware Failure in setConfiguration", exc_info=1)
             self.connecting = False
@@ -760,7 +760,7 @@ class FeatureIdentificationDevice(object):
                         # of the current, apparently incomplete spectrum so that
                         # when the NEXT one starts, it's at pixel 0 of the new
                         # one?
-                        raise exc
+                        return False
 
             # This is a convoluted way to iterate across the received bytes in 'data' as 
             # two interleaved arrays, both only processing alternating bytes, but one (i) 
@@ -1818,7 +1818,7 @@ class FeatureIdentificationDevice(object):
             return log.error("set_vertical_binning requires a tuple of POSITIVE (start, stop) lines")
 
         # enforce ascending order
-        if start > end:
+        if start >= end:
             # (start, end) = (end, start)
             return log.error("set_vertical_binning requires ascending order (ignoring %d, %d)", start, end)
 

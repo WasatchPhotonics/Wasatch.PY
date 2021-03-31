@@ -10,8 +10,7 @@ from queue import Queue
 from . import applog
 from . import utils
 
-from PySide2 import QtCore
-from PySide2.QtCore import QThread, QObject, Signal, Slot
+import threading
 
 from .SpectrometerSettings import SpectrometerSettings
 from .ControlObject        import ControlObject
@@ -246,7 +245,6 @@ class WasatchDeviceWrapper(object):
     def connect(self):
 
         # instantiate thread
-        self.thread = QThread()
         self.wrapper_worker = Wrapper_Worker(
             device_id      = self.device_id,
             command_queue  = self.command_queue,  # Main --> subprocess
@@ -255,12 +253,10 @@ class WasatchDeviceWrapper(object):
             message_queue  = self.message_queue)
         log.debug("device wrapper: Instantce created for worker")
 
-        self.wrapper_worker.moveToThread(self.thread)
-
-        self.thread.started.connect(self.wrapper_worker.run)
-
-        log.debug("deivce wrapper: Initating wrapper thread")
-        self.thread.start()
+        self.wrapper_worker.setDaemon(True)
+        log.debug("deivce wrapper: Initiating wrapper thread")
+        
+        self.wrapper_worker.start()
 
         # If something goes wrong, we won't want to kill the current process (this function runs
         # within MainProcess), but we will want to kill the spawned subprocess, and ensure 'self'
@@ -301,28 +297,17 @@ class WasatchDeviceWrapper(object):
             kill_myself = True
 
         if kill_myself:
-            # Apparently something failed in initialization of the subprocess, and it
+            # Apparently something failed in initialization of the device, and it
             # never succeeded in sending a SpectrometerSettings object. Do our best to
-            # kill the subprocess (they can be hard to kill), then report upstream
-            # that we were unable to connect (Controller will allow this Wrapper object
-            # to exit from scope).
+            # kill the thread
 
             # MZ: should this bit be merged with disconnect()?
 
             self.settings = None
             self.closing = True
 
-            log.warn("WasatchDeviceWrapper.connect: sending poison pill to poller")
-            time.sleep(1)
-            self.command_queue.put(None) # put(None, timeout=2)
 
-            log.warn("WasatchDeviceWrapper.connect: waiting .5 sec")
-            
-
-            # log.warn("connect: terminating poller")
-            # self.poller.terminate()
-
-            log.warn("WasatchDeviceWrapper.releasing poller")
+            log.warn("WasatchDeviceWrapper.releasing thread")
 
             return False
 
@@ -580,7 +565,7 @@ class WasatchDeviceWrapper(object):
     # None in either the settings_queue or response_queue indicates "this
     # subprocess is shutting down and the spectrometer is going bye-bye."
 
-class Wrapper_Worker(QObject):
+class Wrapper_Worker(threading.Thread):
         
     def __init__(
         self,
@@ -590,8 +575,7 @@ class Wrapper_Worker(QObject):
         settings_queue,
         message_queue,
         parent=None):
-
-        super().__init__(parent)
+        threading.Thread.__init__(self)
         self.device_id = device_id
         self.command_queue = command_queue
         self.response_queue = response_queue
@@ -649,14 +633,14 @@ class Wrapper_Worker(QObject):
 
         if not ok:
             log.critical("wrapper thread: failed to connect")
-            return self.settings_queue.put(False) # put(None, timeout=2)
+            return self.settings_queue.put(None) # put(None, timeout=2)
 
         log.debug("wrapper thread: connected to a spectrometer")
 
         # send the SpectrometerSettings back to the GUI process
         log.debug("wrapper thread: returning SpectrometerSettings to GUI process")
-        self.settings_queue.put(self.wasatch_device.settings) # put(wasatch_device.settings, timeout=10)
-
+        self.settings_queue.put_nowait(self.wasatch_device.settings) # put(wasatch_device.settings, timeout=10)
+        
         log.debug("wrapper thread: entering loop")
         last_heartbeat = datetime.datetime.now()
         last_command = datetime.datetime.now()
@@ -668,7 +652,6 @@ class Wrapper_Worker(QObject):
 
         sent_good = False
         num_connected_devices = 1
-
         while True:
 
             now = datetime.datetime.now()
@@ -786,12 +769,13 @@ class Wrapper_Worker(QObject):
                 #
                 # @todo deprecate Reading.failure and just return False (poison pill?)
                 log.critical("wrapper thread: hardware level error...exiting")
-                break
+                self.response_queue.put(False)
+                return False
 
             elif reading.spectrum is not None:
                 log.debug("wrapper thread: sending Reading %d back to GUI process (%s)", reading.session_count, reading.spectrum[0:5])
                 try:
-                    self.response_queue.put(reading) # put(reading, timeout=2)
+                    self.response_queue.put_nowait(reading) # put(reading, timeout=2)
                 except:
                     log.error("unable to push Reading %d to GUI", reading.session_count, exc_info=1)
 
