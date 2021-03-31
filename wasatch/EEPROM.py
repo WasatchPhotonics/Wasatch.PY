@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import struct
 import array
@@ -106,6 +107,7 @@ class EEPROM(object):
 
         self.buffers = []
         self.write_buffers = []
+        self.digest = None
 
         self.editable = [ "excitation_nm",
                           "excitation_nm_float",
@@ -197,10 +199,22 @@ class EEPROM(object):
         # unpack all the fields we know about
         try:
             self.read_eeprom()
+            self.update_digest()
             return True
         except:
             log.error("failed to parse EEPROM", exc_info=1)
             return False
+
+    def update_digest(self):
+        self.digest = None
+        self.generate_write_buffers()
+        
+        h = hashlib.new("md5")
+        for buf in self.write_buffers:
+            h.update(bytes(buf))
+        self.digest = h.hexdigest()
+
+        log.debug("EEPROM MD5 digest = %s", self.digest)
 
     ## render the attributes of this object as a JSON string
     #

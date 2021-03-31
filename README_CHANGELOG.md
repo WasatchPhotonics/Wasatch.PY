@@ -1,5 +1,7 @@
 # Changelog
 
+- 2021-03-30 1.0.72
+    - added EEPROM.update\_digest()
 - 2021-03-30 1.0.71
     - update state.gain\_db during get\_detector\_gain
 - 2021-03-30 1.0.70
