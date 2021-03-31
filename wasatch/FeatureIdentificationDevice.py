@@ -2346,6 +2346,14 @@ class FeatureIdentificationDevice(object):
 
         self.queue_message("marquee_info", "EEPROM successfully updated")
 
+        # any value in doing this?
+        self.settings.eeprom.buffers = self.settings.eeprom.write_buffers
+        
+        # NOTE: when ENLIGHTEN moves to multi-threaded operation, changes to 
+        # SpectrometerSettings, SpectrometerState, EEPROM etc in one thread 
+        # (e.g. Wasatch.PY) will affect / be visible in others (e.g. ENLIGHTEN);
+        # this is NOT a trivial change!
+
     # ##########################################################################
     # Overrides
     # ##########################################################################

@@ -23,7 +23,7 @@ log = logging.getLogger(__name__)
 # @see http://ww1.microchip.com/downloads/en/DeviceDoc/20006270A.pdf
 class EEPROM(object):
     
-    LATEST_REV = 9
+    LATEST_REV = 10
     MAX_PAGES = 8
     MAX_RAMAN_INTENSITY_CALIBRATION_ORDER = 7
 
@@ -138,6 +138,9 @@ class EEPROM(object):
                           "roi_vertical_region_3_start",
                           "raman_intensity_calibration_order",
                           "raman_intensity_coeffs" ]
+
+    def latest_rev(self):
+        return EEPROM.LATEST_REV
 
     def to_dict(self):
         d = {}
