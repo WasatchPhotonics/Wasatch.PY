@@ -88,7 +88,7 @@ class EEPROM(object):
         self.user_data                   = None
         self.user_text                   = None
 
-        self.bad_pixels                  = [] # should be set, not list
+        self.bad_pixels                  = [] # should be set, not list (but this works with EEPROMEditor)
         self.product_configuration       = None
 
         self.raman_intensity_calibration_order = 0
@@ -195,26 +195,32 @@ class EEPROM(object):
 
         # store these locally so self.unpack() can access them
         self.buffers = buffers
+        self.digest = self.generate_digest()
 
         # unpack all the fields we know about
         try:
             self.read_eeprom()
-            self.update_digest()
             return True
         except:
             log.error("failed to parse EEPROM", exc_info=1)
             return False
 
-    def update_digest(self):
-        self.digest = None
-        self.generate_write_buffers()
-        
-        h = hashlib.new("md5")
-        for buf in self.write_buffers:
-            h.update(bytes(buf))
-        self.digest = h.hexdigest()
+    ##
+    # If asked to regenerate, return a digest of the contents that WOULD BE 
+    # WRITTEN from current settings in memory.
+    def generate_digest(self, regenerate=False):
+        buffers = self.buffers
+        if regenerate:
+            self.generate_write_buffers()
+            buffers = self.write_buffers
 
-        log.debug("EEPROM MD5 digest = %s", self.digest)
+        h = hashlib.new("md5")
+        for buf in buffers:
+            h.update(bytes(buf))
+        digest = h.hexdigest()
+
+        log.debug("EEPROM MD5 digest = %s (regenerate = %s)", digest, regenerate)
+        return digest
 
     ## render the attributes of this object as a JSON string
     #
@@ -307,7 +313,7 @@ class EEPROM(object):
 
     ## 
     # Assuming a set of 8 buffers have been passed in via parse(), actually
-    # unpack (deserialize / unmarshall) the binary data into the approriate
+    # unpack (deserialize / unmarshall) the binary data into the appropriate
     # fields and datatypes.
     # 
     # @see https://docs.python.org/2/library/struct.html#format-characters
@@ -739,7 +745,7 @@ class EEPROM(object):
 
     ##
     # Call this to populate an internal array of "write buffers" which may be written back
-    # to spectrometers.
+    # to spectrometers (or used to generate the digest of what WOULD be written).
     def generate_write_buffers(self):
         # stub-out 8 blank buffers
         self.write_buffers = []
