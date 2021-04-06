@@ -62,10 +62,6 @@ class WasatchShell(object):
             "get_ambient_temperature_degC",
             "get_ccd_sensing_threshold",
             "get_ccd_threshold_sensing_mode",
-            "get_ccd_trigger_source",
-            "get_cont_strobe_enabled",
-            "get_cont_strobe_period_us",
-            "get_cont_strobe_width_us",
             "get_dac",
             "get_detector_gain",
             "get_detector_offset",
@@ -81,17 +77,17 @@ class WasatchShell(object):
             "get_lamp_enabled",
             "get_laser_enabled",
             "get_laser_interlock",
-            "get_mod_duration",
-            "get_mod_enabled",
-            "get_mod_period",
-            "get_mod_pulse_delay",
-            "get_mod_pulse_width",
             "get_laser_power_ramping_enabled",
             "get_laser_temperature_degC",
             "get_laser_temperature_raw",
             "get_laser_watchdog_sec",
-            "get_mod_linked_to_integration",
             "get_microcontroller_firmware_version",
+            "get_mod_delay_us",
+            "get_mod_duration_us",
+            "get_mod_enabled",
+            "get_mod_linked_to_integration",
+            "get_mod_period_us",
+            "get_mod_width_us",
             "get_opt_actual_integration_time",
             "get_opt_area_scan",
             "get_opt_cf_select",
@@ -107,8 +103,10 @@ class WasatchShell(object):
             "get_selected_laser",
             "get_sensor_line_length",
             "get_shutter_enabled",
+            "get_strobe_enabled",
             "get_tec_enabled",
             "get_trigger_delay",
+            "get_trigger_source",
             "get_vr_continuous_ccd",
             "get_vr_num_frames",
             "has_laser_power_calibration",
@@ -149,9 +147,11 @@ class WasatchShell(object):
         set_fan_enable                         - takes bool argument
         set_lamp_enable                        - takes bool argument
         set_shutter_enable                     - takes bool argument
-        set_cont_strobe_enable                 - takes bool argument
-        set_cont_strobe_period_us              - takes int argument
-        set_cont_strobe_width_us               - takes int argument
+        set_strobe_enable                      - takes bool argument
+        set_mod_enable                         - takes bool argument
+        set_mod_period_us                      - takes int argument
+        set_mod_width_us                       - takes int argument
+        set_mod_delay_us                       - takes int argument
 
         set_interpolated_x_axis_cm             - takes start, end, incr (zero incr to disable)
         set_interpolated_x_axis_nm             - takes start, end, incr (zero incr to disable)
@@ -392,16 +392,20 @@ class WasatchShell(object):
                             self.device.change_setting("shutter_enable", self.read_bool())
                             self.display(1)
 
-                        elif command == "set_cont_strobe_enable":
-                            self.device.change_setting("cont_strobe_enable", self.read_bool())
+                        elif command == "set_strobe_enable":
+                            self.device.change_setting("strobe_enable", self.read_bool())
                             self.display(1)
 
-                        elif command == "set_cont_strobe_period_us":
-                            self.device.change_setting("cont_strobe_period_us", self.read_int())
+                        elif command == "set_mod_period_us":
+                            self.device.change_setting("mod_period_us", self.read_int())
                             self.display(1)
 
-                        elif command == "set_cont_strobe_width_us":
-                            self.device.change_setting("cont_strobe_width_us", self.read_int())
+                        elif command == "set_mod_width_us":
+                            self.device.change_setting("mod_width_us", self.read_int())
+                            self.display(1)
+
+                        elif command == "set_mod_delay_us":
+                            self.device.change_setting("mod_period_us", self.read_int())
                             self.display(1)
 
                         elif command == "open":

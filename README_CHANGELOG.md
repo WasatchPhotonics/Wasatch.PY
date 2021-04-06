@@ -1,5 +1,13 @@
 # Changelog
 
+- 2021-04-05 1.0.73
+    - fixed get\_ambient\_temperature\_degC
+    - renamed get\_ccd\_trigger\_source -> get\_trigger\_source
+    - renamed get\_mod\_duration -> get\_mod\_duration\_us
+    - renamed get\_mod\_period -> get\_mod\_period\_us
+    - renamed get\_mod\_width -> get\_mod\_width\_us
+    - renamed get\_mod\_pulse\_delay -> get\_mod\_delay\_us
+    - renamed set\_cont\_strobe\_enable -> set\_strobe\_enable (just simplified set\_laser\_enable)
 - 2021-03-30 1.0.72
     - added EEPROM.update\_digest()
 - 2021-03-30 1.0.71

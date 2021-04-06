@@ -61,11 +61,12 @@ class SpectrometerState(object):
         self.fan_enabled = False
         self.lamp_enabled = False
         self.shutter_enabled = False
-        self.cont_strobe_enabled = False
+       #self.strobe_enabled = False  # this is not a thing -- the proper field is self.laser_enabled
 
         # these are NOT currently used by laser power settings, though they could be
-        self.cont_strobe_period_us = 0 
-        self.cont_strobe_width_us = 0
+        self.mod_enabled = False
+        self.mod_period_us = 0 
+        self.mod_width_us = 0
 
         # (gen 2.0 stuff, not yet used)
         self.analog_out_enabled = False
