@@ -58,32 +58,6 @@ def get_location():
     pathname = os.path.join("C:\\ProgramData", filename)
     return pathname
 
-    # The following doesn't seem to work so well under Python 3.4 :-/
-
-    # print "applog.get_location: platform.platform() = %s" % platform.platform()
-    log_dir = ""
-    try:
-        # get pathname to C:\\ProgramData (but with a lot more work)
-        import ctypes
-        from ctypes import wintypes, windll
-        CSIDL_COMMON_APPDATA = 35
-        _SHGetFolderPath = windll.shell32.SHGetFolderPathW
-        _SHGetFolderPath.argtypes = [wintypes.HWND,
-                                     ctypes.c_int,
-                                     wintypes.HANDLE,
-                                     wintypes.DWORD, 
-                                     wintypes.LPCWSTR]
-
-        path_buf = wintypes.create_unicode_buffer(wintypes.MAX_PATH)
-        result = _SHGetFolderPath(0, CSIDL_COMMON_APPDATA, 0, 0, path_buf)
-        log_dir = path_buf.value
-    except:
-        print("applog.get_location: problem assigning log directory")
-
-    pathname = "%s/%s" % (log_dir, filename)
-    print("applog.get_location: pathname = %s" % pathname)
-    return pathname
-
 ##
 # Called at the beginning of every subprocess, to tie into the existing
 # root logger (owned and created by the MainProcess).
