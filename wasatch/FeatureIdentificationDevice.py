@@ -139,7 +139,7 @@ class FeatureIdentificationDevice(object):
             log.debug("FID.connect: matched DeviceID %s", str(self.device_id))
 
         try:
-            result = device.set_configuration(1)
+            result = device.set_configuration()
         except Exception as exc:
             log.warn("Hardware Failure in setConfiguration", exc_info=1)
             self.connecting = False
@@ -763,7 +763,7 @@ class FeatureIdentificationDevice(object):
                         # of the current, apparently incomplete spectrum so that
                         # when the NEXT one starts, it's at pixel 0 of the new
                         # one?
-                        raise exc
+                        return False
 
             # This is a convoluted way to iterate across the received bytes in 'data' as 
             # two interleaved arrays, both only processing alternating bytes, but one (i) 
@@ -2489,7 +2489,7 @@ class FeatureIdentificationDevice(object):
 
         msg = StatusMessage(setting, value)
         try:
-            self.message_queue.send(msg) # put_nowait(msg)
+            self.message_queue.put(msg) # put_nowait(msg)
         except:
             log.error("failed to enqueue StatusMessage (%s, %s)", setting, value, exc_info=1)
 

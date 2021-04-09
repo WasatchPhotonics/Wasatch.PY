@@ -1,5 +1,7 @@
 # Changelog
 
+- 2021-04-09 1.1.0
+    - changing WasatchDeviceWrapper from multiprocess to multithreaded
 - 2021-04-05 1.0.73
     - fixed get\_ambient\_temperature\_degC
     - renamed get\_ccd\_trigger\_source -> get\_trigger\_source
