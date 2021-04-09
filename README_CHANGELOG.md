@@ -1,10 +1,28 @@
 # Changelog
 
+- 2021-04-05 1.0.73
+    - fixed get\_ambient\_temperature\_degC
+    - renamed get\_ccd\_trigger\_source -> get\_trigger\_source
+    - renamed get\_mod\_duration -> get\_mod\_duration\_us
+    - renamed get\_mod\_period -> get\_mod\_period\_us
+    - renamed get\_mod\_width -> get\_mod\_width\_us
+    - renamed get\_mod\_pulse\_delay -> get\_mod\_delay\_us
+    - renamed set\_cont\_strobe\_enable -> set\_strobe\_enable (just simplified set\_laser\_enable)
+- 2021-03-30 1.0.72
+    - added EEPROM.update\_digest()
+- 2021-03-30 1.0.71
+    - update state.gain\_db during get\_detector\_gain
+- 2021-03-30 1.0.70
+    - prevent vertical binning start/stop lines from matching (stop must be > start)
+- 2021-03-25 1.0.69
+    - restored even/odd InGaAs gain/offset correction
+- 2021-03-23 1.0.68
+    - added macOS to Darwin exclusion in applog.py
 - 2021-03-18 1.0.67
     - fixed InGaAs bug on get\_high\_gain\_mode\_enabled
 - 2021-03-15 1.0.66
-    - added FeatureMask.cutoff_filter_installed
-    - added EEPROM.laser_warmup_sec
+    - added FeatureMask.cutoff\_filter\_installed
+    - added EEPROM.laser\_warmup\_sec
     - added Gen 1.5 to WasatchShell
     - made Fast Area Scan the default
 - 2021-02-24 1.0.65
@@ -16,8 +34,8 @@
 - 2021-02-02 1.0.64
     - consolidated spectrometer feature queries into SpectrometerSettings
     - added support for "fast" area scan
-    - added support for raman_correction
-    - fixed invert_x_axis bug
+    - added support for raman\_correction
+    - fixed invert\_x\_axis bug
     - accessory connector (initial ICD, testing pending FW)
         - SpectrometerState
             - shutter_enabled
@@ -35,7 +53,7 @@
             - get_cont_strobe_width_us
             - get_ambient_temperature_degC
 - 2021-01-05 1.0.63
-    - added get_high_gain_mode_enable()
+    - added get\_high\_gain\_mode\_enable()
     - added G9206 and G14237 to InGaAs detection
     - made InGaAs detection more robust
     - added parabolic approximation

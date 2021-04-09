@@ -202,43 +202,6 @@ class WasatchDevice(object):
     #                                                                          #
     # ######################################################################## #
 
-    ##
-    # Until support for even/odd InGaAs gain and offset have been added to the 
-    # firmware, apply the correction in software.
-    #
-    # @todo delete this function when firmware has been updated (we could 
-    #       probably do this now)
-    def correct_ingaas_gain_and_offset_NOT_USED(self, reading):
-        if not self.settings.is_ingaas():
-            return
-
-        # if even and odd pixels have the same settings, there's no point in doing anything
-        if self.settings.eeprom.detector_gain_odd   == self.settings.eeprom.detector_gain and \
-           self.settings.eeprom.detector_offset_odd == self.settings.eeprom.detector_offset:
-            return
-
-        log.debug("rescaling InGaAs odd pixels from even gain %.2f, offset %d to odd gain %.2f, offset %d",
-            self.settings.eeprom.detector_gain,
-            self.settings.eeprom.detector_offset,
-            self.settings.eeprom.detector_gain_odd,
-            self.settings.eeprom.detector_offset_odd)
-
-        # iterate over the ODD pixels of the spectrum
-        spectrum = reading.spectrum
-        for i in range(1, len(spectrum), 2):
-
-            # back-out the incorrectly applied "even" gain and offset
-            old = float(spectrum[i])
-            raw = (old - self.settings.eeprom.detector_offset) / self.settings.eeprom.detector_gain
-
-            # apply the correct "odd" gain and offset
-            new = (raw * self.settings.eeprom.detector_gain_odd) + self.settings.eeprom.detector_offset_odd
-
-            # convert back to uint16 so the spectrum is all of one type
-            spectrum[i] = int(round(max(0, min(new, 0xffff))))
-
-            if i < 5:
-                log.debug("  pixel %4d: old %.2f raw %.2f new %.2f final %5d", i, old, raw, new, spectrum[i])
 
     ##
     # Process all enqueued settings, then read actual data (spectrum and
@@ -468,7 +431,8 @@ class WasatchDevice(object):
         # read ambient temperature if applicable 
         if self.settings.is_gen15():
             try:
-                reading.ambient_temperature_degC = self.hardware.get_ambient_temperature_degC()
+                # reading.ambient_temperature_degC = self.hardware.get_ambient_temperature_degC()
+                pass
             except Exception as exc:
                 log.debug("Error reading ambient temperature", exc_info=1)
 
@@ -639,21 +603,6 @@ class WasatchDevice(object):
                     log.critical("Error reading hardware data", exc_info=1)
                     reading.spectrum = None
                     reading.failure = str(exc)
-
-            # we have now collected ONE of the 
-
-            ####################################################################
-            # Apply InGaAs even/odd gain/offset in software (until FPGA impl)
-            ####################################################################
-
-            if not reading.failure:
-                # We used to apply InGaAs even/odd gain and offset here in the
-                # driver, but then moved it to firmware when integrating the 
-                # G14237...except that implementation apparently has some bugs.
-                # Watch this space.
-                #
-                # self.correct_ingaas_gain_and_offset(reading)
-                pass
 
             ####################################################################
             # Aggregate scan averaging

@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import struct
 import array
@@ -22,7 +23,7 @@ log = logging.getLogger(__name__)
 # @see http://ww1.microchip.com/downloads/en/DeviceDoc/20006270A.pdf
 class EEPROM(object):
     
-    LATEST_REV = 9
+    LATEST_REV = 10
     MAX_PAGES = 8
     MAX_RAMAN_INTENSITY_CALIBRATION_ORDER = 7
 
@@ -87,7 +88,7 @@ class EEPROM(object):
         self.user_data                   = None
         self.user_text                   = None
 
-        self.bad_pixels                  = [] # should be set, not list
+        self.bad_pixels                  = [] # should be set, not list (but this works with EEPROMEditor)
         self.product_configuration       = None
 
         self.raman_intensity_calibration_order = 0
@@ -106,6 +107,7 @@ class EEPROM(object):
 
         self.buffers = []
         self.write_buffers = []
+        self.digest = None
 
         self.editable = [ "excitation_nm",
                           "excitation_nm_float",
@@ -136,6 +138,9 @@ class EEPROM(object):
                           "roi_vertical_region_3_start",
                           "raman_intensity_calibration_order",
                           "raman_intensity_coeffs" ]
+
+    def latest_rev(self):
+        return EEPROM.LATEST_REV
 
     def to_dict(self):
         d = {}
@@ -193,6 +198,7 @@ class EEPROM(object):
 
         # store these locally so self.unpack() can access them
         self.buffers = buffers
+        self.digest = self.generate_digest()
 
         # unpack all the fields we know about
         try:
@@ -201,6 +207,23 @@ class EEPROM(object):
         except:
             log.error("failed to parse EEPROM", exc_info=1)
             return False
+
+    ##
+    # If asked to regenerate, return a digest of the contents that WOULD BE 
+    # WRITTEN from current settings in memory.
+    def generate_digest(self, regenerate=False):
+        buffers = self.buffers
+        if regenerate:
+            self.generate_write_buffers()
+            buffers = self.write_buffers
+
+        h = hashlib.new("md5")
+        for buf in buffers:
+            h.update(bytes(buf))
+        digest = h.hexdigest()
+
+        log.debug("EEPROM MD5 digest = %s (regenerate = %s)", digest, regenerate)
+        return digest
 
     ## render the attributes of this object as a JSON string
     #
@@ -293,7 +316,7 @@ class EEPROM(object):
 
     ## 
     # Assuming a set of 8 buffers have been passed in via parse(), actually
-    # unpack (deserialize / unmarshall) the binary data into the approriate
+    # unpack (deserialize / unmarshall) the binary data into the appropriate
     # fields and datatypes.
     # 
     # @see https://docs.python.org/2/library/struct.html#format-characters
@@ -725,7 +748,7 @@ class EEPROM(object):
 
     ##
     # Call this to populate an internal array of "write buffers" which may be written back
-    # to spectrometers.
+    # to spectrometers (or used to generate the digest of what WOULD be written).
     def generate_write_buffers(self):
         # stub-out 8 blank buffers
         self.write_buffers = []

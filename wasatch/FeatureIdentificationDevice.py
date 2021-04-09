@@ -552,6 +552,9 @@ class FeatureIdentificationDevice(object):
         log.debug("Gain is: %f (msb %d, lsb %d)" % (gain, msb, lsb))
         self.settings.eeprom.detctor_gain = gain
 
+        if self.settings.is_micro():
+            self.settings.state.gain_db = gain
+
         return gain
 
     def get_detector_gain_odd(self):
@@ -794,6 +797,22 @@ class FeatureIdentificationDevice(object):
         ########################################################################
 
         ########################################################################
+        # Apply InGaAs even/odd gain/offset in software (until FPGA impl)
+        ########################################################################
+
+        # - We used to apply InGaAs even/odd gain and offset here in the
+        #   driver, but then moved it to firmware when integrating the 
+        #   G14237...except that implementation apparently has some bugs.
+        #   Watch this space.
+        #
+        # - 2021-03-25 MZ re-enabled feature per MM, moved from WasatchDevice
+        #
+        # Note that we do this VERY EARLY in the post-processing sequence,
+        # because eventually this will be done inside the FPGA.
+        if self.settings.is_ingaas():
+            self.correct_ingaas_gain_and_offset(spectrum)
+
+        ########################################################################
         # Area Scan (rare)
         ########################################################################
 
@@ -930,6 +949,41 @@ class FeatureIdentificationDevice(object):
         # change this back to just returning the spectrum array directly.
         return SpectrumAndRow(spectrum, area_scan_row_count)
 
+    ##
+    # Until support for even/odd InGaAs gain and offset have been added to the 
+    # firmware, apply the correction in software.
+    #
+    # @todo delete this function when firmware has been updated 
+    def correct_ingaas_gain_and_offset(self, spectrum):
+        if not self.settings.is_ingaas():
+            return
+
+        # if even and odd pixels have the same settings, there's no point in doing anything
+        if self.settings.eeprom.detector_gain_odd   == self.settings.eeprom.detector_gain and \
+           self.settings.eeprom.detector_offset_odd == self.settings.eeprom.detector_offset:
+            return
+
+        log.debug("rescaling InGaAs odd pixels from even gain %.2f, offset %d to odd gain %.2f, offset %d",
+            self.settings.eeprom.detector_gain,
+            self.settings.eeprom.detector_offset,
+            self.settings.eeprom.detector_gain_odd,
+            self.settings.eeprom.detector_offset_odd)
+
+        # iterate over the ODD pixels of the spectrum
+        for i in range(1, len(spectrum), 2):
+
+            # back-out the incorrectly applied "even" gain and offset
+            old = float(spectrum[i])
+            raw = (old - self.settings.eeprom.detector_offset) / self.settings.eeprom.detector_gain
+
+            # apply the correct "odd" gain and offset
+            new = (raw * self.settings.eeprom.detector_gain_odd) + self.settings.eeprom.detector_offset_odd
+
+            # convert back to uint16 so the spectrum is all of one type
+            spectrum[i] = int(round(max(0, min(new, 0xffff))))
+
+            if i < 5:
+                log.debug("  pixel %4d: old %.2f raw %.2f new %.2f final %5d", i, old, raw, new, spectrum[i])
     ## 
     # If a spectrometer has bad_pixels configured in the EEPROM, then average 
     # over them in the driver.
@@ -1350,20 +1404,15 @@ class FeatureIdentificationDevice(object):
     # @param flag (Input) whether the laser should be on (true) or off (false)
     # @returns true if new state was successfully applied
     def _set_laser_enable_immediate(self, flag):
-        value = 1 if flag else 0
-        log.debug("Send laser enable: %d", value)
+        log.debug("Send laser enable: %s", flag)
         if flag:
             self.last_applied_laser_power = 0.0
         else:
             self.last_applied_laser_power = self.next_applied_laser_power
 
-        lsb = value
-        msb = 0
-        buf = [0] * 8 
-
         tries = 0
         while True:
-            self.send_code(0xbe, lsb, msb, buf, label="SET_LASER_ENABLE")
+            self.set_strobe_enable(flag)
             check = self.get_laser_enabled() != 0
             if flag == check:
                 return True
@@ -1438,11 +1487,6 @@ class FeatureIdentificationDevice(object):
         prefix = "set_laser_enable_ramp"
 
         # todo: should make enums for all opcodes
-        SET_LASER_ENABLE          = 0xbe
-        SET_MOD_ENABLE      = 0xbd
-        SET_MOD_PERIOD      = 0xc7
-        SET_MOD_PULSE_WIDTH = 0xdb
-       #SET_MOD_DURATION    = 0xb9 # MZ: what is this for?
 
         # prepare 
         current_laser_setpoint = self.last_applied_laser_power
@@ -1456,15 +1500,15 @@ class FeatureIdentificationDevice(object):
         ########################################################################
 
         # set modulation period to 100us
-        self.send_code(SET_MOD_PERIOD, 100, 0, 100, label="SET_MOD_PERIOD (ramp)") 
+        self.set_mod_period_us(100)
 
         width = int(round(current_laser_setpoint))
         buf = [0] * 8
 
         # re-apply current power (possibly redundant, but also enabling laser)
-        self.send_code(SET_MOD_ENABLE, 1, 0, buf, label="SET_MOD_ENABLE (ramp)")
-        self.send_code(SET_MOD_PULSE_WIDTH, width, 0, buf, label="SET_MOD_PULSE_WIDTH (ramp)")
-        self.send_code(SET_LASER_ENABLE, 1, label="SET_LASER_ENABLE (ramp)") # no buf
+        self.set_mod_enable(True)
+        self.set_mod_width_us(width)
+        self.set_strobe_enable(True)
 
         # are we done?
         if current_laser_setpoint == target_laser_setpoint:
@@ -1485,7 +1529,7 @@ class FeatureIdentificationDevice(object):
             laser_setpoint = float(current_laser_setpoint) - laser_setpoint
             eighty_percent_start = laser_setpoint
 
-        self.send_code(SET_MOD_PULSE_WIDTH, int(round(eighty_percent_start)), 0, buf, label="SET_MOD_PULSE_WIDTH (80%)")
+        self.set_mod_width_us(int(round(eighty_percent_start)))
         sleep(0.02) # 20ms
 
         ########################################################################
@@ -1503,7 +1547,7 @@ class FeatureIdentificationDevice(object):
                                  + (scalar * (float(target_laser_setpoint) - eighty_percent_start))
             # apply the incremental pulse width
             width = int(round(target_loop_setpoint))
-            self.send_code(SET_MOD_PULSE_WIDTH, width, 0, buf, label="SET_MOD_PULSE_WIDTH (ramp)")
+            self.set_mod_width_us(width)
 
             # allow 10ms to settle
             log.debug("%s: counter = %3d, width = 0x%04x, target_loop_setpoint = %8.2f", prefix, counter, width, target_loop_setpoint)
@@ -1645,7 +1689,7 @@ class FeatureIdentificationDevice(object):
                 lsw = 0 # disabled
                 msw = 0
                 buf = [0] * 8
-                return self.send_code(0xbd, lsw, msw, buf, label="SET_MOD_ENABLED (full)")
+                return self.set_mod_enable(False)
 
         period_us = 1000 if self.settings.state.laser_power_high_resolution else 100
         width_us = int(round(1.0 * value * period_us / 100.0, 0)) # note that value is in range (0, 100) not (0, 1)
@@ -1656,25 +1700,19 @@ class FeatureIdentificationDevice(object):
         # Change the pulse period.  Note that we're not parsing into 40-bit 
         # because this implementation is hard-coded to either 100 or 1000us
         # (both fitting well within uint16)
-        buf = [0] * 8
-        result = self.send_code(0xc7, wValue=period_us, wIndex=0, data_or_wLength=buf, label="SET_MOD_PERIOD (immediate)")
+        result = self.set_mod_period_us(period_us)
         if result is None:
             log.critical("Hardware Failure to send laser mod. pulse period")
             return False
 
         # Set the pulse width to the 0-100 percentage of power
-        buf = [0] * 8
-        result = self.send_code(0xdb, wValue=width_us, wIndex=0, data_or_wLength=buf, label="SET_MOD_PULSE_WIDTH (immediate)")
+        result = self.set_mod_width_us(width_us)
         if result is None:
             log.critical("Hardware Failure to send pulse width")
             return False
 
         # Enable modulation
-        lsw = 1 # enabled
-        msw = 0
-        buf = [0] * 8
-        result = self.send_code(0xbd, lsw, msw, buf, label="SET_MOD_ENABLED (immediate)")
-
+        result = self.set_mod_enable(True)
         if result is None:
             log.critical("Hardware Failure to send laser modulation")
             return False
@@ -1717,8 +1755,8 @@ class FeatureIdentificationDevice(object):
     # the device as ARM and FX2 implementations differ as of 2017-08-02
     #
     # @note never called by ENLIGHTEN - provided for OEMs
-    def get_ccd_trigger_source(self):
-        value = self.get_code(0xd3, label="GET_CCD_TRIGGER_SOURCE", msb_len=1)
+    def get_trigger_source(self):
+        value = self.get_code(0xd3, label="GET_TRIGGER_SOURCE", msb_len=1)
         self.settings.state.trigger_source = value
         return value
 
@@ -1817,7 +1855,7 @@ class FeatureIdentificationDevice(object):
         if start < 0 or end < 0:
             return log.error("set_vertical_binning requires a tuple of POSITIVE (start, stop) lines")
 
-        # enforce ascending order
+        # enforce ascending order (also, note that stop line is "last line binned + 1", so stop must be > start)
         if start >= end:
             # (start, end) = (end, start)
             return log.error("set_vertical_binning requires ascending order (ignoring %d, %d)", start, end)
@@ -1904,29 +1942,67 @@ class FeatureIdentificationDevice(object):
         return self.get_code(0x31, label="GET_SHUTTER_ENABLED", msb_len=1)
 
     # ##########################################################################
-    # Continuous Strobe
+    # Laser Modulation and Continuous Strobe
     # ##########################################################################
         
-    def set_cont_strobe_enable(self, flag):
+    def set_mod_enable(self, flag):
+        self.settings.state.mod_enabled = flag
         value = 1 if flag else 0
-        return self.send_code(0xbd, value, label="SET_CONT_STROBE_ENABLE")
+        return self.send_code(0xbd, value, label="SET_MOD_ENABLE")
 
-    def get_cont_strobe_enabled(self, flag):
-        return self.get_code(0xe3, label="GET_CONT_STROBE_ENABLED", msb_len=1)
+    def get_mod_enabled(self):
+        flag = 0 != self.get_code(0xe3, label="GET_MOD_ENABLED", msb_len=1)
+        self.settings.state.mod_enabled = flag
+        return flag
 
-    def set_cont_strobe_period_us(self, us):
+    def set_mod_period_us(self, us):
+        self.settings.state.mod_period_us = us
         (lsw, msw, buf) = self.to40bit(us)
-        return self.send_code(0xc7, lsw, msw, buf, label="SET_CONT_STROBE_PERIOD")
+        return self.send_code(0xc7, lsw, msw, buf, label="SET_MOD_PERIOD")
 
-    def get_cont_strobe_period_us(self, us):
-        return self.get_code(0xcb, label="GET_CONT_STROBE_PERIOD", msb_len=5)
+    def get_mod_period_us(self):
+        value = self.get_code(0xcb, label="GET_MOD_PERIOD", lsb_len=5)
+        self.settings.state.mod_period_us = value
+        return value
 
-    def set_cont_strobe_width_us(self, us):
+    def set_mod_width_us(self, us):
+        self.settings.state.mod_width_us = us
         (lsw, msw, buf) = self.to40bit(us)
-        return self.send_code(0xdb, lsw, msw, buf, label="SET_CONT_STROBE_WIDTH")
+        return self.send_code(0xdb, lsw, msw, buf, label="SET_MOD_WIDTH")
 
-    def get_cont_strobe_width_us(self, us):
-        return self.get_code(0xdc, label="GET_CONT_STROBE_WIDTH", lsb_len=5) # endian order unconfirmed
+    def get_mod_width_us(self):
+        value = self.get_code(0xdc, label="GET_MOD_WIDTH", lsb_len=5) 
+        self.settings.state.mod_width_us = value
+        return value
+
+    def set_mod_delay_us(self, us):
+        self.settings.state.mod_delay_us = us
+        (lsw, msw, buf) = self.to40bit(us)
+        return self.send_code(0xc6, lsw, msw, buf, label="SET_MOD_DELAY")
+
+    def get_mod_delay_us(self): 
+        value = self.get_code(0xca, label="GET_MOD_DELAY", lsb_len=5)
+        self.settings.state.mod_delay_us = value
+        return value
+
+    def set_mod_duration_us_NOT_USED(self, us):
+        self.settings.state.mod_duration_us = us
+        (lsw, msw, buf) = self.to40bit(us)
+        return self.send_code(0xb9, lsw, msw, buf, label="SET_MOD_DURATION")
+
+    def get_mod_duration_us_NOT_USED(self):
+        value = self.get_code(0xc3, label="GET_MOD_DURATION", lsb_len=5)
+        self.settings.state.mod_duration_us = value
+        return value
+
+    ## this is a synonym for _set_laser_enable_immediate(), but without side-effects
+    def set_strobe_enable(self, flag):
+        value = 1 if flag else 0
+        return self.send_code(0xbe, value, label="SET_STROBE_ENABLE")
+
+    ## a literal pass-through to get_laser_enabled()
+    def get_strobe_enable(self):
+        return self.get_laser_enabled()
 
     # ##########################################################################
     # Ambient Temperature
@@ -1942,15 +2018,13 @@ class FeatureIdentificationDevice(object):
         # return -6
 
         log.debug("attempting to read ambient temperature")
-        result = self.get_code(0x35, label="GET_AMBIENT_TEMPERATURE", msb_len=2) # endian order unconfirmed
+        result = self.get_code(0x34, label="GET_AMBIENT_TEMPERATURE", msb_len=2)
         if result is None or len(result) != 2:
             log.error("failed to read ambient temperature")
             return
         log.debug("ambient temperature raw: %s", result)
-        return -5
 
-        msb = (raw >> 8) & 0xff
-        lsb = raw & 0xff
+        raw = raw >> 5
         degC = 0.125 * utils.twos_comp(raw, 11)
 
         log.debug("parsed ambient temperature from raw %s to %.3f degC", result, degC)
@@ -2000,27 +2074,17 @@ class FeatureIdentificationDevice(object):
         return self.get_code(0xef, label="GET_LASER_INTERLOCK", msb_len=1)
 
     def get_laser_enabled(self):
-        enabled = 0 != self.get_code(0xe2, label="GET_LASER_ENABLED", msb_len=1)
-        log.debug("get_laser_enabled: %s", enabled)
-        return enabled
+        flag = 0 != self.get_code(0xe2, label="GET_LASER_ENABLED", msb_len=1)
+        log.debug("get_laser_enabled: %s", flag)
+        self.settings.state.laser_enabled = flag
+        return flag
         
+    def set_mod_linked_to_integration(self, flag):
+        value = 1 if flag else 0
+        return self.send_code(0xdd, value, label="SET_MOD_LINKED_TO_INTEGRATION")
+
     def get_mod_linked_to_integration(self):
         return self.get_code(0xde, label="GET_MOD_LINKED_TO_INTEGRATION", msb_len=1)
-
-    def get_mod_enabled(self):
-        return self.get_code(0xe3, label="GET_MOD_ENABLED", msb_len=1)
-
-    def get_mod_pulse_width(self):
-        return self.get_code(0xdc, label="GET_MOD_PULSE_WIDTH", lsb_len=5)
-
-    def get_mod_duration(self):
-        return self.get_code(0xc3, label="GET_MOD_DURATION", lsb_len=5)
-
-    def get_mod_period(self):
-        return self.get_code(0xcb, label="GET_MOD_PERIOD", lsb_len=5)
-
-    def get_mod_pulse_delay(self): 
-        return self.get_code(0xca, label="GET_MOD_PULSE_DELAY", lsb_len=5)
 
     def get_selected_adc(self):
         value = self.get_code(0xee, label="GET_SELECTED_ADC", msb_len=1)
@@ -2292,6 +2356,14 @@ class FeatureIdentificationDevice(object):
 
         self.queue_message("marquee_info", "EEPROM successfully updated")
 
+        # any value in doing this?
+        self.settings.eeprom.buffers = self.settings.eeprom.write_buffers
+        
+        # NOTE: when ENLIGHTEN moves to multi-threaded operation, changes to 
+        # SpectrometerSettings, SpectrometerState, EEPROM etc in one thread 
+        # (e.g. Wasatch.PY) will affect / be visible in others (e.g. ENLIGHTEN);
+        # this is NOT a trivial change!
+
     # ##########################################################################
     # Overrides
     # ##########################################################################
@@ -2480,9 +2552,10 @@ class FeatureIdentificationDevice(object):
         f["fan_enable"]                         = lambda x: self.set_fan_enable(clean_bool(x))
         f["lamp_enable"]                        = lambda x: self.set_lamp_enable(clean_bool(x))
         f["shutter_enable"]                     = lambda x: self.set_shutter_enable(clean_bool(x))
-        f["cont_strobe_enable"]                 = lambda x: self.set_cont_strobe_enable(clean_bool(x))
-        f["cont_strobe_period_us"]              = lambda x: self.set_cont_strobe_period_us(int(x))
-        f["cont_strobe_width_us"]               = lambda x: self.set_cont_strobe_width_us(int(x))
+        f["strobe_enable"]                      = lambda x: self.set_strobe_enable(clean_bool(x))
+        f["mod_enable"]                         = lambda x: self.set_mod_enable(clean_bool(x))
+        f["mod_period_us"]                      = lambda x: self.set_mod_period_us(int(x))
+        f["mod_width_us"]                       = lambda x: self.set_mod_width_us(int(x))
 
         # BatchCollection
         f["free_running_mode"]                  = lambda x: self.settings.state.set("free_running_mode", clean_bool(x))
