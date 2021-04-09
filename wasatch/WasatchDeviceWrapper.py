@@ -251,7 +251,7 @@ class WasatchDeviceWrapper(object):
             response_queue = self.response_queue, # Main <-- subprocess \
             settings_queue = self.settings_queue, # Main <-- subprocess  ) consolidate into SubprocessMessage?
             message_queue  = self.message_queue)
-        log.debug("device wrapper: Instantce created for worker")
+        log.debug("device wrapper: Instance created for worker")
 
         self.wrapper_worker.setDaemon(True)
         log.debug("deivce wrapper: Initiating wrapper thread")
@@ -344,6 +344,8 @@ class WasatchDeviceWrapper(object):
         self.thread = None
 
         self.connected = False
+
+        # MZ: why do we recreate these?
         self.settings_queue = Queue() # spectrometer -> GUI (SpectrometerSettings, one-time)
         self.response_queue = Queue()# spectrometer -> GUI (Readings)
         self.message_queue = Queue() # spectrometer -> GUI (StatusMessages)
