@@ -202,7 +202,6 @@ class WasatchDevice(object):
     #                                                                          #
     # ######################################################################## #
 
-
     ##
     # Process all enqueued settings, then read actual data (spectrum and
     # temperatures) from the device.

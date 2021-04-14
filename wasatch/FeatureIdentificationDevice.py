@@ -139,6 +139,7 @@ class FeatureIdentificationDevice(object):
             log.debug("FID.connect: matched DeviceID %s", str(self.device_id))
 
         try:
+            log.debug("setting configuration")
             result = device.set_configuration()
         except Exception as exc:
             log.warn("Hardware Failure in setConfiguration", exc_info=1)
@@ -146,6 +147,7 @@ class FeatureIdentificationDevice(object):
             raise
 
         try:
+            log.debug("claiming interface")
             result = usb.util.claim_interface(device, 0)
         except Exception as exc:
             log.warn("Hardware Failure in claimInterface", exc_info=1)
@@ -157,6 +159,8 @@ class FeatureIdentificationDevice(object):
         # ######################################################################
         # model-specific settings
         # ######################################################################
+
+        log.debug("model-specific settings")
 
         if self.settings.is_ingaas():
             # This must be for some very old InGaAs spectrometers? 
@@ -171,6 +175,8 @@ class FeatureIdentificationDevice(object):
         # EEPROM
         # ######################################################################
 
+        log.debug("reading EEPROM")
+
         if not self.read_eeprom():
             log.error("failed to read EEPROM")
             self.connecting = False
@@ -180,7 +186,10 @@ class FeatureIdentificationDevice(object):
         # FPGA 
         # ######################################################################
 
+        log.debug("reading FPGA compilation options")
         self.read_fpga_compilation_options()
+
+        log.debug("configuring FPGA")
 
         # automatically push EEPROM values to the FPGA (on modern EEPROMs)
         # (this will work on SiG as well, even if we subsequently track its gain
@@ -209,12 +218,14 @@ class FeatureIdentificationDevice(object):
 
         # probably the default, but just to be sure
         if self.settings.is_micro():
+            log.debug("applying SiG settings")
             self.set_laser_watchdog_sec(10)
 
         # ######################################################################
         # Done
         # ######################################################################
 
+        log.debug("connection successful")
         self.connected = True
         self.connecting = False
         return self.connected
@@ -937,6 +948,7 @@ class FeatureIdentificationDevice(object):
         # However, we don't want to disrupt the expected pixel-count, so just 
         # average-over the skipped pixels.
         if self.settings.state.graph_alternating_pixels:
+            log.debug("applying graph_alternating_pixels")
             smoothed = []
             for i in range(len(spectrum)):
                 if i % 2 == 0:
