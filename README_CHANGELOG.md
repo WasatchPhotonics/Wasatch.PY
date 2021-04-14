@@ -1,5 +1,10 @@
 # Changelog
 
+- 2021-04-14 1.1.1
+    - downleveled some error messages
+    - clarified state.gain\_db vs eeprom.detector\_gain
+    - enforced that is\_sig implies is\_arm
+    - log format tweak
 - 2021-04-09 1.1.0
     - changing WasatchDeviceWrapper from multiprocess to multithreaded
 - 2021-04-05 1.0.73

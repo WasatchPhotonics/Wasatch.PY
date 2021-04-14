@@ -478,10 +478,10 @@ class EEPROM(object):
             self.read_raman_intensity_calibration()
         elif self.subformat == 2:
             self.read_spline()
-        elif self.subformat == 3:
-            self.read_multi_wavecal()
         else:
-            log.critical("Unsupported EEPROM subformat: %d", self.subformat)
+            log.debug("Unsupported EEPROM subformat: %d", self.subformat)
+        
+        # @todo support Subformat 3 Un-tethered
 
         # ######################################################################
         # feature mask
@@ -529,7 +529,7 @@ class EEPROM(object):
                 offset = i * 4 + 1
                 self.raman_intensity_coeffs.append(self.unpack((6, offset, 4), "f", "raman_intensity_coeff_%d" % i))
         else:
-            log.critical("Unsupported Raman Intensity Calibration order: %d", self.raman_intensity_calibration_order)
+            log.error("Unsupported Raman Intensity Calibration order: %d", self.raman_intensity_calibration_order)
 
     def write_raman_intensity_calibration(self):
         self.pack((6, 0,  1), "B", self.raman_intensity_calibration_order)
@@ -545,7 +545,7 @@ class EEPROM(object):
                 # log.debug("packing raman_intensity_coeffs[%d] (offset %d, order %d, terms %d) => %e", i, offset, order, terms, coeff)
                 self.pack((6, offset, 4), "f", coeff)
         else:
-            log.critical("Unsupported Raman Intensity Calibration order: %d", self.raman_intensity_calibration_order)
+            log.error("Unsupported Raman Intensity Calibration order: %d", self.raman_intensity_calibration_order)
             for i in range(EEPROM.MAX_RAMAN_INTENSITY_CALIBRATION_ORDER + 1):
                 offset = i * 4 + 1
                 self.pack((6, offset, 4), "f", 0.0)
@@ -596,7 +596,7 @@ class EEPROM(object):
             return
 
     def write_spline(self):
-        log.critical("EEPROM.write_spline not implemented")
+        log.error("EEPROM.write_spline not implemented")
 
     def multi_wavecal_page_start(self, pos):
         if pos == 0:
@@ -608,8 +608,10 @@ class EEPROM(object):
         return (page, start)
 
     ##
+    # This has not yet been assigned a subformat code (early testing used 3, since assigned to untethered)
+    #
     # @todo make EEPROMMultiWavecal
-    def read_multi_wavecal(self):
+    def read_multi_wavecal_NOT_USED(self):
 
         # store as dict rather than array in case some positions are invalid
         tmp = {}
@@ -896,7 +898,7 @@ class EEPROM(object):
         elif self.subformat == 3:
             self.write_multi_wavecal()
         else:
-            log.critical("Unsupported EEPROM subformat: %d", self.subformat)
+            log.error("Unsupported EEPROM subformat: %d", self.subformat)
 
     # ##########################################################################
     # Laser Power convenience accessors

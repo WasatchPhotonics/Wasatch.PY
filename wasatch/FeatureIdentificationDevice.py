@@ -183,12 +183,17 @@ class FeatureIdentificationDevice(object):
         self.read_fpga_compilation_options()
 
         # automatically push EEPROM values to the FPGA (on modern EEPROMs)
+        # (this will work on SiG as well, even if we subsequently track its gain
+        #  somewhat differently as state.gain_db)
         if self.settings.eeprom.format >= 4:
             log.debug("sending gain/offset to FPGA")
             self.set_detector_gain      (self.settings.eeprom.detector_gain)
             self.set_detector_offset    (self.settings.eeprom.detector_offset)
             self.set_detector_gain_odd  (self.settings.eeprom.detector_gain_odd)
             self.set_detector_offset_odd(self.settings.eeprom.detector_offset_odd)
+
+        # initialize state.gain_db from EEPROM startup value
+        self.settings.state.gain_db = self.settings.eeprom.detector_gain
 
         if self.settings.is_micro():
             roi = self.settings.get_vertical_roi()

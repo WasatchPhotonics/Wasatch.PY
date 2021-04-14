@@ -129,20 +129,28 @@ class SpectrometerState(object):
         # gain (dB) (IMX only)
         # ######################################################################
 
-        # This attribute is confusing, because Hamamatsu silicon, Hamamatsu 
+        # "Detector Gain" is confusing, because Hamamatsu silicon, Hamamatsu 
         # InGaAs, and Sony IMX detectors all treat it differently.  
         #
         # At the moment, all Hamamatsu gain (and offset) is handled through the 
         # EEPROM, as those are not considered to be "user-facing, change-during-
         # measurements" attributes -- they are designed to be pre-set in the 
-        # factory and then, for the most part, left alone.  
+        # factory and then, for the most part, left alone.  That is to say, we
+        # deliberately do NOT provide a friendly on-screen "Gain/Offset" widget 
+        # in ENLIGHTEN so the user can just randomly fiddle with gain/offset 
+        # values during measurements.
         #
         # Also, Hamamatsu gain is a unitless floating-point (float32) scalar, 
         # which is multiplied into the detector's pixel read-out (AFTER being 
         # digitized by the ADC) within the FPGA.  (Note that a completely 
         # different analog, "hardware" gain is already applied at the board level
         # via op-amps -- the "analog front end" -- BEFORE going into the ADC).  
-        # Hamamatsu gain has a legacy default value of approximately 1.9.
+        #
+        # Wasatch spectrometers with Hamamatsu detectors historically use a 
+        # default gain of 1.9, but new designs are migrating to a default of 1.0.
+        # Software should not make "assumptions" as to what the appropriate
+        # gain should be for a given model or detector, but should use the
+        # configured value in the EEPROM.
         #
         # IMX gain, on the other hand, is very much a "live" parameter, similar
         # to integration time, which users can adjust and change at any time.

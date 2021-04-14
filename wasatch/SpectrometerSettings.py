@@ -287,22 +287,21 @@ class SpectrometerSettings(object):
         return "imx392" in self.eeprom.detector.lower()
 
     def is_micro(self):
-        return self.is_imx() or \
-               "micro" in self.full_model().lower() or \
-               "sig" in self.full_model().lower() 
+        return self.is_arm() and \
+               ( self.is_imx() or \
+                 "micro" in self.full_model().lower() or \
+                 "sig"   in self.full_model().lower() )
 
     def is_non_raman(self):
         return not self.has_excitation()
 
-    ## will probably add something in EEPROM.FeatureMask for this
     def is_gen15(self):
         return self.eeprom.gen15
 
-    ## @todo add this to EEPROM.feature_mask
+    ## @todo add this to EEPROM.feature_mask if we decide to keep the feature
     def has_marker(self):
         return self.eeprom.model == "WPX-8CHANNEL"
 
-    ## @todo deprecate
     def is_sig(self):
         return self.is_micro()
 
