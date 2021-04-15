@@ -266,8 +266,7 @@ class SpectrometerSettings(object):
     # ##########################################################################
 
     def is_arm(self):
-        if self.hardware_info is not None and self.hardware_info.is_arm():
-            return True
+        return self.hardware_info is not None and self.hardware_info.is_arm()
 
     def is_ingaas(self):
         if self.hardware_info is not None and self.hardware_info.is_ingaas():

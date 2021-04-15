@@ -1,5 +1,7 @@
 # Changelog
 
+- 2021-04-15 1.1.2
+    - fixed settings.is\_arm bug
 - 2021-04-14 1.1.1
     - downleveled some error messages
     - clarified state.gain\_db vs eeprom.detector\_gain
