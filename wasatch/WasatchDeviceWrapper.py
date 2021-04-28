@@ -194,8 +194,7 @@ class WasatchDeviceWrapper(object):
         # WasatchDevice, for relay to the instantiating Controller
         self.settings     = None
 
-        if WasatchDeviceWrapper.DISABLE_RESPONSE_QUEUE:
-            self.previous_reading = None
+        self.previous_reading = None
 
     ##
     # Create a low level device object with the specified identifier, kick off
@@ -265,7 +264,6 @@ class WasatchDeviceWrapper(object):
         kill_myself = False
 
         # expect to read a single post-initialization SpectrometerSettings object off the queue
-        # try:
         time_start = datetime.datetime.now()
         settings_timeout_sec = 15
         self.settings = None
@@ -288,10 +286,6 @@ class WasatchDeviceWrapper(object):
                 log.debug("WasatchDeviceWrapper.connect: still waiting for SpectrometerSettings")
                 time.sleep(0.5)
 
-        # except Exception as exc:
-        #    log.warn("WasatchDeviceWrapper.connect: settings_queue_consumer.get() caught exception", exc_info=1)
-        #    kill_myself = True
-
         if self.settings is None:
             log.error("WasatchDeviceWrapper.connect: received poison-pill from forked continuous_poll")
             kill_myself = True
@@ -305,7 +299,6 @@ class WasatchDeviceWrapper(object):
 
             self.settings = None
             self.closing = True
-
 
             log.warn("WasatchDeviceWrapper.releasing thread")
 
@@ -407,28 +400,6 @@ class WasatchDeviceWrapper(object):
         if mode is None or mode == self.ACQUISITION_MODE_KEEP_COMPLETE:
             return self.get_final_item(keep_averaged=True)
 
-        # if mode == self.ACQUISITION_MODE_LATEST:
-        #     return self.get_final_item()
-        #
-        # # presumably mode == self.ACQUISITION_MODE_KEEP_ALL:
-        #
-        # # Get the oldest entry off of the queue. This expects the Controller to be
-        # # able to process them upstream as fast as possible, because otherwise
-        # # the queue will grow (we're not currently limiting its size) and the
-        # # process will eventually crash with memory issues.
-        #
-        # # Note that these two calls to response_queue aren't synchronized
-        # reading = None
-        # qsize = "NA" # self.response_queue.qsize()
-        # try:
-        #     reading = self.response_queue.get_nowait()
-        #     log.debug("acquire_data: read Reading %d (qsize %s)", str(reading.session_count), qsize)
-        # except Queue.Empty:
-        #     log.debug("acquire_data: no data, sending keepalive")
-        #     return None
-        #
-        # return reading
-
     ## Read from the response queue until empty (or we find an averaged item)
     #
     # In the currently implementation, it seems unlikely that a "True" will ever
@@ -437,6 +408,7 @@ class WasatchDeviceWrapper(object):
         last_reading  = None
         last_averaged = None
         dequeue_count = 0
+
         # kludge - memory profiling
         if WasatchDeviceWrapper.DISABLE_RESPONSE_QUEUE and self.previous_reading is not None:
             self.previous_reading.spectrum = [(1.1 - 0.2 * random.random()) * x for x in self.previous_reading.spectrum]
@@ -509,6 +481,10 @@ class WasatchDeviceWrapper(object):
         # none of those.  Yet apparently we did read some normal readings.
         # Return the latest of those.
 
+        # MZ: this would be a possible place to revert logging from DEBUG to 
+        # whatever was passed (self.log_level), especially if this is the
+        # first reading returned by this thread.
+
         if WasatchDeviceWrapper.DISABLE_RESPONSE_QUEUE:
             self.previous_reading = last_reading
         return last_reading
@@ -538,21 +514,42 @@ class WasatchDeviceWrapper(object):
         except Exception as e:
             log.error(f"found an error of {e}")
 
-    # ##########################################################################
-    #                                                                          #
-    #                                 Subprocess                               #
-    #                                                                          #
-    # ##########################################################################
+# ##########################################################################
+#                                                                          #
+#                               Thread Loop                                #
+#                                                                          #
+# ##########################################################################
+
+##
+# Continuously process with the simulated device. First setup
+# the log queue handler. While waiting forever for the None poison
+# pill on the command queue, continuously read from the device and
+# post the results on the response queue.
+class Wrapper_Worker(threading.Thread):
+        
+    def __init__(
+            self,
+            device_id, 
+            command_queue,
+            response_queue,
+            settings_queue,
+            message_queue,
+            parent=None):
+
+        threading.Thread.__init__(self)
+
+        self.device_id      = device_id
+        self.command_queue  = command_queue
+        self.response_queue = response_queue
+        self.settings_queue = settings_queue
+        self.message_queue  = message_queue
+        self.wasatch_device = False
+
+        log.info(f"wrapper thread: Instantiated thread worker.")
 
     ##
-    # Continuously process with the simulated device. First setup
-    # the log queue handler. While waiting forever for the None poison
-    # pill on the command queue, continuously read from the device and
-    # post the results on the response queue.
-    #
-    # This is essentially the main() loop in a forked process (not
-    # thread).  Hopefully we can scale this to one per spectrometer.
-    # All communications with the parent process are routed through
+    # This is essentially the main() loop in a thread.
+    # All communications with the parent thread are routed through
     # one of the three queues (cmd inputs, response outputs, and
     # a one-shot SpectrometerSettings).
     #
@@ -564,57 +561,34 @@ class WasatchDeviceWrapper(object):
     # via the various queues in SubprocessArgs.  In particular, a value of
     # None in either the settings_queue or response_queue indicates "this
     # subprocess is shutting down and the spectrometer is going bye-bye."
-
-class Wrapper_Worker(threading.Thread):
-        
-    def __init__(
-        self,
-        device_id, 
-        command_queue,
-        response_queue,
-        settings_queue,
-        message_queue,
-        parent=None):
-        threading.Thread.__init__(self)
-        self.device_id = device_id
-        self.command_queue = command_queue
-        self.response_queue = response_queue
-        self.settings_queue = settings_queue
-        self.message_queue = message_queue
-        self. wasatch_device = False
-        log.info(f"wrapper thread: Instantiated thread worker.")
-
-
-        # The second thing we do is actually instantiate a WasatchDevice.  Note
-        # that for multi-process apps like ENLIGHTEN which use WasatchDeviceWrapper,
-        # WasatchDevice objects (and by implication, FeatureIdentificationDevice)
-        # are only instantiated inside the subprocess.
-        #
-        # Another way to say that is, we always go the full distance of forking
-        # the subprocess even before we try to instantiate / connect to a device,
-        # so if for some reason this WasatchBus entry was a misfire (bad PID, whatever),
-        # we've gone to the effort of creating a process and several queues just to
-        # find that out.
-        #
-        # (On the other hand, WasatchBus objects are created inside the MainProcess,
-        # as that is how the Controller knows to call Controller.create_new and
-        # instantiate this Wrapper in the first place.)
-        #
-        # Finally, note that the only hint we are passing into WasatchDevice
-        # in terms of what type of device it should be instantiating is the
-        # DeviceID.  This parameter is all that WasatchDevice gets to
-        # decide whether to instantiate a FeatureIdentificationDevice (and which),
-        # something else, or nothing.
-        #
-        # Now that we've removed bus_order, we should replace it with "serial_number".
-        #
-        # Regardless, if anything goes wrong here, ensure we do our best to
-        # cleanup these processes and queues.
-        
-
+    #
+    # The second thing we do is actually instantiate a WasatchDevice.  Note
+    # that for multi-process apps like ENLIGHTEN which use WasatchDeviceWrapper,
+    # WasatchDevice objects (and by implication, FeatureIdentificationDevice)
+    # are only instantiated inside the subprocess.
+    #
+    # Another way to say that is, we always go the full distance of forking
+    # the subprocess even before we try to instantiate / connect to a device,
+    # so if for some reason this WasatchBus entry was a misfire (bad PID, whatever),
+    # we've gone to the effort of creating a process and several queues just to
+    # find that out.
+    #
+    # (On the other hand, WasatchBus objects are created inside the MainProcess,
+    # as that is how the Controller knows to call Controller.create_new and
+    # instantiate this Wrapper in the first place.)
+    #
+    # Finally, note that the only hint we are passing into WasatchDevice
+    # in terms of what type of device it should be instantiating is the
+    # DeviceID.  This parameter is all that WasatchDevice gets to
+    # decide whether to instantiate a FeatureIdentificationDevice (and which),
+    # something else, or nothing.
+    #
+    # Now that we've removed bus_order, we should replace it with "serial_number".
+    #
+    # Regardless, if anything goes wrong here, ensure we do our best to
+    # cleanup these processes and queues.
     def run(self):
         log.debug("wrapper thread: separate thread is now running.")
-        #self.settings_queue.put("A queue message") # put(None, timeout=2)
 
         try:
             self.wasatch_device = WasatchDevice(
@@ -639,7 +613,7 @@ class Wrapper_Worker(threading.Thread):
 
         # send the SpectrometerSettings back to the GUI process
         log.debug("wrapper thread: returning SpectrometerSettings to GUI process")
-        self.settings_queue.put_nowait(self.wasatch_device.settings) # put(wasatch_device.settings, timeout=10)
+        self.settings_queue.put_nowait(self.wasatch_device.settings) 
         
         log.debug("wrapper thread: entering loop")
         last_heartbeat = datetime.datetime.now()
@@ -655,8 +629,9 @@ class Wrapper_Worker(threading.Thread):
         while True:
 
             now = datetime.datetime.now()
-            #log.debug(f"Queue sizes are command:{self.command_queue.qsize()} response:{self.response_queue.qsize()} message:{self.message_queue.qsize()} settings:{self.settings_queue.qsize()}")
-            #heartbeat logger (outgoing keepalives to logger)
+            # log.debug(f"Queue sizes are command:{self.command_queue.qsize()} response:{self.response_queue.qsize()} message:{self.message_queue.qsize()} settings:{self.settings_queue.qsize()}")
+
+            # heartbeat logger (outgoing keepalives to logger)
             if (now - last_heartbeat).total_seconds() >= 3:
                 log.info("heartbeat")
                 last_heartbeat = now

@@ -714,6 +714,8 @@ class FeatureIdentificationDevice(object):
     # @returns tuple of (spectrum[], area_scan_row_count) for success
     # @returns None when it times-out while waiting for an external trigger
     #          (interpret as, "didn't find any fish this time, try again in a bit")
+    # @returns False (bool) when it times-out or encounters an exception
+    #          when NOT in external-triggered mode
     # @throws exception on timeout (unless external triggering enabled)
     def get_line(self, trigger=True):
 

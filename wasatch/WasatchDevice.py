@@ -576,6 +576,10 @@ class WasatchDevice(object):
                 try:
                     while True:
                         spectrum_and_row = self.hardware.get_line()
+                        if isinstance(spectrum_and_row, bool):
+                            # get_line returned a poison-pill, so flow it upstream
+                            return False
+
                         if self.hardware.shutdown_requested: 
                             return False
 
