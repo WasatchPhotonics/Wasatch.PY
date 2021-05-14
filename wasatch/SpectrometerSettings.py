@@ -151,6 +151,7 @@ class SpectrometerSettings(object):
         height = self.eeprom.active_pixels_vertical
         return start < stop and start >= 0 and stop < height
 
+    ## @todo return ROI
     def get_vertical_roi(self):
         if self.has_vertical_roi():
             return (self.eeprom.roi_vertical_region_1_start, 

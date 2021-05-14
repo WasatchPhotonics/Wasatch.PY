@@ -8,6 +8,7 @@ import json
 import re
 
 from . import utils
+from .ROI import ROI
 
 log = logging.getLogger(__name__)
 
@@ -160,22 +161,31 @@ class EEPROM(object):
                 return True
         return False
 
-    ## @return tuple of (start, end) pixel coordinates (end is last pixel, not last+1),
-    #          or None if no valid horizontal ROI
-    # @todo this should return an ROI object, not a tuple
+    ## pixel frame (end is last index, not last+1),
     def get_horizontal_roi(self):
         start  = self.roi_horizontal_start
         end    = self.roi_horizontal_end
         pixels = self.active_pixels_horizontal
 
         if 0 <= start and start < end and end < pixels:
-            return (start, end)
+            return ROI(start, end)
 
+    ## 
+    # On a 1024-pixel detector, note the expected / correct result based on the 
+    # roi_horizontal_start/stop fields:
+    #
+    # - (0, 1024) FALSE (last pixel invalid)
+    # - (0, 1023) TRUE  (even though no vignetting is occuring)
+    # - (0, 1022) TRUE  (crops last pixel)
+    # - (1, 1023) TRUE  (crops first pixel)
+    # - (1, 1024) FALSE (last pixel invalid)
+    # - (1,    1) FALSE (start must < end)
+    # - (1,    2) TRUE  (valid 2-pixel spectrum)
+    # - (2,    1) FALSE (start must < end)
+    #   
+    # @return whether a valid horizontal ROI is configured
     def has_horizontal_roi(self):
-        start  = self.roi_horizontal_start
-        end    = self.roi_horizontal_end
-        pixels = self.active_pixels_horizontal
-        return 0 <= start and start < end and end < pixels
+        return self.get_horizontal_roi() is not None
     ## 
     # passed a temporary copy of another EEPROM object, copy-over any
     # "editable" fields to this one

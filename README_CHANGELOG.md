@@ -1,5 +1,7 @@
 # Changelog
 
+- 2021-05-14 1.1.4
+    - added ROI
 - 2021-04-28 1.1.3
     - fixed poison-pill bug on IMX
 - 2021-04-15 1.1.2
