@@ -213,7 +213,7 @@ class SpectrometerSettings(object):
                         factors.append(expanded)
                     self.raman_intensity_factors = np.array(factors, dtype=np.float64)
                 except:
-                    log.error("exception generating Raman intensity factors", exc_info=1)
+                    log.error("exception generating Raman intensity factors (coeffs %s)", coeffs, exc_info=1)
                     self.raman_intensity_factors = None
         log.debug("factors = %s", self.raman_intensity_factors)
 
