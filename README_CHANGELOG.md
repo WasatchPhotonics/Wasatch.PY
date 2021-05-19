@@ -1,5 +1,8 @@
 # Changelog
 
+- 2021-05-19 1.1.5
+    - demo version logging
+    - log SRM coefficients on math exception
 - 2021-05-14 1.1.4
     - added ROI
 - 2021-04-28 1.1.3
