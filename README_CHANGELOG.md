@@ -1,5 +1,7 @@
 # Changelog
 
+- 2021-05-24 1.1.6
+    - fixed laser\_power\_in\_mW bug
 - 2021-05-19 1.1.5
     - demo version logging
     - log SRM coefficients on math exception

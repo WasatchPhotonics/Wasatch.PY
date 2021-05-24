@@ -1614,7 +1614,7 @@ class FeatureIdentificationDevice(object):
         # the new level
         value = float(max(0, min(100, value_in)))
         self.settings.state.laser_power = value
-        self.settings.state.laser_power_in_mW = False
+        # self.settings.state.laser_power_in_mW = False
         log.debug("set_laser_power_perc: range (0, 100), requested %.2f, applying %.2f", value_in, value)
 
         if self.get_laser_power_ramping_enabled() and self.settings.state.laser_enabled:
