@@ -30,8 +30,9 @@ class SpectrometerState(object):
 
         # laser
         self.laser_enabled = False
-        self.laser_power_in_mW = False
-        self.laser_power = 0
+        self.laser_power_mW = None  # if last set in mW, will contain setpoint in mW; else will be None
+        self.laser_power_perc = 0   # should always contain a number [0, 100]
+        self.use_mW = False         # bool
         self.laser_temperature_setpoint_raw = 0
         self.selected_adc = None
         self.selected_laser = 0
@@ -203,7 +204,9 @@ class SpectrometerState(object):
         log.debug("  High Gain Mode Enabled: %s", self.high_gain_mode_enabled)
         log.debug("  Gain (dB):              %d", self.gain_db)
         log.debug("  Laser Enabled:          %s", self.laser_enabled)
-        log.debug("  Laser Power:            %.2f", self.laser_power)
+        log.debug("  Laser Power %%:          %.2f", self.laser_power_perc)
+        log.debug("  Laser Power mW:         %.2f", self.laser_power_mW if self.laser_power_mW is not None else 0)
+        log.debug("  Use mW:                 %s", self.use_mW)
         log.debug("  Laser Temp Setpoint:    0x%04x", self.laser_temperature_setpoint_raw)
         log.debug("  Selected ADC:           %s", self.selected_adc)
         log.debug("  Trigger Source:         %s", self.stringify_trigger_source())

@@ -1581,8 +1581,11 @@ class FeatureIdentificationDevice(object):
         return self.settings.eeprom.has_laser_power_calibration()
 
     def set_laser_power_mW(self, mW_in):
-        if not self.has_laser_power_calibration():
+        if mW_in is None or not self.has_laser_power_calibration():
             log.error("EEPROM doesn't have laser power calibration")
+            self.settings.state.laser_power_mW = 0
+            self.settings.state.laser_power_perc = 0
+            self.settings.state.use_mW = False
             return False
 
         mW = min(self.settings.eeprom.max_laser_power_mW, max(self.settings.eeprom.min_laser_power_mW, mW_in))
@@ -1594,7 +1597,8 @@ class FeatureIdentificationDevice(object):
             mW_in,
             mW,
             perc)
-        return self.set_laser_power_perc(perc)
+        self.settings.state.laser_power_mW = mW
+        return self.set_laser_power_perc(perc, set_in_perc=False)
 
     def set_laser_power_high_resolution(self, flag):
         self.settings.state.laser_power_high_resolution = True if flag else False
@@ -1605,7 +1609,7 @@ class FeatureIdentificationDevice(object):
     ##
     # @todo support floating-point value, as we have a 12-bit ADC and can provide
     # a bit more precision than 100 discrete steps (goal to support 0.1 - .125% resolution)
-    def set_laser_power_perc(self, value_in):
+    def set_laser_power_perc(self, value_in, set_in_perc=True):
         if not self.settings.eeprom.has_laser:
             log.error("unable to control laser: EEPROM reports no laser installed")
             return False
@@ -1613,9 +1617,14 @@ class FeatureIdentificationDevice(object):
         # if the laser is already engaged and we're using ramping, then ramp to
         # the new level
         value = float(max(0, min(100, value_in)))
-        self.settings.state.laser_power = value
-        # self.settings.state.laser_power_in_mW = False
+        self.settings.state.laser_power_perc = value
         log.debug("set_laser_power_perc: range (0, 100), requested %.2f, applying %.2f", value_in, value)
+
+        if set_in_perc:
+            # apparently the laser power was explicitly commanded as a percentage
+            # of full, and not "computed from mW" using a calibration, so clear 
+            # the mW setpoint
+            self.settings.state.laser_power_mW = 0
 
         if self.get_laser_power_ramping_enabled() and self.settings.state.laser_enabled:
             self.next_applied_laser_power = value
@@ -1742,7 +1751,6 @@ class FeatureIdentificationDevice(object):
         log.debug("next_applied_laser_power = %s", self.next_applied_laser_power)
 
         return result
-
 
     def reset_fpga(self):
         log.debug("fid: resetting FPGA")
