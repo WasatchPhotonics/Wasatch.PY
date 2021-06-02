@@ -142,6 +142,15 @@ class FeatureIdentificationDevice(object):
             log.debug("setting configuration")
             result = device.set_configuration()
         except Exception as exc:
+            #####################################################################################################################
+            # This additional if statement is present for the Raspberry Pi. There is an issue with resource busy errors.
+            # Adding dev.reset() solves this. See https://stackoverflow.com/questions/29345325/raspberry-pyusb-gets-resource-busy
+            #####################################################################################################################
+            if "Resource busy" in str(exc):
+                log.warn("Hardware Failure in setConfiguration. Resource busy error. Attempting to reattach driver by reset.")
+                dev.reset()
+                connect()
+                return self.connected
             log.warn("Hardware Failure in setConfiguration", exc_info=1)
             self.connecting = False
             raise
