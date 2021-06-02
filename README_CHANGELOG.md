@@ -1,5 +1,17 @@
 # Changelog
 
+- 2021-05-25 1.1.7
+    - changed SpectrometerState.laser\_power\_in\_mW to use\_mW
+    - changed SpectrometerState.laser\_power to laser\_power\_perc and \_mW
+    - changed Reading          .laser\_power to laser\_power\_perc and \_mW
+    - removed bare\_readings
+- 2021-05-24 1.1.6
+    - fixed laser\_power\_in\_mW bug
+- 2021-05-19 1.1.5
+    - demo version logging
+    - log SRM coefficients on math exception
+- 2021-05-14 1.1.4
+    - added ROI
 - 2021-04-28 1.1.3
     - fixed poison-pill bug on IMX
 - 2021-04-15 1.1.2

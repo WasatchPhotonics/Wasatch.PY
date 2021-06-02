@@ -65,10 +65,6 @@ class WasatchDevice(object):
         # this runs them as they arrive).
         self.immediate_mode = False
 
-        # Enable this to skip extra metadata in Readings (detector temperature,
-        # laser temperature, photodiode, battery etc)
-        self.bare_readings = False
-
         self.settings = SpectrometerSettings()
 
         # Any particular reason these aren't in FeatureIdentificationDevice?
@@ -190,11 +186,6 @@ class WasatchDevice(object):
         self.settings.update_wavecal()
         self.settings.update_raman_intensity_factors()
         self.settings.dump()
-
-        # SiG-VIS kludge
-        if self.settings.eeprom.model == "ENG-SV-DEFAULT":
-            log.critical("enabling bare_readings for %s", self.settings.eeprom.model)
-            self.bare_readings = True
 
     # ######################################################################## #
     #                                                                          #
@@ -348,10 +339,6 @@ class WasatchDevice(object):
                 log.debug("acquire_spectrum: disabling laser post-acquisition")
                 self.hardware.set_laser_enable(False)
             return False # for convenience
-
-        if self.bare_readings:
-            disable_laser()
-            return reading
 
         ########################################################################
         # We're done with the (possibly-averaged) spectrum, so we'd like to now
@@ -527,8 +514,8 @@ class WasatchDevice(object):
             # about. That would actually provide a reason to roll all the 
             # temperature etc readouts into the SpectrometerState class...
             reading.integration_time_ms = self.settings.state.integration_time_ms
-            reading.laser_power         = self.settings.state.laser_power
-            reading.laser_power_in_mW   = self.settings.state.laser_power_in_mW
+            reading.laser_power_perc    = self.settings.state.laser_power_perc
+            reading.laser_power_mW      = self.settings.state.laser_power_mW
             reading.laser_enabled       = self.settings.state.laser_enabled  
 
             # Are we reading one spectrum (normal mode, or "slow" area scan), or

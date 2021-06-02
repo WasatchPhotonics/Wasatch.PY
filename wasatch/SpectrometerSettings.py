@@ -151,6 +151,7 @@ class SpectrometerSettings(object):
         height = self.eeprom.active_pixels_vertical
         return start < stop and start >= 0 and stop < height
 
+    ## @todo return ROI
     def get_vertical_roi(self):
         if self.has_vertical_roi():
             return (self.eeprom.roi_vertical_region_1_start, 
@@ -212,7 +213,7 @@ class SpectrometerSettings(object):
                         factors.append(expanded)
                     self.raman_intensity_factors = np.array(factors, dtype=np.float64)
                 except:
-                    log.error("exception generating Raman intensity factors", exc_info=1)
+                    log.error("exception generating Raman intensity factors (coeffs %s)", coeffs, exc_info=1)
                     self.raman_intensity_factors = None
         log.debug("factors = %s", self.raman_intensity_factors)
 
@@ -273,14 +274,15 @@ class SpectrometerSettings(object):
             log.debug("is_ingaas TRUE because hardware_info")
             return True
         elif self.eeprom is None or self.eeprom.detector is None:
-            log.debug("is_ingaas FALSE because EEPROM")
+            log.debug("is_ingaas FALSE because missing EEPROM or detector")
             return False 
         elif re.match(r'ingaas|g9214|g9206|g14237', self.eeprom.detector.lower()):
             log.debug("is_ingaas TRUE because detector")
             return True
         elif self.fpga_options is not None and self.fpga_options.has_cf_select:
-            log.debug("is_ingaas TRUE because CF_SELECT")
+            log.debug("is_ingaas TRUE because has_cf_select")
             return True
+        log.debug("is_ingaas FALSE by default")
         return False
 
     def is_imx(self):
