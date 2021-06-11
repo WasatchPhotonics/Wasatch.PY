@@ -482,7 +482,6 @@ class EEPROM(object):
         # ######################################################################
 
         if self.subformat == 0:
-            # todo: extend user_data
             pass
         elif self.subformat == 1:
             self.read_raman_intensity_calibration()
@@ -901,6 +900,8 @@ class EEPROM(object):
         # Page 6-7
         # ######################################################################
 
+        if self.subformat == 0:
+            pass
         if self.subformat == 1:
             self.write_raman_intensity_calibration()
         elif self.subformat == 2:

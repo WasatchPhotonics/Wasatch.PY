@@ -97,10 +97,12 @@ class SpectrometerSettings(object):
         a = utils.dict_get_norm(d, "wavelengths")
         if a is not None:
             self.wavelengths = a
+            log.debug("SS.load_from_dict: assigned wavelengths")
 
         a = utils.dict_get_norm(d, "wavenumbers")
         if a is not None:
             self.wavenumbers = a
+            log.debug("SS.load_from_dict: assigned wavenumbers")
 
     # ##########################################################################
     # accessors

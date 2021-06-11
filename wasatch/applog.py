@@ -32,17 +32,23 @@ from queue import Queue
 #                                                                              #
 # ##############################################################################
 
-explicit_path = None
+explicit_path = None     # don't rename this, it's a public module attribute used by callers
+
+def set_location(path):
+    global explicit_path
+    explicit_path = path
 
 ##
 # Determine the location to store the log file. Current directory
-# on Linux, or %PROGRAMDATA% on windows - usually C:\\ProgramData 
+# on Linux/Mac, or %PROGRAMDATA% on windows - usually C:\\ProgramData 
 def get_location():
+    global explicit_path
     if explicit_path is not None:
         return explicit_path
 
     # For convenience, replace any dots with underscores to help windows know
     # it is a text file.
+    print("applog.get_location: explicit path not set, so defaulting to module name")
     module_name = __name__.replace(".", "_") # "wasatch.applog" -> "wasatch_applog"
     filename = "%s.txt" % module_name        # "wasatch_applog.txt"
 
@@ -112,7 +118,6 @@ def explicit_log_close():
         handler.close()
         root_log.removeHandler(handler)
 
-
 # ##############################################################################
 #                                                                              #
 #                                MainLogger                                    #
@@ -142,8 +147,12 @@ class MainLogger(object):
         self.log_queue     = Queue() 
         self.log_level     = log_level
         self.enable_stdout = enable_stdout
-        self.explicit_path = logfile
+        self.logfile       = logfile            
         self.timeout_sec   = timeout_sec
+
+        if self.logfile is not None:
+            # store in the module, not just the object
+            set_location(self.logfile)
 
         # kick-off a listener in a separate process
         # Specifically, create a process running the listener_process() function
@@ -154,23 +163,23 @@ class MainLogger(object):
         #self.listener.start()
         #self.listener_process(self.log_queue, self.listener_configurer, self.explicit_path, self.timeout_sec)
         root_log = logging.getLogger()
-        self.log_configurer(self.explicit_path)
+        print("calling log_configurer with %s" % self.logfile)
+        self.log_configurer(self.logfile)
         # Remember you have to add a local log configurator for each
         # process, including this, the parent process
         
         #top_handler = QueueHandler(self.log_queue)
         #root_log.addHandler(top_handler)
         root_log.setLevel(self.log_level)
-        root_log.warning("Top level log configuration (%d handlers)", len(root_log.handlers))
-
+        root_log.warning("Top level log configuration (%d handlers, get_location %s)", len(root_log.handlers), get_location())
 
     ## Setup file handler and command window stream handlers. Every log
     #  message received on the queue handler will use these log configurers. 
-    def log_configurer(self, explicit_path=None):
-        if explicit_path is not None:
-            pathname = explicit_path
-        elif self.explicit_path is not None:
-            pathname = self.explicit_path
+    def log_configurer(self, logfile=None):
+        if logfile is not None:
+            pathname = logfile
+        elif self.logfile is not None:
+            pathname = self.logfile
         else:
             pathname = get_location()
 

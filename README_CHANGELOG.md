@@ -1,5 +1,7 @@
 # Changelog
 
+- 2021-05-25 1.1.8
+    - updates for cross-platform logging
 - 2021-05-25 1.1.7
     - changed SpectrometerState.laser\_power\_in\_mW to use\_mW
     - changed SpectrometerState.laser\_power to laser\_power\_perc and \_mW
