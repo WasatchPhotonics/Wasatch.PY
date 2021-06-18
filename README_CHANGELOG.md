@@ -1,5 +1,7 @@
 # Changelog
 
+- 2021-06-18 1.1.9
+    - cache battery percentage
 - 2021-05-25 1.1.8
     - updates for cross-platform logging
 - 2021-05-25 1.1.7

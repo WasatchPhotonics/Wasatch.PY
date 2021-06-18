@@ -76,6 +76,7 @@ class WasatchDevice(object):
 
         self.process_id = os.getpid()
         self.last_memory_check = datetime.datetime.now()
+        self.last_battery_percentage = 0
 
     # ######################################################################## #
     #                                                                          #
@@ -432,12 +433,15 @@ class WasatchDevice(object):
                 reading.battery_percentage = self.hardware.get_battery_percentage()
                 if self.hardware.shutdown_requested: 
                     return False
+                self.last_battery_percentage = reading.battery_percentage
 
                 reading.battery_charging = self.hardware.get_battery_charging()
                 if self.hardware.shutdown_requested: 
                     return False
 
                 log.debug("battery: level %.2f%% (%s)", reading.battery_percentage, "charging" if reading.battery_charging else "not charging")
+            else:
+                reading.battery_percentage = self.last_battery_percentage
 
         # log.debug("device.acquire_spectrum: returning %s", reading)
         return reading
