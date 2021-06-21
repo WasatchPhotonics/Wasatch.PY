@@ -2026,7 +2026,7 @@ class FeatureIdentificationDevice(object):
         (lsw, msw, buf) = self.to40bit(us)
         return self.send_code(0xb9, lsw, msw, buf, label="SET_MOD_DURATION")
 
-    def get_mod_duration_us_NOT_USED(self):
+    def get_mod_duration_us(self):
         value = self.get_code(0xc3, label="GET_MOD_DURATION", lsb_len=5)
         self.settings.state.mod_duration_us = value
         return value
@@ -2037,7 +2037,7 @@ class FeatureIdentificationDevice(object):
         return self.send_code(0xbe, value, label="SET_STROBE_ENABLE")
 
     ## a literal pass-through to get_laser_enabled()
-    def get_strobe_enable(self):
+    def get_strobe_enabled(self):
         return self.get_laser_enabled()
 
     # ##########################################################################
@@ -2083,7 +2083,9 @@ class FeatureIdentificationDevice(object):
         return self.get_code(0xdf, label="GET_ACTUAL_INTEGRATION_TIME_US", lsb_len=3)
 
     def get_detector_offset(self):
-        return self.get_code(0xc4, label="GET_DETECTOR_OFFSET", lsb_len=2) 
+        value = self.get_code(0xc4, label="GET_DETECTOR_OFFSET", lsb_len=2) 
+        self.settings.eeprom.detector_offset = value
+        return value
 
     def get_detector_offset_odd(self):
         if not self.settings.is_ingaas():

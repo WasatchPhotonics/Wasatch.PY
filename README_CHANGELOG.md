@@ -1,5 +1,8 @@
 # Changelog
 
+- 2021-06-21 1.1.11
+    - store retrieved detector\_offset to cached EEPROM after read from FPGA
+    - updated gettors in WasatchShell
 - 2021-06-21 1.1.10
     - fixed "detctor" typos in FID gettors
 - 2021-06-18 1.1.9
