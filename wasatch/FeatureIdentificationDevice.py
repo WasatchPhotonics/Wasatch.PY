@@ -575,7 +575,7 @@ class FeatureIdentificationDevice(object):
 
         gain = msb + lsb / 256.0
         log.debug("Gain is: %f (msb %d, lsb %d)" % (gain, msb, lsb))
-        self.settings.eeprom.detctor_gain = gain
+        self.settings.eeprom.detector_gain = gain
 
         if self.settings.is_micro():
             self.settings.state.gain_db = gain
@@ -585,7 +585,7 @@ class FeatureIdentificationDevice(object):
     def get_detector_gain_odd(self):
         if not self.settings.is_ingaas():
             log.debug("GET_DETECTOR_GAIN_ODD only supported on InGaAs")
-            return self.settings.eeprom.detctor_gain_odd
+            return self.settings.eeprom.detector_gain_odd
 
         result = self.get_code(0x9f, label="GET_DETECTOR_GAIN_ODD")
 
@@ -594,7 +594,7 @@ class FeatureIdentificationDevice(object):
 
         gain = msb + lsb / 256.0
         log.debug("Gain_odd is: %f (msb %d, lsb %d)" % (gain, msb, lsb))
-        self.settings.eeprom.detctor_gain_odd = gain
+        self.settings.eeprom.detector_gain_odd = gain
 
         return gain
 
@@ -2088,10 +2088,10 @@ class FeatureIdentificationDevice(object):
     def get_detector_offset_odd(self):
         if not self.settings.is_ingaas():
             log.debug("GET_DETECTOR_OFFSET_ODD only supported on InGaAs")
-            return self.settings.eeprom.detctor_offset_odd
+            return self.settings.eeprom.detector_offset_odd
 
         value = self.get_code(0x9e, label="GET_DETECTOR_OFFSET_ODD", lsb_len=2) 
-        self.settings.eeprom.detctor_offset_odd = value
+        self.settings.eeprom.detector_offset_odd = value
         return value
 
     def get_ccd_sensing_threshold(self):
