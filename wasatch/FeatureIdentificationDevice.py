@@ -2459,7 +2459,10 @@ class FeatureIdentificationDevice(object):
         else:
             log.error("unsupported override configuration for %s %s", setting, value)
 
-        # store result of override...need a more scalable way to do this
+        # Store result of override...need a more scalable way to do this for other attributes.
+        #
+        # Note that the call to int() is performing a typecast, not a truncation -- we
+        # don't create overrides for fractional millisecond integration time.
         if setting == "integration_time_ms":
             log.debug("integration_time_ms: now %d (apply_override)", int(value))
             self.settings.state.integration_time_ms = int(value)
