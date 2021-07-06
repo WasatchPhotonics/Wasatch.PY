@@ -116,12 +116,10 @@ class SpectrometerSettings(object):
         a = self.eeprom.model.strip()
         b = self.eeprom.product_configuration
 
-        if b is not None and len(b) > 0:
-            b = b.strip()
-            if re.match(r'^[-_A-Za-z0-9]+$', b):
-                return a + b
-
-        return a
+        if b is None:
+            return a
+        else:
+            return a + b.strip()
 
     def pixels(self):
         return self.eeprom.active_pixels_horizontal

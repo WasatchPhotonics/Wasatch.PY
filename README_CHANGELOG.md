@@ -1,5 +1,7 @@
 # Changelog
 
+- 2021-07-06 1.1.12
+    - removed regex from SpectrometerSettings.full\_model
 - 2021-06-21 1.1.11
     - store retrieved detector\_offset to cached EEPROM after read from FPGA
     - updated gettors in WasatchShell
