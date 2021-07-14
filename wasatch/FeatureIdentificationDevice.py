@@ -560,11 +560,9 @@ class FeatureIdentificationDevice(object):
     ##
     # Read the device stored gain.  Convert from binary "half-precision" float.
     #
-    # - 1st byte (LSB) is binary encoded: bit 0 = 1/2, 1 = 1/4, 2 = 1/8 etc.
-    # - 2nd byte (MSB) is the part to the left of the decimal
+    # - 1st byte (LSB) is binary encoded: bit 0 = 1/2, bit 1 = 1/4, bit 2 = 1/8 etc.
+    # - 2nd byte (MSB) is the integral part to the left of the decimal
     # 
-    # On both sides, expanded exponents (fractional or otherwise) are summed.
-    #
     # E.g., 231 dec == 0x01e7 == 1.90234375
     def get_detector_gain(self):
         result = self.get_code(0xc5, label="GET_DETECTOR_GAIN")
@@ -575,9 +573,10 @@ class FeatureIdentificationDevice(object):
 
         lsb = result[0] # LSB-MSB
         msb = result[1]
+        raw = (msb << 8) | lsb
 
         gain = msb + lsb / 256.0
-        log.debug("Gain is: %f (msb %d, lsb %d)" % (gain, msb, lsb))
+        log.debug("get_detector_gain: %f (raw 0x%04x, msb %d, lsb %d)" % (gain, raw, msb, lsb))
         self.settings.eeprom.detector_gain = gain
 
         if self.settings.is_micro():
@@ -594,9 +593,10 @@ class FeatureIdentificationDevice(object):
 
         lsb = result[0] # LSB-MSB
         msb = result[1]
+        raw = (msb << 8) | lsb
 
         gain = msb + lsb / 256.0
-        log.debug("Gain_odd is: %f (msb %d, lsb %d)" % (gain, msb, lsb))
+        log.debug("get_detector_gain_odd: %f (0x%04x, msb %d, lsb %d)" % (gain, raw, msb, lsb))
         self.settings.eeprom.detector_gain_odd = gain
 
         return gain
@@ -624,7 +624,7 @@ class FeatureIdentificationDevice(object):
     #
     # @see https://wasatchphotonics.com/api/Wasatch.NET/class_wasatch_n_e_t_1_1_funky_float.html
     def set_detector_gain(self, gain):
-        raw = utils.float_to_uint16(gain)
+        raw = self.settings.eeprom.float_to_uint16(gain)
 
         # MZ: note that we SEND gain MSB-LSB, but we READ gain LSB-MSB?!
         log.debug("Send Detector Gain: 0x%04x (%s)", raw, gain)
@@ -636,7 +636,7 @@ class FeatureIdentificationDevice(object):
             log.debug("SET_DETECTOR_GAIN_ODD only supported on InGaAs")
             return False
 
-        raw = utils.float_to_uint16(gain)
+        raw = self.settings.eeprom.float_to_uint16(gain)
 
         # MZ: note that we SEND gain MSB-LSB, but we READ gain LSB-MSB?!
         log.debug("Send Detector Gain Odd: 0x%04x (%s)", raw, gain)

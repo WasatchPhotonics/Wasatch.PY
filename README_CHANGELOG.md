@@ -1,5 +1,8 @@
 # Changelog
 
+- 2021-07-14 1.1.14
+    - moved float\_to\_uint16 to EEPROM
+    - bumped EEPROM.format to 12
 - 2021-07-14 1.1.13
     - made FID.py return values more consistent
     - added utils.float\_to\_uint16
