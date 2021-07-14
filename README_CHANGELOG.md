@@ -1,5 +1,7 @@
 # Changelog
 
+- 2021-07-14 1.1.15
+    - added hardwareEvenOdd
 - 2021-07-14 1.1.14
     - moved float\_to\_uint16 to EEPROM
     - bumped EEPROM.format to 12

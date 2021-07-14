@@ -42,6 +42,7 @@ class EEPROM(object):
         self.bin_2x2                     = False
         self.gen15                       = False
         self.cutoff_filter_installed     = False
+        self.hardware_even_odd           = False
         self.excitation_nm               = 0.0
         self.excitation_nm_float         = 0.0
         self.slit_size_um                = 0
@@ -270,6 +271,7 @@ class EEPROM(object):
         log.debug("  Bin 2x2:          %s", self.bin_2x2)
         log.debug("  Gen 1.5:          %s", self.gen15)
         log.debug("  Cutoff Filter:    %s", self.cutoff_filter_installed)
+        log.debug("  HW Even/Odd:      %s", self.hardware_even_odd)
         log.debug("  Excitation:       %s nm", self.excitation_nm)
         log.debug("  Excitation (f):   %.2f nm", self.excitation_nm_float)
         log.debug("  Laser Warmup Sec: %d", self.laser_warmup_sec)
@@ -500,6 +502,7 @@ class EEPROM(object):
         self.bin_2x2                 = 0 != self.feature_mask & 0x0002
         self.gen15                   = 0 != self.feature_mask & 0x0004
         self.cutoff_filter_installed = 0 != self.feature_mask & 0x0008
+        self.hardware_even_odd       = 0 != self.feature_mask & 0x0010
 
         # ######################################################################
         # sanity checks
@@ -755,6 +758,7 @@ class EEPROM(object):
         mask |= 0x0002 if self.bin_2x2                 else 0
         mask |= 0x0004 if self.gen15                   else 0
         mask |= 0x0008 if self.cutoff_filter_installed else 0
+        mask |= 0x0010 if self.hardware_even_odd       else 0
         return mask
 
     ##
