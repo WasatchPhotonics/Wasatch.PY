@@ -1,5 +1,7 @@
 # Changelog
 
+- 2021-07-14 1.1.16
+    - debugs
 - 2021-07-14 1.1.15
     - added hardwareEvenOdd
 - 2021-07-14 1.1.14

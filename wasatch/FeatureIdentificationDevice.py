@@ -973,6 +973,8 @@ class FeatureIdentificationDevice(object):
             self.settings.eeprom.detector_gain_odd,
             self.settings.eeprom.detector_offset_odd)
 
+        log.debug("before: %d, %d, %d, %d, %d", spectrum[0], spectrum[1], spectrum[2], spectrum[3], spectrum[4])
+
         # iterate over the ODD pixels of the spectrum
         for i in range(1, len(spectrum), 2):
 
@@ -986,8 +988,11 @@ class FeatureIdentificationDevice(object):
             # convert back to uint16 so the spectrum is all of one type
             spectrum[i] = int(round(max(0, min(new, 0xffff))))
 
-            if i < 5:
+            if i < 5 or i > len(spectrum) - 5:
                 log.debug("  pixel %4d: old %.2f raw %.2f new %.2f final %5d", i, old, raw, new, spectrum[i])
+
+        log.debug("after: %d, %d, %d, %d, %d", spectrum[0], spectrum[1], spectrum[2], spectrum[3], spectrum[4])
+
         return True
 
     ## 
