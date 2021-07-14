@@ -551,3 +551,17 @@ def twos_complement(val, bits):
     if (val & (1 << (bits - 1))) != 0: # if sign bit is set e.g., 8bit: 128-255
         val = val - (1 << bits)        # compute negative value
     return val    
+
+##
+# Convert a floating-point value into the big-endian 16-bit "funky float" 
+# used for detector gain in the FPGA on both Hamamatsu and IMX sensors.
+#
+# Note that this TRUNCATES (takes the floor) rather than rounding,
+# which I believe matches WasatchNET.FunkyFloat.fromFloat().
+#
+# @see https://wasatchphotonics.com/api/Wasatch.NET/class_wasatch_n_e_t_1_1_funky_float.html
+def float_to_uint16(gain):
+    msb = int(gain) & 0xff
+    lsb = int((gain - msb) * 256) & 0xff
+    raw = (msb << 8) | lsb
+    return raw

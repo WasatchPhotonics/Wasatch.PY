@@ -1,5 +1,8 @@
 # Changelog
 
+- 2021-07-14 1.1.13
+    - made FID.py return values more consistent
+    - added utils.float\_to\_uint16
 - 2021-07-06 1.1.12
     - removed regex from SpectrometerSettings.full\_model
 - 2021-06-21 1.1.11

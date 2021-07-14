@@ -303,6 +303,9 @@ class SpectrometerSettings(object):
     def is_gen15(self):
         return self.eeprom.gen15
 
+    def is_gen2(self):
+        return False
+
     ## @todo add this to EEPROM.feature_mask if we decide to keep the feature
     def has_marker(self):
         return self.eeprom.model == "WPX-8CHANNEL"
