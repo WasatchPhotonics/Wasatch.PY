@@ -1,6 +1,5 @@
 import re
 import os
-import gc
 import time
 import queue
 import psutil
@@ -47,7 +46,7 @@ class WasatchDevice(object):
     # @param message_queue  if provided, used to send status back to caller
     def __init__(self, device_id, message_queue=None):
 
-        # if passed a string representation of a DeviceID, deserialize it 
+        # if passed a string representation of a DeviceID, deserialize it
         if type(device_id) is str:
             device_id = DeviceID(label=device_id)
 
@@ -205,7 +204,7 @@ class WasatchDevice(object):
     # @return False     a poison-pill sent upstream to device shutdown
     # @return True      keepalive
     # @return None      keepalive
-    # @return Reading   a partial or complete spectrometer Reading (may itself 
+    # @return Reading   a partial or complete spectrometer Reading (may itself
     #                   have Reading.failure set other than None)
     #
     # @see Controller.acquire_reading
@@ -215,7 +214,7 @@ class WasatchDevice(object):
         self.monitor_memory()
 
         if self.hardware.shutdown_requested:
-            return False 
+            return False
 
         # process queued commands, and find out if we've been asked to read a
         # spectrum
@@ -236,36 +235,36 @@ class WasatchDevice(object):
         return self.acquire_spectrum()
 
     ##
-    # Generate one Reading from the spectrometer, including one 
+    # Generate one Reading from the spectrometer, including one
     # optionally-averaged spectrum, device temperatures and other hardware
     # status.
     #
-    # This is normally called by acquire_data when that function decides it is 
+    # This is normally called by acquire_data when that function decides it is
     # time to perform an acquisition.
     #
     # @par Scan Averaging
     #
     # IF the driver is in free-running mode, AND performing scan averaging,
-    # THEN scan averaging is NOT encapsulated within a single call to this 
-    # function.  Instead, we let ths spectrometer run in free-running mode, 
+    # THEN scan averaging is NOT encapsulated within a single call to this
+    # function.  Instead, we let ths spectrometer run in free-running mode,
     # collecting individual spectra as per normal, and returning each "partial"
-    # readings while "building up" to the final averaged measurement.  
-    # 
+    # readings while "building up" to the final averaged measurement.
+    #
     # That is to say, if scan averaging is set to 10, then this function will
     # get called 10 times, as ticked by the regular free-running timers, before
     # the fully averaged spectrum is returned.  A total of 10 (not 11) spectra
-    # will be generated and sent upstream: the first 9 "partial" (unaveraged) 
+    # will be generated and sent upstream: the first 9 "partial" (unaveraged)
     # reads, and the final 10th spectrum which will contain the average of all
-    # 10 measurements.  
+    # 10 measurements.
     #
-    # This gives the user-facing GUI an opportunity to update the "collected 
-    # X-of-Y" readout on-screen, and potentially even graph the traces of 
+    # This gives the user-facing GUI an opportunity to update the "collected
+    # X-of-Y" readout on-screen, and potentially even graph the traces of
     # in-process partial readings.
     #
     # HOWEVER, this doesn't make as much sense if we're not in free-running mode,
     # i.e. the subprocess has been slaved to explicit control by the Controller
-    # (likely a feature object like BatchCollection), and is collecting exactly 
-    # those measurements we're being commanded, as they're commanded.  
+    # (likely a feature object like BatchCollection), and is collecting exactly
+    # those measurements we're being commanded, as they're commanded.
     #
     # THEREFORE, if the driver IS NOT in free-running mode, then we ONLY return
     # the final averaged spectrum as one atomic operation.
@@ -282,7 +281,7 @@ class WasatchDevice(object):
         ########################################################################
         # Batch Collection silliness
         ########################################################################
-        
+
         # We could move this up into ENLIGHTEN.BatchCollection: have it enable
         # the laser, wait a bit, and then send the "acquire" command.  But since
         # WasatchDeviceWrapper.continuous_poll ticks at its own interval, that
@@ -306,7 +305,7 @@ class WasatchDevice(object):
         if auto_enable_laser:
             log.debug("acquire_spectum: enabling laser, then sleeping %d ms", self.settings.state.acquisition_laser_trigger_delay_ms)
             self.hardware.set_laser_enable(True)
-            if self.hardware.shutdown_requested: 
+            if self.hardware.shutdown_requested:
                 return False
 
             time.sleep(self.settings.state.acquisition_laser_trigger_delay_ms / 1000.0)
@@ -315,7 +314,7 @@ class WasatchDevice(object):
         # Take a Reading (possibly averaged)
         ########################################################################
 
-        # IMX sensors are free-running, so make sure we collect one full 
+        # IMX sensors are free-running, so make sure we collect one full
         # integration after turning on the laser
         self.perform_optional_throwaways()
 
@@ -331,7 +330,7 @@ class WasatchDevice(object):
             reading.dark = dark_reading.spectrum
 
         ########################################################################
-        # provide early exit-ramp if we've been asked to return bare Readings 
+        # provide early exit-ramp if we've been asked to return bare Readings
         # (just averaged spectra with corrected bad pixels, no metadata)
         ########################################################################
 
@@ -346,25 +345,25 @@ class WasatchDevice(object):
         # disable the automatically-enabled laser, if it was engaged; but before
         # we can do that that, we should take any requested measurements of the
         # laser temperature and photodiode, as those would obviously be invalid-
-        # ated if we took them AFTER the laser was off.  
+        # ated if we took them AFTER the laser was off.
         ########################################################################
 
-        # only read laser temperature if we have a laser 
+        # only read laser temperature if we have a laser
         if self.settings.eeprom.has_laser:
             try:
                 count = 2 if self.settings.state.secondary_adc_enabled else 1
                 for throwaway in range(count):
                     reading.laser_temperature_raw  = self.hardware.get_laser_temperature_raw()
-                    if self.hardware.shutdown_requested: 
+                    if self.hardware.shutdown_requested:
                         return disable_laser(force=True)
 
                 reading.laser_temperature_degC = self.hardware.get_laser_temperature_degC(reading.laser_temperature_raw)
-                if self.hardware.shutdown_requested: 
+                if self.hardware.shutdown_requested:
                     return disable_laser(force=True)
 
                 if not auto_enable_laser:
                     reading.laser_enabled = self.hardware.get_laser_enabled()
-                if self.hardware.shutdown_requested: 
+                if self.hardware.shutdown_requested:
                     return disable_laser(force=True)
 
             except Exception as exc:
@@ -374,24 +373,24 @@ class WasatchDevice(object):
         if self.settings.state.secondary_adc_enabled:
             try:
                 self.hardware.select_adc(1)
-                if self.hardware.shutdown_requested: 
+                if self.hardware.shutdown_requested:
                     return disable_laser(force=True)
 
                 for throwaway in range(2):
                     reading.secondary_adc_raw = self.hardware.get_secondary_adc_raw()
-                    if self.hardware.shutdown_requested: 
+                    if self.hardware.shutdown_requested:
                         return disable_laser(force=True)
 
                 reading.secondary_adc_calibrated = self.hardware.get_secondary_adc_calibrated(reading.secondary_adc_raw)
                 self.hardware.select_adc(0)
-                if self.hardware.shutdown_requested: 
+                if self.hardware.shutdown_requested:
                     return disable_laser(force=True)
 
             except Exception as exc:
                 log.debug("Error reading secondary ADC", exc_info=1)
 
         ########################################################################
-        # we've read the laser temperature and photodiode, so we can now safely 
+        # we've read the laser temperature and photodiode, so we can now safely
         # disable the laser (if we're the one who enabled it)
         ########################################################################
 
@@ -401,21 +400,21 @@ class WasatchDevice(object):
         # finish collecting any metadata that doesn't require the laser
         ########################################################################
 
-        # read detector temperature if applicable 
+        # read detector temperature if applicable
         if self.settings.eeprom.has_cooling:
             try:
                 reading.detector_temperature_raw  = self.hardware.get_detector_temperature_raw()
-                if self.hardware.shutdown_requested: 
+                if self.hardware.shutdown_requested:
                     return False
 
                 reading.detector_temperature_degC = self.hardware.get_detector_temperature_degC(reading.detector_temperature_raw)
-                if self.hardware.shutdown_requested: 
+                if self.hardware.shutdown_requested:
                     return False
 
             except Exception as exc:
                 log.debug("Error reading detector temperature", exc_info=1)
 
-        # read ambient temperature if applicable 
+        # read ambient temperature if applicable
         if self.settings.is_gen15():
             try:
                 # reading.ambient_temperature_degC = self.hardware.get_ambient_temperature_degC()
@@ -427,16 +426,16 @@ class WasatchDevice(object):
         if self.settings.eeprom.has_battery:
             if self.settings.state.battery_timestamp is None or (datetime.datetime.now() >= self.settings.state.battery_timestamp + datetime.timedelta(seconds=10)):
                 reading.battery_raw = self.hardware.get_battery_state_raw()
-                if self.hardware.shutdown_requested: 
+                if self.hardware.shutdown_requested:
                     return False
 
                 reading.battery_percentage = self.hardware.get_battery_percentage()
-                if self.hardware.shutdown_requested: 
+                if self.hardware.shutdown_requested:
                     return False
                 self.last_battery_percentage = reading.battery_percentage
 
                 reading.battery_charging = self.hardware.get_battery_charging()
-                if self.hardware.shutdown_requested: 
+                if self.hardware.shutdown_requested:
                     return False
 
                 log.debug("battery: level %.2f%% (%s)", reading.battery_percentage, "charging" if reading.battery_charging else "not charging")
@@ -447,7 +446,7 @@ class WasatchDevice(object):
         return reading
 
     ##
-    # It's unclear how many throwaways are really needed for a stable Raman spectrum, and whether they're 
+    # It's unclear how many throwaways are really needed for a stable Raman spectrum, and whether they're
     # really based on number of integrations (sensor stabilization) or time (laser warmup); I suspect
     # both.  Also note the potential need for sensor warm-up, but I think that's handled inside FW.
     #
@@ -462,16 +461,16 @@ class WasatchDevice(object):
             for i in range(count):
                 log.debug("performing optional throwaway %d of %d before ramanMicro TakeOne", i, count)
                 spectrum_and_row = self.hardware.get_line()
-    ## 
+    ##
     # @returns Reading on success, true or false on "stop processing" conditions
     def take_one_averaged_reading(self):
 
         # Okay, let's talk about averaging.  Normally we don't perform averaging
         # as a blocking batch process inside Wasatch.PY.  However, ENLIGHTEN's
-        # BatchCollection requirements pulled this architecture in weird 
+        # BatchCollection requirements pulled this architecture in weird
         # directions and we tried to accommodate responsively rather than refactor
         # each time requirements changed...hence the current strangeness.
-        # 
+        #
         # Normally this process (the background process dedicated to a forked
         # WasatchDeviceWrapper object) is in "free-running" mode, taking spectra
         # just as fast as it can in an endless loop, feeding them back to the
@@ -482,16 +481,16 @@ class WasatchDevice(object):
         # However, the use-case for BatchCollection was very specific: to
         # take an averaged series of darks, then enable the laser, wait for the
         # laser to warmup, take an averaged series of dark-corrected measurements,
-        # and return the average as one spectrum.  
+        # and return the average as one spectrum.
         #
-        # That is VERY different from what this code was originally written to 
+        # That is VERY different from what this code was originally written to
         # do.  There are cleaner ways to do this, but I haven't gone back to
         # tidy things up.
 
         averaging_enabled = (self.settings.state.scans_to_average > 1)
 
         if averaging_enabled and not self.settings.state.free_running_mode:
-            # collect the entire averaged spectrum at once (added for 
+            # collect the entire averaged spectrum at once (added for
             # BatchCollection with laser delay)
             #
             # So: we're NOT in "free-running" mode, so we're basically being
@@ -510,17 +509,17 @@ class WasatchDevice(object):
         reading = None
         for loop_index in range(0, loop_count):
 
-            # start a new reading 
+            # start a new reading
             # NOTE: reading.timestamp is when reading STARTED, not FINISHED!
             reading = Reading(self.device_id)
 
-            # TODO...just include a copy of SpectrometerState? something to think 
-            # about. That would actually provide a reason to roll all the 
+            # TODO...just include a copy of SpectrometerState? something to think
+            # about. That would actually provide a reason to roll all the
             # temperature etc readouts into the SpectrometerState class...
             reading.integration_time_ms = self.settings.state.integration_time_ms
             reading.laser_power_perc    = self.settings.state.laser_power_perc
             reading.laser_power_mW      = self.settings.state.laser_power_mW
-            reading.laser_enabled       = self.settings.state.laser_enabled  
+            reading.laser_enabled       = self.settings.state.laser_enabled
 
             # Are we reading one spectrum (normal mode, or "slow" area scan), or
             # doing a batch-read of a whole frame ("fast" area scan)?
@@ -537,20 +536,20 @@ class WasatchDevice(object):
                     log.debug("trying to read a fast area scan frame of %d rows", rows)
                     for i in range(rows):
                         spectrum_and_row = self.hardware.get_line(trigger=(i==0))
-                        if self.hardware.shutdown_requested: 
+                        if self.hardware.shutdown_requested:
                             return False
                         elif spectrum_and_row.spectrum is None:
                             log.debug("device.take_one_averaged_spectrum: get_line None, sending keepalive for now (area scan fast)")
                             return True
 
                         # mimic "slow" results to minimize downstream fuss
-                        reading.spectrum = spectrum_and_row.spectrum 
+                        reading.spectrum = spectrum_and_row.spectrum
                         reading.area_scan_row_count = spectrum_and_row.row
                         reading.timestamp_complete  = datetime.datetime.now()
 
                         # accumulate the frame here
                         reading.area_scan_data.append(spectrum_and_row.spectrum)
-                        log.debug("device.take_one_averaged_reading(area scan fast): got %s ... (row %d)", 
+                        log.debug("device.take_one_averaged_reading(area scan fast): got %s ... (row %d)",
                             reading.spectrum[0:9], reading.area_scan_row_count)
 
                 except Exception as exc:
@@ -571,12 +570,12 @@ class WasatchDevice(object):
                             # get_line returned a poison-pill, so flow it upstream
                             return False
 
-                        if self.hardware.shutdown_requested: 
+                        if self.hardware.shutdown_requested:
                             return False
 
                         if spectrum_and_row.spectrum is None:
                             # FeatureIdentificationDevice can return None when waiting
-                            # on an external trigger.  FileSpectrometer can as well if 
+                            # on an external trigger.  FileSpectrometer can as well if
                             # there is no new spectrum to read.
                             log.debug("device.take_one_averaged_spectrum: get_line None, sending keepalive for now")
                             return True
@@ -603,17 +602,17 @@ class WasatchDevice(object):
             ####################################################################
 
             # It's important to note here that the scan averaging "sum" buffer
-            # here (self.summed_spectra) and counter (self.sum_count) are 
+            # here (self.summed_spectra) and counter (self.sum_count) are
             # attributes of this WasatchDevice object: they are not part of the
             # Reading being sent back to the caller.
             #
             # The current architecture in Wasatch.PY, which is a little different
             # than other Wasatch drivers, is that even when scan averaging is
-            # enabled, EVERY SPECTRUM will be flowed back to the caller.  
+            # enabled, EVERY SPECTRUM will be flowed back to the caller.
             #
-            # This is because early versions of ENLIGHTEN showed the "individual" 
-            # (pre-averaged) spectra as a faint grey trace in the background, 
-            # updating with each integration, showing the higher noise level of 
+            # This is because early versions of ENLIGHTEN showed the "individual"
+            # (pre-averaged) spectra as a faint grey trace in the background,
+            # updating with each integration, showing the higher noise level of
             # "raw" spectra while an on-screen counter showed the incrementing
             # tally of summed spectra in the buffer.
             #
@@ -650,9 +649,7 @@ class WasatchDevice(object):
             # have we completed the averaged reading?
             if averaging_enabled:
                 if self.sum_count >= self.settings.state.scans_to_average:
-                    reading.spectrum = []
-                    for i in range(len(self.summed_spectra)):
-                        reading.spectrum.append(self.summed_spectra[i] / self.sum_count)
+                    reading.spectrum = [ x / self.sum_count for x in self.summed_spectra ]
                     log.debug("device.take_one_averaged_reading: averaged_spectrum : %s ...", reading.spectrum[0:9])
                     reading.averaged = True
 
@@ -660,7 +657,7 @@ class WasatchDevice(object):
                     self.summed_spectra = None
                     self.sum_count = 0
             else:
-                # if averaging isn't enabled...then a single reading is the 
+                # if averaging isn't enabled...then a single reading is the
                 # "averaged" final measurement (check reading.sum_count to confirm)
                 reading.averaged = True
 
@@ -681,25 +678,21 @@ class WasatchDevice(object):
         size_in_bytes = psutil.Process(self.process_id).memory_info().rss
         log.info("monitor_memory: PID %d memory = %d bytes", self.process_id, size_in_bytes)
 
-        if False:
-            for i in [0, 1, 2, 1, 0]:
-                gc.collect(i)
-
     ##
-    # Process every entry on the incoming command (settings) queue, writing each 
-    # to the device.  
+    # Process every entry on the incoming command (settings) queue, writing each
+    # to the device.
     #
     # Essentially this iterates through all the (setting, value) pairs we've
     # received through change_setting() which have not yet been processed, and
-    # 
+    #
     #
     # Note that WasatchDeviceWrapper.continuous_poll "de-dupes" commands on
     # receipt from ENLIGHTEN, so the command stream arising from that source
     # should already be optimized and minimal.  Commands injected manually by
     # calling WasatchDevice.change_setting() do not receive this treatment.
     #
-    # In the normal multi-process (ENLIGHTEN) workflow, this function is called 
-    # at the beginning of acquire_data, itself ticked regularly by 
+    # In the normal multi-process (ENLIGHTEN) workflow, this function is called
+    # at the beginning of acquire_data, itself ticked regularly by
     # WasatchDeviceWrapper.continuous_poll.
     def process_commands(self):
         control_object = "throwaway"
@@ -724,7 +717,7 @@ class WasatchDevice(object):
                 self.hardware.write_setting(control_object)
 
             if control_object.setting == "free_running_mode" and not self.hardware.settings.state.free_running_mode:
-                # we just LEFT free-running mode (went on "pause"), so toss any 
+                # we just LEFT free-running mode (went on "pause"), so toss any
                 # queued for the caller (ENLIGHTEN)
                 log.debug("exited free-running mode")
 
@@ -736,21 +729,21 @@ class WasatchDevice(object):
     #                                                                          #
     # ######################################################################## #
 
-    def balance_acquisition(self, 
-            device                  = None, 
-            mode                    = None, 
-            intensity               = 45000, 
-            threshold               = 2500, 
-            pixel                   = None, 
-            max_integration_time_ms = 5000, 
+    def balance_acquisition(self,
+            device                  = None,
+            mode                    = None,
+            intensity               = 45000,
+            threshold               = 2500,
+            pixel                   = None,
+            max_integration_time_ms = 5000,
             max_tries               = 20):
         balancer = BalanceAcquisition(
             device                  = self,
-            mode                    = mode, 
-            intensity               = intensity, 
-            threshold               = threshold, 
-            pixel                   = pixel, 
-            max_integration_time_ms = max_integration_time_ms, 
+            mode                    = mode,
+            intensity               = intensity,
+            threshold               = threshold,
+            pixel                   = pixel,
+            max_integration_time_ms = max_integration_time_ms,
             max_tries               = max_tries)
         return balancer.balance()
 
@@ -763,27 +756,27 @@ class WasatchDevice(object):
     ##
     # Processes an incoming (setting, value) pair.
     #
-    # Some settings are processed internally within this function, if the 
+    # Some settings are processed internally within this function, if the
     # functionality they are controlling is implemented by WasatchDevice.
     # This includes scan averaging, and anything related to scan averaging
     # (such as "take one" behavior).
     #
     # Most tuples are queued to be sent downstream to the connected hardware
-    # (usually FeatureIdentificationDevice) at the start of the next 
+    # (usually FeatureIdentificationDevice) at the start of the next
     # acquisition.
     #
-    # Some hardware settings (those involving triggering or the laser) are 
+    # Some hardware settings (those involving triggering or the laser) are
     # sent downstream immediately, rather than waiting for the next "scheduled"
     # settings update.
     #
-    # ENLIGHTEN commands to WasatchDeviceWrapper are sent here by 
+    # ENLIGHTEN commands to WasatchDeviceWrapper are sent here by
     # WasatchDeviceWrapper.continuous_poll.
     #
     # @param setting (Input) which setting to change
-    # @param value   (Input) the new value of the setting (required, but can 
+    # @param value   (Input) the new value of the setting (required, but can
     #                be None or "anything" for commands like "acquire" which
     #                don't use the argument).
-    # @param allow_immediate 
+    # @param allow_immediate
     def change_setting(self, setting, value, allow_immediate=True):
         control_object = ControlObject(setting, value)
         log.debug("WasatchDevice.change_setting: %s", control_object)
@@ -792,7 +785,7 @@ class WasatchDevice(object):
         # averaging at this level
         if control_object.setting == "scans_to_average":
             self.sum_count = 0
-            self.settings.state.scans_to_average = int(value) 
+            self.settings.state.scans_to_average = int(value)
             return
         elif control_object.setting == "reset_scan_averaging":
             self.sum_count = 0

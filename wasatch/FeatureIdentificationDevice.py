@@ -28,15 +28,15 @@ class SpectrumAndRow(object):
         self.row = row
 
         if spectrum is not None:
-            self.spectrum = [int(x) for x in spectrum]
+            self.spectrum = spectrum.copy()
 
 ##
-# This is the basic implementation of our FeatureIdentificationDevice (FID) 
+# This is the basic implementation of our FeatureIdentificationDevice (FID)
 # spectrometer USB API as defined in ENG-0001.
 #
 # This class is roughly comparable to Wasatch.NET's Spectrometer.cs.
 #
-# This class is normally not accessed directly, but through the higher-level 
+# This class is normally not accessed directly, but through the higher-level
 # abstraction WasatchDevice.
 #
 # @see ENG-0001
@@ -98,11 +98,11 @@ class FeatureIdentificationDevice(object):
         # initialize the table of lambdas used to process setting changes
         self.init_lambdas()
 
-    ## 
+    ##
     # Connect to the device and initialize basic settings.
     #
     # @returns True on success
-    # @warning this causes a problem in non-blocking mode (WasatchDeviceWrapper) 
+    # @warning this causes a problem in non-blocking mode (WasatchDeviceWrapper)
     #          on MacOS
     def connect(self):
 
@@ -113,7 +113,7 @@ class FeatureIdentificationDevice(object):
         # ######################################################################
 
         # Generate a fresh listing of USB devices with the requested VID and PID.
-        # Note that this is NOT how WasatchBus traverses the list.  It actually 
+        # Note that this is NOT how WasatchBus traverses the list.  It actually
         # calls usb.busses(), then iterates over bus.devices, but that's because
         # it doesn't know what PIDs it might be looking for.  We know, so just
         # narrow down the search to those devices.
@@ -172,7 +172,7 @@ class FeatureIdentificationDevice(object):
         log.debug("model-specific settings")
 
         if self.settings.is_ingaas():
-            # This must be for some very old InGaAs spectrometers? 
+            # This must be for some very old InGaAs spectrometers?
             # Will probably want to remove this for SiG...
             if not self.settings.is_arm():
                 self.settings.eeprom.active_pixels_horizontal = 512
@@ -192,7 +192,7 @@ class FeatureIdentificationDevice(object):
             return False
 
         # ######################################################################
-        # FPGA 
+        # FPGA
         # ######################################################################
 
         log.debug("reading FPGA compilation options")
@@ -255,12 +255,12 @@ class FeatureIdentificationDevice(object):
         return True
 
     ##
-    # Something in the driver has caused it to request the controlling 
-    # application to close the peripheral.  The next time 
+    # Something in the driver has caused it to request the controlling
+    # application to close the peripheral.  The next time
     # WasatchDevice.acquire_data is called, it will pass a "poison pill" back
     # up the response queue.
     #
-    # Alternately, non-ENLIGHTEN callers can set "raise_exceptions" -> True for 
+    # Alternately, non-ENLIGHTEN callers can set "raise_exceptions" -> True for
     # in-process exception-handling.
     #
     def schedule_disconnect(self, exc):
@@ -289,7 +289,7 @@ class FeatureIdentificationDevice(object):
         return (lsw, msw, buf)
 
     ##
-    # Wait until any enforced USB packet intervals have elapsed. This does 
+    # Wait until any enforced USB packet intervals have elapsed. This does
     # nothing in most cases - the function is normally a no-op.
     #
     # However, if the application has defined min/max_usb_interval_ms (say
@@ -382,7 +382,7 @@ class FeatureIdentificationDevice(object):
                     if result[i] != success_result[i]:
                         matched_expected = False
                         break
-            
+
             if matched_expected:
                 return True
 
@@ -434,7 +434,7 @@ class FeatureIdentificationDevice(object):
         if msb_len is not None:
             for i in range(msb_len):
                 value = value << 8 | result[i]
-            return value                    
+            return value
         elif lsb_len is not None:
             for i in range(lsb_len):
                 value = (result[i] << (8 * i)) | value
@@ -498,7 +498,7 @@ class FeatureIdentificationDevice(object):
         self.settings.state.battery_raw = self.get_upper_code(0x13, label="GET_BATTERY_STATE", msb_len=3)
 
         log.debug("battery_state_raw: 0x%06x", self.settings.state.battery_raw)
-        return self.settings.state.battery_raw 
+        return self.settings.state.battery_raw
 
     def get_battery_percentage(self):
         word = self.get_battery_state_raw()
@@ -526,8 +526,8 @@ class FeatureIdentificationDevice(object):
 
     ##
     # Puts ARM-based spectrometers into Device Firmware Update (DFU) mode.
-    # 
-    # @warning reflashing spectrometer firmware without specific instruction and 
+    #
+    # @warning reflashing spectrometer firmware without specific instruction and
     #          support from Wasatch Photonics will void your warranty
     def set_dfu_enable(self, value=None):
         if not self.settings.is_arm():
@@ -552,7 +552,7 @@ class FeatureIdentificationDevice(object):
             log.debug("SET_DETECTOR_OFFSET_ODD only supported on InGaAs")
             return False
 
-        word = utils.clamp_to_int16(value) 
+        word = utils.clamp_to_int16(value)
         self.settings.eeprom.detector_offset_odd = word
 
         return self.send_code(0x9c, word, label="SET_DETECTOR_OFFSET_ODD")
@@ -562,7 +562,7 @@ class FeatureIdentificationDevice(object):
     #
     # - 1st byte (LSB) is binary encoded: bit 0 = 1/2, bit 1 = 1/4, bit 2 = 1/8 etc.
     # - 2nd byte (MSB) is the integral part to the left of the decimal
-    # 
+    #
     # E.g., 231 dec == 0x01e7 == 1.90234375
     def get_detector_gain(self):
         result = self.get_code(0xc5, label="GET_DETECTOR_GAIN")
@@ -613,11 +613,11 @@ class FeatureIdentificationDevice(object):
     #
     # Reasonable gain levels for Hamamatsu are a floating-point scalar, literally
     # used to scale (gain) the signal, and are usually in the range (0.8 .. 1.2)
-    # or thereabouts.  
+    # or thereabouts.
     #
-    # Reasonable levels for IMX sensors are in dB and vary by detector, but are 
-    # usually in the range (0.0 .. 31.0), with exactly 0.1dB precision.  The 
-    # spectrometer's FW will round to the nearest setting (1.23 will be rounded 
+    # Reasonable levels for IMX sensors are in dB and vary by detector, but are
+    # usually in the range (0.0 .. 31.0), with exactly 0.1dB precision.  The
+    # spectrometer's FW will round to the nearest setting (1.23 will be rounded
     # to 1.2).  IMX sensors switch from "analog gain" to "digital gain" above
     # a given threshold...on the IMX123, analog gain is 0.0 - 31.0, and digital
     # is 31.1 - 72.0 (I think).
@@ -643,10 +643,10 @@ class FeatureIdentificationDevice(object):
         self.settings.eeprom.detector_gain_odd = gain
         return self.send_code(0x9d, raw, label="SET_DETECTOR_GAIN_ODD")
 
-    ## 
-    # Historically, this opcode moved around a bit.  At one point it was 0xeb 
+    ##
+    # Historically, this opcode moved around a bit.  At one point it was 0xeb
     # (and is now again), which conflicts with CF_SELECT).  At other times it
-    # was 0xe9, which conflicted with LASER_RAMP_ENABLE.  This seems to be what 
+    # was 0xe9, which conflicted with LASER_RAMP_ENABLE.  This seems to be what
     # we're standardizing on henceforth.
     def set_area_scan_enable(self, flag):
         if self.settings.is_ingaas():
@@ -690,13 +690,13 @@ class FeatureIdentificationDevice(object):
         self.settings.fpga_firmware_version = s
         return s
 
-    ## 
+    ##
     # Send "acquire", then immediately read the bulk endpoint(s).
     #
     # Probably the most important method in this class, more commonly called
     # "getSpectrum" in most drivers.
     #
-    # @param trigger (Input) send an initial ACQUIRE 
+    # @param trigger (Input) send an initial ACQUIRE
     #
     # @returns tuple of (spectrum[], area_scan_row_count) for success
     # @returns None when it times-out while waiting for an external trigger
@@ -710,7 +710,7 @@ class FeatureIdentificationDevice(object):
         # send the ACQUIRE
         ########################################################################
 
-        # main use-case for NOT sending a trigger would be when reading 
+        # main use-case for NOT sending a trigger would be when reading
         # subsequent lines of data from area scan "fast" mode
 
         acquisition_timestamp = datetime.datetime.now()
@@ -720,7 +720,7 @@ class FeatureIdentificationDevice(object):
             self.send_code(0xad, label="ACQUIRE_SPECTRUM")
 
         ########################################################################
-        # prepare to read spectrum 
+        # prepare to read spectrum
         ########################################################################
 
         pixels = self.settings.pixels()
@@ -733,7 +733,7 @@ class FeatureIdentificationDevice(object):
             block_len_bytes = 2048 # 1024 pixels apiece from two endpoints
 
         if self.settings.is_micro():
-            # we have no idea if microRaman has to "wake up" the sensor, so wait 
+            # we have no idea if microRaman has to "wake up" the sensor, so wait
             # long enough for 6 throwaway frames if need be
             timeout_ms = self.settings.state.integration_time_ms * 8 + 500 * self.settings.num_connected_devices
         else:
@@ -751,7 +751,7 @@ class FeatureIdentificationDevice(object):
 
         spectrum = []
         for endpoint in endpoints:
-            data = None 
+            data = None
             while data is None:
                 try:
                     log.debug("waiting for %d bytes (timeout %dms)", block_len_bytes, timeout_ms)
@@ -762,16 +762,16 @@ class FeatureIdentificationDevice(object):
                         # just loop and hope
                         # log.debug("still waiting for external trigger")
                         return None
-                    else:        
-                        # YOU ARE HERE: is there something we can do here to 
-                        # flush a buffer / discard any late-appearing remnants 
+                    else:
+                        # YOU ARE HERE: is there something we can do here to
+                        # flush a buffer / discard any late-appearing remnants
                         # of the current, apparently incomplete spectrum so that
                         # when the NEXT one starts, it's at pixel 0 of the new
                         # one?
                         return False
 
-            # This is a convoluted way to iterate across the received bytes in 'data' as 
-            # two interleaved arrays, both only processing alternating bytes, but one (i) 
+            # This is a convoluted way to iterate across the received bytes in 'data' as
+            # two interleaved arrays, both only processing alternating bytes, but one (i)
             # starting at zero (even bytes) and the other (j) starting at 1 (odd bytes).
             subspectrum = [int(i | (j << 8)) for i, j in zip(data[::2], data[1::2])] # LSB-MSB
 
@@ -785,7 +785,7 @@ class FeatureIdentificationDevice(object):
             (datetime.datetime.now() - acquisition_timestamp).total_seconds(),
             self.settings.state.integration_time_ms)
 
-        log.debug("get_line: pixels %d, endpoints %s, block %d, spectrum %s ...", 
+        log.debug("get_line: pixels %d, endpoints %s, block %d, spectrum %s ...",
             len(spectrum), endpoints, block_len_bytes, spectrum[0:9])
 
         if len(spectrum) != pixels:
@@ -802,32 +802,29 @@ class FeatureIdentificationDevice(object):
         ########################################################################
 
         ########################################################################
-        # Apply InGaAs even/odd gain/offset in software (until FPGA impl)
+        # Apply InGaAs even/odd gain/offset in software
         ########################################################################
 
-        # - We used to apply InGaAs even/odd gain and offset here in the
-        #   driver, but then moved it to firmware when integrating the 
-        #   G14237...except that implementation apparently has some bugs.
-        #   Watch this space.
-        #
-        # - 2021-03-25 MZ re-enabled feature per MM, moved from WasatchDevice
-        #
-        # Note that we do this VERY EARLY in the post-processing sequence,
-        # because eventually this will be done inside the FPGA.
-        if self.settings.is_ingaas():
+        # (before x-axis inversion because this is where FPGA will do it)
+
+        # this should be done in the FPGA, but older FW didn't have that
+        # implemented, so fix in SW unless EEPROM indicates "already handled"
+        if self.settings.is_ingaas() and not self.settings.eeprom.hardware_even_odd:
             self.correct_ingaas_gain_and_offset(spectrum)
 
         ########################################################################
         # Area Scan (rare)
         ########################################################################
 
+        # (before x-axis inversion because line index at FPGA pixel 0)
+
         # if we're in area scan mode, use first pixel as row index (leave pixel in spectrum)
         # (do this before any horizontal averaging which might corrupt first pixel)
         area_scan_row_count = -1
         if self.settings.state.area_scan_enabled:
-            area_scan_row_count = spectrum[0] 
+            area_scan_row_count = spectrum[0]
 
-            # Leave the row counter in place if we're in "Fast" Area Scan mode, 
+            # Leave the row counter in place if we're in "Fast" Area Scan mode,
             # since downstream software can use it to assemble the final image.
             # ("Slow" Area Scan mode sent this value back as a separate field in
             # the Reading, but this isn't possible in Fast mode.  Just delete
@@ -839,17 +836,19 @@ class FeatureIdentificationDevice(object):
         # Start-of-Spectrum Marker (rare)
         ########################################################################
 
-        # Check and track the "start of spectrum" marker.  This is very rare and 
+        # (before x-axis inversion because marker at FPGA pixel 0)
+
+        # Check and track the "start of spectrum" marker.  This is very rare and
         # only for experimental units.  Currently Wasatch does not have any
         # "standard" spectrum framing data, although such would be useful. This
         # is only enabled in FPGAs when trying to debug rare timing issues. The
         # "Marker" is simply a pixel with the value 0xffff.  On FPGA FW where the
-        # marker is enabled, spectral data is clamped to 0xfffe, meaning such 
+        # marker is enabled, spectral data is clamped to 0xfffe, meaning such
         # markers can ONLY appear as the first pixel in a spectrum.
         if self.settings.has_marker() and not self.settings.state.area_scan_enabled:
             marker = 0xffff
             if spectrum[0] == marker:
-                # marker found where expected, so all is good (overwrite for a 
+                # marker found where expected, so all is good (overwrite for a
                 # clean graph)
                 spectrum[0] = spectrum[1]
             else:
@@ -866,6 +865,8 @@ class FeatureIdentificationDevice(object):
         # Stomp array ends
         ########################################################################
 
+        # (before x-axis inversion because optically masked pixels are physical)
+
         # some detectors have "garbage" pixels at the front or end of every
         # spectrum (sync bytes and what-not)
         if self.settings.is_micro():
@@ -878,17 +879,24 @@ class FeatureIdentificationDevice(object):
                 utils.stomp_last (spectrum, 1)
 
         ########################################################################
-        # Invert X-Axis (rare)
+        # Invert X-Axis
         ########################################################################
 
-        # For custom benches where the detector is essentially rotated
-        # 180-deg from our typical orientation with regard to the grating
-        # (e.g., on this spectrometer red wavelengths are diffracted toward 
-        # px0, and blue wavelengths toward px1023).  Note this simply performs
-        # a horizontal FLIP of the vertically-binned 1-D spectra, and
-        # is NOT sufficient to perform a genuine 180-degree rotation of
-        # 2-D imaging mode; if area scan is enabled, the user would likewise
-        # need to reverse the display order of the rows.
+        # For benches where the detector is essentially rotated 180-deg from our
+        # typical orientation with regard to the grating (e.g. InGaAs OEM
+        # benches, where red wavelengths are diffracted toward pixel 0, and blue
+        # wavelengths toward pixel 511).
+        #
+        # Note this simply performs a horizontal FLIP (mirror) of the vertically-
+        # binned 1-D spectra, and is NOT sufficient to perform a genuine 180-
+        # degree rotation of 2-D imaging mode; if "authentic" area scan is
+        # desired, the caller would likewise need to reverse the display order of
+        # the rows.
+        #
+        #           It is VITALLY IMPORTANT that all drivers agree
+        #            on when to perform X-Axis inversion in the
+        #                        Order of Operations.
+        #
         if self.settings.eeprom.invert_x_axis:
             spectrum.reverse()
 
@@ -903,8 +911,8 @@ class FeatureIdentificationDevice(object):
         # Swap Alternating Pixels (very rare)
         ########################################################################
 
-        # a prototype model output spectra with alternating pixels swapped, and 
-        # this was quicker than changing in firmware 
+        # a prototype model output spectra with alternating pixels swapped, and
+        # this was quicker than changing in firmware
 
         if self.settings.state.swap_alternating_pixels:
             log.debug("swapping alternating pixels: spectrum = %s", spectrum[:10])
@@ -932,9 +940,9 @@ class FeatureIdentificationDevice(object):
         ########################################################################
 
         # When integrating new sensors, or testing "interleaved" detectors like
-        # the InGaAs, sometimes we want to only look at "every other" pixel to 
-        # flatten-out irregularities in Bayer filters or photodiode arrays.  
-        # However, we don't want to disrupt the expected pixel-count, so just 
+        # the InGaAs, sometimes we want to only look at "every other" pixel to
+        # flatten-out irregularities in Bayer filters or photodiode arrays.
+        # However, we don't want to disrupt the expected pixel-count, so just
         # average-over the skipped pixels.
         if self.settings.state.graph_alternating_pixels:
             log.debug("applying graph_alternating_pixels")
@@ -956,7 +964,7 @@ class FeatureIdentificationDevice(object):
         return SpectrumAndRow(spectrum, area_scan_row_count)
 
     ##
-    # Until support for even/odd InGaAs gain and offset have been added to the 
+    # Until support for even/odd InGaAs gain and offset have been added to the
     # firmware, apply the correction in software.
     def correct_ingaas_gain_and_offset(self, spectrum):
         if not self.settings.is_ingaas() or self.settings.eeprom.hardware_even_odd:
@@ -967,7 +975,7 @@ class FeatureIdentificationDevice(object):
            self.settings.eeprom.detector_offset_odd == self.settings.eeprom.detector_offset:
             return False
 
-        log.debug("rescaling InGaAs odd pixels from even gain %.2f, offset %d to odd gain %.2f, offset %d",
+        log.debug("rescaling InGaAs odd pixels from even gain %.4f, offset %d to odd gain %.4f, offset %d",
             self.settings.eeprom.detector_gain,
             self.settings.eeprom.detector_offset,
             self.settings.eeprom.detector_gain_odd,
@@ -985,7 +993,6 @@ class FeatureIdentificationDevice(object):
             # apply the correct "odd" gain and offset
             new = (raw * self.settings.eeprom.detector_gain_odd) + self.settings.eeprom.detector_offset_odd
 
-            # convert back to uint16 so the spectrum is all of one type
             spectrum[i] = int(round(max(0, min(new, 0xffff))))
 
             if i < 5 or i > len(spectrum) - 5:
@@ -995,8 +1002,8 @@ class FeatureIdentificationDevice(object):
 
         return True
 
-    ## 
-    # If a spectrometer has bad_pixels configured in the EEPROM, then average 
+    ##
+    # If a spectrometer has bad_pixels configured in the EEPROM, then average
     # over them in the driver.
     #
     # Note this function modifies the passed array in-place, rather than
@@ -1053,7 +1060,6 @@ class FeatureIdentificationDevice(object):
                         rng   = next_good - prev_good
                         step  = delta / rng
                         for j in range(rng - 1):
-                            #spectrum[prev_good + j + 1] = int(spectrum[prev_good] + round(step * (j + 1), 0))
                             spectrum[prev_good + j + 1] = spectrum[prev_good] + step * (j + 1)
                     else:
                         # we ran off the high end, so copy-right
@@ -1065,9 +1071,9 @@ class FeatureIdentificationDevice(object):
         return True
 
     ## Send the updated integration time in a control message to the device
-    # 
-    # @warning disabled EEPROM range-checking by customer 
-    #          request; range limits in EEPROM are defined as 16-bit 
+    #
+    # @warning disabled EEPROM range-checking by customer
+    #          request; range limits in EEPROM are defined as 16-bit
     #          values, while integration time is actually a 24-bit value,
     #          such that the EEPROM is artificially limiting our range.
     def set_integration_time_ms(self, ms):
@@ -1144,10 +1150,10 @@ class FeatureIdentificationDevice(object):
     # The official conversion from thermistor resistance (in ohms) to degC is:
     #
     # \verbatim
-    # 1 / (   C1 
-    #       + C2 * ln(ohms) 
+    # 1 / (   C1
+    #       + C2 * ln(ohms)
     #       + C3 * pow(ln(ohms), 3)
-    #     ) 
+    #     )
     # - 273.15
     #
     # Where: C1 = 0.00113
@@ -1177,7 +1183,7 @@ class FeatureIdentificationDevice(object):
             resistance = 21450.0 * voltage / (2.5 - voltage) # LB confirms
 
             if resistance < 0:
-                log.error("get_laser_temperature_degC: can't compute degC: raw = 0x%04x, voltage = %f, resistance = %f", 
+                log.error("get_laser_temperature_degC: can't compute degC: raw = 0x%04x, voltage = %f, resistance = %f",
                     raw, voltage, resistance)
                 return 0
 
@@ -1230,7 +1236,7 @@ class FeatureIdentificationDevice(object):
                       + self.settings.eeprom.degC_to_dac_coeffs[1] * degC
                       + self.settings.eeprom.degC_to_dac_coeffs[2] * degC * degC))
 
-        # ROUND (don't mask) to 12-bit DAC 
+        # ROUND (don't mask) to 12-bit DAC
         raw = max(0, min(raw, 0xfff))
 
         log.debug("Set CCD TEC Setpoint: %.2f deg C (raw ADC 0x%04x)", degC, raw)
@@ -1270,13 +1276,13 @@ class FeatureIdentificationDevice(object):
         return ok
 
     ##
-    # Set the source for incoming acquisition triggers.  
+    # Set the source for incoming acquisition triggers.
     #
     # @param value either 0 for "internal" or 1 for "external"
     #
     # With internal triggering (the default), the spectrometer expects the
-    # USB host to explicitly send a START_ACQUISITION (ACQUIRE) opcode to 
-    # begin each integration.  In external triggering, the spectrometer 
+    # USB host to explicitly send a START_ACQUISITION (ACQUIRE) opcode to
+    # begin each integration.  In external triggering, the spectrometer
     # waits for the rising edge on a signal connected to a pin on the OEM
     # accessory connector.
     #
@@ -1314,7 +1320,7 @@ class FeatureIdentificationDevice(object):
         value = 1 if flag else 0
 
         # this is done automatically on ARM, but for this opcode we do it on FX2 as well
-        buf = [0] * 8 
+        buf = [0] * 8
 
         self.settings.state.high_gain_mode_enabled = flag
         return self.send_code(0xeb, wValue=value, wIndex=0, data_or_wLength=buf, label="SET_HIGH_GAIN_MODE_ENABLE")
@@ -1325,11 +1331,11 @@ class FeatureIdentificationDevice(object):
             return self.settings.eeprom.high_gain_mode_enabled
 
         self.settings.state.high_gain_mode_enabled = 0 != self.get_code(0xec, lsb_len=1, label="GET_HIGH_GAIN_MODE_ENABLED")
-        return self.settings.state.high_gain_mode_enabled 
+        return self.settings.state.high_gain_mode_enabled
 
     ##
     # On spectrometers supporting two lasers, select the primary (0) or
-    # secondary (1).  Laser Enable, laser power etc should all then 
+    # secondary (1).  Laser Enable, laser power etc should all then
     # affect the currently-selected laser.
     # @warning conflicts with GET_RAMAN_MODE_ENABLE
     def set_selected_laser(self, value):
@@ -1342,8 +1348,8 @@ class FeatureIdentificationDevice(object):
         log.debug("selecting laser %d", n)
         self.settings.state.selected_laser = n
 
-        return self.send_code(bRequest        = 0xff, 
-                              wValue          = 0x15,  
+        return self.send_code(bRequest        = 0xff,
+                              wValue          = 0x15,
                               wIndex          = n,
                               data_or_wLength = [0] * 8,
                               label           = "SET_SELECTED_LASER")
@@ -1358,7 +1364,7 @@ class FeatureIdentificationDevice(object):
     # of full-power.
     #
     # If the new laser state is on, AND if laser ramping has been enabled, then
-    # the function will internally use the (blocking) software laser ramping 
+    # the function will internally use the (blocking) software laser ramping
     # algorithm; otherwise the new state will be applied immediately.
     #
     # @param flag (Input) bool (True turns laser on, False turns laser off)
@@ -1398,14 +1404,14 @@ class FeatureIdentificationDevice(object):
     # so apply the new laser state to the spectrometer immediately.
     #
     # Because the ability to immediately disable a laser is a safety-related
-    # feature (noting that truly safety-critical capabilities should be 
+    # feature (noting that truly safety-critical capabilities should be
     # implemented in hardware, and generally can't be robustly achieved through
     # Python scripts), this function takes the unusual step of looping over
     # multiple attempts to set the laser state until either the command succeeds,
-    # or 3 consecutive failures have occured.  
+    # or 3 consecutive failures have occured.
     #
-    # This behavior was added after a developmental, unreleased prototype was 
-    # found to occasionally drop USB packets, and was therefore susceptible to 
+    # This behavior was added after a developmental, unreleased prototype was
+    # found to occasionally drop USB packets, and was therefore susceptible to
     # inadvertently failing to disable the laser upon command.
     #
     # @private (as callers are recommended to use set_laser_enable)
@@ -1433,7 +1439,7 @@ class FeatureIdentificationDevice(object):
                 log.error("laser_enable %s command failed, re-trying", flag)
 
     ##
-    # EXPERIMENTAL: Enable the laser (turn it on), and then gradually step the 
+    # EXPERIMENTAL: Enable the laser (turn it on), and then gradually step the
     # laser power from the previously-applied power level to the most recently-
     # requested power level.
     #
@@ -1458,9 +1464,9 @@ class FeatureIdentificationDevice(object):
     #    (sample measured laser power over time)
     # \endverbatim
     #
-    # At customer request, a software algorithm was provided to provide marginal 
-    # reduction in stabilization time by manually stepping the laser power to the 
-    # desired value.  In testing, this could reduce the average stabilization 
+    # At customer request, a software algorithm was provided to provide marginal
+    # reduction in stabilization time by manually stepping the laser power to the
+    # desired value.  In testing, this could reduce the average stabilization
     # period from ~6sec to ~4sec.  The revised power trace might resemble the
     # following:
     #
@@ -1475,28 +1481,28 @@ class FeatureIdentificationDevice(object):
     # The algorithm essentially functions by jumping the laser power to a mid-
     # point 80% of the way between the previous power level and the new level,
     # and then stepping the laser incrementally from the 80% midpoint to the
-    # final level in a curve with exponential die-off.  The number of steps used 
+    # final level in a curve with exponential die-off.  The number of steps used
     # to ramp the laser is defined in SpectrometerState.laser_power_ramp_increments,
-    # and a hardcoded 10ms delay is applied after each jump.  
+    # and a hardcoded 10ms delay is applied after each jump.
     #
     # This is a blocking function (does not internally spawn a background thread),
     # and so will block the caller for the duration of the ramp (typically 4sec+).
-    # 
+    #
     # Users are not recommended to call this method directly; it will be used
     # internally by set_laser_enable() if laser ramping has been configured,
     # which is not enabled by default.
     #
     # @note does not currently support second / external laser
-    # @note currently hard-coded to use 1% power resolution (100µs period), 
+    # @note currently hard-coded to use 1% power resolution (100µs period),
     #       while driver default is 0.1% (1000µs period)
-    # 
+    #
     # @private (use set_laser_enable)
     def _set_laser_enable_ramp(self):
         prefix = "set_laser_enable_ramp"
 
         # todo: should make enums for all opcodes
 
-        # prepare 
+        # prepare
         current_laser_setpoint = self.last_applied_laser_power
         target_laser_setpoint = self.next_applied_laser_power
         log.debug("%s: ramping from %s to %s", prefix, current_laser_setpoint, target_laser_setpoint)
@@ -1527,7 +1533,7 @@ class FeatureIdentificationDevice(object):
         ########################################################################
 
         # compute the 80% midpoint between the current (previous) power level,
-        # and the new target 
+        # and the new target
         if current_laser_setpoint < target_laser_setpoint:
             laser_setpoint = ((float(target_laser_setpoint) - float(current_laser_setpoint)) / 100.0) * 80.0
             laser_setpoint += float(current_laser_setpoint)
@@ -1580,9 +1586,9 @@ class FeatureIdentificationDevice(object):
         mW = min(self.settings.eeprom.max_laser_power_mW, max(self.settings.eeprom.min_laser_power_mW, mW_in))
 
         perc = self.settings.eeprom.laser_power_mW_to_percent(mW)
-        log.debug("set_laser_power_mW: range (%.2f, %.2f), requested %.2f, approved %.2f, percent = %.2f", 
-            self.settings.eeprom.min_laser_power_mW, 
-            self.settings.eeprom.max_laser_power_mW, 
+        log.debug("set_laser_power_mW: range (%.2f, %.2f), requested %.2f, approved %.2f, percent = %.2f",
+            self.settings.eeprom.min_laser_power_mW,
+            self.settings.eeprom.max_laser_power_mW,
             mW_in,
             mW,
             perc)
@@ -1611,7 +1617,7 @@ class FeatureIdentificationDevice(object):
 
         if set_in_perc:
             # apparently the laser power was explicitly commanded as a percentage
-            # of full, and not "computed from mW" using a calibration, so clear 
+            # of full, and not "computed from mW" using a calibration, so clear
             # the mW setpoint
             self.settings.state.laser_power_mW = 0
 
@@ -1714,7 +1720,7 @@ class FeatureIdentificationDevice(object):
         # pulse width can't be longer than period, or shorter than 1us
         width_us = max(1, min(width_us, period_us))
 
-        # Change the pulse period.  Note that we're not parsing into 40-bit 
+        # Change the pulse period.  Note that we're not parsing into 40-bit
         # because this implementation is hard-coded to either 100 or 1000us
         # (both fitting well within uint16)
         result = self.set_mod_period_us(period_us)
@@ -1763,7 +1769,7 @@ class FeatureIdentificationDevice(object):
         return self.send_code(0xe7, value, label="SET_LASER_TEC_SETPOINT")
 
     ##
-    # Read the trigger source setting from the device. 
+    # Read the trigger source setting from the device.
     #
     # - 0 = internal
     # - 1 = external
@@ -1790,8 +1796,8 @@ class FeatureIdentificationDevice(object):
             log.debug("Raman mode only supported on microRaman")
             return False
 
-        return self.send_code(bRequest        = 0xff, 
-                              wValue          = 0x16,  
+        return self.send_code(bRequest        = 0xff,
+                              wValue          = 0x16,
                               wIndex          = 1 if flag else 0,
                               data_or_wLength = [0] * 8,
                               label           = "SET_RAMAN_MODE_ENABLE")
@@ -1812,17 +1818,17 @@ class FeatureIdentificationDevice(object):
         value = (msb << 8) | lsb
 
         self.settings.state.raman_delay_ms = ms
-        return self.send_code(bRequest        = 0xff, 
-                              wValue          = 0x20,  
+        return self.send_code(bRequest        = 0xff,
+                              wValue          = 0x20,
                               wIndex          = value,
                               data_or_wLength = [0] * 8,
                               label           = "SET_RAMAN_DELAY_MS")
-         
+
 
     def get_laser_watchdog_sec(self):
         self.settings.state.laser_watchdog_sec = \
             self.get_upper_code(0x17, label="GET_LASER_WATCHDOG_SEC", msb_len=2)
-        return self.settings.state.laser_watchdog_sec 
+        return self.settings.state.laser_watchdog_sec
 
     def set_laser_watchdog_sec(self, sec):
         if not self.settings.is_micro():
@@ -1835,8 +1841,8 @@ class FeatureIdentificationDevice(object):
         value = (msb << 8) | lsb
 
         self.settings.state.laser_watchdog_sec = sec
-        return self.send_code(bRequest        = 0xff, 
-                              wValue          = 0x18,  
+        return self.send_code(bRequest        = 0xff,
+                              wValue          = 0x18,
                               wIndex          = value,
                               data_or_wLength = [0] * 8,
                               label           = "SET_LASER_WATCHDOG_SEC")
@@ -1879,14 +1885,14 @@ class FeatureIdentificationDevice(object):
             log.error("set_vertical_binning requires ascending order (ignoring %d, %d)", start, end)
             return False
 
-        ok1 = self.send_code(bRequest        = 0xff, 
-                            wValue          = 0x21,  
+        ok1 = self.send_code(bRequest        = 0xff,
+                            wValue          = 0x21,
                             wIndex          = start,
                             data_or_wLength = [0] * 8,
                             label           = "SET_CCD_START_LINE")
 
-        ok2 = self.send_code(bRequest        = 0xff, 
-                             wValue          = 0x23,  
+        ok2 = self.send_code(bRequest        = 0xff,
+                             wValue          = 0x23,
                              wIndex          = end,
                              data_or_wLength = [0] * 8,
                              label           = "SET_CCD_STOP_LINE")
@@ -1907,7 +1913,7 @@ class FeatureIdentificationDevice(object):
             log.debug("fan requires Gen 1.5")
             return False
         value = 1 if flag else 0
-        return self.send_code(bRequest        = 0x36, 
+        return self.send_code(bRequest        = 0x36,
                               wValue          = value,
                               wIndex          = 0,
                               data_or_wLength = [0] * 8,
@@ -1918,7 +1924,7 @@ class FeatureIdentificationDevice(object):
             log.error("fan requires Gen 1.5")
             return False
         return self.get_code(0x37, label="GET_FAN_ENABLED", msb_len=1)
-        
+
     # ##########################################################################
     # Lamp
     # ##########################################################################
@@ -1928,7 +1934,7 @@ class FeatureIdentificationDevice(object):
             log.debug("lamp requires Gen 1.5")
             return False
         value = 1 if flag else 0
-        return self.send_code(bRequest        = 0x32, 
+        return self.send_code(bRequest        = 0x32,
                               wValue          = value,
                               wIndex          = 0,
                               data_or_wLength = [0] * 8,
@@ -1939,7 +1945,7 @@ class FeatureIdentificationDevice(object):
             log.error("lamp requires Gen 1.5")
             return False
         return self.get_code(0x33, label="GET_LAMP_ENABLED", msb_len=1)
-        
+
     # ##########################################################################
     # Shutter
     # ##########################################################################
@@ -1949,7 +1955,7 @@ class FeatureIdentificationDevice(object):
             log.debug("shutter requires Gen 1.5")
             return False
         value = 1 if flag else 0
-        return self.send_code(bRequest        = 0x30, 
+        return self.send_code(bRequest        = 0x30,
                               wValue          = value,
                               wIndex          = 0,
                               data_or_wLength = [0] * 8,
@@ -1964,7 +1970,7 @@ class FeatureIdentificationDevice(object):
     # ##########################################################################
     # Laser Modulation and Continuous Strobe
     # ##########################################################################
-        
+
     def set_mod_enable(self, flag):
         self.settings.state.mod_enabled = flag
         value = 1 if flag else 0
@@ -1991,7 +1997,7 @@ class FeatureIdentificationDevice(object):
         return self.send_code(0xdb, lsw, msw, buf, label="SET_MOD_WIDTH")
 
     def get_mod_width_us(self):
-        value = self.get_code(0xdc, label="GET_MOD_WIDTH", lsb_len=5) 
+        value = self.get_code(0xdc, label="GET_MOD_WIDTH", lsb_len=5)
         self.settings.state.mod_width_us = value
         return value
 
@@ -2000,7 +2006,7 @@ class FeatureIdentificationDevice(object):
         (lsw, msw, buf) = self.to40bit(us)
         return self.send_code(0xc6, lsw, msw, buf, label="SET_MOD_DELAY")
 
-    def get_mod_delay_us(self): 
+    def get_mod_delay_us(self):
         value = self.get_code(0xca, label="GET_MOD_DELAY", lsb_len=5)
         self.settings.state.mod_delay_us = value
         return value
@@ -2056,7 +2062,7 @@ class FeatureIdentificationDevice(object):
             log.error("unable to control TEC: EEPROM reports no cooling")
             return False
         return self.get_code(0xda, label="GET_CCD_TEC_ENABLED", msb_len=1)
-        
+
     def get_actual_frames(self):
         return self.get_code(0xe4, label="GET_ACTUAL_FRAMES", lsb_len=2)
 
@@ -2064,7 +2070,7 @@ class FeatureIdentificationDevice(object):
         return self.get_code(0xdf, label="GET_ACTUAL_INTEGRATION_TIME_US", lsb_len=3)
 
     def get_detector_offset(self):
-        value = self.get_code(0xc4, label="GET_DETECTOR_OFFSET", lsb_len=2) 
+        value = self.get_code(0xc4, label="GET_DETECTOR_OFFSET", lsb_len=2)
         self.settings.eeprom.detector_offset = value
         return value
 
@@ -2073,7 +2079,7 @@ class FeatureIdentificationDevice(object):
             log.debug("GET_DETECTOR_OFFSET_ODD only supported on InGaAs")
             return self.settings.eeprom.detector_offset_odd
 
-        value = self.get_code(0x9e, label="GET_DETECTOR_OFFSET_ODD", lsb_len=2) 
+        value = self.get_code(0x9e, label="GET_DETECTOR_OFFSET_ODD", lsb_len=2)
         self.settings.eeprom.detector_offset_odd = value
         return value
 
@@ -2097,7 +2103,7 @@ class FeatureIdentificationDevice(object):
         log.debug("get_laser_enabled: %s", flag)
         self.settings.state.laser_enabled = flag
         return flag
-        
+
     def set_mod_linked_to_integration(self, flag):
         value = 1 if flag else 0
         return self.send_code(0xdd, value, label="SET_MOD_LINKED_TO_INTEGRATION")
@@ -2149,7 +2155,7 @@ class FeatureIdentificationDevice(object):
 
     def get_opt_area_scan(self):
         return self.get_upper_code(0x0a, label="GET_OPT_AREA_SCAN", msb_len=1)
-        
+
     def get_opt_cf_select(self):
         return self.get_upper_code(0x07, label="GET_OPT_CF_SELECT", msb_len=1)
 
@@ -2158,7 +2164,7 @@ class FeatureIdentificationDevice(object):
 
     def get_opt_horizontal_binning(self):
         return self.get_upper_code(0x0c, label="GET_OPT_HORIZONTAL_BINNING", msb_len=1)
-        
+
     def get_opt_integration_time_resolution(self):
         return self.get_upper_code(0x05, label="GET_OPT_INTEGRATION_TIME_RESOLUTION", msb_len=1)
 
@@ -2205,9 +2211,9 @@ class FeatureIdentificationDevice(object):
             logger.error("set_analog_output_mode takes tuple of (bool, int), disabling")
             wIndex = 0
 
-        return self.send_code(bRequest  = 0xff, 
-                              wValue    = 0x11, 
-                              wIndex    = wIndex, 
+        return self.send_code(bRequest  = 0xff,
+                              wValue    = 0x11,
+                              wIndex    = wIndex,
                               label     = "SET_ANALOG_OUT_MODE")
 
     def set_analog_output_value(self, value):
@@ -2232,9 +2238,9 @@ class FeatureIdentificationDevice(object):
             log.error("invalid analog out mode %d, ignoring value", self.state.analog_out_mode)
             return False
 
-        return self.send_code(bRequest  = 0xff, 
-                              wValue    = 0x12, 
-                              wIndex    = value, 
+        return self.send_code(bRequest  = 0xff,
+                              wValue    = 0x12,
+                              wIndex    = value,
                               label     = "SET_ANALOG_OUT_VALUE")
 
     ## @returns triplet of (bool enable, int mode, int value)
@@ -2273,44 +2279,10 @@ class FeatureIdentificationDevice(object):
     # EEPROM Cruft
     # ##########################################################################
 
-    def validate_eeprom(self, pair):
-        return True
-
-        try:
-            if len(pair) != 2:
-                raise Exception("pair had %d items" % len(pair))
-            intended_serial = pair[0]
-            new_eeprom = pair[1]
-        except:
-            log.critical("fid.validate_eeprom: expected (sn, EEPROM) pair", exc_info=1)
-            self.queue_message("marquee_error", "Failed to write EEPROM")
-            return False
-
-        if not isinstance(new_eeprom, EEPROM):
-            log.critical("fid.validate_eeprom: rejecting invalid EEPROM reference")
-            self.queue_message("marquee_error", "Failed to write EEPROM")
-            return False
-
-        # Confirm that this FeatureIdentificationDevice instance is the intended
-        # recipient of the new EEPROM image, else things could get really confusing.
-        # (It's okay if the new EEPROM image contains an updated serial number;
-        # however, they should pass along the "old / previous" serial number for 
-        # validation.
-        if intended_serial != self.settings.eeprom.serial_number:
-            log.critical("fid.validate_eeprom: %s process rejecting EEPROM intended for %s",
-                self.settings.eeprom.serial_number, intended_serial)
-            self.queue_message("marquee_error", "Failed to write EEPROM")
-            return False
-
-        return True
-
-    ## 
-    # Given a (serial_number, EEPROM) pair, update this process's "session" 
+    ##
+    # Given a (serial_number, EEPROM) pair, update this process's "session"
     # EEPROM with just the EDITABLE fields of the passed EEPROM.
     def update_session_eeprom(self, pair):
-        if not self.validate_eeprom(pair):
-            return False
-
         log.debug("fid.update_session_eeprom: %s updating EEPROM instance", self.settings.eeprom.serial_number)
 
         if not self.eeprom_backup:
@@ -2319,13 +2291,10 @@ class FeatureIdentificationDevice(object):
         self.settings.eeprom.update_editable(pair[1])
         return True
 
-    ## 
-    # Given a (serial_number, EEPROM) pair, replace this process's "session" 
+    ##
+    # Given a (serial_number, EEPROM) pair, replace this process's "session"
     # EEPROM with the passed EEPROM.
     def replace_session_eeprom(self, pair):
-        if not self.validate_eeprom(pair):
-            return False
-
         log.debug("fid.replace_session_eeprom: %s replacing EEPROM instance", self.settings.eeprom.serial_number)
 
         if not self.eeprom_backup:
@@ -2359,7 +2328,7 @@ class FeatureIdentificationDevice(object):
             if self.settings.is_arm():
                 log.debug("writing page %d: %s", page, self.settings.eeprom.write_buffers[page])
                 self.send_code(bRequest        = 0xff, # second-tier
-                               wValue          = 0x02,  
+                               wValue          = 0x02,
                                wIndex          = page,
                                data_or_wLength = self.settings.eeprom.write_buffers[page],
                                label           = "WRITE_EEPROM")
@@ -2369,7 +2338,7 @@ class FeatureIdentificationDevice(object):
                 log.debug("writing page %d at offset 0x%04x: %s", page, offset, self.settings.eeprom.write_buffers[page])
                 self.send_code(bRequest        = 0xa2,   # dangerous
                                wValue          = offset, # arguably an index but hey
-                               wIndex          = 0, 
+                               wIndex          = 0,
                                data_or_wLength = self.settings.eeprom.write_buffers[page],
                                label           = "WRITE_EEPROM")
 
@@ -2446,26 +2415,26 @@ class FeatureIdentificationDevice(object):
             self.settings.state.integration_time_ms = int(value)
         return True
 
-    ## 
-    # assumes 'bytes' is an array of strings, where each string is a 
-    # comma-delimited tuple like "2,0A,F0" or "DELAY_US,5" 
+    ##
+    # assumes 'bytes' is an array of strings, where each string is a
+    # comma-delimited tuple like "2,0A,F0" or "DELAY_US,5"
     #
     # @warning disabled because 0xff 0x11 has been reallocated to analog out
     def apply_override_byte_strings_NOT_USED(self, byte_strings):
-        string_count = len(byte_strings)                
+        string_count = len(byte_strings)
         log.debug("sending %d byte strings over I2C", string_count)
         self.queue_message("progress_bar_max", string_count)
 
         count = 0
         for s in byte_strings:
             if s[0] == "DELAY_US":
-                delay_us = int(s[1]) 
+                delay_us = int(s[1])
                 log.debug("override: sleeping %d us", delay_us)
                 sleep(delay_us * MICROSEC_TO_SEC)
                 count += 1
                 continue
 
-            # ARM seems to expect "at least" 8 bytes, so provide at least that 
+            # ARM seems to expect "at least" 8 bytes, so provide at least that
             # many, and append if more are needed.  Not sure how we're supposed
             # to handle message length in this case.
             buf = [0] * 8
@@ -2480,8 +2449,8 @@ class FeatureIdentificationDevice(object):
             buf[0] = chip_value
 
             log.debug("sending byte string %d of %d", count + 1, string_count)
-            self.send_code(bRequest        = 0xff, 
-                           wValue          = 0x11, 
+            self.send_code(bRequest        = 0xff,
+                           wValue          = 0x11,
                            wIndex          = wIndex,
                            data_or_wLength = buf,
                            label           = "OVERRIDE_BYTE_STRINGS")
@@ -2517,15 +2486,15 @@ class FeatureIdentificationDevice(object):
 
     ##
     # Perform the specified setting such as physically writing the laser
-    # on, changing the integration time, turning the cooler on, etc. 
+    # on, changing the integration time, turning the cooler on, etc.
     def write_setting(self, record):
         setting = record.setting
         value   = record.value
 
         log.debug("fid.write_setting: %s -> %s", setting, value)
 
-        if self.overrides and self.overrides.has_override(setting): 
-            return self.apply_override(setting, value) 
+        if self.overrides and self.overrides.has_override(setting):
+            return self.apply_override(setting, value)
         elif setting in self.lambdas:
             self.lambdas[setting](value)
             return True
@@ -2542,19 +2511,19 @@ class FeatureIdentificationDevice(object):
 
         # spectrometer control
         f["laser_enable"]                       = lambda x: self.set_laser_enable(clean_bool(x))
-        f["integration_time_ms"]                = lambda x: self.set_integration_time_ms(int(round(x))) 
+        f["integration_time_ms"]                = lambda x: self.set_integration_time_ms(int(round(x)))
 
-        f["detector_tec_setpoint_degC"]         = lambda x: self.set_detector_tec_setpoint_degC(int(round(x))) 
+        f["detector_tec_setpoint_degC"]         = lambda x: self.set_detector_tec_setpoint_degC(int(round(x)))
         f["detector_tec_enable"]                = lambda x: self.set_tec_enable(clean_bool(x))
-        f["detector_gain"]                      = lambda x: self.set_detector_gain(float(x)) 
-        f["detector_offset"]                    = lambda x: self.set_detector_offset(int(round(x))) 
-        f["detector_gain_odd"]                  = lambda x: self.set_detector_gain_odd(float(x)) 
-        f["detector_offset_odd"]                = lambda x: self.set_detector_offset_odd(int(round(x))) 
+        f["detector_gain"]                      = lambda x: self.set_detector_gain(float(x))
+        f["detector_offset"]                    = lambda x: self.set_detector_offset(int(round(x)))
+        f["detector_gain_odd"]                  = lambda x: self.set_detector_gain_odd(float(x))
+        f["detector_offset_odd"]                = lambda x: self.set_detector_offset_odd(int(round(x)))
         f["degC_to_dac_coeffs"]                 = lambda x: self.settings.eeprom.set("degC_to_dac_coeffs", x)
 
-        f["laser_power_perc"]                   = lambda x: self.set_laser_power_perc(x) 
-        f["laser_power_mW"]                     = lambda x: self.set_laser_power_mW(x) 
-        f["laser_temperature_setpoint_raw"]     = lambda x: self.set_laser_temperature_setpoint_raw(int(round(x))) 
+        f["laser_power_perc"]                   = lambda x: self.set_laser_power_perc(x)
+        f["laser_power_mW"]                     = lambda x: self.set_laser_power_mW(x)
+        f["laser_temperature_setpoint_raw"]     = lambda x: self.set_laser_temperature_setpoint_raw(int(round(x)))
         f["laser_power_ramping_enable"]         = lambda x: self.set_laser_power_ramping_enable(clean_bool(x))
         f["laser_power_ramp_increments"]        = lambda x: self.settings.state.set("laser_power_ramp_increments", int(x))
         f["laser_power_high_resolution"]        = lambda x: self.set_laser_power_high_resolution(x)
@@ -2562,7 +2531,7 @@ class FeatureIdentificationDevice(object):
         f["selected_laser"]                     = lambda x: self.set_selected_laser(int(x))
 
         f["high_gain_mode_enable"]              = lambda x: self.set_high_gain_mode_enable(clean_bool(x))
-        f["trigger_source"]                     = lambda x: self.set_trigger_source(int(x)) 
+        f["trigger_source"]                     = lambda x: self.set_trigger_source(int(x))
         f["enable_secondary_adc"]               = lambda x: self.settings.state.set("secondary_adc_enabled", clean_bool(x))
         f["area_scan_enable"]                   = lambda x: self.set_area_scan_enable(clean_bool(x))
         f["area_scan_fast"]                     = lambda x: self.settings.state.set("area_scan_fast", clean_bool(x))
@@ -2576,13 +2545,13 @@ class FeatureIdentificationDevice(object):
         f["shutter_enable"]                     = lambda x: self.set_shutter_enable(clean_bool(x))
         f["strobe_enable"]                      = lambda x: self.set_strobe_enable(clean_bool(x))
         f["mod_enable"]                         = lambda x: self.set_mod_enable(clean_bool(x))
-        f["mod_period_us"]                      = lambda x: self.set_mod_period_us(int(x))
-        f["mod_width_us"]                       = lambda x: self.set_mod_width_us(int(x))
+        f["mod_period_us"]                      = lambda x: self.set_mod_period_us(int(round(x)))
+        f["mod_width_us"]                       = lambda x: self.set_mod_width_us(int(round(x)))
 
         # BatchCollection
         f["free_running_mode"]                  = lambda x: self.settings.state.set("free_running_mode", clean_bool(x))
         f["acquisition_laser_trigger_enable"]   = lambda x: self.settings.state.set("acquisition_laser_trigger_enable", clean_bool(x))
-        f["acquisition_laser_trigger_delay_ms"] = lambda x: self.settings.state.set("acquisition_laser_trigger_delay_ms", int(x))
+        f["acquisition_laser_trigger_delay_ms"] = lambda x: self.settings.state.set("acquisition_laser_trigger_delay_ms", int(round(x)))
         f["acquisition_take_dark_enable"]       = lambda x: self.settings.state.set("acquisition_take_dark_enable", clean_bool(x))
 
         # microRaman
@@ -2592,12 +2561,12 @@ class FeatureIdentificationDevice(object):
         f["vertical_binning"]                   = lambda x: self.set_vertical_binning(x)
 
         # EEPROM updates
-        f["update_eeprom"]                      = lambda x: self.update_session_eeprom(x) 
-        f["replace_eeprom"]                     = lambda x: self.replace_session_eeprom(x) 
-        f["write_eeprom"]                       = lambda x: self.write_eeprom() 
+        f["update_eeprom"]                      = lambda x: self.update_session_eeprom(x)
+        f["replace_eeprom"]                     = lambda x: self.replace_session_eeprom(x)
+        f["write_eeprom"]                       = lambda x: self.write_eeprom()
 
         # manufacturing
-        f["reset_fpga"]                         = lambda x: self.reset_fpga() 
+        f["reset_fpga"]                         = lambda x: self.reset_fpga()
         f["dfu_enable"]                         = lambda x: self.set_dfu_enable()
 
         # legacy
@@ -2606,14 +2575,14 @@ class FeatureIdentificationDevice(object):
         # experimental (R&D)
         f["graph_alternating_pixels"]           = lambda x: self.settings.state.set("graph_alternating_pixels", clean_bool(x))
         f["swap_alternating_pixels"]            = lambda x: self.settings.state.set("swap_alternating_pixels", clean_bool(x))
-        f["overrides"]                          = lambda x: self.set_overrides(x) 
+        f["overrides"]                          = lambda x: self.set_overrides(x)
         f["invert_x_axis"]                      = lambda x: self.settings.eeprom.set("invert_x_axis", clean_bool(x))
         f["bin_2x2"]                            = lambda x: self.settings.eeprom.set("bin_2x2", clean_bool(x))
-        f["wavenumber_correction"]              = lambda x: self.settings.set_wavenumber_correction(float(x)) 
+        f["wavenumber_correction"]              = lambda x: self.settings.set_wavenumber_correction(float(x))
 
         # heartbeats & connection data
         f["raise_exceptions"]                   = lambda x: setattr(self, "raise_exceptions", clean_bool(x))
-        f["log_level"]                          = lambda x: self.set_log_level(x) 
+        f["log_level"]                          = lambda x: self.set_log_level(x)
         f["num_connected_devices"]              = lambda x: self.settings.set_num_connected_devices(int(x))
         f["subprocess_timeout_sec"]             = lambda x: None
         f["heartbeat"]                          = lambda x: None

@@ -1,5 +1,10 @@
 # Changelog
 
+- 2021-07-15 1.1.17
+    - more consistent rounding / casting to ints
+    - removed heartbeat logs
+    - removed EEPROM serial number validation on write
+    - docs
 - 2021-07-14 1.1.16
     - debugs
 - 2021-07-14 1.1.15

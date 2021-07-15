@@ -143,7 +143,7 @@ class WasatchDeviceWrapper(object):
 
     DISABLE_RESPONSE_QUEUE = False
 
-    
+
     # TODO: make this dynamic:
     #   - initially on number of connected spectrometers
     #   - ideally on configured integration times per spectrometer
@@ -254,7 +254,7 @@ class WasatchDeviceWrapper(object):
 
         self.wrapper_worker.setDaemon(True)
         log.debug("deivce wrapper: Initiating wrapper thread")
-        
+
         self.wrapper_worker.start()
 
         # If something goes wrong, we won't want to kill the current process (this function runs
@@ -481,7 +481,7 @@ class WasatchDeviceWrapper(object):
         # none of those.  Yet apparently we did read some normal readings.
         # Return the latest of those.
 
-        # MZ: this would be a possible place to revert logging from DEBUG to 
+        # MZ: this would be a possible place to revert logging from DEBUG to
         # whatever was passed (self.log_level), especially if this is the
         # first reading returned by this thread.
 
@@ -496,7 +496,7 @@ class WasatchDeviceWrapper(object):
     #
     # For OEM customers controlling the spectrometer via the non-blocking
     # WasatchDeviceWrapper interface, this is the method you would call to
-    # change the various spectrometer settings.  
+    # change the various spectrometer settings.
     #
     # @see \ref README_SETTINGS.md for a list of valid settings you can
     #      pass, as well as any parameters expected by each
@@ -526,10 +526,10 @@ class WasatchDeviceWrapper(object):
 # pill on the command queue, continuously read from the device and
 # post the results on the response queue.
 class Wrapper_Worker(threading.Thread):
-        
+
     def __init__(
             self,
-            device_id, 
+            device_id,
             command_queue,
             response_queue,
             settings_queue,
@@ -613,13 +613,13 @@ class Wrapper_Worker(threading.Thread):
 
         # send the SpectrometerSettings back to the GUI process
         log.debug("wrapper thread: returning SpectrometerSettings to GUI process")
-        self.settings_queue.put_nowait(self.wasatch_device.settings) 
-        
+        self.settings_queue.put_nowait(self.wasatch_device.settings)
+
         log.debug("wrapper thread: entering loop")
-        last_heartbeat = datetime.datetime.now()
+        # last_heartbeat = datetime.datetime.now()
         last_command = datetime.datetime.now()
-        min_thread_timeout_sec = 10 
-        thread_timeout_sec = min_thread_timeout_sec 
+        min_thread_timeout_sec = 10
+        thread_timeout_sec = min_thread_timeout_sec
 
         received_poison_pill_command  = False # from ENLIGHTEN
         received_poison_pill_response = False # from WasatchDevice
@@ -632,9 +632,9 @@ class Wrapper_Worker(threading.Thread):
             # log.debug(f"Queue sizes are command:{self.command_queue.qsize()} response:{self.response_queue.qsize()} message:{self.message_queue.qsize()} settings:{self.settings_queue.qsize()}")
 
             # heartbeat logger (outgoing keepalives to logger)
-            if (now - last_heartbeat).total_seconds() >= 3:
-                log.info("heartbeat")
-                last_heartbeat = now
+            # if (now - last_heartbeat).total_seconds() >= 3:
+            #     log.info("heartbeat")
+            #     last_heartbeat = now
 
             dedupped = self.dedupe(self.command_queue)
 
@@ -686,14 +686,14 @@ class Wrapper_Worker(threading.Thread):
                     log.critical("thread killing self (%d sec since last command, timeout %d sec)",
                         sec_since_last_command, thread_timeout_sec)
                     break
-            
+
             # ##################################################################
             # Relay one upstream reading (Spectrometer -> GUI)
             # ##################################################################
 
             try:
                 # Note: this is a BLOCKING CALL.  If integration time is longer
-                # than subprocess_timeout_sec, this call itself will trigger 
+                # than subprocess_timeout_sec, this call itself will trigger
                 # shutdown.
                 log.debug("wrapper thread: acquiring data")
                 reading = self.wasatch_device.acquire_data()
