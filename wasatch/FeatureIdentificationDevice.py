@@ -994,7 +994,7 @@ class FeatureIdentificationDevice(object):
             spectrum[i] = (raw * self.settings.eeprom.detector_gain_odd) + self.settings.eeprom.detector_offset_odd
 
             if i < 5 or i > len(spectrum) - 5:
-                log.debug("  pixel %4d: old %.2f raw %.2f new %.2f", i, old, raw, new)
+                log.debug("  pixel %4d: old %.2f raw %.2f new %.2f", i, old, raw, spectrum[i])
 
         log.debug("after: %d, %d, %d, %d, %d", spectrum[0], spectrum[1], spectrum[2], spectrum[3], spectrum[4])
 

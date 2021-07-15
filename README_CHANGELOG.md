@@ -1,5 +1,7 @@
 # Changelog
 
+- 2021-07-15 1.1.19
+    - InGaAs fix
 - 2021-07-15 1.1.18
     - merged customer fix
     - removed rounding from even-odd correction
