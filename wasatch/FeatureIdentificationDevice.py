@@ -991,12 +991,10 @@ class FeatureIdentificationDevice(object):
             raw = (old - self.settings.eeprom.detector_offset) / self.settings.eeprom.detector_gain
 
             # apply the correct "odd" gain and offset
-            new = (raw * self.settings.eeprom.detector_gain_odd) + self.settings.eeprom.detector_offset_odd
-
-            spectrum[i] = int(round(max(0, min(new, 0xffff))))
+            spectrum[i] = (raw * self.settings.eeprom.detector_gain_odd) + self.settings.eeprom.detector_offset_odd
 
             if i < 5 or i > len(spectrum) - 5:
-                log.debug("  pixel %4d: old %.2f raw %.2f new %.2f final %5d", i, old, raw, new, spectrum[i])
+                log.debug("  pixel %4d: old %.2f raw %.2f new %.2f", i, old, raw, new)
 
         log.debug("after: %d, %d, %d, %d, %d", spectrum[0], spectrum[1], spectrum[2], spectrum[3], spectrum[4])
 

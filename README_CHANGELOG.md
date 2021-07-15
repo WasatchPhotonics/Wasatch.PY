@@ -1,5 +1,8 @@
 # Changelog
 
+- 2021-07-15 1.1.18
+    - merged customer fix
+    - removed rounding from even-odd correction
 - 2021-07-15 1.1.17
     - more consistent rounding / casting to ints
     - removed heartbeat logs
