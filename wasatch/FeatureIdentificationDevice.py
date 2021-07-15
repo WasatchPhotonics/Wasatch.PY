@@ -944,7 +944,7 @@ class FeatureIdentificationDevice(object):
                     smoothed.append(spectrum[i])
                 else:
                     if i + 1 < len(spectrum):
-                        averaged = int(round((spectrum[i-1] + spectrum[i+1]) / 2.0, 0))
+                        averaged = (spectrum[i-1] + spectrum[i+1]) / 2.0
                     else:
                         averaged = spectrum[i - 1]
                     smoothed.append(averaged)
