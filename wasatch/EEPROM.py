@@ -952,12 +952,22 @@ class EEPROM(object):
     # Convert a floating-point value into the big-endian 16-bit "funky float" 
     # used for detector gain in the FPGA on both Hamamatsu and IMX sensors.
     #
-    # Note that this TRUNCATES (takes the floor) rather than rounding,
-    # which I believe matches WasatchNET.FunkyFloat.fromFloat().
+    # Note that this TRUNCATES (takes the floor) the fractional portion rather 
+    # than rounding, which I believe matches WasatchNET.FunkyFloat.fromFloat().
+    #
+    # Conversely, it DOES provide minor rounding on the INTEGRAL portion, to 
+    # avoid this problem:
+    #
+    # \verbatim
+    # dB = 0
+    # while dB < 2.1:
+    #     self.set_detector_gain(dB) # old code treats 1.0 as 0.0 because actually sends 0.99999999
+    #     dB += 0.1
+    # \endverbatim
     #
     # @see https://wasatchphotonics.com/api/Wasatch.NET/class_wasatch_n_e_t_1_1_funky_float.html
     def float_to_uint16(self, gain):
-        msb = int(gain) & 0xff
+        msb = int(round(gain, 5)) & 0xff
         if self.format >= 13:
             lsb = round((gain - msb) * 256) & 0xff
         else:
