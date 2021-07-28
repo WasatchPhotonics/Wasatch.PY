@@ -1,5 +1,7 @@
 # Changelog
 
+- 2021-07-28 1.1.21
+    - added utils.to\_bool
 - 2021-07-20 1.1.20
     - fixed setting gain to 0.99999999
 - 2021-07-15 1.1.19
