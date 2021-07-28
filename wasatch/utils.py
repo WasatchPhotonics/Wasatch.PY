@@ -552,3 +552,14 @@ def twos_complement(val, bits):
         val = val - (1 << bits)        # compute negative value
     return val    
 
+def to_bool(value):
+    if isinstance(value, bool):
+        return value
+    elif isinstance(value, int):
+        return 0 != value
+    elif isinstance(value, float):
+        return 0 != value
+    elif isinstance(value, str):
+        s = value.lower().strip()
+        return s in ['true', 'y', 'yes', 'on', '1']
+    return False
