@@ -230,6 +230,8 @@ class FeatureIdentificationDevice(object):
             log.debug("applying SiG settings")
             self.set_laser_watchdog_sec(10)
 
+        self.set_integration_time_ms(self.settings.eeprom.startup_integration_time_ms)
+
         # ######################################################################
         # Done
         # ######################################################################

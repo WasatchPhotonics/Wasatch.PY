@@ -1,5 +1,7 @@
 # Changelog
 
+- 2021-08-04 1.1.22
+    - auto-apply startup\_integration\_time\_ms on connect
 - 2021-07-28 1.1.21
     - added utils.to\_bool
 - 2021-07-20 1.1.20
