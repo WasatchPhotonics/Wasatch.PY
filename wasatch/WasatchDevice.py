@@ -535,8 +535,12 @@ class WasatchDevice(object):
                     rows = self.settings.eeprom.active_pixels_vertical
                     log.debug("trying to read a fast area scan frame of %d rows", rows)
                     for i in range(rows):
+                        log.debug(f"trying to read fast area scan row {i}")
                         spectrum_and_row = self.hardware.get_line(trigger=(i==0))
-                        if self.hardware.shutdown_requested:
+                        if isinstance(spectrum_and_row, bool):
+                            # get_line returned a poison-pill, so flow it upstream
+                            return False
+                        elif self.hardware.shutdown_requested:
                             return False
                         elif spectrum_and_row.spectrum is None:
                             log.debug("device.take_one_averaged_spectrum: get_line None, sending keepalive for now (area scan fast)")
