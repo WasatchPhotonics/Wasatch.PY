@@ -749,8 +749,8 @@ class EEPROM(object):
             struct.pack_into(data_type, buf, start_byte, value)
 
         extra = "" if label is None else (" (%s)" % label)
-        log.debug("Packed (%d, %2d, %2d) '%s' value %s -> %s%s", 
-            page, start_byte, length, data_type, value, buf[start_byte:end_byte], extra)
+        # log.debug("Packed (%d, %2d, %2d) '%s' value %s -> %s%s", 
+        #     page, start_byte, length, data_type, value, buf[start_byte:end_byte], extra)
 
     def generate_feature_mask(self):
         mask = 0
@@ -968,9 +968,8 @@ class EEPROM(object):
     # @see https://wasatchphotonics.com/api/Wasatch.NET/class_wasatch_n_e_t_1_1_funky_float.html
     def float_to_uint16(self, gain):
         msb = int(round(gain, 5)) & 0xff
-        if self.format >= 13:
-            lsb = round((gain - msb) * 256) & 0xff
-        else:
-            lsb = int((gain - msb) * 256) & 0xff
+        # if self.format >= 13: lsb = round((gain - msb) * 256) & 0xff
+        lsb = int((gain - msb) * 256) & 0xff
         raw = (msb << 8) | lsb
+        log.debug("float_to_uint16: %f -> 0x%04x", gain, raw)
         return raw

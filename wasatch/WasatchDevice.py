@@ -5,9 +5,7 @@ import queue
 import psutil
 import logging
 import datetime
-import multiprocessing
-
-# import numpy # memory leaks?
+import threading
 
 from configparser import ConfigParser
 
@@ -52,6 +50,8 @@ class WasatchDevice(object):
 
         self.device_id      = device_id
         self.message_queue  = message_queue
+
+        self.lock = threading.Lock()
 
         self.connected = False
 
@@ -172,7 +172,7 @@ class WasatchDevice(object):
         self.hardware.get_microcontroller_firmware_version()
         self.hardware.get_fpga_firmware_version()
         self.hardware.get_integration_time_ms()
-        self.hardware.get_detector_gain()
+        self.hardware.get_detector_gain()           # note we don't pass update_session_eeprom, so this doesn't really do anything
 
         # could read the defaults for these ss.state volatiles from FID/SP too:
         #
@@ -530,36 +530,50 @@ class WasatchDevice(object):
             if self.settings.state.area_scan_enabled and self.settings.state.area_scan_fast:
 
                 # collect a whole frame of area scan data
-                reading.area_scan_data = []
-                try:
-                    rows = self.settings.eeprom.active_pixels_vertical
-                    log.debug("trying to read a fast area scan frame of %d rows", rows)
-                    for i in range(rows):
-                        log.debug(f"trying to read fast area scan row {i}")
-                        spectrum_and_row = self.hardware.get_line(trigger=(i==0))
-                        if isinstance(spectrum_and_row, bool):
-                            # get_line returned a poison-pill, so flow it upstream
-                            return False
-                        elif self.hardware.shutdown_requested:
-                            return False
-                        elif spectrum_and_row.spectrum is None:
-                            log.debug("device.take_one_averaged_spectrum: get_line None, sending keepalive for now (area scan fast)")
-                            return True
+                with self.lock:
+                    reading.area_scan_data = []
+                    try:
+                        rows = self.settings.eeprom.active_pixels_vertical
+                        first = True
+                        log.debug("trying to read a fast area scan frame of %d rows", rows)
+                        #for i in range(rows):
+                        row_data = {}
+                        while True:
+                            log.debug(f"trying to read fast area scan row")
+                            spectrum_and_row = self.hardware.get_line(trigger=first)
+                            first = False
+                            if isinstance(spectrum_and_row, bool):
+                                # get_line returned a poison-pill, so we're not 
+                                # getting any more in this frame...give up and move on
+                                # return False
+                                log.debug(f"get_line returned {spectrum_and_row}, breaking")
+                                break
+                            elif self.hardware.shutdown_requested:
+                                return False
+                            elif spectrum_and_row.spectrum is None:
+                                log.debug("device.take_one_averaged_spectrum: get_line None, sending keepalive for now (area scan fast)")
+                                return True
 
-                        # mimic "slow" results to minimize downstream fuss
-                        reading.spectrum = spectrum_and_row.spectrum
-                        reading.area_scan_row_count = spectrum_and_row.row
-                        reading.timestamp_complete  = datetime.datetime.now()
+                            # mimic "slow" results to minimize downstream fuss
+                            spectrum = spectrum_and_row.spectrum
+                            row = spectrum_and_row.row
 
-                        # accumulate the frame here
-                        reading.area_scan_data.append(spectrum_and_row.spectrum)
-                        log.debug("device.take_one_averaged_reading(area scan fast): got %s ... (row %d)",
-                            reading.spectrum[0:9], reading.area_scan_row_count)
+                            reading.spectrum = spectrum
+                            row_data[row] = spectrum
+                            reading.timestamp_complete  = datetime.datetime.now()
+                            log.debug("device.take_one_averaged_reading(area scan fast): got %s ... (row %d) (min %d)",
+                                spectrum[0:9], row, min(reading.spectrum))
 
-                except Exception as exc:
-                    log.critical("Error reading hardware data", exc_info=1)
-                    reading.spectrum = None
-                    reading.failure = str(exc)
+                        reading.area_scan_data = []
+                        reading.area_scan_row_count = -1
+                        for row in sorted(row_data.keys()):
+                            reading.area_scan_data.append(row_data[row])
+                            reading.area_scan_row_count = row
+
+                    except Exception as exc:
+                        log.critical("Error reading hardware data", exc_info=1)
+                        reading.spectrum = None
+                        reading.failure = str(exc)
 
             else:
 
@@ -670,7 +684,8 @@ class WasatchDevice(object):
                 log.debug("completed take_one")
                 self.change_setting("cancel_take_one", True)
 
-        # log.debug("device.take_one_averaged_reading: returning %s", reading)
+        log.debug("device.take_one_averaged_reading: returning %s", reading)
+        # reading.dump_area_scan()
         return reading
 
     def monitor_memory(self):

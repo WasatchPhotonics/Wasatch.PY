@@ -1,5 +1,9 @@
 # Changelog
 
+- 2021-08-12 1.1.24
+    - many changes to area scan
+- 2021-08-11 1.1.23
+    - get\_detector\_gain\* only updates session eeprom if update\_session\_eeprom=True
 - 2021-08-04 1.1.22
     - auto-apply startup\_integration\_time\_ms on connect
 - 2021-07-28 1.1.21

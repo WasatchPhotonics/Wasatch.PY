@@ -679,7 +679,7 @@ class Wrapper_Worker(threading.Thread):
                 break
 
             # has ENLIGHTEN crashed and stopped sending us heartbeats?
-            if thread_timeout_sec is not None:
+            if False and thread_timeout_sec is not None:
                 sec_since_last_command = (now - last_command).total_seconds()
                 log.debug("sec_since_last_command = %d sec", sec_since_last_command)
                 if sec_since_last_command > thread_timeout_sec:

@@ -282,7 +282,7 @@ class SpectrometerSettings(object):
         elif self.fpga_options is not None and self.fpga_options.has_cf_select:
             log.debug("is_ingaas TRUE because has_cf_select")
             return True
-        log.debug("is_ingaas FALSE by default")
+        # log.debug("is_ingaas FALSE by default")
         return False
 
     def is_imx(self):

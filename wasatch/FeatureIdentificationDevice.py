@@ -566,7 +566,7 @@ class FeatureIdentificationDevice(object):
     # - 2nd byte (MSB) is the integral part to the left of the decimal
     #
     # E.g., 231 dec == 0x01e7 == 1.90234375
-    def get_detector_gain(self):
+    def get_detector_gain(self, update_session_eeprom=False):
         result = self.get_code(0xc5, label="GET_DETECTOR_GAIN")
 
         if result is None:
@@ -578,15 +578,18 @@ class FeatureIdentificationDevice(object):
         raw = (msb << 8) | lsb
 
         gain = msb + lsb / 256.0
-        log.debug("get_detector_gain: %f (raw 0x%04x, msb %d, lsb %d)" % (gain, raw, msb, lsb))
-        self.settings.eeprom.detector_gain = gain
+        log.debug("get_detector_gain: %f (raw 0x%04x) (session eeprom %f)" % (
+            gain, raw, self.settings.eeprom.detector_gain))
+
+        if update_session_eeprom:
+            self.settings.eeprom.detector_gain = gain
 
         if self.settings.is_micro():
             self.settings.state.gain_db = gain
 
         return gain
 
-    def get_detector_gain_odd(self):
+    def get_detector_gain_odd(self, update_session_eeprom=False):
         if not self.settings.is_ingaas():
             log.debug("GET_DETECTOR_GAIN_ODD only supported on InGaAs")
             return self.settings.eeprom.detector_gain_odd
@@ -598,9 +601,10 @@ class FeatureIdentificationDevice(object):
         raw = (msb << 8) | lsb
 
         gain = msb + lsb / 256.0
-        log.debug("get_detector_gain_odd: %f (0x%04x, msb %d, lsb %d)" % (gain, raw, msb, lsb))
-        self.settings.eeprom.detector_gain_odd = gain
-
+        log.debug("get_detector_gain_odd: %f (0x%04x) (session eeprom %f)" % (
+            gain, raw, self.settings.eeprom.detector_gain_odd))
+        if update_session_eeprom:
+            self.settings.eeprom.detector_gain_odd = gain
         return gain
 
     ##
@@ -743,7 +747,11 @@ class FeatureIdentificationDevice(object):
 
         # due to additional firmware processing time for area scan?
         if self.settings.state.area_scan_enabled:
-            timeout_ms += 250
+            if trigger:
+                timeout_ms += 250
+            else:
+                # kludge: just use triple the intra-line delay
+                timeout_ms = self.settings.eeprom.detector_offset * 3
 
         self.wait_for_usb_available()
 
@@ -758,6 +766,7 @@ class FeatureIdentificationDevice(object):
                 try:
                     log.debug("waiting for %d bytes (timeout %dms)", block_len_bytes, timeout_ms)
                     data = self.device.read(endpoint, block_len_bytes, timeout=timeout_ms)
+                    log.debug("read %d bytes", len(data))
                 except Exception as exc:
                     if self.settings.state.trigger_source == SpectrometerState.TRIGGER_SOURCE_EXTERNAL:
                         # we don't know how long we'll have to wait for the trigger, so
@@ -765,11 +774,8 @@ class FeatureIdentificationDevice(object):
                         # log.debug("still waiting for external trigger")
                         return None
                     else:
-                        # YOU ARE HERE: is there something we can do here to
-                        # flush a buffer / discard any late-appearing remnants
-                        # of the current, apparently incomplete spectrum so that
-                        # when the NEXT one starts, it's at pixel 0 of the new
-                        # one?
+                        # if we fail even a single spectrum read, we return a 
+                        # False (poison-pill) and prepare to disconnect
                         return False
 
             # This is a convoluted way to iterate across the received bytes in 'data' as
@@ -778,6 +784,12 @@ class FeatureIdentificationDevice(object):
             subspectrum = [int(i | (j << 8)) for i, j in zip(data[::2], data[1::2])] # LSB-MSB
 
             spectrum.extend(subspectrum)
+
+            # empirically determined need for 5ms delay when switching endpoints
+            # on 2048px detectors during area scan
+            if self.settings.state.area_scan_enabled and pixels == 2048: # and endpoint == 0x82:
+                log.debug("sleeping 5ms between endpoints")
+                sleep(0.005) 
 
         ########################################################################
         # error-check the received spectrum
@@ -792,6 +804,7 @@ class FeatureIdentificationDevice(object):
 
         if len(spectrum) != pixels:
             log.error("get_line read wrong number of pixels (expected %d, read %d)", pixels, len(spectrum))
+            return True
             if len(spectrum) < pixels:
                 spectrum.extend([0] * (pixels - len(spectrum)))
             else:
@@ -899,7 +912,7 @@ class FeatureIdentificationDevice(object):
         #            on when to perform X-Axis inversion in the
         #                        Order of Operations.
         #
-        if self.settings.eeprom.invert_x_axis:
+        if self.settings.eeprom.invert_x_axis and not self.settings.state.area_scan_enabled:
             spectrum.reverse()
 
         ########################################################################
