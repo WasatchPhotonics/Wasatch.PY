@@ -209,7 +209,7 @@ class WasatchDevice(object):
     #
     # @see Controller.acquire_reading
     def acquire_data(self):
-        log.debug("Device acquire_data")
+        log.debug("acquire_data: start")
 
         self.monitor_memory()
 

@@ -32,23 +32,17 @@ from queue import Queue
 #                                                                              #
 # ##############################################################################
 
-explicit_path = None     # don't rename this, it's a public module attribute used by callers
+explicit_path = None     
 
 def set_location(path):
     global explicit_path
     explicit_path = path
 
-##
-# Determine the location to store the log file. Current directory
-# on Linux/Mac, or %PROGRAMDATA% on windows - usually C:\\ProgramData 
 def get_location():
     global explicit_path
     if explicit_path is not None:
         return explicit_path
 
-    # For convenience, replace any dots with underscores to help windows know
-    # it is a text file.
-    print("applog.get_location: explicit path not set, so defaulting to module name")
     module_name = __name__.replace(".", "_") # "wasatch.applog" -> "wasatch_applog"
     filename = "%s.txt" % module_name        # "wasatch_applog.txt"
 
@@ -75,7 +69,6 @@ def get_location():
 # amongst processes as expected, so if you add another queue handler you 
 # will get double log prints.
 #
-## 
 # Mimic the capturelog style of just slurping the entire log file contents.
 #
 # MZ: if we're just interested in the 'tail' of the log, this will be horribly
@@ -94,22 +87,10 @@ def log_file_created():
 ## Remove the specified log file and return True if succesful.
 def delete_log_file_if_exists():
     pathname = get_location()
-
     if os.path.exists(pathname):
         os.remove(pathname)
+    return not os.path.exists(pathname)
 
-    if os.path.exists(pathname):
-        print("Problem deleting: %s", pathname)
-        return False
-    return True
-
-##
-# Apparently, tests run in py.test will not remove the existing handlers 
-# as expected. This mainfests as hanging tests during py.test runs, or 
-# after non-termination hang of py.test after all tests report 
-# succesfully. Only on linux though, windows appears to Do What I Want. 
-# Use this function to close all of the log file handlers, including the 
-# QueueHandler custom objects.
 def explicit_log_close():
     root_log = logging.getLogger()
     root_log.debug("applog.explicit_log_close: closing and removing all handlers")
@@ -124,18 +105,6 @@ def explicit_log_close():
 #                                                                              #
 # ##############################################################################
 
-##
-# @warning Memory Leak
-#
-# This code appears to leak memory under Linux.  In ENLIGHTEN it hasn't really
-# been a problem under normal operation, but if run with DEBUG logging enabled
-# can grow quite significant.
-#
-# The leak has not been thoroughly analyzed as a workaround exists (--log-level info).
-#
-# This code uses queues rather than pipes because pipes are point-to-point
-# (would only support one producer) while queues can have multiple producers
-# (e.g. Controller + WasatchDeviceWrapper instances) feeding one consumer.
 class MainLogger(object):
     FORMAT = u'%(asctime)s [0x%(thread)08x] %(name)s %(levelname)-8s %(message)s'
 
@@ -151,25 +120,10 @@ class MainLogger(object):
         self.timeout_sec   = timeout_sec
 
         if self.logfile is not None:
-            # store in the module, not just the object
             set_location(self.logfile)
 
-        # kick-off a listener in a separate process
-        # Specifically, create a process running the listener_process() function
-        # and pass it the arguments log_queue and listener_configurer (which is the
-        # first function it will call)
-        #self.listener = multiprocessing.Process(target=self.listener_process,
-                                               # args=(self.log_queue, self.listener_configurer, self.explicit_path, self.timeout_sec))
-        #self.listener.start()
-        #self.listener_process(self.log_queue, self.listener_configurer, self.explicit_path, self.timeout_sec)
         root_log = logging.getLogger()
-        print("calling log_configurer with %s" % self.logfile)
         self.log_configurer(self.logfile)
-        # Remember you have to add a local log configurator for each
-        # process, including this, the parent process
-        
-        #top_handler = QueueHandler(self.log_queue)
-        #root_log.addHandler(top_handler)
         root_log.setLevel(self.log_level)
         root_log.warning("Top level log configuration (%d handlers, get_location %s)", len(root_log.handlers), get_location())
 
@@ -184,14 +138,11 @@ class MainLogger(object):
             pathname = get_location()
 
         root_logger = logging.getLogger()
-        fh = logging.FileHandler(pathname, mode='w', encoding='utf-8') # Overwrite previous run (does not append!)
+        fh = logging.FileHandler(pathname, mode='w', encoding='utf-8') 
         formatter = logging.Formatter(self.FORMAT)
         fh.setFormatter(formatter)
-        root_logger.addHandler(fh) # For some reason this line is causing a memory leak
+        root_logger.addHandler(fh) 
 
-        # Specifing stderr as the log output location will cause the creation of
-        # a _module_name_.exe.log file when run as a post-freeze windows
-        # executable.
         if self.enable_stdout:
             stream_handler = logging.StreamHandler(sys.stdout)
             stream_handler.setFormatter(formatter)
@@ -203,7 +154,6 @@ class MainLogger(object):
     #  ensure it exits. 
     def close(self):
         self.log_queue.put_nowait(None)
-        # causes problem with Demo.py on Linux?
         try:
             self.listener.join()
         except:

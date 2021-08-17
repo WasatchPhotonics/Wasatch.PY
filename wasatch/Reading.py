@@ -39,11 +39,12 @@ class Reading(object):
         self.dark                      = None
 
     def __str__(self):
-        return "wasatch.Reading {device_id %s, spectrum %s, averaged %s, session_count %d, timestamp %s, timestamp_complete %s, failure %s}" % (
+        return "wasatch.Reading {device_id %s, spectrum %s, averaged %s, session_count %d, area_scan_row_count %d, timestamp %s, timestamp_complete %s, failure %s}" % (
             self.device_id, 
             "None" if self.spectrum is None else ("%d values" % len(self.spectrum)),
             self.averaged, 
             self.session_count, 
+            self.area_scan_row_count,
             self.timestamp, 
             self.timestamp_complete, 
             self.failure)

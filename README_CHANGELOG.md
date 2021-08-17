@@ -1,5 +1,8 @@
 # Changelog
 
+- 2021-08-12 1.1.25
+    - extracted WrapperWorker
+    - docs
 - 2021-08-12 1.1.24
     - many changes to area scan
 - 2021-08-11 1.1.23

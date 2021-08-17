@@ -21,10 +21,7 @@ log = logging.getLogger(__name__)
 # @param use_sim not used, left to avoid breaking old code
 class WasatchBus(object):
     def __init__(self, use_sim=False, monitor_dir=None):
-
         self.monitor_dir = monitor_dir
-
-        self.device_ids = []
 
         self.file_bus = None
         self.usb_bus = None
@@ -46,6 +43,9 @@ class WasatchBus(object):
 
         if self.usb_bus:
             self.device_ids.extend(self.usb_bus.update())
+
+    def is_empty(self):
+        return self.device_ids is None or len(self.device_ids) == 0
 
     ## called by Controller.update_connections
     def dump(self):
