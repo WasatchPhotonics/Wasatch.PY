@@ -1,5 +1,7 @@
 # Changelog
 
+- 2021-08-20 1.1.26
+    - untethered
 - 2021-08-12 1.1.25
     - extracted WrapperWorker
     - docs

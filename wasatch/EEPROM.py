@@ -8,6 +8,7 @@ import json
 import re
 
 from . import utils
+
 from .ROI import ROI
 
 log = logging.getLogger(__name__)
@@ -103,6 +104,14 @@ class EEPROM(object):
         self.spline_wavelengths          = []
         self.spline_y                    = []
         self.spline_y2                   = []
+
+        self.untethered_library_type     = 0
+        self.untethered_library_id       = 0
+        self.untethered_scans_to_average = 0
+        self.untethered_min_ramp_pixels  = 0
+        self.untethered_min_peak_height  = 0
+        self.untethered_match_threshold  = 0
+        self.untethered_library_count    = 0
                                          
         self.format                      = 0
         self.subformat                   = 0 # pages 6-7
@@ -319,6 +328,7 @@ class EEPROM(object):
         log.debug("")
         log.debug("  Raman Int Order:  %d", self.raman_intensity_calibration_order)
         log.debug("  Raman Int Coeffs: %s", self.raman_intensity_coeffs)
+        self.dump_untethered()
 
     # ##########################################################################
     #                                                                          #
@@ -489,11 +499,11 @@ class EEPROM(object):
             self.read_raman_intensity_calibration()
         elif self.subformat == 2:
             self.read_spline()
+        elif self.subformat == 3:
+            self.untethered = self.read_untethered()
         else:
             log.debug("Unsupported EEPROM subformat: %d", self.subformat)
         
-        # @todo support Subformat 3 Un-tethered
-
         # ######################################################################
         # feature mask
         # ######################################################################
@@ -911,7 +921,7 @@ class EEPROM(object):
         elif self.subformat == 2:
             self.write_spline()
         elif self.subformat == 3:
-            self.write_multi_wavecal()
+            self.write_untethered()
         else:
             log.error("Unsupported EEPROM subformat: %d", self.subformat)
 
@@ -973,3 +983,35 @@ class EEPROM(object):
         raw = (msb << 8) | lsb
         log.debug("float_to_uint16: %f -> 0x%04x", gain, raw)
         return raw
+
+    ############################################################################
+    # tried making this an Untethered class, but broke EEPROMEditor :-(
+    ############################################################################
+
+    def read_untethered(self):
+        self.untethered_library_type     = self.unpack((7, 0, 1), "B", "library_type")
+        self.untethered_library_id       = self.unpack((7, 1, 2), "I", "library_id")
+        self.untethered_scans_to_average = self.unpack((7, 3, 1), "B", "scans_to_average")
+        self.untethered_min_ramp_pixels  = self.unpack((7, 4, 1), "B", "min_ramp_pixels")
+        self.untethered_min_peak_height  = self.unpack((7, 5, 2), "I", "min_peak_height")
+        self.untethered_match_threshold  = self.unpack((7, 7, 1), "B", "match_threshold")
+        self.untethered_library_count    = self.unpack((7, 8, 1), "B", "library_count")
+
+    def write_untethered(self):
+        self.pack((7, 0, 1), "B", self.untethered_library_type)
+        self.pack((7, 1, 2), "I", self.untethered_library_id)
+        self.pack((7, 3, 1), "B", self.untethered_scans_to_average)
+        self.pack((7, 4, 1), "B", self.untethered_min_ramp_pixels)
+        self.pack((7, 5, 2), "I", self.untethered_min_peak_height)
+        self.pack((7, 7, 1), "B", self.untethered_match_threshold)
+        self.pack((7, 8, 1), "B", self.untethered_library_count)
+
+    def dump_untethered(self):
+        log.debug("Untethered:")
+        log.debug("  Library Type:     %d", self.untethered_library_type)
+        log.debug("  Library ID:       %d", self.untethered_library_id)
+        log.debug("  Scans to Average: %d", self.untethered_scans_to_average)
+        log.debug("  Min Ramp Pixels:  %d", self.untethered_min_ramp_pixels)
+        log.debug("  Min Peak Height:  %d", self.untethered_min_peak_height)
+        log.debug("  Match Threshold:  %d", self.untethered_match_threshold)
+        log.debug("  Library Count:    %d", self.untethered_library_count)
