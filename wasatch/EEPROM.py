@@ -22,7 +22,8 @@ log = logging.getLogger(__name__)
 # This class is normally accessed as an attribute of SpectrometerSettings.
 #
 # @see ENG-0034
-# @see http://ww1.microchip.com/downloads/en/DeviceDoc/20006270A.pdf
+# @see AT24C256C for ARM (32KB, http://ww1.microchip.com/downloads/en/DeviceDoc/20006270A.pdf)
+# @see 24LC128 for FX2 (16KB, https://www.microchip.com/en-us/product/24LC128)
 class EEPROM(object):
     
     LATEST_REV = 12

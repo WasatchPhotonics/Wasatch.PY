@@ -122,7 +122,10 @@ class SpectrometerSettings(object):
             return a + b.strip()
 
     def pixels(self):
-        return self.eeprom.active_pixels_horizontal
+        if self.state.detector_regions is None:
+            return self.eeprom.active_pixels_horizontal
+        else:
+            return self.state.detector_regions.total_pixels()
 
     def excitation(self):
         old = float(self.eeprom.excitation_nm)
@@ -221,6 +224,8 @@ class SpectrometerSettings(object):
         self.state.wavenumber_correction = cm
         self.update_wavecal()
 
+    ##
+    # @todo update for DetectorRegions
     def update_wavecal(self, coeffs=None):
         if self.lock_wavecal:
             log.debug("wavecal is locked")

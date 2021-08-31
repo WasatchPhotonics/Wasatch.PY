@@ -55,6 +55,9 @@ class SpectrometerState(object):
         self.battery_timestamp = None
         self.battery_raw = None        
 
+        # wasatch.DetectorRegions
+        self.detector_regions = None
+
         # ######################################################################
         # accessory connector
         # ######################################################################

@@ -14,7 +14,9 @@ from . import utils
 
 from .SpectrometerSettings import SpectrometerSettings
 from .SpectrometerState    import SpectrometerState
+from .DetectorRegions      import DetectorRegions
 from .StatusMessage        import StatusMessage
+from .DetectorROI          import DetectorROI
 from .Overrides            import Overrides
 from .EEPROM               import EEPROM
 
@@ -665,9 +667,9 @@ class FeatureIdentificationDevice(object):
 
     def get_sensor_line_length(self):
         value = self.get_upper_code(0x03, label="GET_LINE_LENGTH", lsb_len=2)
-        if value != self.settings.eeprom.active_pixels_horizontal:
-            log.error("GET_LINE_LENGTH opcode result %d != EEPROM active_pixels_horizontal %d (using opcode)",
-                value, self.settings.eeprom.active_pixels_horizontal)
+        if value != self.settings.pixels():
+            log.error("GET_LINE_LENGTH opcode result %d != SpectrometerSettings.pixels %d (using opcode result)",
+                value, self.settings.pixels())
         return value
 
     def get_opt_has_laser(self):
@@ -774,7 +776,7 @@ class FeatureIdentificationDevice(object):
                         # log.debug("still waiting for external trigger")
                         return None
                     else:
-                        # if we fail even a single spectrum read, we return a 
+                        # if we fail even a single spectrum read, we return a
                         # False (poison-pill) and prepare to disconnect
                         return False
 
@@ -789,7 +791,7 @@ class FeatureIdentificationDevice(object):
             # on 2048px detectors during area scan
             if self.settings.state.area_scan_enabled and pixels == 2048: # and endpoint == 0x82:
                 log.debug("sleeping 5ms between endpoints")
-                sleep(0.005) 
+                sleep(0.005)
 
         ########################################################################
         # error-check the received spectrum
@@ -805,10 +807,10 @@ class FeatureIdentificationDevice(object):
         if len(spectrum) != pixels:
             log.error("get_line read wrong number of pixels (expected %d, read %d)", pixels, len(spectrum))
             return True
-            if len(spectrum) < pixels:
-                spectrum.extend([0] * (pixels - len(spectrum)))
-            else:
-                spectrum = spectrum[:-pixels]
+            # if len(spectrum) < pixels:
+            #     spectrum.extend([0] * (pixels - len(spectrum)))
+            # else:
+            #     spectrum = spectrum[:-pixels]
 
         ########################################################################
         #
@@ -833,8 +835,9 @@ class FeatureIdentificationDevice(object):
 
         # (before x-axis inversion because line index at FPGA pixel 0)
 
-        # if we're in area scan mode, use first pixel as row index (leave pixel in spectrum)
-        # (do this before any horizontal averaging which might corrupt first pixel)
+        # If we're in area scan mode, use first pixel as row index (leave pixel 
+        # in spectrum).  Do this before any horizontal averaging which might 
+        # corrupt first pixel).  Note that InGaAs don't support DetectorRegions.
         area_scan_row_count = -1
         if self.settings.state.area_scan_enabled:
             area_scan_row_count = spectrum[0]
@@ -860,6 +863,8 @@ class FeatureIdentificationDevice(object):
         # "Marker" is simply a pixel with the value 0xffff.  On FPGA FW where the
         # marker is enabled, spectral data is clamped to 0xfffe, meaning such
         # markers can ONLY appear as the first pixel in a spectrum.
+        #
+        # Would need updated to work with DetectorRegions.
         if self.settings.has_marker() and not self.settings.state.area_scan_enabled:
             marker = 0xffff
             if spectrum[0] == marker:
@@ -884,7 +889,7 @@ class FeatureIdentificationDevice(object):
 
         # some detectors have "garbage" pixels at the front or end of every
         # spectrum (sync bytes and what-not)
-        if self.settings.is_micro():
+        if self.settings.is_micro() and self.settings.state.detector_regions is None:
             if self.settings.is_imx392():
                 utils.stomp_first(spectrum, 3)
                 utils.stomp_last (spectrum, 17)
@@ -929,7 +934,7 @@ class FeatureIdentificationDevice(object):
         # a prototype model output spectra with alternating pixels swapped, and
         # this was quicker than changing in firmware
 
-        if self.settings.state.swap_alternating_pixels:
+        if self.settings.state.swap_alternating_pixels and self.settings.state.detector_regions is None:
             log.debug("swapping alternating pixels: spectrum = %s", spectrum[:10])
             corrected = []
             for a, b in zip(spectrum[0::2], spectrum[1::2]):
@@ -941,14 +946,8 @@ class FeatureIdentificationDevice(object):
         # 2x2 binning
         ########################################################################
 
-        # apply so-called "2x2 pixel binning" (even though we're in 1D space...)
-        if self.settings.eeprom.bin_2x2:
-            log.debug("applying bin_2x2")
-            binned = []
-            for i in range(len(spectrum)-1):
-                binned.append((spectrum[i] + spectrum[i+1]) / 2.0)
-            binned.append(spectrum[-1])
-            spectrum = binned
+        # apply so-called "2x2 pixel binning" 
+        spectrum = self.apply_2x2_binning(spectrum)
 
         ########################################################################
         # Graph Alternating Pixels
@@ -959,6 +958,8 @@ class FeatureIdentificationDevice(object):
         # flatten-out irregularities in Bayer filters or photodiode arrays.
         # However, we don't want to disrupt the expected pixel-count, so just
         # average-over the skipped pixels.
+        #
+        # Not important enough to update for DetectorRegions
         if self.settings.state.graph_alternating_pixels:
             log.debug("applying graph_alternating_pixels")
             smoothed = []
@@ -974,8 +975,8 @@ class FeatureIdentificationDevice(object):
             spectrum = smoothed
 
         # Somewhat oddly, we're currently returning a TUPLE of the spectrum and
-        # the area scan row count.  When "Fast" mode is more commonplace we'll
-        # change this back to just returning the spectrum array directly.
+        # the area scan row count.  When "Fast" Area Scan is more commonplace 
+        # we'll change this back to just returning the spectrum array directly.
         return SpectrumAndRow(spectrum, area_scan_row_count)
 
     ##
@@ -1028,7 +1029,8 @@ class FeatureIdentificationDevice(object):
         if self.settings is None or \
                 self.settings.eeprom is None or \
                 self.settings.eeprom.bad_pixels is None or \
-                len(self.settings.eeprom.bad_pixels) == 0:
+                len(self.settings.eeprom.bad_pixels) == 0 or \
+                self.settings.state.detector_regions is not None:
             return False
 
         if spectrum is None or len(spectrum) == 0:
@@ -1082,6 +1084,27 @@ class FeatureIdentificationDevice(object):
             # advance to next bad pixel
             i += 1
         return True
+
+    def apply_2x2_binning(self, spectrum):
+        if not self.settings.eeprom.bin_2x2:
+            return spectrum
+
+        def bin2x2(a):
+            binned = []
+            for i in range(len(a)-1):
+                binned.append((a[i] + a[i+1]) / 2.0)
+            binned.append(a[-1])
+            return binned
+
+        if self.settings.state.detector_regions is None:
+            log.debug("applying bin_2x2")
+            return bin2x2(spectrum)
+
+        log.debug("applying bin_2x2 to regions")
+        combined = []
+        for subspectrum in self.settings.state.detector_regions.split():
+            combined.extend(bin2x2(subspectrum))
+        return combined
 
     ## Send the updated integration time in a control message to the device
     #
@@ -1899,10 +1922,10 @@ class FeatureIdentificationDevice(object):
             return False
 
         ok1 = self.send_code(bRequest        = 0xff,
-                            wValue          = 0x21,
-                            wIndex          = start,
-                            data_or_wLength = [0] * 8,
-                            label           = "SET_CCD_START_LINE")
+                             wValue          = 0x21,
+                             wIndex          = start,
+                             data_or_wLength = [0] * 8,
+                             label           = "SET_CCD_START_LINE")
 
         ok2 = self.send_code(bRequest        = 0xff,
                              wValue          = 0x23,
@@ -1910,6 +1933,67 @@ class FeatureIdentificationDevice(object):
                              data_or_wLength = [0] * 8,
                              label           = "SET_CCD_STOP_LINE")
         return ok1 and ok2
+
+    ## @todo implement when we get opcode
+    def set_pixel_depth(self, depth):
+        if not self.settings.is_micro():
+            log.debug("Pixel Depth only configurable on microRaman")
+            return False
+
+        if depth not in [10, 12]:
+            log.error(f"invaid pixel depth {depth}")
+            return False
+
+        log.error("NOT IMPLEMENTED")
+        return False
+
+    ##
+    # @param args: either a DetectorROI or a tuple of (region, y0, y1, x0, x1)
+    def set_detector_roi(self, args):
+        if not self.settings.is_micro():
+            log.debug("Detector ROI only configurable on microRaman")
+            return False
+
+        if isinstance(args, DetectorROI):
+            roi = args
+        else:
+            # convert args to ROI
+            if len(args) != 5:
+                log.error(f"invalid detector roi args: {args}")
+                return False
+
+            region = int(round(args[0]))
+            y0     = int(round(args[1]))
+            y1     = int(round(args[2]))
+            x0     = int(round(args[3]))
+            x1     = int(round(args[4]))
+
+            if not (0 <= region <= 3 and \
+                    y0 < y1 and \
+                    x0 < x1 and \
+                    y0 >= 0 and \
+                    x0 >= 0 and \
+                    y1 <= self.settings.eeprom.active_pixels_horizontal and \
+                    x1 <= self.settings.eeprom.active_pixels_horizontal):
+                log.error(f"invalid detector roi: {args}")
+                return False
+            roi = DetectorROI(region, y0, y1, x0, x1)
+
+        if self.settings.state.detector_regions is None:
+            self.settings.state.detector_regions = DetectorRegions()
+
+        self.settings.state.detector_regions.add(roi)
+        buf = utils.uint16_to_little_endian([ roi.y0, roi.y1, roi.x0, roi.x1 ])
+        log.debug("would send buf: %s", buf)
+
+        log.error("NOT IMPLEMENTED")
+        return False
+
+        return self.send_code(bRequest        = 0xff,
+                              wValue          = 0xff, # YOU ARE HERE -- NEED OPCODE
+                              wIndex          = roi.region,
+                              data_or_wLength = buf,
+                              label           = "SET_DETECTOR_ROI")
 
     # ##########################################################################
     #
@@ -2508,12 +2592,18 @@ class FeatureIdentificationDevice(object):
 
         if self.overrides and self.overrides.has_override(setting):
             return self.apply_override(setting, value)
-        elif setting in self.lambdas:
-            self.lambdas[setting](value)
-            return True
-        else:
-            log.critical("Unknown setting to write: %s", setting)
+
+        if setting not in self.lambdas:
+            # noisily fail unsupported tokens
+            log.error("Unknown setting to write: %s", setting)
             return False
+
+        f = self.lambdas.get(setting, None)
+        if f is None:
+            # quietly fail no-ops
+            return False
+
+        return f(value)
 
     ##
     # Please keep this list in sync with README_SETTINGS.md
@@ -2572,6 +2662,8 @@ class FeatureIdentificationDevice(object):
         f["raman_delay_ms"]                     = lambda x: self.set_raman_delay_ms(int(round(x)))
         f["laser_watchdog_sec"]                 = lambda x: self.set_laser_watchdog_sec(int(round(x)))
         f["vertical_binning"]                   = lambda x: self.set_vertical_binning(x)
+        f["detector_roi"]                       = lambda x: self.set_detector_roi(x)
+        f["pixel_depth"]                        = lambda x: self.set_pixel_depth(int(round(x)))
 
         # EEPROM updates
         f["update_eeprom"]                      = lambda x: self.update_session_eeprom(x)

@@ -1,5 +1,10 @@
 # Changelog
 
+- 2021-08-31 1.1.27
+    - added DetectorRegions
+    - added DetectorROI
+    - added set\_detector\_roi
+    - added set\_pixel\_depth
 - 2021-08-20 1.1.26
     - untethered
 - 2021-08-12 1.1.25

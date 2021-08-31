@@ -563,3 +563,10 @@ def to_bool(value):
         s = value.lower().strip()
         return s in ['true', 'y', 'yes', 'on', '1']
     return False
+
+def uint16_to_little_endian(values):
+    a = []
+    for n in values:
+        a.append(n & 0xff)          # lsb
+        a.append((n >> 8) & 0xff)   # msb
+    return a
