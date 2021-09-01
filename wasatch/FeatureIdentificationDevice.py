@@ -17,7 +17,6 @@ from .SpectrometerState    import SpectrometerState
 from .DetectorRegions      import DetectorRegions
 from .StatusMessage        import StatusMessage
 from .DetectorROI          import DetectorROI
-from .Overrides            import Overrides
 from .EEPROM               import EEPROM
 
 log = logging.getLogger(__name__)
@@ -67,9 +66,6 @@ class FeatureIdentificationDevice(object):
 
         self.settings = SpectrometerSettings(device_id)
         self.eeprom_backup = None
-
-        self.overrides = None
-        self.last_override_value = {}
 
         # ######################################################################
         # these are "driver state" within FeatureIdentificationDevice, and don't
@@ -1934,18 +1930,27 @@ class FeatureIdentificationDevice(object):
                              label           = "SET_CCD_STOP_LINE")
         return ok1 and ok2
 
-    ## @todo implement when we get opcode
-    def set_pixel_depth(self, depth):
+    ## 
+    # @params mode: integral value 0-3
+    #
+    # \verbose
+    # mode  pixel (OD) ADC (AD)
+    # b00   10-bit     10-bit
+    # b01   10-bit     12-bit
+    # b10   12-bit     10-bit
+    # b11   12-bit     12-bit
+    # \endverbose
+    def set_pixel_mode(self, mode):
         if not self.settings.is_micro():
             log.debug("Pixel Depth only configurable on microRaman")
             return False
 
-        if depth not in [10, 12]:
-            log.error(f"invaid pixel depth {depth}")
-            return False
+        # we only care about the two least-significant bits
+        mode = int(round(mode)) & 0x3 
 
-        log.error("NOT IMPLEMENTED")
-        return False
+        return self.send_code(bRequest = 0xfd,
+                              wValue   = mode,
+                              label    = "SET_PIXEL_MODE")
 
     ##
     # @param args: either a DetectorROI or a tuple of (region, y0, y1, x0, x1)
@@ -1986,11 +1991,8 @@ class FeatureIdentificationDevice(object):
         buf = utils.uint16_to_little_endian([ roi.y0, roi.y1, roi.x0, roi.x1 ])
         log.debug("would send buf: %s", buf)
 
-        log.error("NOT IMPLEMENTED")
-        return False
-
         return self.send_code(bRequest        = 0xff,
-                              wValue          = 0xff, # YOU ARE HERE -- NEED OPCODE
+                              wValue          = 0x25,
                               wIndex          = roi.region,
                               data_or_wLength = buf,
                               label           = "SET_DETECTOR_ROI")
@@ -2447,118 +2449,6 @@ class FeatureIdentificationDevice(object):
         return True
 
     # ##########################################################################
-    # Overrides
-    # ##########################################################################
-
-    def set_overrides(self, overrides):
-        log.debug("received overrides %s", overrides)
-        self.overrides = overrides
-        if self.overrides.startup is not None:
-            log.debug("applying startup overrides %s", self.overrides.startup)
-            for pair in self.overrides.startup:
-                log.debug("applying startup override: %s", pair)
-                self.apply_override(pair[0], pair[1])
-            log.debug("done applying startup overrides")
-
-    ##
-    # @warning feature disabled as 0xff 0x11 has been reallocated to analog out
-    def apply_override(self, setting, value):
-        log.error("apply_override: feature disabled")
-        return False
-
-        if not self.overrides or not self.overrides.has_override(setting):
-            log.error("no override for %s", setting)
-            return False
-
-        if not self.overrides.valid_value(setting, value):
-            log.error("[%s] is not a valid value for the %s override", value, setting)
-            return False
-
-        override = self.overrides.get_override(setting, value)
-
-        if setting in self.last_override_value:
-            if str(value) == str(self.last_override_value[setting]):
-                log.debug("skipping duplicate setting (%s already is [%s])", setting, value)
-                return False
-            else:
-                log.debug("previous override for %s was [%s] (now [%s])", setting, self.last_override_value[setting], value)
-        else:
-            log.debug("no previous override for %s found", setting)
-
-        log.debug("storing last override %s = [%s]", setting, str(value))
-        self.last_override_value[setting] = str(value)
-
-        # apparently it's a valid override setting and value...proceed
-
-        # we're going to send an override, so perform comms initialization
-        if self.overrides.comms_init is not None and "byte_strings" in self.overrides.comms_init:
-            self.queue_message("marquee_info", "comms init")
-            self.apply_override_byte_strings(self.overrides.comms_init["byte_strings"])
-
-        # Theoretically there could be many types of overrides. This is the only type
-        # I've implemented for now.
-        self.queue_message("marquee_info", "overriding %s -> %s" % (setting, value))
-        if "byte_strings" in override:
-            self.apply_override_byte_strings(override["byte_strings"])
-        else:
-            log.error("unsupported override configuration for %s %s", setting, value)
-
-        # Store result of override...need a more scalable way to do this for other attributes.
-        #
-        # Note that the call to int() is performing a typecast, not a truncation -- we
-        # don't create overrides for fractional millisecond integration time.
-        if setting == "integration_time_ms":
-            log.debug("integration_time_ms: now %d (apply_override)", int(value))
-            self.settings.state.integration_time_ms = int(value)
-        return True
-
-    ##
-    # assumes 'bytes' is an array of strings, where each string is a
-    # comma-delimited tuple like "2,0A,F0" or "DELAY_US,5"
-    #
-    # @warning disabled because 0xff 0x11 has been reallocated to analog out
-    def apply_override_byte_strings_NOT_USED(self, byte_strings):
-        string_count = len(byte_strings)
-        log.debug("sending %d byte strings over I2C", string_count)
-        self.queue_message("progress_bar_max", string_count)
-
-        count = 0
-        for s in byte_strings:
-            if s[0] == "DELAY_US":
-                delay_us = int(s[1])
-                log.debug("override: sleeping %d us", delay_us)
-                sleep(delay_us * MICROSEC_TO_SEC)
-                count += 1
-                continue
-
-            # ARM seems to expect "at least" 8 bytes, so provide at least that
-            # many, and append if more are needed.  Not sure how we're supposed
-            # to handle message length in this case.
-            buf = [0] * 8
-            data = [int(b.strip(), 16) for b in s.split(',')]
-
-            # the following was empirically determined from sonyConfigUSB.py
-            chip_dir   = data[0]
-            chip_addr  = data[1]
-            chip_value = data[2]
-
-            wIndex = (chip_addr << 8) | chip_dir
-            buf[0] = chip_value
-
-            log.debug("sending byte string %d of %d", count + 1, string_count)
-            self.send_code(bRequest        = 0xff,
-                           wValue          = 0x11,
-                           wIndex          = wIndex,
-                           data_or_wLength = buf,
-                           label           = "OVERRIDE_BYTE_STRINGS")
-
-            self.queue_message("progress_bar_value", count + 1)
-
-            if self.overrides.min_delay_us > 0:
-                sleep(self.overrides.min_delay_us * MICROSEC_TO_SEC)
-            count += 1
-
-    # ##########################################################################
     # Interprocess Communications
     # ##########################################################################
 
@@ -2589,9 +2479,6 @@ class FeatureIdentificationDevice(object):
         value   = record.value
 
         log.debug("fid.write_setting: %s -> %s", setting, value)
-
-        if self.overrides and self.overrides.has_override(setting):
-            return self.apply_override(setting, value)
 
         if setting not in self.lambdas:
             # noisily fail unsupported tokens
@@ -2663,7 +2550,7 @@ class FeatureIdentificationDevice(object):
         f["laser_watchdog_sec"]                 = lambda x: self.set_laser_watchdog_sec(int(round(x)))
         f["vertical_binning"]                   = lambda x: self.set_vertical_binning(x)
         f["detector_roi"]                       = lambda x: self.set_detector_roi(x)
-        f["pixel_depth"]                        = lambda x: self.set_pixel_depth(int(round(x)))
+        f["pixel_mode"]                         = lambda x: self.set_pixel_mode(x)
 
         # EEPROM updates
         f["update_eeprom"]                      = lambda x: self.update_session_eeprom(x)
@@ -2680,7 +2567,6 @@ class FeatureIdentificationDevice(object):
         # experimental (R&D)
         f["graph_alternating_pixels"]           = lambda x: self.settings.state.set("graph_alternating_pixels", clean_bool(x))
         f["swap_alternating_pixels"]            = lambda x: self.settings.state.set("swap_alternating_pixels", clean_bool(x))
-        f["overrides"]                          = lambda x: self.set_overrides(x)
         f["invert_x_axis"]                      = lambda x: self.settings.eeprom.set("invert_x_axis", clean_bool(x))
         f["bin_2x2"]                            = lambda x: self.settings.eeprom.set("bin_2x2", clean_bool(x))
         f["wavenumber_correction"]              = lambda x: self.settings.set_wavenumber_correction(float(x))

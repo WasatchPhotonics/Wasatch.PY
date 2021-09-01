@@ -15,7 +15,6 @@ from .FeatureIdentificationDevice import FeatureIdentificationDevice
 from .SpectrometerSettings        import SpectrometerSettings
 from .BalanceAcquisition          import BalanceAcquisition
 from .SpectrometerState           import SpectrometerState
-from .FileSpectrometer            import FileSpectrometer
 from .ControlObject               import ControlObject
 from .WasatchBus                  import WasatchBus
 from .DeviceID                    import DeviceID
@@ -28,15 +27,11 @@ log = logging.getLogger(__name__)
 # interface.  It will normally wrap one of the following:
 #
 # - a FeatureIdentificationDevice (modern FID spectrometer)
-# - a FileSpectrometer (filesystem gateway to virtual/simulated spectrometer)
 #
 # ENLIGHTEN does not instantiate WasatchDevices directly, but instead uses
-# a WasatchDeviceWrapper to access a single WasatchDevice in a single subprocess.
-# Other users of Wasatch.PY may of course instantiate a WasatchDevice directly,
-# and can consider it roughly equivalent (though differently structured) to a
-# WasatchNET.Spectrometer.  (Arguably wasatch.FeatureIdentificationDevice is the
-# closer analog to WasatchNET.Spectrometer, as Wasatch.NET does not have anything
-# like FileSpectrometer.)
+# a WasatchDeviceWrapper to access a single WasatchDevice in a dedicated child 
+# thread.  Other users of Wasatch.PY may of course instantiate a WasatchDevice 
+# directly.
 class WasatchDevice(object):
 
     ##
@@ -67,7 +62,6 @@ class WasatchDevice(object):
         self.settings = SpectrometerSettings()
 
         # Any particular reason these aren't in FeatureIdentificationDevice?
-        # I guess because they could theoretically apply to a FileSpectrometer, etc?
         self.summed_spectra         = None
         self.sum_count              = 0
         self.session_reading_count  = 0
@@ -92,13 +86,6 @@ class WasatchDevice(object):
                 self.connected = True
                 self.initialize_settings()
                 return True
-        elif self.device_id.is_file():
-            log.debug("trying to connect to FILE device")
-            if self.connect_file_spectrometer():
-                log.debug("connected to FileSpectrometer")
-                self.connected = True
-                self.initialize_settings()
-                return True
         else:
             log.critical("unsupported DeviceID protocol: %s", device_id)
 
@@ -116,12 +103,6 @@ class WasatchDevice(object):
 
         self.connected = False
         return True
-
-    def connect_file_spectrometer(self):
-        dev = FileSpectrometer(self.device_id)
-        if dev.connect():
-            self.hardware = dev
-            return True
 
     ## Given a specified universal identifier, attempt to connect to the device using FID protocol.
     # @todo merge with the hardcoded list in DeviceFinderUSB
@@ -167,14 +148,13 @@ class WasatchDevice(object):
 
         self.settings = self.hardware.settings
 
-        # generic post-initialization stuff for both SP and FID (and now
-        # FileSpectrometer) - we probably need an ABC for this
+        # generic post-initialization stuff 
         self.hardware.get_microcontroller_firmware_version()
         self.hardware.get_fpga_firmware_version()
         self.hardware.get_integration_time_ms()
         self.hardware.get_detector_gain()           # note we don't pass update_session_eeprom, so this doesn't really do anything
 
-        # could read the defaults for these ss.state volatiles from FID/SP too:
+        # could read the defaults for these ss.state volatiles from FID too:
         #
         # self.tec_setpoint_degC
         # self.high_gain_mode_enabled
@@ -593,8 +573,7 @@ class WasatchDevice(object):
 
                         if spectrum_and_row.spectrum is None:
                             # FeatureIdentificationDevice can return None when waiting
-                            # on an external trigger.  FileSpectrometer can as well if
-                            # there is no new spectrum to read.
+                            # on an external trigger.  
                             log.debug("device.take_one_averaged_spectrum: get_line None, sending keepalive for now")
                             return True
                         else:

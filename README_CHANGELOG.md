@@ -1,5 +1,11 @@
 # Changelog
 
+- 2021-09-01 1.1.28
+    - replaced set\_pixel\_depth with set\_pixel\_mode
+    - updated opcodes for set\_pixel\_mode and set\_detector\_roi
+    - removed FileSpectrometer
+    - removed Overrides
+    - removed FileBus
 - 2021-08-31 1.1.27
     - added DetectorRegions
     - added DetectorROI

@@ -63,8 +63,7 @@ log = logging.getLogger(__name__)
 #               - instantiates a WasatchDevice to access the actual hardware spectrometer
 #                 over USB (this object will only ever be referenced within this thread)
 #               - then calls WasatchDevice.connect()
-#                   - WasatchDevice then instantiates an internal FeatureIdentificationDevice,
-#                     FileSpectrometer or other implementation based on the passed DeviceID
+#                   - WasatchDevice then instantiates an internal FeatureIdentificationDevice
 #                   - WasatchDevice then populates a SpectrometerSettings object based on
 #                     the connected device (loading the EEPROM, basic firmware settings etc)
 #               - continuous_poll() sends back the single SpectrometerSettings object
@@ -151,8 +150,8 @@ class WasatchDeviceWrapper(object):
     # reports a DeviceID which has not already connected to the GUI.  The DeviceID
     # is "unique and relevant" to the bus which reported it, but neither the
     # bus class nor instance is passed in to this object.  If the DeviceID looks like
-    # "USB:VID:PID:bus:addr", then it is presumably USB.  If the DeviceID looks like
-    # "FILE:/path/to/dir", then assume it is a FileSpectrometer.  However, device_id is just
+    # "USB:VID:PID:bus:addr", then it is presumably USB.  Future DeviceID formats 
+    # could include "FILE:/path/to/dir", etc.  However, device_id is just
     # a string scalar to this class, and actually parsing / using it should be
     # entirely encapsulated within WasatchDevice and lower using DeviceID.
     def __init__(self, device_id, log_level):

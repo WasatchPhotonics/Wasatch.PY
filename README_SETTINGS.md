@@ -58,6 +58,8 @@ wasatch.WasatchDevice.change_setting():
     - (int16) sets additive offset for detector
 - detector_offset_odd 
     - (int16) sets additive offset for odd pixels of an InGaAs detector
+- detector_roi
+    - (uint8 region, uint16[4] roi) configures detector region of interest
 - detector_tec_enable 
     - (bool) turns the detector TEC on or off
 - detector_tec_setpoint_degC 
@@ -102,8 +104,8 @@ wasatch.WasatchDevice.change_setting():
     - (uint) when injecting random USB comms delays, set the delay ceiling
 - min_usb_interval_ms 
     - (uint) when injecting random USB comms delays, set the delay floor
-- overrides 
-    - (custom) experimental (raw sensor control)
+- pixel_mode
+    - 10/12-bit detector pixel depth and ADC range
 - raise_exceptions 
     - (bool) in the event of an exception, raise() rather than simply log()
 - raman_delay_ms
