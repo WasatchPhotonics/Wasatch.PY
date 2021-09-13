@@ -51,8 +51,8 @@ class FeatureIdentificationDevice(object):
     # Instantiate a FeatureIdentificationDevice with from the given device_id.
     #
     # @param device_id [in] device ID ("USB:0x24aa:0x1000:1:24")
-    # @param message_queue [out] if provided, provides a queue for writing
-    #        StatusMessage objects back to the caller
+    # @param message_queue [out] if provided, provides an outbound (from FID)
+    #        queue for writing StatusMessage objects upstream
     def __init__(self, device_id, message_queue=None):
         self.device_id = device_id
         self.message_queue = message_queue
@@ -162,6 +162,14 @@ class FeatureIdentificationDevice(object):
             raise
 
         self.device = device
+
+        return self.post_connect()
+
+    ##
+    # Split-out from physical / bus connect() to simplify MockSpectrometer.
+    #
+    # @returns True on success
+    def post_connect(self):            
 
         # ######################################################################
         # model-specific settings
@@ -457,7 +465,7 @@ class FeatureIdentificationDevice(object):
                 buf = self.get_upper_code(0x01, page, label="GET_MODEL_CONFIG(%d)" % page)
             except:
                 log.error("exception reading upper_code 0x01 with page %d", page, exc_info=1)
-            if buf is None:
+            if buf is None or len(buf) < 64:
                 log.error("unable to read EEPROM")
                 return False
             buffers.append(buf)

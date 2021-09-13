@@ -1,5 +1,7 @@
 # Changelog
 
+- 2021-09-13 1.1.29
+    - fixed untethered uint16s
 - 2021-09-01 1.1.28
     - replaced set\_pixel\_depth with set\_pixel\_mode
     - updated opcodes for set\_pixel\_mode and set\_detector\_roi

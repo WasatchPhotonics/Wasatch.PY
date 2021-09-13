@@ -990,13 +990,13 @@ class EEPROM(object):
     ############################################################################
 
     def read_untethered(self):
-        self.untethered_library_type     = self.unpack((7, 0, 1), "B", "library_type")
-        self.untethered_library_id       = self.unpack((7, 1, 2), "I", "library_id")
-        self.untethered_scans_to_average = self.unpack((7, 3, 1), "B", "scans_to_average")
-        self.untethered_min_ramp_pixels  = self.unpack((7, 4, 1), "B", "min_ramp_pixels")
-        self.untethered_min_peak_height  = self.unpack((7, 5, 2), "I", "min_peak_height")
-        self.untethered_match_threshold  = self.unpack((7, 7, 1), "B", "match_threshold")
-        self.untethered_library_count    = self.unpack((7, 8, 1), "B", "library_count")
+        self.untethered_library_type     = self.unpack((7,  0,  1), "B", "library_type")
+        self.untethered_library_id       = self.unpack((7,  1,  2), "H", "library_id")
+        self.untethered_scans_to_average = self.unpack((7,  3,  1), "B", "scans_to_average")
+        self.untethered_min_ramp_pixels  = self.unpack((7,  4,  1), "B", "min_ramp_pixels")
+        self.untethered_min_peak_height  = self.unpack((7,  5,  2), "H", "min_peak_height")
+        self.untethered_match_threshold  = self.unpack((7,  7,  1), "B", "match_threshold")
+        self.untethered_library_count    = self.unpack((7,  8,  1), "B", "library_count")
 
     def write_untethered(self):
         self.pack((7, 0, 1), "B", self.untethered_library_type)
