@@ -88,6 +88,7 @@ class FeatureIdentificationDevice(object):
 
         self.last_spectrum = None
         self.spectrum_count = 0
+        self.prev_pixels = None
 
         # in case of I2C collisions within the spectrometer, e.g. due to battery-LED status
         self.retry_enabled = True
@@ -742,6 +743,12 @@ class FeatureIdentificationDevice(object):
 
         pixels = self.settings.pixels()
 
+        # when changing detector ROI, exactly ONE READ should be at the previous length
+        # if self.prev_pixels is not None:
+        #     log.debug(f"get_line: using one-time prev_pixels value of {self.prev_pixels} rather than {pixels}")
+        #     pixels = self.prev_pixels
+        #     self.prev_pixels = None
+
         # all models return spectra as [uint16]
         endpoints = [0x82]
         block_len_bytes = pixels * 2
@@ -1111,7 +1118,7 @@ class FeatureIdentificationDevice(object):
 
         log.debug("applying bin_2x2 to regions")
         combined = []
-        for subspectrum in self.settings.state.detector_regions.split():
+        for subspectrum in self.settings.state.detector_regions.split(spectrum):
             combined.extend(bin2x2(subspectrum))
         return combined
 
@@ -1963,9 +1970,14 @@ class FeatureIdentificationDevice(object):
         # we only care about the two least-significant bits
         mode = int(round(mode)) & 0x3 
 
-        return self.send_code(bRequest = 0xfd,
-                              wValue   = mode,
-                              label    = "SET_PIXEL_MODE")
+        result = self.send_code(bRequest = 0xfd,
+                                wValue   = mode,
+                                label    = "SET_PIXEL_MODE")
+
+        log.debug("waiting 1sec...")
+        sleep(1)
+
+        return result
 
     ##
     # @param args: either a DetectorROI or a tuple of (region, y0, y1, x0, x1)
@@ -1976,8 +1988,11 @@ class FeatureIdentificationDevice(object):
 
         if isinstance(args, DetectorROI):
             roi = args
+            log.debug(f"passed DetectorROI: {roi}")
         else:
             # convert args to ROI
+            log.debug(f"creating DetectorROI from args: {args}")
+
             if len(args) != 5:
                 log.error(f"invalid detector roi args: {args}")
                 return False
@@ -1998,19 +2013,36 @@ class FeatureIdentificationDevice(object):
                 log.error(f"invalid detector roi: {args}")
                 return False
             roi = DetectorROI(region, y0, y1, x0, x1)
+            log.debug(f"created DetectorROI: {roi}")
+
+        # determine previous total pixels
+        self.prev_pixels = self.settings.pixels()
+        log.debug(f"prev_pixels = {self.prev_pixels}")
 
         if self.settings.state.detector_regions is None:
+            log.debug("creating DetectorRegions")
             self.settings.state.detector_regions = DetectorRegions()
 
+        log.debug("adding DetectorROI to DetectorRegions")
         self.settings.state.detector_regions.add(roi)
+
+        log.debug(f"total_pixels now {self.settings.pixels()}")
+
         buf = utils.uint16_to_little_endian([ roi.y0, roi.y1, roi.x0, roi.x1 ])
         log.debug("would send buf: %s", buf)
 
-        return self.send_code(bRequest        = 0xff,
-                              wValue          = 0x25,
-                              wIndex          = roi.region,
-                              data_or_wLength = buf,
-                              label           = "SET_DETECTOR_ROI")
+        result = self.send_code(bRequest        = 0xff,
+                                wValue          = 0x25,
+                                wIndex          = roi.region,
+                                data_or_wLength = buf,
+                                label           = "SET_DETECTOR_ROI")
+
+        log.debug("waiting 1sec...")
+        sleep(1)
+
+        self.queue_message("detector_regions", self.settings.state.detector_regions)
+
+        return result
 
     # ##########################################################################
     #

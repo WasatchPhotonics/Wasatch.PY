@@ -168,7 +168,6 @@ class WasatchDeviceWrapper(object):
         self.message_queue  = Queue() # spectrometer -> GUI (StatusMessages)
         self.command_queue  = Queue() # GUI -> spectrometer (ControlObjects)
 
-
         self.connected    = False
         self.closing      = False   # Don't permit new acquires during close
         self.poller       = None    # a handle to the child thread

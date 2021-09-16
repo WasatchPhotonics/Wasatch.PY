@@ -1,3 +1,7 @@
+import logging
+
+log = logging.getLogger(__name__)
+
 ##
 # This class encapsulates all of the DetectorROI regions that have been 
 # configured for the current detetor. If no DetectorROI regions have been
@@ -54,7 +58,7 @@ class DetectorRegions:
             pixels += self.regions[region].width()
         return pixels
 
-    def split(self, spectrum):
+    def split(self, spectrum, flatten=False):
         log.debug("splitting spectrum of %d pixels into %d subspectra", len(spectrum), self.count())
         subspectra = []
         start = 0
@@ -62,9 +66,20 @@ class DetectorRegions:
             roi = self.regions[region]
             end = start + roi.width() 
             if end > len(spectrum):
-                logger.error("computed end %d of region %d overran colleted spectrum", end, region)
+                log.error("computed end %d of region %d overran colleted spectrum", end, region)
                 return None
             subspectrum = spectrum[start:end]
-            subspectra.append(subspectrum)
+            if flatten:
+                subspectra.extend(subspectrum)
+            else:
+                subspectra.append(subspectrum)
             start = end
         return subspectra
+
+    def __str__(self):
+        s = f"[ DetectorRegions: count {self.count()}, total_pixels {self.total_pixels()}, regions: "
+        for region in self.regions:
+            s += "{ %s: %s } " % (region, str(self.regions[region]))
+        s += "]"
+        return s
+

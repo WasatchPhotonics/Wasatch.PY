@@ -503,7 +503,7 @@ class EEPROM(object):
         elif self.subformat == 3:
             self.untethered = self.read_untethered()
         else:
-            log.debug("Unsupported EEPROM subformat: %d", self.subformat)
+            log.debug(f"Unreadable EEPROM subformat {self.subformat}")
         
         # ######################################################################
         # feature mask
@@ -924,7 +924,7 @@ class EEPROM(object):
         elif self.subformat == 3:
             self.write_untethered()
         else:
-            log.error("Unsupported EEPROM subformat: %d", self.subformat)
+            log.error(f"Unwriteable EEPROM subformat {self.subformat}")
 
     # ##########################################################################
     # Laser Power convenience accessors

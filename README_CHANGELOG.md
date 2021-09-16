@@ -1,5 +1,7 @@
 # Changelog
 
+- 2021-09-16 1.1.31
+    - DetectorRegions working from ENLIGHTEN
 - 2021-09-16 1.1.30
     - don't try to configure/claim interface on Windows
 - 2021-09-13 1.1.29

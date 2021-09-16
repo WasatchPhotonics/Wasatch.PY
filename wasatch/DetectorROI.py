@@ -14,10 +14,13 @@ class DetectorROI:
         # add .wavelengths?
         
     def width(self):
-        return self.x1 - self.x0 + 1
+        return self.x1 - self.x0    # not +1
 
     def height(self):
-        return self.y1 - self.y0 + 1
+        return self.y1 - self.y0    # not +1
 
     def __eq__(self, rhs):
         return self.__dict__ == rhs.__dict__
+
+    def __str__(self):
+        return f"[DetectorROI: region {self.region}, y0 {self.y0}, y1 {self.y1}, x0 {self.x0}, x1 {self.x1}, width {self.width()}, height {self.height()} ]"
