@@ -6,6 +6,7 @@ import math
 import usb
 import usb.core
 import usb.util
+import os
 
 from random import randint
 from time   import sleep
@@ -136,30 +137,34 @@ class FeatureIdentificationDevice(object):
         else:
             log.debug("FID.connect: matched DeviceID %s", str(self.device_id))
 
-        try:
-            log.debug("setting configuration")
-            result = device.set_configuration()
-        except Exception as exc:
-            #####################################################################################################################
-            # This additional if statement is present for the Raspberry Pi. There is an issue with resource busy errors.
-            # Adding dev.reset() solves this. See https://stackoverflow.com/questions/29345325/raspberry-pyusb-gets-resource-busy
-            #####################################################################################################################
-            if "Resource busy" in str(exc):
-                log.warn("Hardware Failure in setConfiguration. Resource busy error. Attempting to reattach driver by reset.")
-                dev.reset()
-                connect()
-                return self.connected
-            log.warn("Hardware Failure in setConfiguration", exc_info=1)
-            self.connecting = False
-            raise
+        if os.name != "posix":
+            log.debug("on Windows, so NOT setting configuration and claiming interface")
+        else:
+            log.debug("on posix, so setting configuration and claiming interface")
+            try:
+                log.debug("setting configuration")
+                result = device.set_configuration()
+            except Exception as exc:
+                #####################################################################################################################
+                # This additional if statement is present for the Raspberry Pi. There is an issue with resource busy errors.
+                # Adding dev.reset() solves this. See https://stackoverflow.com/questions/29345325/raspberry-pyusb-gets-resource-busy
+                #####################################################################################################################
+                if "Resource busy" in str(exc):
+                    log.warn("Hardware Failure in setConfiguration. Resource busy error. Attempting to reattach driver by reset.")
+                    dev.reset()
+                    connect()
+                    return self.connected
+                log.warn("Hardware Failure in setConfiguration", exc_info=1)
+                self.connecting = False
+                raise
 
-        try:
-            log.debug("claiming interface")
-            result = usb.util.claim_interface(device, 0)
-        except Exception as exc:
-            log.warn("Hardware Failure in claimInterface", exc_info=1)
-            self.connecting = False
-            raise
+            try:
+                log.debug("claiming interface")
+                result = usb.util.claim_interface(device, 0)
+            except Exception as exc:
+                log.warn("Hardware Failure in claimInterface", exc_info=1)
+                self.connecting = False
+                raise
 
         self.device = device
 
@@ -1306,6 +1311,8 @@ class FeatureIdentificationDevice(object):
         value = 1 if flag else 0
 
         if not self.detector_tec_setpoint_has_been_set:
+
+            # @todo should this not be eeprom.startup_temp_degC
             log.debug("defaulting TEC setpoint to min %s", self.settings.eeprom.min_temp_degC)
             self.set_detector_tec_setpoint_degC(self.settings.eeprom.min_temp_degC)
 

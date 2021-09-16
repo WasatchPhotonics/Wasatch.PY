@@ -194,6 +194,7 @@ class WasatchDevice(object):
         self.monitor_memory()
 
         if self.hardware.shutdown_requested:
+            log.critical("acquire_data: hardware shutdown requested")
             return False
 
         # process queued commands, and find out if we've been asked to read a
@@ -277,6 +278,7 @@ class WasatchDevice(object):
             log.debug("taking internal dark")
             dark_reading = self.take_one_averaged_reading()
             if isinstance(dark_reading, bool):
+                log.debug(f"dark reading was bool {dark_reading}")
                 return dark_reading
             log.debug("done taking internal dark")
 
@@ -286,6 +288,7 @@ class WasatchDevice(object):
             log.debug("acquire_spectum: enabling laser, then sleeping %d ms", self.settings.state.acquisition_laser_trigger_delay_ms)
             self.hardware.set_laser_enable(True)
             if self.hardware.shutdown_requested:
+                log.debug(f"auto_enable_laser shutdown requested")
                 return False
 
             time.sleep(self.settings.state.acquisition_laser_trigger_delay_ms / 1000.0)
@@ -301,6 +304,7 @@ class WasatchDevice(object):
         log.debug("taking averaged reading")
         reading = self.take_one_averaged_reading()
         if isinstance(reading, bool):
+            log.debug(f"take_one_averaged_reading was bool ({reading})")
             return reading
 
         # don't perform dark subtraction, but pass the dark measurement along
@@ -385,10 +389,12 @@ class WasatchDevice(object):
             try:
                 reading.detector_temperature_raw  = self.hardware.get_detector_temperature_raw()
                 if self.hardware.shutdown_requested:
+                    logger.debug("detector_temperature_raw shutdown")
                     return False
 
                 reading.detector_temperature_degC = self.hardware.get_detector_temperature_degC(reading.detector_temperature_raw)
                 if self.hardware.shutdown_requested:
+                    logger.debug("detector_temperature_degC shutdown")
                     return False
 
             except Exception as exc:
@@ -407,15 +413,18 @@ class WasatchDevice(object):
             if self.settings.state.battery_timestamp is None or (datetime.datetime.now() >= self.settings.state.battery_timestamp + datetime.timedelta(seconds=10)):
                 reading.battery_raw = self.hardware.get_battery_state_raw()
                 if self.hardware.shutdown_requested:
+                    logger.debug("battery_raw shutdown")
                     return False
 
                 reading.battery_percentage = self.hardware.get_battery_percentage()
                 if self.hardware.shutdown_requested:
+                    logger.debug("battery_perc shutdown")
                     return False
                 self.last_battery_percentage = reading.battery_percentage
 
                 reading.battery_charging = self.hardware.get_battery_charging()
                 if self.hardware.shutdown_requested:
+                    logger.debug("battery_charging shutdown")
                     return False
 
                 log.debug("battery: level %.2f%% (%s)", reading.battery_percentage, "charging" if reading.battery_charging else "not charging")

@@ -148,7 +148,7 @@ class WrapperWorker(threading.Thread):
                 log.debug("no Reading to be had")
             elif isinstance(reading, bool):
                 # we received either a True (keepalive) or False (upstream poison pill)
-                log.debug("reading was bool")
+                log.debug(f"reading was bool ({reading})")
 
                 # was it just a keepalive?
                 if reading == True:
