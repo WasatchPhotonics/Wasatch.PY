@@ -1,5 +1,7 @@
 # Changelog
 
+- 2021-09-20 1.1.32
+    - many ROI updates
 - 2021-09-16 1.1.31
     - DetectorRegions working from ENLIGHTEN
 - 2021-09-16 1.1.30

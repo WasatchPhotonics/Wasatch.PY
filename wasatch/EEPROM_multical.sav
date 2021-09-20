@@ -1,0 +1,48 @@
+    # ##########################################################################
+    # Early implementation of multiple wavecals; not currently in use
+    # ##########################################################################
+
+    def multi_wavecal_page_start_NOT_USED(self, pos):
+        if pos == 0:
+            page = 1
+            start = 0
+        else:
+            page = 6 if pos < 5 else 7
+            start = ((pos - 1) % 4) * 16
+        return (page, start)
+
+    ##
+    # This has not yet been assigned a subformat code (early testing used 3, since assigned to untethered)
+    #
+    # @todo make EEPROMMultiWavecal
+    def read_multi_wavecal_NOT_USED(self):
+
+        # store as dict rather than array in case some positions are invalid
+        tmp = {}
+
+        # parse each of the 9 wavecal positions
+        for pos in range(9):
+            (page, start) = self.multi_wavecal_page_start(pos)
+            try:
+                coeffs = []
+                for i in range(4):
+                    coeffs.append(self.unpack((page, start + i * 4, 4), "f"))
+
+                if utils.coeffs_look_valid(coeffs):
+                    tmp[pos] = coeffs
+            except:
+                log.error("invalid multi-wavecal at position %d", pos, exc_info=1)
+
+        if len(tmp) > 0:
+            self.multi_wavecal = tmp
+        else:
+            self.multi_wavecal = None
+    
+    def write_multi_wavecal_NOT_USED(self):
+        if self.multi_wavecal is None:
+            return
+        for pos, coeffs in self.multi_wavecal.items():
+            (page, start) = self.multi_wavecal_page_start(pos)
+            for i in range(len(coeffs)):
+                self.pack((page, start + i * 4, 4), "f", coeffs[i])
+

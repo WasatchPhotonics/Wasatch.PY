@@ -22,6 +22,9 @@ def remove_unicode(s):
 
 ## expand 3rd-order wavelength polynomial into array of wavelengths
 def generate_wavelengths(pixels, coeffs):
+    if coeffs is None or pixels == 0:
+        return None
+
     wavelengths = []
     for x in range(pixels):
         wavelength = 0.0

@@ -1,3 +1,7 @@
+import logging
+
+log = logging.getLogger(__name__)
+
 ##
 # This class represents a single Detector Region-of-Interest for a single
 # "region" of DetectorRegions.
@@ -11,8 +15,12 @@ class DetectorROI:
         self.x0 = x0
         self.x1 = x1
 
-        # add .wavelengths?
-        
+    def crop(self, a):
+        if self.x0 >= len(a) or self.x1 > len(a) + 1:
+            log.error("can't crop array exceeding ROI")
+            return a
+        return a[self.x0 : self.x1]
+
     def width(self):
         return self.x1 - self.x0    # not +1
 

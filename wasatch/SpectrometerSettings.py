@@ -225,8 +225,43 @@ class SpectrometerSettings(object):
         self.update_wavecal()
 
     ##
+    # Note regions are internally 0-indexed (0-3), although EEPROM fields are 1-indexed.
+    #
+    # @todo apply actual ROI as well
+    def set_region(self, n):
+        n = int(round(n))
+        if not (0 <= n <= 3):
+            log.error(f"invalid region {n}")
+            return
+
+        if n >= self.eeprom.region_count:
+            log.error(f"unconfigured region {n}")
+            return
+
+        log.debug(f"set region to {n}")
+        self.state.region = n
+
+        self.update_wavecal()
+
+    def get_wavecal_coeffs(self):
+        n = self.state.region
+        if   n == 1: return self.eeprom.roi_wavecal_region_2_coeffs
+        elif n == 2: return self.eeprom.roi_wavecal_region_3_coeffs
+        elif n == 3: return self.eeprom.roi_wavecal_region_4_coeffs
+        else:        return self.eeprom.wavelength_coeffs
+
+    def set_wavecal_coeffs(self, coeffs):
+        n = self.state.region
+        if   n == 1: self.eeprom.roi_wavecal_region_2_coeffs = coeffs
+        elif n == 2: self.eeprom.roi_wavecal_region_3_coeffs = coeffs
+        elif n == 3: self.eeprom.roi_wavecal_region_4_coeffs = coeffs
+        else:        self.eeprom.wavelength_coeffs = coeffs
+        log.debug(f"stored new coeffs for region {n}: {coeffs}")
+
+    ##
     # @todo update for DetectorRegions
     def update_wavecal(self, coeffs=None):
+        log.debug(f"updating wavecal")
         if self.lock_wavecal:
             log.debug("wavecal is locked")
             return
@@ -239,12 +274,12 @@ class SpectrometerSettings(object):
             return
 
         if coeffs is None:
-            coeffs = self.eeprom.wavelength_coeffs
+            coeffs = self.get_wavecal_coeffs()
         else:
-            self.eeprom.wavelength_coeffs = coeffs
+            log.debug("update_wavecal: passed coeffs, so storing to region {self.state.region}")
+            self.set_wavecal_coeffs(coeffs)
 
-        if coeffs:
-            self.wavelengths = utils.generate_wavelengths(self.pixels(), self.eeprom.wavelength_coeffs)
+        self.wavelengths = utils.generate_wavelengths(self.pixels(), coeffs)
 
         if self.wavelengths is None:
             # this can happen on Stroker Protocol before/without .ini file,

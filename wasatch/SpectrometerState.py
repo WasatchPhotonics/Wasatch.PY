@@ -57,6 +57,7 @@ class SpectrometerState(object):
 
         # wasatch.DetectorRegions
         self.detector_regions = None
+        self.region = 0
 
         # ######################################################################
         # accessory connector
