@@ -56,10 +56,13 @@ class DetectorRegions:
     def get_region_list(self):
         return [self.regions[region] for region in sorted(self.regions)]
 
+    ## sum of widths of enabled regions
     def total_pixels(self):
         pixels = 0
         for region in self.regions:
-            pixels += self.regions[region].width()
+            roi = self.regions[region]
+            if roi.enabled:
+                pixels += self.regions[region].width()
         return pixels
 
     ##
@@ -71,11 +74,16 @@ class DetectorRegions:
     # Differs from split() in that some of the data will be trimmed and left on
     # the floor, if it doesn't fall within any configured region.  Also, some
     # input values may appear in multiple output arrays.
+    #
+    # Ignores disabled regions.
     def chop(self, a, flatten=False):
         log.debug(f"chopping array of {len(a)} pixels into {self.count()} subarrays")
         subarrays = []
         for region in sorted(self.regions):
             roi = self.regions[region]
+            if not roi.enabled:
+                continue
+
             if roi.x1 > len(a):
                 log.error(f"x1 {roi.x1} of region {roi.region} overran input array")
                 return None
@@ -99,12 +107,17 @@ class DetectorRegions:
     # Note that split() could be called on the flattened result of chop() to dice
     # a concatenated list of wavelengths for multiples regions back into 
     # individual per-region blocks.
+    #
+    # Ignores disabled regions.
     def split(self, spectrum, flatten=False):
         log.debug("splitting spectrum of %d pixels into %d subspectra", len(spectrum), self.count())
         subspectra = []
         start = 0
         for region in sorted(self.regions):
             roi = self.regions[region]
+            if not roi.enabled:
+                continue
+
             end = start + roi.width() 
             if end > len(spectrum):
                 log.error("computed end %d of region %d overran colleted spectrum", end, region)
@@ -119,9 +132,8 @@ class DetectorRegions:
         return subspectra
 
     def __str__(self):
-        s = f"[ DetectorRegions: count {self.count()}, total_pixels {self.total_pixels()}, regions: "
+        tok = []
         for region in self.regions:
-            s += "{ %s: %s } " % (region, str(self.regions[region]))
-        s += "]"
-        return s
-
+            tok.append(str(self.regions[region]))
+        concat = ", ".join(tok)
+        return f"[DetectorRegions: count {self.count()}, total_pixels {self.total_pixels()}, regions: {concat}]"

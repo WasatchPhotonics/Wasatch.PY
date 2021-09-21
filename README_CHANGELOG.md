@@ -1,5 +1,11 @@
 # Changelog
 
+- 2021-09-21 1.1.33
+    - added DetectorROI.enabled
+    - added SpectrometerSettings.init\_regions
+    - added FID.clear\_regions, set\_single\_region
+    - fixed bin2x2 bug
+    - added SpectrometerState.ignore\_timeouts\_for
 - 2021-09-20 1.1.32
     - many ROI updates
 - 2021-09-16 1.1.31

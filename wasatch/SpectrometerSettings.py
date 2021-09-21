@@ -7,7 +7,9 @@ import re
 from . import utils
 
 from .SpectrometerState import SpectrometerState
+from .DetectorRegions   import DetectorRegions
 from .HardwareInfo      import HardwareInfo
+from .DetectorROI       import DetectorROI
 from .FPGAOptions       import FPGAOptions
 from .DeviceID          import DeviceID
 from .EEPROM            import EEPROM
@@ -225,16 +227,55 @@ class SpectrometerSettings(object):
         self.update_wavecal()
 
     ##
-    # Note regions are internally 0-indexed (0-3), although EEPROM fields are 1-indexed.
-    #
-    # @todo apply actual ROI as well
-    def set_region(self, n):
-        n = int(round(n))
-        if not (0 <= n <= 3):
-            log.error(f"invalid region {n}")
+    # called by FID.post_connect
+    def init_regions(self):
+        ee = self.eeprom
+        if ee.region_count == 0 or ee.region_count > 4:
             return
 
-        if n >= self.eeprom.region_count:
+        log.debug("initializing detector regions")
+        self.state.detector_regions = DetectorRegions()
+        for region in range(self.eeprom.region_count):
+            y0, y1, x0, x1 = (None, None, None, None)
+            if region == 0:
+                x0 = ee.roi_horizontal_start
+                x1 = ee.roi_horizontal_end
+                y0 = ee.roi_vertical_region_1_start
+                y1 = ee.roi_vertical_region_1_end
+            elif region == 1:
+                x0 = ee.roi_horiz_region_2_start
+                x1 = ee.roi_horiz_region_2_end
+                y0 = ee.roi_vertical_region_2_start
+                y1 = ee.roi_vertical_region_2_end
+            elif region == 2:
+                x0 = ee.roi_horiz_region_3_start
+                x1 = ee.roi_horiz_region_3_end
+                y0 = ee.roi_vertical_region_3_start
+                y1 = ee.roi_vertical_region_3_end
+            elif region == 3:
+                x0 = ee.roi_horiz_region_4_start
+                x1 = ee.roi_horiz_region_4_end
+                y0 = ee.roi_vertical_region_4_start
+                y1 = ee.roi_vertical_region_4_end
+            else:
+                log.error(f"invalid region {region}")
+
+            roi = DetectorROI(region, y0, y1, x0, x1)
+            log.debug(f"adding roi: {roi}")
+            self.state.detector_regions.add(roi)
+
+            if region == 0:
+                log.debug("kludge: only enabling the first for now")
+                roi.enabled = True
+
+    ##
+    # Note regions are internally 0-indexed (0-3), although EEPROM fields are 1-indexed.
+    #
+    # If you want to actually send the ROI downstream to the spectrometer, call 
+    # this method on FeatureIdentificationDevice.
+    def set_single_region(self, n):
+        roi = self.state.detector_regions.get_roi(n)
+        if roi is None:
             log.error(f"unconfigured region {n}")
             return
 
@@ -245,17 +286,23 @@ class SpectrometerSettings(object):
 
     def get_wavecal_coeffs(self):
         n = self.state.region
+
+        if n is None or n == 0:
+            return self.eeprom.wavelength_coeffs
+
         if   n == 1: return self.eeprom.roi_wavecal_region_2_coeffs
         elif n == 2: return self.eeprom.roi_wavecal_region_3_coeffs
         elif n == 3: return self.eeprom.roi_wavecal_region_4_coeffs
-        else:        return self.eeprom.wavelength_coeffs
 
     def set_wavecal_coeffs(self, coeffs):
         n = self.state.region
-        if   n == 1: self.eeprom.roi_wavecal_region_2_coeffs = coeffs
+
+        if n is None or n == 0:
+            self.eeprom.wavelength_coeffs = coeffs
+        elif n == 1: self.eeprom.roi_wavecal_region_2_coeffs = coeffs
         elif n == 2: self.eeprom.roi_wavecal_region_3_coeffs = coeffs
         elif n == 3: self.eeprom.roi_wavecal_region_4_coeffs = coeffs
-        else:        self.eeprom.wavelength_coeffs = coeffs
+
         log.debug(f"stored new coeffs for region {n}: {coeffs}")
 
     ##

@@ -1,3 +1,4 @@
+import datetime
 import logging
 
 log = logging.getLogger(__name__)
@@ -20,6 +21,7 @@ class SpectrometerState(object):
 
         # detector
         self.integration_time_ms = 0
+        self.ignore_timeouts_until = None
 
         # TEC
         self.tec_setpoint_degC = 15 # that's a very strange default...
@@ -57,7 +59,7 @@ class SpectrometerState(object):
 
         # wasatch.DetectorRegions
         self.detector_regions = None
-        self.region = 0
+        self.region = None
 
         # ######################################################################
         # accessory connector
@@ -231,3 +233,6 @@ class SpectrometerState(object):
 
     def set(self, name, value):
         setattr(self, name, value)
+
+    def ignore_timeouts_for(self, sec):
+        self.ignore_timeouts_until = datetime.datetime.now() + datetime.timedelta(seconds=sec)

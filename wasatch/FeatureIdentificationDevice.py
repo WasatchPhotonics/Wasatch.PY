@@ -230,6 +230,8 @@ class FeatureIdentificationDevice(object):
             if roi is not None:
                 self.set_vertical_binning(roi)
 
+        self.settings.init_regions()        
+
         # ######################################################################
         # post-connection defaults
         # ######################################################################
@@ -1109,6 +1111,8 @@ class FeatureIdentificationDevice(object):
             return spectrum
 
         def bin2x2(a):
+            if a is None or len(a) == 0:
+                return a
             binned = []
             for i in range(len(a)-1):
                 binned.append((a[i] + a[i+1]) / 2.0)
@@ -1982,9 +1986,52 @@ class FeatureIdentificationDevice(object):
 
         return result
 
+    def clear_regions(self):
+        x1 = self.settings.eeprom.active_pixels_horizontal
+        y1 = self.settings.eeprom.active_pixels_vertical
+        log.debug(f"resettings detector to full ({x1}, {y1}) extent")
+
+        self.settings.state.region = None
+        self.settings.update_wavecal()
+
+        return self.set_detector_roi([0, 0, y1, 0, x1], store=False)
+
     ##
+    # This function uses the the multi-region feature to select just a single 
+    # pre-configured region at a time.  Whichever region is selected, that 
+    # region's parameters are written to "region 0" of the spectrometer, and
+    # the global wavecal is updated to use that region's calibration.
+    #
+    # @todo consider clear_region() function to restore physical ROI to 
+    #       (0, active_vertical_pixels, 0, active_horizontal_pixels)
+    #       (leave wavecal alone?)
+    def set_single_region(self, n):
+        if self.settings.state.detector_regions is None:
+            log.debug(f"no detector regions configured")
+            return False
+
+        roi = self.settings.state.detector_regions.get_roi(n)
+        if roi is None:
+            log.debug(f"unconfigured region {n} (max {self.settings.eeprom.region_count}")
+            return False
+
+        log.debug(f"set_single_region: applying region {n}: {roi}")
+        self.settings.set_single_region(n)
+
+        # send a "fake" ROI downstream, overriding to position 0
+        self.set_detector_roi([0, roi.y0, roi.y1, roi.x0, roi.x1], store=False)
+
+    ##
+    # Note this only sends the ROI downstream to the spectrometer (and stores
+    # it in DetectorRegions).  If you want to update the wavecal and store
+    # the "selected" region index, use set_region() instead (which calls this).
+    #
+    # You should use set_region() if you are selecting one of the standard
+    # regions already configured on the EEPROM.  You should use set_detector_roi()
+    # if you're making ad-hoc ROIs which aren't configured on the EEPROM.
+    #
     # @param args: either a DetectorROI or a tuple of (region, y0, y1, x0, x1)
-    def set_detector_roi(self, args):
+    def set_detector_roi(self, args, store=True):
         if not self.settings.is_micro():
             log.debug("Detector ROI only configurable on microRaman")
             return False
@@ -2022,12 +2069,14 @@ class FeatureIdentificationDevice(object):
         self.prev_pixels = self.settings.pixels()
         log.debug(f"prev_pixels = {self.prev_pixels}")
 
-        if self.settings.state.detector_regions is None:
-            log.debug("creating DetectorRegions")
-            self.settings.state.detector_regions = DetectorRegions()
+        if store:
+            if self.settings.state.detector_regions is None:
+                log.debug("creating DetectorRegions")
+                self.settings.state.detector_regions = DetectorRegions()
 
-        log.debug("adding DetectorROI to DetectorRegions")
-        self.settings.state.detector_regions.add(roi)
+            # this is a no-op if it's already present and unchanged
+            log.debug("saving DetectorROI in DetectorRegions")
+            self.settings.state.detector_regions.add(roi)
 
         log.debug(f"total_pixels now {self.settings.pixels()}")
 
@@ -2043,7 +2092,10 @@ class FeatureIdentificationDevice(object):
         log.debug("waiting 1sec...")
         sleep(1)
 
-        self.queue_message("detector_regions", self.settings.state.detector_regions)
+        # Just in case, flows the updated DetectorRegions object upstream
+        # so caller has access to it.
+        if store:
+            self.queue_message("detector_regions", self.settings.state.detector_regions)
 
         return result
 
@@ -2509,6 +2561,9 @@ class FeatureIdentificationDevice(object):
         log.debug("fid.set_log_level: setting to %s", lvl)
         logging.getLogger().setLevel(lvl)
 
+    ##
+    # If an upstream queue is defined, send the name-value pair.  Does nothing
+    # if the caller hasn't provided a queue.
     def queue_message(self, setting, value):
         if self.message_queue is None:
             return False
@@ -2598,7 +2653,11 @@ class FeatureIdentificationDevice(object):
        #f["raman_mode_enable"]                  = lambda x: self.set_raman_mode_enable(clean_bool(x))
         f["raman_delay_ms"]                     = lambda x: self.set_raman_delay_ms(int(round(x)))
         f["laser_watchdog_sec"]                 = lambda x: self.set_laser_watchdog_sec(int(round(x)))
+
+        # regions
         f["vertical_binning"]                   = lambda x: self.set_vertical_binning(x)
+        f["single_region"]                      = lambda x: self.set_single_region(int(round(x)))
+        f["clear_regions"]                      = lambda x: self.clear_regions()
         f["detector_roi"]                       = lambda x: self.set_detector_roi(x)
         f["pixel_mode"]                         = lambda x: self.set_pixel_mode(x)
 

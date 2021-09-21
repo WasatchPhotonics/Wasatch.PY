@@ -1045,7 +1045,7 @@ class EEPROM(object):
     # -	R3Y1: ROI Vertical Region 3 End
 
     def init_regions(self):
-        self.region_count                   = 1
+        self.region_count                   = 0
         self.roi_horiz_region_2_start       = 0
         self.roi_horiz_region_2_end         = 0
         self.roi_horiz_region_3_start       = 0
