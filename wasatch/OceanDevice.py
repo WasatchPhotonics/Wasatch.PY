@@ -59,6 +59,8 @@ class OceanDevice:
         self.settings = SpectrometerSettings()
         self.settings.eeprom.model = self.device.model
         self.settings.eeprom.serial_number = self.device.serial_number
+        rev = self.spec.features["revision"][0]
+        self.settings.microcontroller_firmware_version = str(rev.revision_firmware_get())
         self.settings.eeprom.detector = "Ocean" # Ocean API doesn't have access to detector info
         self.summed_spectra         = None
         self.sum_count              = 0
@@ -76,14 +78,91 @@ class OceanDevice:
         self.lambdas = f
 
     def acquire_data(self):
-        reading = Reading(self.device_id)
-        self.sum_count += 1
-        reading.sum_count = self.sum_count
-        reading.spectrum = list(self.spec.intensities())
-        self.settings.wavelengths = self.spec.wavelengths()
+        self.settings.wavelengths = self.spec.wavelengths()# setting wavelengths one init doesn't work for some reaons
+        reading = self.take_one_averaged_reading()
+        return reading
+
+    def take_one_averaged_reading(self):
+        averaging_enabled = (self.settings.state.scans_to_average > 1)
+
+        if averaging_enabled and not self.settings.state.free_running_mode:
+            # collect the entire averaged spectrum at once (added for
+            # BatchCollection with laser delay)
+            #
+            # So: we're NOT in "free-running" mode, so we're basically being
+            # slaved to parent process and doing exactly what is requested
+            # "on command."  That means we can perform a big, heavy blocking
+            # scan average all at once, because they requested it.
+            self.sum_count = 0
+            loop_count = self.settings.state.scans_to_average
+        else:
+            # we're in free-running mode
+            loop_count = 1
+
+        log.debug("take_one_averaged_reading: loop_count = %d", loop_count)
+
+        # either take one measurement (normal), or a bunch (blocking averaging)
+        reading = None
+        for loop_index in range(0, loop_count):
+
+            # start a new reading
+            # NOTE: reading.timestamp is when reading STARTED, not FINISHED!
+            reading = Reading(self.device_id)
+
+            # TODO...just include a copy of SpectrometerState? something to think
+            # about. That would actually provide a reason to roll all the
+            # temperature etc readouts into the SpectrometerState class...
+            reading.integration_time_ms = self.settings.state.integration_time_ms
+            reading.laser_power_perc    = self.settings.state.laser_power_perc
+            reading.laser_power_mW      = self.settings.state.laser_power_mW
+            reading.laser_enabled       = self.settings.state.laser_enabled
+            reading.spectrum = list(self.spec.intensities())
+
+            if not reading.failure:
+                if averaging_enabled:
+                    if self.sum_count == 0:
+                        self.summed_spectra = [float(i) for i in reading.spectrum]
+                    else:
+                        log.debug("device.take_one_averaged_reading: summing spectra")
+                        for i in range(len(self.summed_spectra)):
+                            self.summed_spectra[i] += reading.spectrum[i]
+                    self.sum_count += 1
+                    log.debug("device.take_one_averaged_reading: summed_spectra : %s ...", self.summed_spectra[0:9])
+
+            # count spectra
+            self.session_reading_count += 1
+            reading.session_count = self.session_reading_count
+            reading.sum_count = self.sum_count
+
+            # have we completed the averaged reading?
+            if averaging_enabled:
+                if self.sum_count >= self.settings.state.scans_to_average:
+                    reading.spectrum = [ x / self.sum_count for x in self.summed_spectra ]
+                    log.debug("device.take_one_averaged_reading: averaged_spectrum : %s ...", reading.spectrum[0:9])
+                    reading.averaged = True
+
+                    # reset for next average
+                    self.summed_spectra = None
+                    self.sum_count = 0
+            else:
+                # if averaging isn't enabled...then a single reading is the
+                # "averaged" final measurement (check reading.sum_count to confirm)
+                reading.averaged = True
+
+            # were we told to only take one (potentially averaged) measurement?
+            if self.take_one and reading.averaged:
+                log.debug("completed take_one")
+                self.change_setting("cancel_take_one", True)
+
+        log.debug("device.take_one_averaged_reading: returning %s", reading)
+        # reading.dump_area_scan()
         return reading
 
     def change_setting(self,setting,value):
+        if setting == "scans_to_average":
+            self.sum_count = 0
+            self.settings.state.scans_to_average = int(value)
+            return
         f = self.lambdas.get(setting, None)
         if f is None:
             # quietly fail no-ops
