@@ -120,6 +120,11 @@ class DeviceID(object):
         if hasattr(device, "dev"):
             self.bus = int(device.dev.bus)
             self.address = int(device.dev.address)
+            self.pid     = int(device.dev.idProduct)
+            self.vid     = int(device.dev.idVendor)
+            self.product = device.dev.product.rstrip('\x00')
+            self.serial  = device.dev.serial_number.rstrip('\x00')
+            #serial number has ASCII null chars that must be removed
             return
 
         # if the above fails, try to parse from string representation, e.g.:
@@ -193,9 +198,9 @@ class DeviceID(object):
     # and hashable unique key.
     def __str__(self):
         if self.type.upper() == "USB":
-            return "%s:0x%04x:0x%04x:%d:%d" % (self.type.upper(), self.vid, self.pid, self.bus, self.address)
+            return "<DeviceID %s:0x%04x:0x%04x:%d:%d>" % (self.type.upper(), self.vid, self.pid, self.bus, self.address)
         elif self.type.upper() == "FILE":
-            return "%s:%s" % (self.type.upper(), self.directory)
+            return "<Device ID %s:%s>" % (self.type.upper(), self.directory)
         else:
             raise Exception("unsupported DeviceID type %s" % self.type)
 

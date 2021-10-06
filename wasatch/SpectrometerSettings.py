@@ -115,6 +115,8 @@ class SpectrometerSettings(object):
     # Now that we're extending model names to 30 characters, append the value
     # of EEPROM.productConfiguration if non-empty.
     def full_model(self):
+        if self.eeprom.model is None:
+            return ''
         a = self.eeprom.model.strip()
         b = self.eeprom.product_configuration
 
