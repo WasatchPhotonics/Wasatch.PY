@@ -35,16 +35,6 @@ class OceanDevice:
 
         self.device_id      = device_id
         self.message_queue  = message_queue
-        self.device = None
-        devices = list_devices()
-        for device in devices:
-            # cseabreeze does not readily expose the pid and vid
-            # this is the good work around I found
-            # pyseabreeze does readily expose both, but it has connection 
-            # issues sometimes that cseabreeze doesnt
-            if device.model == self.device_id.product and device.serial_number == self.device_id.serial:
-                self.device = device
-        self.spec = Spectrometer(self.device)
 
         #self.lock = threading.Lock()
 
@@ -57,11 +47,6 @@ class OceanDevice:
         self.immediate_mode = False
 
         self.settings = SpectrometerSettings()
-        self.settings.eeprom.model = self.device.model
-        self.settings.eeprom.serial_number = self.device.serial_number
-        rev = self.spec.features["revision"][0]
-        self.settings.microcontroller_firmware_version = str(rev.revision_firmware_get())
-        self.settings.eeprom.detector = "Ocean" # Ocean API doesn't have access to detector info
         self.summed_spectra         = None
         self.sum_count              = 0
         self.session_reading_count  = 0
@@ -71,6 +56,29 @@ class OceanDevice:
         self.last_memory_check = datetime.datetime.now()
         self.last_battery_percentage = 0
         self.init_lambdas()
+
+    def connect(self):
+        self.device = None
+        devices = list_devices()
+        self.settings = None
+        for device in devices:
+            # cseabreeze does not readily expose the pid and vid
+            # this is the good work around I found
+            # pyseabreeze does readily expose both, but it has connection 
+            # issues sometimes that cseabreeze doesnt
+            if device.model == self.device_id.product and device.serial_number == self.device_id.serial:
+                self.device = device
+        if self.device == None:
+            log.error("Ocean Device: No ocean device found. Returning")
+            self.message_queue.put_nowait(None)
+            return False
+        self.spec = Spectrometer(self.device)
+        self.settings.eeprom.model = self.device.model
+        self.settings.eeprom.serial_number = self.device.serial_number
+        rev = self.spec.features["revision"][0]
+        self.settings.microcontroller_firmware_version = str(rev.revision_firmware_get())
+        self.settings.eeprom.detector = "Ocean" # Ocean API doesn't have access to detector info
+
 
     def init_lambdas(self):
         f = {}

@@ -67,7 +67,7 @@ class WrapperWorker(threading.Thread):
         log.info(f"connection started to id {self.device_id} device is ocean {self.is_ocean}")
         ok = False
         if self.is_ocean:
-            ok = True
+            ok = self.ocean_device.connect()
         else:
             try:
                 ok = self.wasatch_device.connect()
