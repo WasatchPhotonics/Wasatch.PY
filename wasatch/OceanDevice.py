@@ -60,7 +60,6 @@ class OceanDevice:
     def connect(self):
         self.device = None
         devices = list_devices()
-        self.settings = None
         for device in devices:
             # cseabreeze does not readily expose the pid and vid
             # this is the good work around I found
@@ -78,6 +77,7 @@ class OceanDevice:
         rev = self.spec.features["revision"][0]
         self.settings.microcontroller_firmware_version = str(rev.revision_firmware_get())
         self.settings.eeprom.detector = "Ocean" # Ocean API doesn't have access to detector info
+        return True
 
 
     def init_lambdas(self):

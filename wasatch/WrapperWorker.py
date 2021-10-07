@@ -64,7 +64,6 @@ class WrapperWorker(threading.Thread):
                 return self.settings_queue.put(None) 
 
         log.debug("calling connect")
-        log.info(f"connection started to id {self.device_id} device is ocean {self.is_ocean}")
         ok = False
         if self.is_ocean:
             ok = self.ocean_device.connect()
