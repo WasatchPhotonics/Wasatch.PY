@@ -143,7 +143,8 @@ class SpectrometerSettings(object):
 
         # if 'new' value is unreasonable AND NON-ZERO, complain
         if new != 0.0:
-            log.debug("excitation wavelength %e outside (200, 2500) - suspect corrupt EEPROM, using %e", new, old)
+            log.debug(f"excitation wavelength {new} outside (200, 2500) - suspect corrupt EEPROM, using {old}")
+            return old
 
         return old
 

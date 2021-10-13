@@ -1,5 +1,8 @@
 # Changelog
 
+- 2021-10-13 1.1.34
+    - added get\_fpga\_configuration\_register
+    - trap for 0ms integration time
 - 2021-09-21 1.1.33
     - added DetectorROI.enabled
     - added SpectrometerSettings.init\_regions

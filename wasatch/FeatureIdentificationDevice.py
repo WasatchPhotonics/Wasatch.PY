@@ -253,6 +253,7 @@ class FeatureIdentificationDevice(object):
         log.debug("connection successful")
         self.connected = True
         self.connecting = False
+
         return self.connected
 
     def disconnect(self):
@@ -1136,6 +1137,8 @@ class FeatureIdentificationDevice(object):
     #          values, while integration time is actually a 24-bit value,
     #          such that the EEPROM is artificially limiting our range.
     def set_integration_time_ms(self, ms):
+        ms = max(1, int(round(ms)))
+
         lsw =  ms        & 0xffff
         msw = (ms >> 16) & 0x00ff
 
@@ -2099,6 +2102,11 @@ class FeatureIdentificationDevice(object):
 
         return result
 
+    def get_fpga_configuration_register(self, label=""):
+        raw = self.get_code(0xb3, lsb_len=2, label="GET_FPGA_CONFIGURATION_REGISTER")
+        log.debug(f"FPGA Configuration Register: 0x{raw:04x} ({label})")
+        return raw
+
     # ##########################################################################
     #
     #                           Accessory Connector
@@ -2606,7 +2614,7 @@ class FeatureIdentificationDevice(object):
 
         # spectrometer control
         f["laser_enable"]                       = lambda x: self.set_laser_enable(clean_bool(x))
-        f["integration_time_ms"]                = lambda x: self.set_integration_time_ms(int(round(x)))
+        f["integration_time_ms"]                = lambda x: self.set_integration_time_ms(x)
 
         f["detector_tec_setpoint_degC"]         = lambda x: self.set_detector_tec_setpoint_degC(int(round(x)))
         f["detector_tec_enable"]                = lambda x: self.set_tec_enable(clean_bool(x))
