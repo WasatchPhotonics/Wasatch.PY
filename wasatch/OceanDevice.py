@@ -65,8 +65,8 @@ class OceanDevice:
             # this is the good work around I found
             # pyseabreeze does readily expose both, but it has connection 
             # issues sometimes that cseabreeze doesnt
-            if device.model == self.device_id.product and device.serial_number == self.device_id.serial:
-                self.device = device
+            #if device.model == self.device_id.product and device.serial_number == self.device_id.serial:
+            self.device = device
         if self.device == None:
             log.error("Ocean Device: No ocean device found. Returning")
             self.message_queue.put_nowait(None)
@@ -74,8 +74,8 @@ class OceanDevice:
         self.spec = Spectrometer(self.device)
         self.settings.eeprom.model = self.device.model
         self.settings.eeprom.serial_number = self.device.serial_number
-        rev = self.spec.features["revision"][0]
-        self.settings.microcontroller_firmware_version = str(rev.revision_firmware_get())
+        #rev = self.spec.features["revision"][0]
+        #self.settings.microcontroller_firmware_version = str(rev.revision_firmware_get())
         self.settings.eeprom.detector = "Ocean" # Ocean API doesn't have access to detector info
         return True
 
@@ -125,6 +125,7 @@ class OceanDevice:
             reading.laser_power_mW      = self.settings.state.laser_power_mW
             reading.laser_enabled       = self.settings.state.laser_enabled
             reading.spectrum = list(self.spec.intensities())
+            self.settings.eeprom.active_pixels_horizontal = len(reading.spectrum)
 
             if not reading.failure:
                 if averaging_enabled:

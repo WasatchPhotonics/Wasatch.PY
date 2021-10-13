@@ -122,8 +122,10 @@ class DeviceID(object):
             self.address = int(device.dev.address)
             self.pid     = int(device.dev.idProduct)
             self.vid     = int(device.dev.idVendor)
-            self.product = device.dev.product.rstrip('\x00')
-            self.serial  = device.dev.serial_number.rstrip('\x00')
+            if device.dev.product is not None:
+                self.product = device.dev.product.rstrip('\x00')
+            if device.dev.serial_number is not None:
+                self.serial  = device.dev.serial_number.rstrip('\x00')
             #serial number has ASCII null chars that must be removed
             return
 
