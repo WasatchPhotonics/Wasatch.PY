@@ -1,5 +1,6 @@
 import re
 import os
+import usb
 import time
 import queue
 import psutil
@@ -52,6 +53,7 @@ class OceanDevice:
         self.sum_count              = 0
         self.session_reading_count  = 0
         self.take_one               = False
+        self.failure_count          = 0
 
         self.process_id = os.getpid()
         self.last_memory_check = datetime.datetime.now()
@@ -132,8 +134,13 @@ class OceanDevice:
                 reading.laser_enabled       = self.settings.state.laser_enabled
                 reading.spectrum = list(self.spec.intensities())
                 self.settings.eeprom.active_pixels_horizontal = len(reading.spectrum) 
-            except:
-                return False
+            except usb.USBError:
+                self.failure_count += 1
+                log.error(f"Ocean Device: encountered USB error in reading for device {self.device}")
+
+            if reading.spectrum is None or reading.spectrum == []:
+                if self.failure_count > 3:
+                    return False
 
             if not reading.failure:
                 if averaging_enabled:
@@ -172,6 +179,8 @@ class OceanDevice:
                 self.change_setting("cancel_take_one", True)
 
         log.debug("device.take_one_averaged_reading: returning %s", reading)
+        if reading.spectrum is not None and reading.spectrum != []:
+            self.failure_count = 0
         # reading.dump_area_scan()
         return reading
 
