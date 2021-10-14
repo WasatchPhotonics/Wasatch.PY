@@ -70,10 +70,9 @@ class OceanDevice:
             # this is the good work around I found
             # pyseabreeze does readily expose both, but it has connection 
             # issues sometimes that cseabreeze doesnt
-            #if device.model == self.device_id.product and device.serial_number == self.device_id.serial:
-            #pyusb_device = device._raw_device.pyusb_device
-            #if pyusb_device.idVendor == self.device_id.vid and pyusb_device.idProduct == self.device_id.pid:
-            self.device = device
+            pyusb_device = device._raw_device.pyusb_device
+            if pyusb_device.idVendor == self.device_id.vid and pyusb_device.idProduct == self.device_id.pid:
+                self.device = device
         if self.device == None:
             log.error("Ocean Device: No ocean device found. Returning")
             self.message_queue.put_nowait(None)
