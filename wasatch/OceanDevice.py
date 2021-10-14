@@ -68,10 +68,6 @@ class OceanDevice:
             devices = list_devices()
         log.info(f"devices are {devices}")
         for device in devices:
-            # cseabreeze does not readily expose the pid and vid
-            # this is the good work around I found
-            # pyseabreeze does readily expose both, but it has connection 
-            # issues sometimes that cseabreeze doesnt
             pyusb_device = device._raw_device.pyusb_device
             if pyusb_device.idVendor == self.device_id.vid and pyusb_device.idProduct == self.device_id.pid:
                 self.device = device
