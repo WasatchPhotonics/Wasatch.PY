@@ -8,6 +8,7 @@ import datetime
 import threading
 
 import seabreeze
+seabreeze.use("pyseabreeze")
 import seabreeze.spectrometers as sb
 from seabreeze.spectrometers import Spectrometer, list_devices
 from configparser import ConfigParser
@@ -60,13 +61,16 @@ class OceanDevice:
     def connect(self):
         self.device = None
         devices = list_devices()
+        log.info(f"devices are {devices}")
         for device in devices:
             # cseabreeze does not readily expose the pid and vid
             # this is the good work around I found
             # pyseabreeze does readily expose both, but it has connection 
             # issues sometimes that cseabreeze doesnt
             #if device.model == self.device_id.product and device.serial_number == self.device_id.serial:
-            self.device = device
+            pyusb_device = device._raw_device.pyusb_device
+            if pyusb_device.idVendor == self.device_id.vid and pyusb_device.idProduct == self.device_id.pid:
+                self.device = device
         if self.device == None:
             log.error("Ocean Device: No ocean device found. Returning")
             self.message_queue.put_nowait(None)
@@ -74,8 +78,6 @@ class OceanDevice:
         self.spec = Spectrometer(self.device)
         self.settings.eeprom.model = self.device.model
         self.settings.eeprom.serial_number = self.device.serial_number
-        #rev = self.spec.features["revision"][0]
-        #self.settings.microcontroller_firmware_version = str(rev.revision_firmware_get())
         self.settings.eeprom.detector = "Ocean" # Ocean API doesn't have access to detector info
         return True
 
