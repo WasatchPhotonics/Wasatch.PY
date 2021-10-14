@@ -47,7 +47,7 @@ class OceanDevice:
 
         self.immediate_mode = False
 
-        self.settings = SpectrometerSettings()
+        self.settings = SpectrometerSettings(self.device_id)
         self.summed_spectra         = None
         self.sum_count              = 0
         self.session_reading_count  = 0
@@ -60,7 +60,10 @@ class OceanDevice:
 
     def connect(self):
         self.device = None
-        devices = list_devices()
+        try:
+            devices = list_devices()
+        except:
+            devices = list_devices()
         log.info(f"devices are {devices}")
         for device in devices:
             # cseabreeze does not readily expose the pid and vid
@@ -68,9 +71,9 @@ class OceanDevice:
             # pyseabreeze does readily expose both, but it has connection 
             # issues sometimes that cseabreeze doesnt
             #if device.model == self.device_id.product and device.serial_number == self.device_id.serial:
-            pyusb_device = device._raw_device.pyusb_device
-            if pyusb_device.idVendor == self.device_id.vid and pyusb_device.idProduct == self.device_id.pid:
-                self.device = device
+            #pyusb_device = device._raw_device.pyusb_device
+            #if pyusb_device.idVendor == self.device_id.vid and pyusb_device.idProduct == self.device_id.pid:
+            self.device = device
         if self.device == None:
             log.error("Ocean Device: No ocean device found. Returning")
             self.message_queue.put_nowait(None)
@@ -78,7 +81,7 @@ class OceanDevice:
         self.spec = Spectrometer(self.device)
         self.settings.eeprom.model = self.device.model
         self.settings.eeprom.serial_number = self.device.serial_number
-        self.settings.eeprom.active_pixels_horizontal = self.device.features['spectrometer'][0]._spectrum_num_pixel 
+        #self.settings.eeprom.active_pixels_horizontal = self.device.features['spectrometer'][0]._spectrum_num_pixel 
         self.settings.eeprom.detector = "Ocean" # Ocean API doesn't have access to detector info
         return True
 
@@ -123,11 +126,15 @@ class OceanDevice:
             # TODO...just include a copy of SpectrometerState? something to think
             # about. That would actually provide a reason to roll all the
             # temperature etc readouts into the SpectrometerState class...
-            reading.integration_time_ms = self.settings.state.integration_time_ms
-            reading.laser_power_perc    = self.settings.state.laser_power_perc
-            reading.laser_power_mW      = self.settings.state.laser_power_mW
-            reading.laser_enabled       = self.settings.state.laser_enabled
-            reading.spectrum = list(self.spec.intensities())
+            try:
+                reading.integration_time_ms = self.settings.state.integration_time_ms
+                reading.laser_power_perc    = self.settings.state.laser_power_perc
+                reading.laser_power_mW      = self.settings.state.laser_power_mW
+                reading.laser_enabled       = self.settings.state.laser_enabled
+                reading.spectrum = list(self.spec.intensities())
+                self.settings.eeprom.active_pixels_horizontal = len(reading.spectrum) 
+            except:
+                return False
 
             if not reading.failure:
                 if averaging_enabled:
