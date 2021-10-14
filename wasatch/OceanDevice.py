@@ -78,6 +78,7 @@ class OceanDevice:
         self.spec = Spectrometer(self.device)
         self.settings.eeprom.model = self.device.model
         self.settings.eeprom.serial_number = self.device.serial_number
+        self.settings.eeprom.active_pixels_horizontal = self.device.features['spectrometer'][0]._spectrum_num_pixel 
         self.settings.eeprom.detector = "Ocean" # Ocean API doesn't have access to detector info
         return True
 
@@ -127,7 +128,6 @@ class OceanDevice:
             reading.laser_power_mW      = self.settings.state.laser_power_mW
             reading.laser_enabled       = self.settings.state.laser_enabled
             reading.spectrum = list(self.spec.intensities())
-            self.settings.eeprom.active_pixels_horizontal = len(reading.spectrum)
 
             if not reading.failure:
                 if averaging_enabled:
