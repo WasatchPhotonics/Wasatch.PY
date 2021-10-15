@@ -66,7 +66,6 @@ class OceanDevice:
             devices = list_devices()
         except:
             devices = list_devices()
-        log.info(f"devices are {devices}")
         for device in devices:
             pyusb_device = device._raw_device.pyusb_device
             if pyusb_device.idVendor == self.device_id.vid and pyusb_device.idProduct == self.device_id.pid:
