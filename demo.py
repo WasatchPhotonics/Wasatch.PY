@@ -31,6 +31,7 @@ import wasatch
 from wasatch import utils
 from wasatch import applog
 from wasatch.WasatchBus           import WasatchBus
+from wasatch.OceanDevice          import OceanDevice
 from wasatch.WasatchDevice        import WasatchDevice
 from wasatch.WasatchDeviceWrapper import WasatchDeviceWrapper
 
@@ -124,7 +125,10 @@ class WasatchDemo(object):
                 log_level = self.args.log_level)
         else:
             log.debug("instantiating WasatchDevice (blocking)")
-            device = WasatchDevice(device_id)
+            if device_id.vid == 0x24aa:
+                device = WasatchDevice(device_id)
+            else:
+                device = OceanDevice(device_id)
 
         ok = device.connect()
         if not ok:
