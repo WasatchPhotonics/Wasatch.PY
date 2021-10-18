@@ -1,5 +1,8 @@
 # Changelog
 
+- 2021-10-18 1.1.35
+    - added OceanDevice.py
+    - Changed DeviceFinderUSB.py to use usb.core
 - 2021-10-13 1.1.34
     - added get\_fpga\_configuration\_register
     - trap for 0ms integration time
