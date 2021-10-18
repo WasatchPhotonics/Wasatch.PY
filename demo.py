@@ -252,7 +252,7 @@ class WasatchDemo(object):
                 spectrum_avg,
                 spectrum_std,
                 size_in_bytes))
-            print("DEBUG: %s" % str(reading))
+            log.debug("%s", str(reading))
 
         if self.outfile:
             self.outfile.write("%s,%.2f,%s\n" % (datetime.datetime.now(),
