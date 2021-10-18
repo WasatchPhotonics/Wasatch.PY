@@ -51,8 +51,8 @@ class DeviceFinderUSB(object):
             if vid not in [0x24aa, 0x2457]:
                 continue
 
-            #if pid not in [ 0x1000, 0x2000, 0x4000 ]:
-             #   continue
+            if vid == 0x24aa and pid not in [ 0x1000, 0x2000, 0x4000 ]:
+                continue
 
             device_id = DeviceID(device=device)
             device_ids.append(device_id)

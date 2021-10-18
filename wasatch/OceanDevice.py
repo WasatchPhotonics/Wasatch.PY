@@ -3,25 +3,16 @@ import os
 import usb
 import time
 import queue
-import psutil
 import logging
 import datetime
-import threading
 
 import seabreeze
 seabreeze.use("pyseabreeze")
 import seabreeze.spectrometers as sb
 from seabreeze.spectrometers import Spectrometer, list_devices
-from configparser import ConfigParser
 
-from . import utils
-
-from .FeatureIdentificationDevice import FeatureIdentificationDevice
 from .SpectrometerSettings        import SpectrometerSettings
-from .BalanceAcquisition          import BalanceAcquisition
 from .SpectrometerState           import SpectrometerState
-from .ControlObject               import ControlObject
-from .WasatchBus                  import WasatchBus
 from .DeviceID                    import DeviceID
 from .Reading                     import Reading
 
@@ -77,14 +68,14 @@ class OceanDevice:
         self.spec = Spectrometer(self.device)
         self.settings.eeprom.model = self.device.model
         self.settings.eeprom.serial_number = self.device.serial_number
-        #self.settings.eeprom.active_pixels_horizontal = self.device.features['spectrometer'][0]._spectrum_num_pixel 
+        self.settings.eeprom.active_pixels_horizontal = self.device.features['spectrometer'][0]._spectrum_num_pixel 
         self.settings.eeprom.detector = "Ocean" # Ocean API doesn't have access to detector info
         return True
 
 
     def init_lambdas(self):
         f = {}
-        f["integration_time_ms"] = lambda x: self.spec.integration_time_micros(int(round(x)))
+        f["integration_time_ms"] = lambda x: self.spec.integration_time_micros(int(round(x*1000))) # conversion from millisec to microsec
         self.lambdas = f
 
     def acquire_data(self):
@@ -128,7 +119,6 @@ class OceanDevice:
                 reading.laser_power_mW      = self.settings.state.laser_power_mW
                 reading.laser_enabled       = self.settings.state.laser_enabled
                 reading.spectrum = list(self.spec.intensities())
-                self.settings.eeprom.active_pixels_horizontal = len(reading.spectrum) 
             except usb.USBError:
                 self.failure_count += 1
                 log.error(f"Ocean Device: encountered USB error in reading for device {self.device}")
@@ -189,6 +179,4 @@ class OceanDevice:
             # quietly fail no-ops
             return False
 
-        log.info(f"about to set integation time using func {f} to value {value}")
-        value = value * 1000 # conversion from millisec to microsec
         return f(value)
