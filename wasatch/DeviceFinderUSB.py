@@ -42,19 +42,18 @@ class DeviceFinderUSB(object):
     def find_usb_devices(self):
         device_ids = []
         count = 0
-        for bus in usb.busses():
-            for device in bus.devices:
-                count += 1
-                vid = int(device.idVendor)
-                pid = int(device.idProduct)
-                log.debug("DeviceListFID: discovered vid 0x%04x, pid 0x%04x (count %d)", vid, pid, count)
+        for device in usb.core.find(find_all=True):
+            count += 1
+            vid = int(device.idVendor)
+            pid = int(device.idProduct)
+            log.debug("DeviceListFID: discovered vid 0x%04x, pid 0x%04x (count %d)", vid, pid, count)
 
-                if vid != 0x24aa:
-                    continue
+            if vid not in [0x24aa, 0x2457]:
+                continue
 
-                if pid not in [ 0x1000, 0x2000, 0x4000 ]:
-                    continue
+            if vid == 0x24aa and pid not in [ 0x1000, 0x2000, 0x4000 ]:
+                continue
 
-                device_id = DeviceID(device=device)
-                device_ids.append(device_id)
+            device_id = DeviceID(device=device)
+            device_ids.append(device_id)
         return device_ids

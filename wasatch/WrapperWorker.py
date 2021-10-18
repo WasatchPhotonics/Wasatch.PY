@@ -4,6 +4,8 @@ import logging
 import time
 
 from .WasatchDevice        import WasatchDevice
+from .OceanDevice          import OceanDevice
+from .Reading              import Reading
 
 log = logging.getLogger(__name__)
 
@@ -27,16 +29,19 @@ class WrapperWorker(threading.Thread):
             response_queue,
             settings_queue,
             message_queue,
+            is_ocean,
             parent=None):
 
         threading.Thread.__init__(self)
 
         self.device_id      = device_id
+        self.is_ocean       = is_ocean
         self.command_queue  = command_queue
         self.response_queue = response_queue
         self.settings_queue = settings_queue
         self.message_queue  = message_queue
         self.wasatch_device = False
+        self.sum_count = 0
 
     ##
     # This is essentially the main() loop in a thread.
@@ -44,22 +49,30 @@ class WrapperWorker(threading.Thread):
     # one of the three queues (cmd inputs, response outputs, and
     # a one-shot SpectrometerSettings).
     def run(self):
-        try:
-            log.debug("instantiating WasatchDevice")
-            self.wasatch_device = WasatchDevice(
+        if self.is_ocean:
+            self.ocean_device = OceanDevice(
                 device_id = self.device_id,
                 message_queue = self.message_queue)
-        except:
-            log.critical("exception instantiating WasatchDevice", exc_info=1)
-            return self.settings_queue.put(None) 
+        else:
+            try:
+                log.debug("instantiating WasatchDevice")
+                self.wasatch_device = WasatchDevice(
+                    device_id = self.device_id,
+                    message_queue = self.message_queue)
+            except:
+                log.critical("exception instantiating WasatchDevice", exc_info=1)
+                return self.settings_queue.put(None) 
 
         log.debug("calling connect")
         ok = False
-        try:
-            ok = self.wasatch_device.connect()
-        except:
-            log.critical("exception connecting", exc_info=1)
-            return self.settings_queue.put(None) # put(None, timeout=2)
+        if self.is_ocean:
+            ok = self.ocean_device.connect()
+        else:
+            try:
+                ok = self.wasatch_device.connect()
+            except:
+                log.critical("exception connecting", exc_info=1)
+                return self.settings_queue.put(None) # put(None, timeout=2)
 
         if not ok:
             log.critical("failed to connect")
@@ -69,7 +82,10 @@ class WrapperWorker(threading.Thread):
 
         # send the SpectrometerSettings back to the GUI thread
         log.debug("returning SpectrometerSettings to parent")
-        self.settings_queue.put_nowait(self.wasatch_device.settings)
+        if self.is_ocean:
+            self.settings_queue.put_nowait(self.ocean_device.settings)
+        else:
+            self.settings_queue.put_nowait(self.wasatch_device.settings)
 
         log.debug("entering loop")
         last_command = datetime.datetime.now()
@@ -105,7 +121,10 @@ class WrapperWorker(threading.Thread):
                         # WasatchDeviceWrapper.command_queue to WasatchDevice.command_queue,
                         # where it gets read during the next call to
                         # WasatchDevice.acquire_data.
-                        self.wasatch_device.change_setting(record.setting, record.value)
+                        if self.is_ocean:
+                            self.ocean_device.change_setting(record.setting, record.value)
+                        else:
+                            self.wasatch_device.change_setting(record.setting, record.value)
 
                         # peek in some settings locally
                         if record.setting == "num_connected_devices":
@@ -138,7 +157,10 @@ class WrapperWorker(threading.Thread):
                 # than subprocess_timeout_sec, this call itself will trigger
                 # shutdown.
                 log.debug("acquiring data")
-                reading = self.wasatch_device.acquire_data()
+                if self.is_ocean:
+                    reading = self.ocean_device.acquire_data()
+                else:
+                    reading = self.wasatch_device.acquire_data()
                 #log.debug("continuous_poll: acquire_data returned %s", str(reading))
             except Exception as exc:
                 log.critical("exception calling WasatchDevice.acquire_data", exc_info=1)

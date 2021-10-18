@@ -172,6 +172,7 @@ class WasatchDeviceWrapper(object):
         self.closing      = False   # Don't permit new acquires during close
         self.poller       = None    # a handle to the child thread
         self.thread       = False
+        self.is_ocean     = '0x2457' in str(device_id)
 
         # this will contain a populated SpectrometerSettings object from the
         # WasatchDevice, for relay to the instantiating Controller
@@ -230,7 +231,8 @@ class WasatchDeviceWrapper(object):
             command_queue  = self.command_queue,  # Main --> child
             response_queue = self.response_queue, # Main <-- child \
             settings_queue = self.settings_queue, # Main <-- child / consolidate into SpectrometerMessage?
-            message_queue  = self.message_queue)
+            message_queue  = self.message_queue,
+            is_ocean       = self.is_ocean)
         log.debug("device wrapper: Instance created for worker")
 
         self.wrapper_worker.setDaemon(True)
@@ -258,6 +260,7 @@ class WasatchDeviceWrapper(object):
             if (datetime.datetime.now() - time_start).total_seconds() > settings_timeout_sec:
                 log.error("connect: gave up waiting for SpectrometerSettings")
                 kill_myself = True
+                break
             else:
                 log.debug("connect: still waiting for SpectrometerSettings")
                 time.sleep(0.1)
