@@ -1,6 +1,1 @@
-include environments/*
-include scripts/*
-include tests/*
-include udev/*
 include wasatch/*
-include WasatchShell/*
