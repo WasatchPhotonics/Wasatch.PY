@@ -55,7 +55,7 @@ class WasatchDemo(object):
         self.args = self.parse_args(argv)
 
         self.logger = applog.MainLogger(self.args.log_level)
-        log.info("Wasatch.PY version %s", wasatch.version)
+        log.info("Wasatch.PY version %s", wasatch.__version__)
 
     ############################################################################
     #                                                                          #
@@ -79,7 +79,7 @@ class WasatchDemo(object):
         # parse argv into dict
         args = parser.parse_args(argv[1:])
         if args.version:
-            print("Wasatch.PY %s" % wasatch.version)
+            print("Wasatch.PY %s" % wasatch.__version__)
             sys.exit(0)
 
         # normalize log level
@@ -149,7 +149,7 @@ class WasatchDemo(object):
     ############################################################################
 
     def run(self):
-        log.info("Wasatch.PY %s Demo", wasatch.version)
+        log.info("Wasatch.PY %s Demo", wasatch.__version__)
 
         # apply initial settings
         self.device.change_setting("integration_time_ms", self.args.integration_time_ms)
