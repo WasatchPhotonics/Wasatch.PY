@@ -1,0 +1,14 @@
+# NEED FOR FLIT FOR UPLOAD TO TEST REPO
+# THIS GOES IN $HOME DIR NOT IN THE REPO DIR
+[distutils]
+index-servers =
+    pypi
+    testpypi
+
+[pypi]
+repository: https://upload.pypi.org/legacy/
+username: <USERNAME>
+
+[testpypi]
+repository: https://test.pypi.org/legacy/
+username: <USERNAME>
