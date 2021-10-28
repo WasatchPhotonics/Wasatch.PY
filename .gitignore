@@ -106,4 +106,5 @@ wasatch_applog.txt
 # other
 .DS_Store
 .vs/*
+.pypirc
 environment.yml
