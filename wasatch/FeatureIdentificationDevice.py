@@ -2016,7 +2016,7 @@ class FeatureIdentificationDevice(object):
     # @params mode: integral value 0-3
     #
     # \verbose
-    # mode  pixel (OD) ADC (AD)
+    # mode  ADC (AD)   Pixel Width (OD)
     # b00   10-bit     10-bit
     # b01   10-bit     12-bit
     # b10   12-bit     10-bit
@@ -2024,7 +2024,7 @@ class FeatureIdentificationDevice(object):
     # \endverbose
     def set_pixel_mode(self, mode):
         if not self.settings.is_micro():
-            log.debug("Pixel Depth only configurable on microRaman")
+            log.debug("Pixel Mode only configurable on microRaman")
             return False
 
         # we only care about the two least-significant bits
