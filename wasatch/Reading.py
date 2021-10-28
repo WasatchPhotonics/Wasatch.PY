@@ -22,7 +22,7 @@ class Reading(object):
         self.ambient_temperature_degC  = 0
         self.secondary_adc_raw         = None
         self.secondary_adc_calibrated  = None
-        self.laser_status              = None   
+        self.laser_status              = None   # MZ: sim-only?
         self.laser_power_perc          = 0      
         self.laser_power_mW            = 0
         self.failure                   = None
@@ -33,6 +33,8 @@ class Reading(object):
         self.battery_raw               = None
         self.battery_percentage        = None
         self.battery_charging          = None
+        self.laser_can_fire            = False  # per interlock board
+        self.laser_is_firing           = False  # per interlock board, not laser_enable
 
         # for the rare case (BatchCollection with LaserMode "Spectrum") where the 
         # driver is asked to collect a dark just before enabling the laser

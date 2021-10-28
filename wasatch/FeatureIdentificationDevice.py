@@ -685,13 +685,6 @@ class FeatureIdentificationDevice(object):
                 value, self.settings.pixels())
         return value
 
-    def get_opt_has_laser(self):
-        available = (0 != self.get_upper_code(0x08, label="GET_OPT_HAS_LASER", msb_len=1))
-        if available != self.settings.eeprom.has_laser:
-            log.error("OPT_HAS_LASER opcode result %s != EEPROM has_laser %s (using opcode)",
-                value, self.settings.eeprom.has_laser)
-        return available
-
     def get_microcontroller_firmware_version(self):
         result = self.get_code(0xc0, label="GET_CODE_REVISION")
         version = "?.?.?.?"
@@ -1190,75 +1183,6 @@ class FeatureIdentificationDevice(object):
         log.debug("secondary_adc_raw: 0x%04x", value)
         return value
 
-    ## @note little-endian, reverse of get_detector_temperature_raw
-    def get_laser_temperature_raw(self):
-        # flip to primary ADC if needed
-        if self.settings.state.selected_adc is None or self.settings.state.selected_adc != 0:
-            self.select_adc(0)
-
-        result = self.get_code(0xd5, wLength=2, label="GET_ADC", lsb_len=2)
-        if not result:
-            log.debug("Unable to read laser temperature")
-            return 0
-        return result & 0xfff
-
-    ##
-    # Laser temperature conversion doesn't use EEPROM coeffs at all.
-    # Most Wasatch Raman systems use an IPS Wavelength-Stabilized TO-56
-    # laser, which internally uses a Betatherm 10K3CG3 thermistor.
-    #
-    # @see https://www.ipslasers.com/data-sheets/SM-TO-56-Data-Sheet-IPS.pdf
-    #
-    # The official conversion from thermistor resistance (in ohms) to degC is:
-    #
-    # \verbatim
-    # 1 / (   C1
-    #       + C2 * ln(ohms)
-    #       + C3 * pow(ln(ohms), 3)
-    #     )
-    # - 273.15
-    #
-    # Where: C1 = 0.00113
-    #        C2 = 0.000234
-    #        C3 = 8.78e-8
-    # \endverbatim
-    #
-    # @param raw    the value read from the thermistor's 12-bit ADC
-    def get_laser_temperature_degC(self, raw=None):
-        if raw is None:
-            raw = self.get_laser_temperature_raw()
-
-        if raw is None:
-            return None
-
-        if raw > 0xfff:
-            log.error("get_laser_temperature_degC: read raw value 0x%04x exceeds 12 bits", raw)
-            return 0
-
-        # can't take log of zero
-        if raw == 0:
-            return 0
-
-        degC = 0
-        try:
-            voltage    = 2.5 * raw / 4096
-            resistance = 21450.0 * voltage / (2.5 - voltage) # LB confirms
-
-            if resistance < 0:
-                log.error("get_laser_temperature_degC: can't compute degC: raw = 0x%04x, voltage = %f, resistance = %f",
-                    raw, voltage, resistance)
-                return 0
-
-            logVal     = math.log(resistance / 10000.0)
-            insideMain = logVal + 3977.0 / (25 + 273.0)
-            degC       = 3977.0 / insideMain - 273.0
-
-            log.debug("Laser temperature: %.2f deg C (0x%04x raw)" % (degC, raw))
-        except:
-            log.error("exception computing laser temperature", exc_info=1)
-
-        return degC
-
     ## @note big-endian, reverse of get_laser_temperature_raw
     def get_detector_temperature_raw(self):
         return self.get_code(0xd7, label="GET_CCD_TEMP", msb_len=2)
@@ -1397,6 +1321,89 @@ class FeatureIdentificationDevice(object):
         self.settings.state.high_gain_mode_enabled = 0 != self.get_code(0xec, lsb_len=1, label="GET_HIGH_GAIN_MODE_ENABLED")
         return self.settings.state.high_gain_mode_enabled
 
+    ############################################################################
+    # Laser commands
+    ############################################################################
+
+    def get_opt_laser_control(self):
+        return self.get_upper_code(0x09, label="GET_OPT_LASER_CONTROL", msb_len=1)
+
+    def get_opt_has_laser(self):
+        available = (0 != self.get_upper_code(0x08, label="GET_OPT_HAS_LASER", msb_len=1))
+        if available != self.settings.eeprom.has_laser:
+            log.error("OPT_HAS_LASER opcode result %s != EEPROM has_laser %s (using opcode)",
+                value, self.settings.eeprom.has_laser)
+        return available
+
+    ## @note little-endian, reverse of get_detector_temperature_raw
+    def get_laser_temperature_raw(self):
+        # flip to primary ADC if needed
+        if self.settings.state.selected_adc is None or self.settings.state.selected_adc != 0:
+            self.select_adc(0)
+
+        result = self.get_code(0xd5, wLength=2, label="GET_ADC", lsb_len=2)
+        if not result:
+            log.debug("Unable to read laser temperature")
+            return 0
+        return result & 0xfff
+
+    ##
+    # Laser temperature conversion doesn't use EEPROM coeffs at all.
+    # Most Wasatch Raman systems use an IPS Wavelength-Stabilized TO-56
+    # laser, which internally uses a Betatherm 10K3CG3 thermistor.
+    #
+    # @see https://www.ipslasers.com/data-sheets/SM-TO-56-Data-Sheet-IPS.pdf
+    #
+    # The official conversion from thermistor resistance (in ohms) to degC is:
+    #
+    # \verbatim
+    # 1 / (   C1
+    #       + C2 * ln(ohms)
+    #       + C3 * pow(ln(ohms), 3)
+    #     )
+    # - 273.15
+    #
+    # Where: C1 = 0.00113
+    #        C2 = 0.000234
+    #        C3 = 8.78e-8
+    # \endverbatim
+    #
+    # @param raw    the value read from the thermistor's 12-bit ADC
+    def get_laser_temperature_degC(self, raw=None):
+        if raw is None:
+            raw = self.get_laser_temperature_raw()
+
+        if raw is None:
+            return None
+
+        if raw > 0xfff:
+            log.error("get_laser_temperature_degC: read raw value 0x%04x exceeds 12 bits", raw)
+            return 0
+
+        # can't take log of zero
+        if raw == 0:
+            return 0
+
+        degC = 0
+        try:
+            voltage    = 2.5 * raw / 4096
+            resistance = 21450.0 * voltage / (2.5 - voltage) # LB confirms
+
+            if resistance < 0:
+                log.error("get_laser_temperature_degC: can't compute degC: raw = 0x%04x, voltage = %f, resistance = %f",
+                    raw, voltage, resistance)
+                return 0
+
+            logVal     = math.log(resistance / 10000.0)
+            insideMain = logVal + 3977.0 / (25 + 273.0)
+            degC       = 3977.0 / insideMain - 273.0
+
+            log.debug("Laser temperature: %.2f deg C (0x%04x raw)" % (degC, raw))
+        except:
+            log.error("exception computing laser temperature", exc_info=1)
+
+        return degC
+
     ##
     # On spectrometers supporting two lasers, select the primary (0) or
     # secondary (1).  Laser Enable, laser power etc should all then
@@ -1420,6 +1427,12 @@ class FeatureIdentificationDevice(object):
 
     def get_selected_laser(self):
         return self.settings.state.selected_laser
+
+    def get_laser_enabled(self):
+        flag = 0 != self.get_code(0xe2, label="GET_LASER_ENABLED", msb_len=1)
+        log.debug("get_laser_enabled: %s", flag)
+        self.settings.state.laser_enabled = flag
+        return flag
 
     ##
     # Turn the laser on or off.
@@ -1811,13 +1824,6 @@ class FeatureIdentificationDevice(object):
 
         return result
 
-    def reset_fpga(self):
-        log.debug("fid: resetting FPGA")
-        result = self.send_code(0xb5, label="RESET_FPGA")
-        log.debug("fid: sleeping 3sec")
-        sleep(3)
-        return result
-
     ##
     # @note never used, provided for OEM
     def get_laser_temperature_setpoint_raw(self):
@@ -1831,6 +1837,88 @@ class FeatureIdentificationDevice(object):
     def set_laser_temperature_setpoint_raw(self, value):
         log.debug("Send laser temperature setpoint raw: %d", value)
         return self.send_code(0xe7, value, label="SET_LASER_TEC_SETPOINT")
+
+    def get_laser_watchdog_sec(self):
+        self.settings.state.laser_watchdog_sec = \
+            self.get_upper_code(0x17, label="GET_LASER_WATCHDOG_SEC", msb_len=2)
+        return self.settings.state.laser_watchdog_sec
+
+    def set_laser_watchdog_sec(self, sec):
+        if not self.settings.is_micro():
+            log.error("Laser watchdog only supported on microRaman")
+            return False
+
+        # send value as big-endian
+        msb = (sec >> 8) & 0xff
+        lsb =  sec       & 0xff
+        value = (msb << 8) | lsb
+
+        self.settings.state.laser_watchdog_sec = sec
+        return self.send_code(bRequest        = 0xff,
+                              wValue          = 0x18,
+                              wIndex          = value,
+                              data_or_wLength = [0] * 8,
+                              label           = "SET_LASER_WATCHDOG_SEC")
+
+    ##
+    # Automatically set the laser watchdog long enough to handle the current
+    # integration time, assuming we have to perform 6 throwaways on the sensor
+    # in case it went to sleep.
+    #
+    # @todo don't override if the user has "manually" set in ENLIGHTEN
+    def update_laser_watchdog(self):
+        if not self.settings.is_micro():
+            return False
+
+        throwaways_sec = self.settings.state.integration_time_ms    \
+                       * (8 + self.settings.state.scans_to_average) \
+                       / 1000.0
+        watchdog_sec = int(max(10, throwaways_sec)) * 2
+        return self.set_laser_watchdog_sec(watchdog_sec)
+
+    ## legacy wrapper over can_laser_fire
+    def get_laser_interlock(self):
+        return self.can_laser_fire()
+
+    ##
+    # @note only works on FX2-based spectrometers with FW >= 10.0.0.11
+    # @returns True if there is a laser and either the interlock is
+    #          closed (in firing position), or there is no readable
+    #          interlock
+    def can_laser_fire(self):
+        if not self.settings.eeprom.has_laser:
+            log.error("EEPROM reports no laser installed")
+            return False
+
+        if self.settings.is_arm():
+            log.debug("GET_LASER_INTERLOCK not supported on ARM (defaulting True)")
+            return True
+
+        if self.settings.microcontroller_firmware_version != "10.0.0.11":
+            log.debug("GET_LASER_INTERLOCK not supported on %s (defaulting True)", self.settings.microcontroller_firmware_version)
+            return True
+
+        return 0 != self.get_code(0xef, label="GET_LASER_INTERLOCK", msb_len=1)
+
+    ##
+    # This is an experimental command to determine if the laser actually is 
+    # firing, independent of the laser_enable or interlock status.
+    def is_laser_firing(self):
+        if not self.can_laser_fire():
+            return False
+
+        return 0 != self.get_upper_code(0x0d, label="IS_LASER_FIRING", msb_len=1)
+
+    ############################################################################
+    # (end of laser commands)
+    ############################################################################
+
+    def reset_fpga(self):
+        log.debug("fid: resetting FPGA")
+        result = self.send_code(0xb5, label="RESET_FPGA")
+        log.debug("fid: sleeping 3sec")
+        sleep(3)
+        return result
 
     ##
     # Read the trigger source setting from the device.
@@ -1888,44 +1976,6 @@ class FeatureIdentificationDevice(object):
                               data_or_wLength = [0] * 8,
                               label           = "SET_RAMAN_DELAY_MS")
 
-
-    def get_laser_watchdog_sec(self):
-        self.settings.state.laser_watchdog_sec = \
-            self.get_upper_code(0x17, label="GET_LASER_WATCHDOG_SEC", msb_len=2)
-        return self.settings.state.laser_watchdog_sec
-
-    def set_laser_watchdog_sec(self, sec):
-        if not self.settings.is_micro():
-            log.error("Laser watchdog only supported on microRaman")
-            return False
-
-        # send value as big-endian
-        msb = (sec >> 8) & 0xff
-        lsb =  sec       & 0xff
-        value = (msb << 8) | lsb
-
-        self.settings.state.laser_watchdog_sec = sec
-        return self.send_code(bRequest        = 0xff,
-                              wValue          = 0x18,
-                              wIndex          = value,
-                              data_or_wLength = [0] * 8,
-                              label           = "SET_LASER_WATCHDOG_SEC")
-
-    ##
-    # Automatically set the laser watchdog long enough to handle the current
-    # integration time, assuming we have to perform 6 throwaways on the sensor
-    # in case it went to sleep.
-    #
-    # @todo don't override if the user has "manually" set in ENLIGHTEN
-    def update_laser_watchdog(self):
-        if not self.settings.is_micro():
-            return False
-
-        throwaways_sec = self.settings.state.integration_time_ms    \
-                       * (8 + self.settings.state.scans_to_average) \
-                       / 1000.0
-        watchdog_sec = int(max(10, throwaways_sec)) * 2
-        return self.set_laser_watchdog_sec(watchdog_sec)
 
     def set_vertical_binning(self, lines):
         if not self.settings.is_micro():
@@ -2132,7 +2182,7 @@ class FeatureIdentificationDevice(object):
         if not self.settings.is_gen15():
             log.error("fan requires Gen 1.5")
             return False
-        return self.get_code(0x37, label="GET_FAN_ENABLED", msb_len=1)
+        return 0 != self.get_code(0x37, label="GET_FAN_ENABLED", msb_len=1)
 
     # ##########################################################################
     # Lamp
@@ -2153,7 +2203,7 @@ class FeatureIdentificationDevice(object):
         if not self.settings.is_gen15():
             log.error("lamp requires Gen 1.5")
             return False
-        return self.get_code(0x33, label="GET_LAMP_ENABLED", msb_len=1)
+        return 0 != self.get_code(0x33, label="GET_LAMP_ENABLED", msb_len=1)
 
     # ##########################################################################
     # Shutter
@@ -2174,7 +2224,7 @@ class FeatureIdentificationDevice(object):
         if not self.settings.is_gen15():
             log.error("shutter requires Gen 1.5")
             return False
-        return self.get_code(0x31, label="GET_SHUTTER_ENABLED", msb_len=1)
+        return 0 != self.get_code(0x31, label="GET_SHUTTER_ENABLED", msb_len=1)
 
     # ##########################################################################
     # Laser Modulation and Continuous Strobe
@@ -2270,7 +2320,7 @@ class FeatureIdentificationDevice(object):
         if not self.settings.eeprom.has_cooling:
             log.error("unable to control TEC: EEPROM reports no cooling")
             return False
-        return self.get_code(0xda, label="GET_CCD_TEC_ENABLED", msb_len=1)
+        return 0 != self.get_code(0xda, label="GET_CCD_TEC_ENABLED", msb_len=1)
 
     def get_actual_frames(self):
         return self.get_code(0xe4, label="GET_ACTUAL_FRAMES", lsb_len=2)
@@ -2301,24 +2351,12 @@ class FeatureIdentificationDevice(object):
     def get_external_trigger_output(self):
         return self.get_code(0xe1, label="GET_EXTERNAL_TRIGGER_OUTPUT", msb_len=1)
 
-    def get_laser_interlock(self):
-        if self.settings.is_arm():
-            log.error("GET_LASER_INTERLOCK not supported on ARM")
-            return False
-        return self.get_code(0xef, label="GET_LASER_INTERLOCK", msb_len=1)
-
-    def get_laser_enabled(self):
-        flag = 0 != self.get_code(0xe2, label="GET_LASER_ENABLED", msb_len=1)
-        log.debug("get_laser_enabled: %s", flag)
-        self.settings.state.laser_enabled = flag
-        return flag
-
     def set_mod_linked_to_integration(self, flag):
         value = 1 if flag else 0
         return self.send_code(0xdd, value, label="SET_MOD_LINKED_TO_INTEGRATION")
 
     def get_mod_linked_to_integration(self):
-        return self.get_code(0xde, label="GET_MOD_LINKED_TO_INTEGRATION", msb_len=1)
+        return 0 != self.get_code(0xde, label="GET_MOD_LINKED_TO_INTEGRATION", msb_len=1)
 
     def get_selected_adc(self):
         value = self.get_code(0xee, label="GET_SELECTED_ADC", msb_len=1)
@@ -2354,19 +2392,19 @@ class FeatureIdentificationDevice(object):
         return self.get_code(0xe4, label="GET_TRIGGER_DELAY", lsb_len=3) # not sure about LSB
 
     def get_vr_continuous_ccd(self):
-        return self.get_code(0xcc, label="GET_VR_CONTINUOUS_CCD", msb_len=1)
+        return 0 != self.get_code(0xcc, label="GET_VR_CONTINUOUS_CCD", msb_len=1)
 
     def get_vr_num_frames(self):
         return self.get_code(0xcd, label="GET_VR_NUM_FRAMES", msb_len=1)
 
     def get_opt_actual_integration_time(self):
-        return self.get_upper_code(0x0b, label="GET_OPT_ACT_INT_TIME", msb_len=1)
+        return 0 != self.get_upper_code(0x0b, label="GET_OPT_ACT_INT_TIME", msb_len=1)
 
     def get_opt_area_scan(self):
-        return self.get_upper_code(0x0a, label="GET_OPT_AREA_SCAN", msb_len=1)
+        return 0 != self.get_upper_code(0x0a, label="GET_OPT_AREA_SCAN", msb_len=1)
 
     def get_opt_cf_select(self):
-        return self.get_upper_code(0x07, label="GET_OPT_CF_SELECT", msb_len=1)
+        return 0 != self.get_upper_code(0x07, label="GET_OPT_CF_SELECT", msb_len=1)
 
     def get_opt_data_header_tab(self):
         return self.get_upper_code(0x06, label="GET_OPT_DATA_HEADER_TAB", msb_len=1)
@@ -2376,9 +2414,6 @@ class FeatureIdentificationDevice(object):
 
     def get_opt_integration_time_resolution(self):
         return self.get_upper_code(0x05, label="GET_OPT_INTEGRATION_TIME_RESOLUTION", msb_len=1)
-
-    def get_opt_laser_control(self):
-        return self.get_upper_code(0x09, label="GET_OPT_LASER_CONTROL", msb_len=1)
 
     # ##########################################################################
     # Analog output
