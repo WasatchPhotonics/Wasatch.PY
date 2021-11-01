@@ -409,7 +409,6 @@ class SpectrometerSettings(object):
     # probably a simpler way to do this...
     def to_dict(self):
         d = {}
-        log.info(f"\n\n\n{self.__dict__.items()}\n\n\n\n")
         for k, v in self.__dict__.items():
             if k in ["eeprom_backup"]:
                 continue # skip these
