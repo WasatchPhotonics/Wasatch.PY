@@ -16,7 +16,9 @@ class MockUSBDevice(AbstractUSBDevice):
     def __init__(self, spec_name, eeprom_name):
         self.spec_name = spec_name
         self.eeprom_name = eeprom_name
-        self.device_id = DeviceID(label=f"USB:0x111111:0x4000:111111:111111")
+        # hash to add uniqueness, str to make it parseable for the DeviceID class 
+        self.fake_pid = str(hash(spec_name))
+        self.device_id = DeviceID(label=f"USB:{self.fake_pid[:8]}:0x4000:111111:111111")
         self.device_id = self.device_id
         self.test_spec_dir = os.path.join(self.get_default_data_dir(), 'testSpectrometers')
         self.spectrometer_folder = self.get_spec_folder()
