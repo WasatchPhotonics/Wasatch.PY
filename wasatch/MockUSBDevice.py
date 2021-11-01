@@ -4,10 +4,9 @@ import time
 import struct
 import logging
 
-from .common import get_default_data_dir
 from wasatch.DeviceID import DeviceID
 from .AbstractUSBDevice import AbstractUSBDevice
-from .ColumnFileParser import ColumnFileParser
+from enlighten.ColumnFileParser import ColumnFileParser
 from wasatch.EEPROM import EEPROM
 
 log = logging.getLogger(__name__)
@@ -16,12 +15,13 @@ class MockUSBDevice(AbstractUSBDevice):
 
     def __init__(self, spec_name, eeprom_name):
         self.spec_name = spec_name
+        self.eeprom_name = eeprom_name
         self.device_id = DeviceID(label=f"USB:0x111111:0x4000:111111:111111")
         self.device_id = self.device_id
-        self.test_spec_dir = os.path.join(get_default_data_dir(), 'testSpectrometers')
+        self.test_spec_dir = os.path.join(self.get_default_data_dir(), 'testSpectrometers')
         self.spectrometer_folder = self.get_spec_folder()
         self.test_spec_readings = os.path.join(self.test_spec_dir, self.spectrometer_folder,'readings')
-        self.test_spec_eeprom = os.path.join(self.test_spec_dir, self.spectrometer_folder,eeprom_name)
+        self.test_spec_eeprom = os.path.join(self.test_spec_dir, self.spectrometer_folder,'eeprom')
         self.bus = self.device_id.bus
         self.address = self.device_id.address
         self.vid = self.device_id.vid
@@ -156,7 +156,10 @@ class MockUSBDevice(AbstractUSBDevice):
     def load_eeprom(self, eeprom_file_loc):
         dir_items = os.walk(eeprom_file_loc)
         files = [os.path.join(path,file) for path,dir,files in dir_items for file in files]
-        eeprom_file = files[0]
+        log.info(f"files is {files}, looking for {self.eeprom_name}")
+        for file in files:
+            if os.path.basename(file) == self.eeprom_name:
+                eeprom_file = file
         with open(eeprom_file,'r') as file:
             eeprom_json = json.load(file)
 
@@ -199,3 +202,8 @@ class MockUSBDevice(AbstractUSBDevice):
             except:
                 log.error(f"Unable to set {key} on eeprom object")
         self.eeprom_obj.generate_write_buffers()
+
+    def get_default_data_dir(self):
+        if os.name == "nt":
+            return os.path.join(os.path.expanduser("~"), "Documents", "EnlightenSpectra")
+        return os.path.join(os.environ["HOME"], "EnlightenSpectra")
