@@ -6,7 +6,7 @@ import logging
 
 from wasatch.DeviceID import DeviceID
 from .AbstractUSBDevice import AbstractUSBDevice
-from enlighten.ColumnFileParser import ColumnFileParser
+from .CSVLoader import CSVLoader
 from wasatch.EEPROM import EEPROM
 
 log = logging.getLogger(__name__)
@@ -168,7 +168,7 @@ class MockUSBDevice(AbstractUSBDevice):
     def load_readings(self):
         dir_items = os.walk(self.test_spec_readings)
         reading_files = [os.path.join(path,file) for path,dir,files in dir_items for file in files]
-        parse_objects = [ColumnFileParser(file) for file in reading_files]
+        parse_objects = [CSVLoader(file) for file in reading_files]
         for object in parse_objects:
             object.load_data()
         self.spec_readings = [struct.pack('e' * len(object.processed_reading.processed),*object.processed_reading.processed) for object in parse_objects]
