@@ -244,4 +244,5 @@ class DeviceID(object):
         for k, v in self.__dict__.items():
             if k not in ["device"]:
                 d[k] = v
+            d["device_type"] = str(self.device_type)
         return d

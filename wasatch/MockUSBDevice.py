@@ -175,6 +175,9 @@ class MockUSBDevice(AbstractUSBDevice):
             object.load_data()
         self.spec_readings = [struct.pack('e' * len(object.processed_reading.processed),*object.processed_reading.processed) for object in parse_objects]
 
+    def to_dict():
+        return str(self)
+
     def __str__(self):
         return "<MockUSBDevice 0x%04x:0x%04x:%d:%d>" % (self.vid, self.pid, self.bus, self.address)
 

@@ -3,7 +3,6 @@ import logging
 import csv
 import re
 
-from .SpectrometerSettings import SpectrometerSettings
 from .Reading              import Reading
 from .ProcessedReading     import ProcessedReading
 
