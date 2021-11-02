@@ -5,6 +5,7 @@ import time
 import random
 import struct
 import logging
+from itertools import cycle
 
 from wasatch.DeviceID import DeviceID
 from .AbstractUSBDevice import AbstractUSBDevice
@@ -45,7 +46,11 @@ class MockUSBDevice(AbstractUSBDevice):
         self.got_start_detector_setpoint = False
         self.re_pattern_1 = re.compile('(.)([A-Z][a-z]+)')
         self.re_pattern_2 = re.compile('([a-z0-9])([A-Z])')
-
+        self.wpsc_translate = {
+            "wavecal_coeffs":"wavelength_coeffs",
+            "temp_to_dac_coeffs":"degC_to_dac_coeffs",
+            "adc_to_temp_coeffs":"adc_to_degC_coeffs",
+            }
 
         self.load_readings()
         self.load_eeprom(self.test_spec_eeprom)
@@ -62,6 +67,11 @@ class MockUSBDevice(AbstractUSBDevice):
             (182,None): self.cmd_set_offset,
             (216,None): self.cmd_set_setpoint,
             }
+        self.reading_cycles = {}
+        # turn readings arrays into cycles so 
+        # we have an infinite loop of spectra to go through
+        for key,value in self.spec_readings.items():
+            self.reading_cycles[key] = cycle(value)
 
     def get_spec_folder(self):
         spec_match = []
@@ -145,8 +155,7 @@ class MockUSBDevice(AbstractUSBDevice):
         if self.spectra_option is None:
             if self.single_reading:
                 return self.spec_readings["default"][0]
-            idx = random.randint(0,len(self.spec_readings["default"])-1)
-            ret_reading = self.spec_readings["default"][idx]
+            ret_reading = next(self.reading_cycles["default"])
             time.sleep(self.int_time*10**-3)
         return ret_reading
 
@@ -173,22 +182,30 @@ class MockUSBDevice(AbstractUSBDevice):
             eeprom_json = json.load(file)
 
         eeprom = dict(eeprom_json)
-        if "EEPROM" in eeprom.keys() and "measurement" in eeprom.keys():
+        if "EEPROM" in eeprom.keys() and "measurements" in eeprom.keys():
             self.parse_wpsc_eeprom(eeprom)
         else:
             self.eeprom = eeprom
 
     def parse_wpsc_eeprom(self,eeprom_file):
         translated_eeprom = {}
-        eeprom = eeprom_file["eeprom"]
+        eeprom = eeprom_file["EEPROM"]
         for key, value in eeprom.items():
             k = re.sub(self.re_pattern_1,r'\1_\2',key)
-            camel_key = re.sub(self.re_pattern_2,r'\1_\2',k)
+            camel_key = re.sub(self.re_pattern_2,r'\1_\2',k).lower()
+            if translation := self.wpsc_translate.get(camel_key,None):
+                camel_key = translation
             translated_eeprom[camel_key] = value
         self.eeprom = translated_eeprom
+        self.parse_measurements(eeprom_file["measurements"])
 
-
-
+    def parse_measurements(self, measurements):
+        for compound, int_time in measurements.items():
+            for int_time, spectra in int_time.items():
+                self.spec_readings[str(compound) + '_' + str(int_time)] = []
+                byte_array = [struct.pack('e' * len(spectra),*spectra)]
+                self.spec_readings[str(compound) + '_' + str(int_time)].extend(byte_array)
+                self.spec_readings["default"].extend(byte_array)
 
     def load_readings(self):
         dir_items = os.walk(self.test_spec_readings)
