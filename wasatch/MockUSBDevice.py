@@ -1,6 +1,8 @@
 import os
+import re
 import json
 import time
+import random
 import struct
 import logging
 
@@ -13,9 +15,11 @@ log = logging.getLogger(__name__)
 
 class MockUSBDevice(AbstractUSBDevice):
 
-    def __init__(self, spec_name, eeprom_name):
+    def __init__(self, spec_name, eeprom_name, eeprom_overrides=None, spectra_option=None):
         self.spec_name = spec_name
         self.eeprom_name = eeprom_name
+        self.eeprom_overrides = eeprom_overrides
+        self.spectra_option = spectra_option
         # hash to add uniqueness, str to make it parseable for the DeviceID class 
         self.fake_pid = str(hash(spec_name))
         self.device_id = DeviceID(label=f"USB:{self.fake_pid[:8]}:0x4000:111111:111111")
@@ -28,6 +32,7 @@ class MockUSBDevice(AbstractUSBDevice):
         self.address = self.device_id.address
         self.vid = self.device_id.vid
         self.pid = self.device_id.pid
+        self.spec_readings = {}
         self.int_time = 1000
         self.detector_gain = 10
         self.detector_offset = 1
@@ -38,6 +43,8 @@ class MockUSBDevice(AbstractUSBDevice):
         self.got_start_detector_gain = False
         self.got_start_detector_offset = False
         self.got_start_detector_setpoint = False
+        self.re_pattern_1 = re.compile('(.)([A-Z][a-z]+)')
+        self.re_pattern_2 = re.compile('([a-z0-9])([A-Z])')
 
 
         self.load_readings()
@@ -133,14 +140,14 @@ class MockUSBDevice(AbstractUSBDevice):
         return True
 
     def read(self, *args, **kwargs):
-        if self.single_reading:
-            return self.spec_readings[0]
-        ret_reading = self.spec_readings[self.reading_index]
-        self.reading_index += 1
-        self.reading_index %= self.reading_len
-        time.sleep(self.int_time*10**-3)
         if self.disconnect:
             return False
+        if self.spectra_option is None:
+            if self.single_reading:
+                return self.spec_readings["default"][0]
+            idx = random.randint(0,len(self.spec_readings["default"])-1)
+            ret_reading = self.spec_readings["default"][idx]
+            time.sleep(self.int_time*10**-3)
         return ret_reading
 
     def send_code(self):
@@ -165,15 +172,32 @@ class MockUSBDevice(AbstractUSBDevice):
         with open(eeprom_file,'r') as file:
             eeprom_json = json.load(file)
 
-        self.eeprom = dict(eeprom_json)
+        eeprom = dict(eeprom_json)
+        if "EEPROM" in eeprom.keys() and "measurement" in eeprom.keys():
+            self.parse_wpsc_eeprom(eeprom)
+        else:
+            self.eeprom = eeprom
+
+    def parse_wpsc_eeprom(self,eeprom_file):
+        translated_eeprom = {}
+        eeprom = eeprom_file["eeprom"]
+        for key, value in eeprom.items():
+            k = re.sub(self.re_pattern_1,r'\1_\2',key)
+            camel_key = re.sub(self.re_pattern_2,r'\1_\2',k)
+            translated_eeprom[camel_key] = value
+        self.eeprom = translated_eeprom
+
+
+
 
     def load_readings(self):
         dir_items = os.walk(self.test_spec_readings)
         reading_files = [os.path.join(path,file) for path,dir,files in dir_items for file in files]
         parse_objects = [CSVLoader(file) for file in reading_files]
+        self.spec_readings["default"] = []
         for object in parse_objects:
             object.load_data()
-        self.spec_readings = [struct.pack('e' * len(object.processed_reading.processed),*object.processed_reading.processed) for object in parse_objects]
+        self.spec_readings["default"].extend([struct.pack('e' * len(object.processed_reading.processed),*object.processed_reading.processed) for object in parse_objects])
 
     def to_dict():
         return str(self)
