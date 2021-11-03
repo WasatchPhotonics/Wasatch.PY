@@ -55,10 +55,10 @@ class MockUSBDevice(AbstractUSBDevice):
         self.load_readings()
         self.load_eeprom(self.test_spec_eeprom)
         self.covnert_eeprom()
-        self.reading_index = 0
         self.reading_len = len(self.spec_readings)
         self.default_ctrl_return = [1 for i in range(64)]
-        self.override_eeprom()
+        if self.eeprom_overrides:
+            self.override_eeprom()
         # style is (bRequest,wValue) to allow for second tier op codes
         # if first tier, where wValue matters then wValue should be given as None
         self.cmd_dict = {
