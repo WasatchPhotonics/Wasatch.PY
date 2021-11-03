@@ -58,6 +58,7 @@ class MockUSBDevice(AbstractUSBDevice):
         self.reading_index = 0
         self.reading_len = len(self.spec_readings)
         self.default_ctrl_return = [1 for i in range(64)]
+        self.override_eeprom()
         # style is (bRequest,wValue) to allow for second tier op codes
         # if first tier, where wValue matters then wValue should be given as None
         self.cmd_dict = {
@@ -206,6 +207,10 @@ class MockUSBDevice(AbstractUSBDevice):
                 byte_array = [struct.pack('e' * len(spectra),*spectra)]
                 self.spec_readings[str(compound) + '_' + str(int_time)].extend(byte_array)
                 self.spec_readings["default"].extend(byte_array)
+
+    def override_eeprom(self):
+        for key,value in self.eeprom_overrides.items():
+            self.eeprom[key] = value
 
     def load_readings(self):
         dir_items = os.walk(self.test_spec_readings)
