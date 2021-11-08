@@ -50,6 +50,7 @@ class MockUSBDevice(AbstractUSBDevice):
             "wavecal_coeffs":"wavelength_coeffs",
             "temp_to_dac_coeffs":"degC_to_dac_coeffs",
             "adc_to_temp_coeffs":"adc_to_degC_coeffs",
+            "serial": "serial_number",
             }
 
         self.load_readings()
@@ -234,7 +235,7 @@ class MockUSBDevice(AbstractUSBDevice):
         return str(self)
 
     def __eq__(self, other):
-        return str(self) == str(other)
+        return hash(self) == hash(other)
 
     def __ne__(self, other):
         return str(self) != str(other)
