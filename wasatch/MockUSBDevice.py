@@ -21,18 +21,21 @@ class MockUSBDevice(AbstractUSBDevice):
         self.eeprom_name = eeprom_name
         self.eeprom_overrides = eeprom_overrides
         self.spectra_option = spectra_option
-        # hash to add uniqueness, str to make it parseable for the DeviceID class 
         self.fake_pid = str(hash(spec_name))
         self.device_id = DeviceID(label=f"USB:{self.fake_pid[:8]}:0x4000:111111:111111")
         self.device_id = self.device_id
-        self.test_spec_dir = os.path.join(self.get_default_data_dir(), 'testSpectrometers')
-        self.spectrometer_folder = self.get_spec_folder()
-        self.test_spec_readings = os.path.join(self.test_spec_dir, self.spectrometer_folder,'readings')
-        self.test_spec_eeprom = os.path.join(self.test_spec_dir, self.spectrometer_folder,'eeprom')
         self.bus = self.device_id.bus
         self.address = self.device_id.address
         self.vid = self.device_id.vid
         self.pid = self.device_id.pid
+
+        #path attributes
+        self.test_spec_dir = os.path.join(self.get_default_data_dir(), 'testSpectrometers')
+        self.spectrometer_folder = self.get_spec_folder()
+        self.test_spec_readings = os.path.join(self.test_spec_dir, self.spectrometer_folder,'readings')
+        self.test_spec_eeprom = os.path.join(self.test_spec_dir, self.spectrometer_folder,'eeprom')
+
+        #init attributes
         self.spec_readings = {}
         self.int_time = 1000
         self.detector_gain = 10
@@ -41,9 +44,12 @@ class MockUSBDevice(AbstractUSBDevice):
         self.disconnect = False
         self.single_reading = False
         self.got_start_int = False
+        self.laser_enable = False
         self.got_start_detector_gain = False
         self.got_start_detector_offset = False
         self.got_start_detector_setpoint = False
+
+        #set up functions
         self.re_pattern_1 = re.compile('(.)([A-Z][a-z]+)')
         self.re_pattern_2 = re.compile('([a-z0-9])([A-Z])')
         self.wpsc_translate = {
@@ -51,6 +57,9 @@ class MockUSBDevice(AbstractUSBDevice):
             "temp_to_dac_coeffs":"degC_to_dac_coeffs",
             "adc_to_temp_coeffs":"adc_to_degC_coeffs",
             "serial": "serial_number",
+            "inc_laser": "has_laser",
+            "inc_battery": "has_battery",
+            "inc_cooling": "has_cooling"
             }
 
         self.load_readings()
@@ -68,6 +77,8 @@ class MockUSBDevice(AbstractUSBDevice):
             (183,None): self.cmd_set_gain,
             (182,None): self.cmd_set_offset,
             (216,None): self.cmd_set_setpoint,
+            (190, None): self.cmd_toggle_laser,
+            (226,None): self.cmd_get_laser_enabled,
             }
         self.reading_cycles = {}
         # turn readings arrays into cycles so 
@@ -124,6 +135,18 @@ class MockUSBDevice(AbstractUSBDevice):
         device, host, bRequest, wValue, wIndex, wLength = args
         if not self.got_start_int: self.got_start_int = True
         self.set_int_time(wIndex << 8 | wValue)
+        return [1]
+
+    def cmd_get_laser_enabled(self, *args):
+        device, host, bRequest, wValue, wIndex, wLength = args
+        if self.laser_enable:
+            return [1]
+        else:
+            return [0]
+
+    def cmd_toggle_laser(self, *args):
+        device, host, bRequest, wValue, wIndex, wLength = args
+        self.laser_enable = bool(wValue)
         return [1]
 
     def cmd_set_gain(self, *args):
