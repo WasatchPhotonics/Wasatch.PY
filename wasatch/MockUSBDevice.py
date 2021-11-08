@@ -48,6 +48,7 @@ class MockUSBDevice(AbstractUSBDevice):
         self.got_start_detector_gain = False
         self.got_start_detector_offset = False
         self.got_start_detector_setpoint = False
+        self.detector_tec_enable = False
 
         #set up functions
         self.re_pattern_1 = re.compile('(.)([A-Z][a-z]+)')
@@ -77,8 +78,10 @@ class MockUSBDevice(AbstractUSBDevice):
             (183,None): self.cmd_set_gain,
             (182,None): self.cmd_set_offset,
             (216,None): self.cmd_set_setpoint,
-            (190, None): self.cmd_toggle_laser,
+            (190,None): self.cmd_toggle_laser,
             (226,None): self.cmd_get_laser_enabled,
+            (214,None): self.cmd_toggle_tec,
+            (218,None): self.cmd_get_tec_enable,
             }
         self.reading_cycles = {}
         # turn readings arrays into cycles so 
@@ -139,15 +142,12 @@ class MockUSBDevice(AbstractUSBDevice):
 
     def cmd_get_laser_enabled(self, *args):
         device, host, bRequest, wValue, wIndex, wLength = args
-        if self.laser_enable:
-            return [1]
-        else:
-            return [0]
+        return [int(self.laser_enable)]
 
     def cmd_toggle_laser(self, *args):
         device, host, bRequest, wValue, wIndex, wLength = args
         self.laser_enable = bool(wValue)
-        return [1]
+        return [int(self.laser_enable)]
 
     def cmd_set_gain(self, *args):
         device, host, bRequest, wValue, wIndex, wLength = args
@@ -166,6 +166,19 @@ class MockUSBDevice(AbstractUSBDevice):
         if not self.got_start_detector_setpoint: self.got_start_detector_setpoint
         self.detector_setpoint = (wValue & 0x0FFF)
         return [1]
+
+    def cmd_toggle_tec(self, *args):
+        device, host, bRequest, wValue, wIndex, wLength = args
+        self.detector_tec_enable = bool(wValue)
+
+
+    def cmd_get_tec_enable(self, *args):
+        device, host, bRequest, wValue, wIndex, wLength = args
+        if self.detector_tec_enable:
+            return [1]
+        else:
+            return [0]
+
 
     def get_int_time(self):
         return self.int_time
