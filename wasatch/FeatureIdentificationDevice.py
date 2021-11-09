@@ -210,8 +210,6 @@ class FeatureIdentificationDevice(object):
         if (eeprom.startup_temp_degC >= eeprom.min_temp_degC and 
             eeprom.startup_temp_degC <= eeprom.max_temp_degC):
             degC = eeprom.startup_temp_degC
-        elif (self.detector_tec_setpoint_has_been_set):
-            degC = self.defaultTECSetpointDegC
         elif (re.match(r"10141|9214", eeprom.detector, re.IGNORECASE)):
             degC = -15
         elif (re.match(r"11511|11850|13971|7031", eeprom.detector, re.IGNORECASE)):
@@ -220,11 +218,12 @@ class FeatureIdentificationDevice(object):
         if (eeprom.has_cooling and degC != UNINITIALIZED_TEMPERATURE_DEG_C):
             #TEC doesn't do anything unless you give it a temperature first
             log.debug("setting TEC setpoint to {0} deg C", degC)
-            detector_tec_setpoint_degC = degC
-            self.set_detector_tec_setpoint_degC(detector_tec_setpoint_degC)
+            self.detector_tec_setpoint_degC = degC
+            self.set_detector_tec_setpoint_degC(self.detector_tec_setpoint_degC)
 
             log.debug("enabling detector TEC")
-            detector_tec_enabled = true
+            #detector_tec_enabled = true
+            self.detector_tec_setpoint_has_been_set = True
 
         # ######################################################################
         # FPGA
