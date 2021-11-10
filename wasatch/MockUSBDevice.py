@@ -63,6 +63,7 @@ class MockUSBDevice(AbstractUSBDevice):
             "inc_battery": "has_battery",
             "inc_cooling": "has_cooling",
             "max_laser_power_mw": "max_laser_power_mW",
+            "excitation_wavelength_nm": "excitation_nm",
             }
 
         self.load_readings()
@@ -238,6 +239,8 @@ class MockUSBDevice(AbstractUSBDevice):
             camel_key = re.sub(self.re_pattern_2,r'\1_\2',k).lower()
             if translation := self.wpsc_translate.get(camel_key,None):
                 camel_key = translation
+            if camel_key == "excitation_nm":
+                translated_eeprom["excitation_nm_float"] = value
             translated_eeprom[camel_key] = value
         self.eeprom = translated_eeprom
         self.parse_measurements(eeprom_file["measurements"])
