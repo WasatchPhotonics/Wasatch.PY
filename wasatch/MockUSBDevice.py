@@ -171,14 +171,9 @@ class MockUSBDevice(AbstractUSBDevice):
         device, host, bRequest, wValue, wIndex, wLength = args
         self.detector_tec_enable = bool(wValue)
 
-
     def cmd_get_tec_enable(self, *args):
         device, host, bRequest, wValue, wIndex, wLength = args
-        if self.detector_tec_enable:
-            return [1]
-        else:
-            return [0]
-
+        return [bool(self.detector_tec_enable)]
 
     def get_int_time(self):
         return self.int_time
