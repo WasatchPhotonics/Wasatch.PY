@@ -41,6 +41,7 @@ class MockUSBDevice(AbstractUSBDevice):
         self.detector_gain = 10
         self.detector_offset = 1
         self.detector_setpoint = 1
+        self.detector_temp_raw = 40.0
         self.disconnect = False
         self.single_reading = False
         self.got_start_int = False
@@ -73,15 +74,16 @@ class MockUSBDevice(AbstractUSBDevice):
         # style is (bRequest,wValue) to allow for second tier op codes
         # if first tier, where wValue matters then wValue should be given as None
         self.cmd_dict = {
-            (255,1): self.cmd_read_eeprom,
             (178,None): self.cmd_set_int_time,
-            (183,None): self.cmd_set_gain,
             (182,None): self.cmd_set_offset,
-            (216,None): self.cmd_set_setpoint,
+            (183,None): self.cmd_set_gain,
             (190,None): self.cmd_toggle_laser,
-            (226,None): self.cmd_get_laser_enabled,
             (214,None): self.cmd_toggle_tec,
+            (215,None): self.cmd_get_detector_temp,
+            (216,None): self.cmd_set_setpoint,
             (218,None): self.cmd_get_tec_enable,
+            (226,None): self.cmd_get_laser_enabled,
+            (255,1): self.cmd_read_eeprom,
             }
         self.reading_cycles = {}
         # turn readings arrays into cycles so 
@@ -143,6 +145,13 @@ class MockUSBDevice(AbstractUSBDevice):
     def cmd_get_laser_enabled(self, *args):
         device, host, bRequest, wValue, wIndex, wLength = args
         return [int(self.laser_enable)]
+
+    def cmd_get_detector_temp(self, *args):
+        bytes = struct.pack('>e',self.detector_temp_raw)
+        value = int.from_bytes(bytes,byteorder='big')
+        value = value & 0x0F
+        return value.to_bytes(2, byteorder='big')
+
 
     def cmd_toggle_laser(self, *args):
         device, host, bRequest, wValue, wIndex, wLength = args
