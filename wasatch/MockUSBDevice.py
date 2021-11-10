@@ -61,7 +61,8 @@ class MockUSBDevice(AbstractUSBDevice):
             "serial": "serial_number",
             "inc_laser": "has_laser",
             "inc_battery": "has_battery",
-            "inc_cooling": "has_cooling"
+            "inc_cooling": "has_cooling",
+            "max_laser_power_mw": "max_laser_power_mW",
             }
 
         self.load_readings()
