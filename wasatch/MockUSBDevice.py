@@ -165,7 +165,14 @@ class MockUSBDevice(AbstractUSBDevice):
     def cmd_set_gain(self, *args):
         device, host, bRequest, wValue, wIndex, wLength = args
         if not self.got_start_detector_gain: self.got_start_detector_gain = True
-        self.detector_gain = wValue
+        wValB = wValue.to_bytes(2,byteorder='little')#struct.unpack('f',bytearray(wValue))
+        lsb = wValB[0] # LSB-MSB
+        msb = wValB[1]
+        raw = (msb << 8) | lsb
+
+        gain = msb + lsb / 256.0
+        log.info(f"\n\n\ngot wValue of {wValue} and as gain is {gain}\n\n\n")
+        self.detector_gain = gain
         return [1]
 
     def cmd_set_offset(self, *args):
