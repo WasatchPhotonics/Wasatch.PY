@@ -3,6 +3,7 @@
 # This class captures aspects of the hardware which normally ENLIGHTEN can't / 
 # shouldn't see, which isn't otherwise reliably inferred from EEPROM, ModelInfo 
 # etc.
+
 class HardwareInfo(object):
 
     def __init__(self, vid=None, pid=None):
@@ -13,7 +14,7 @@ class HardwareInfo(object):
         return self.pid == 0x2000
 
     def is_arm(self):
-        return self.pid == 0x4000
+        return self.pid == 0x4000 or self.pid == 4000
 
     ##
     # I can't think of another way to determine whether or not a spectrometer 

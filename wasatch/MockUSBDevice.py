@@ -18,11 +18,12 @@ class MockUSBDevice(AbstractUSBDevice):
 
     def __init__(self, spec_name, eeprom_name, eeprom_overrides=None, spectra_option=None):
         self.spec_name = spec_name
+        self.device_type = self
         self.eeprom_name = eeprom_name
         self.eeprom_overrides = eeprom_overrides
         self.spectra_option = spectra_option
         self.fake_pid = str(hash(spec_name))
-        self.device_id = DeviceID(label=f"USB:{self.fake_pid[:8]}:0x4000:111111:111111")
+        self.device_id = DeviceID(label=f"USB:{self.fake_pid[:8]}:0x16384:111111:111111")
         self.device_id = self.device_id
         self.bus = self.device_id.bus
         self.address = self.device_id.address
@@ -64,6 +65,7 @@ class MockUSBDevice(AbstractUSBDevice):
             "inc_cooling": "has_cooling",
             "max_laser_power_mw": "max_laser_power_mW",
             "excitation_wavelength_nm": "excitation_nm",
+            "detector_name": "detector",
             }
 
         self.load_readings()
@@ -210,7 +212,7 @@ class MockUSBDevice(AbstractUSBDevice):
         return True
 
     def get_pid_hex(self):
-        return str(self.pid)
+        return str(hex(self.pid))[2:]
 
     def get_vid_hex(self):
         return str(self.vid)
