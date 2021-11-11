@@ -171,7 +171,6 @@ class MockUSBDevice(AbstractUSBDevice):
         raw = (msb << 8) | lsb
 
         gain = msb + lsb / 256.0
-        log.info(f"\n\n\ngot wValue of {wValue} and as gain is {gain}\n\n\n")
         self.detector_gain = gain
         return [1]
 
