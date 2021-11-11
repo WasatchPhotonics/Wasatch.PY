@@ -184,7 +184,7 @@ class MockUSBDevice(AbstractUSBDevice):
     def cmd_set_setpoint(self, *args):
         device, host, bRequest, wValue, wIndex, wLength = args
         if not self.got_start_detector_setpoint: self.got_start_detector_setpoint
-        self.detector_setpoint = (wValue & 0x0FFF)
+        self.detector_setpoint = wValue
         return [1]
 
     def cmd_toggle_tec(self, *args):
