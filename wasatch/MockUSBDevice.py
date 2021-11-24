@@ -66,6 +66,7 @@ class MockUSBDevice(AbstractUSBDevice):
             "max_laser_power_mw": "max_laser_power_mW",
             "excitation_wavelength_nm": "excitation_nm",
             "detector_name": "detector",
+            "flip_x_axis": "invert_x_axis",
             }
 
         self.load_readings()
