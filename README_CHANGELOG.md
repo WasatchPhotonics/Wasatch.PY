@@ -1,5 +1,7 @@
 # Changelog
 
+- 2021-12-13 1.1.37
+    - dropped FeatureMask support from EEPROM format 9 (only support on format 10+)
 - 2021-10-28 1.1.36
     - added FID.can\_laser\_fire() and is\_laser\_firing() (and corresponding Reading flags)
     - grouped laser commands in FID

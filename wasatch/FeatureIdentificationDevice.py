@@ -854,14 +854,15 @@ class FeatureIdentificationDevice(object):
         if self.settings.state.area_scan_enabled:
             area_scan_row_count = spectrum[0]
 
-            for i in range(4):
-                spectrum[i] = spectrum[4] # KLUDGE: NRD-dual
+            # for i in range(4):
+            #     spectrum[i] = spectrum[4] # KLUDGE: NRD-dual
 
             # Leave the row counter in place if we're in "Fast" Area Scan mode,
             # since downstream software can use it to assemble the final image.
             # ("Slow" Area Scan mode sent this value back as a separate field in
             # the Reading, but this isn't possible in Fast mode.  Just delete
             # Slow mode when Fast is widely deployed.)
+            #
             if not self.settings.state.area_scan_fast:
                 spectrum[0] = spectrum[1]
 
