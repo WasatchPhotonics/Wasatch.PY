@@ -7,6 +7,7 @@ import usb
 import usb.core
 import usb.util
 import os
+import re
 
 from random import randint
 from time   import sleep
@@ -23,6 +24,7 @@ from .EEPROM               import EEPROM
 log = logging.getLogger(__name__)
 
 MICROSEC_TO_SEC = 0.000001
+UNINITIALIZED_TEMPERATURE_DEG_C = -999
 
 class SpectrumAndRow(object):
     def __init__(self, spectrum=None, row=-1):
@@ -202,6 +204,26 @@ class FeatureIdentificationDevice(object):
             log.error("failed to read EEPROM")
             self.connecting = False
             return False
+
+        degC = UNINITIALIZED_TEMPERATURE_DEG_C;
+        eeprom = self.settings.eeprom
+        if (eeprom.startup_temp_degC >= eeprom.min_temp_degC and 
+            eeprom.startup_temp_degC <= eeprom.max_temp_degC):
+            degC = eeprom.startup_temp_degC
+        elif (re.match(r"10141|9214", eeprom.detector, re.IGNORECASE)):
+            degC = -15
+        elif (re.match(r"11511|11850|13971|7031", eeprom.detector, re.IGNORECASE)):
+            degC = 10
+
+        if (eeprom.has_cooling and degC != UNINITIALIZED_TEMPERATURE_DEG_C):
+            #TEC doesn't do anything unless you give it a temperature first
+            log.debug("setting TEC setpoint to {0} deg C", degC)
+            self.detector_tec_setpoint_degC = degC
+            self.set_detector_tec_setpoint_degC(self.detector_tec_setpoint_degC)
+
+            log.debug("enabling detector TEC")
+            #detector_tec_enabled = true
+            self.detector_tec_setpoint_has_been_set = True
 
         # ######################################################################
         # FPGA
