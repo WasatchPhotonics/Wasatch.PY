@@ -309,6 +309,4 @@ class MockUSBDevice(AbstractUSBDevice):
         self.eeprom_obj.generate_write_buffers()
 
     def get_default_data_dir(self):
-        if os.name == "nt":
-            return os.path.join(os.path.expanduser("~"), "Documents", "EnlightenSpectra")
-        return os.path.join(os.environ["HOME"], "EnlightenSpectra")
+        return os.getcwd()
