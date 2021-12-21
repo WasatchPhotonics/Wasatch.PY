@@ -1,3 +1,4 @@
+import platform
 import datetime
 import logging
 import random
@@ -147,6 +148,8 @@ class FeatureIdentificationDevice(object):
 
         if os.name != "posix":
             log.debug("on Windows, so NOT setting configuration and claiming interface")
+        elif "macOS" in platform.platform():
+            log.debug("on MacOS, so NOT setting configuration and claiming interface")
         else:
             log.debug("on posix, so setting configuration and claiming interface")
             try:
@@ -248,8 +251,12 @@ class FeatureIdentificationDevice(object):
 
         # probably the default, but just to be sure
         if self.settings.is_micro():
-            log.debug("applying SiG settings")
-            self.set_laser_watchdog_sec(10)
+            # some kind of SiG
+            if self.settings.eeprom.has_laser:
+                log.debug("applying SiG settings")
+                self.set_laser_watchdog_sec(10)
+            else:
+                log.debug("skipping laser features for non-Raman SiG")
 
         self.set_integration_time_ms(self.settings.eeprom.startup_integration_time_ms)
 
@@ -1928,7 +1935,7 @@ class FeatureIdentificationDevice(object):
     #
     # @todo don't override if the user has "manually" set in ENLIGHTEN
     def update_laser_watchdog(self):
-        if not self.settings.is_micro():
+        if not self.settings.is_micro() or not self.settings.eeprom.has_laser:
             return False
 
         throwaways_sec = self.settings.state.integration_time_ms    \
