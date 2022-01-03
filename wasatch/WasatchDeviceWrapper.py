@@ -173,6 +173,7 @@ class WasatchDeviceWrapper(object):
         self.poller       = None    # a handle to the child thread
         self.thread       = False
         self.is_ocean     = '0x2457' in str(device_id)
+        self.mock         = 'test' in str(device_id)
 
         # this will contain a populated SpectrometerSettings object from the
         # WasatchDevice, for relay to the instantiating Controller

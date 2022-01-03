@@ -1,3 +1,4 @@
+import platform
 import datetime
 import logging
 import random
@@ -61,6 +62,10 @@ class FeatureIdentificationDevice(object):
         self.message_queue = message_queue
 
         self.device = None
+        if device_id.vid != 111111 and device_id.pid != 4000:
+            self.device_type = device_id.device_type
+        else:
+            self.device_type = device_id
 
         self.last_usb_timestamp = None
 
@@ -120,10 +125,13 @@ class FeatureIdentificationDevice(object):
         # it doesn't know what PIDs it might be looking for.  We know, so just
         # narrow down the search to those devices.
 
-        devices = usb.core.find(find_all=True, idVendor=self.device_id.vid, idProduct=self.device_id.pid)
+        log.info(self.device_type)
+        devices = self.device_type.find(find_all=True, idVendor=self.device_id.vid, idProduct=self.device_id.pid)
+        log.info(devices)
         dev_list = list(devices) # convert from array
 
         device = None
+        log.info(dev_list)
         for dev in dev_list:
             if dev.bus != self.device_id.bus:
                 log.debug("FID.connect: rejecting device (bus %d != requested %d)", dev.bus, self.device_id.bus)
@@ -142,11 +150,13 @@ class FeatureIdentificationDevice(object):
 
         if os.name != "posix":
             log.debug("on Windows, so NOT setting configuration and claiming interface")
+        elif "macOS" in platform.platform():
+            log.debug("on MacOS, so NOT setting configuration and claiming interface")
         else:
             log.debug("on posix, so setting configuration and claiming interface")
             try:
                 log.debug("setting configuration")
-                result = device.set_configuration()
+                result = self.device_type.set_configuration(device)
             except Exception as exc:
                 #####################################################################################################################
                 # This additional if statement is present for the Raspberry Pi. There is an issue with resource busy errors.
@@ -154,7 +164,7 @@ class FeatureIdentificationDevice(object):
                 #####################################################################################################################
                 if "Resource busy" in str(exc):
                     log.warn("Hardware Failure in setConfiguration. Resource busy error. Attempting to reattach driver by reset.")
-                    dev.reset()
+                    self.device_type.reset(dev)
                     connect()
                     return self.connected
                 log.warn("Hardware Failure in setConfiguration", exc_info=1)
@@ -163,7 +173,7 @@ class FeatureIdentificationDevice(object):
 
             try:
                 log.debug("claiming interface")
-                result = usb.util.claim_interface(device, 0)
+                result = self.device_type.claim_interface(device, 0)
             except Exception as exc:
                 log.warn("Hardware Failure in claimInterface", exc_info=1)
                 self.connecting = False
@@ -263,8 +273,12 @@ class FeatureIdentificationDevice(object):
 
         # probably the default, but just to be sure
         if self.settings.is_micro():
-            log.debug("applying SiG settings")
-            self.set_laser_watchdog_sec(10)
+            # some kind of SiG
+            if self.settings.eeprom.has_laser:
+                log.debug("applying SiG settings")
+                self.set_laser_watchdog_sec(10)
+            else:
+                log.debug("skipping laser features for non-Raman SiG")
 
         self.set_integration_time_ms(self.settings.eeprom.startup_integration_time_ms)
 
@@ -287,7 +301,7 @@ class FeatureIdentificationDevice(object):
 
         log.critical("fid.disconnect: releasing interface")
         try:
-            result = usb.util.release_interface(self.device, 0)
+            result = self.device_type.release_interface(self.device, 0)
         except Exception as exc:
             log.warn("Failure in release interface", exc_info=1)
             raise
@@ -396,7 +410,8 @@ class FeatureIdentificationDevice(object):
         while True:
             try:
                 self.wait_for_usb_available()
-                result = self.device.ctrl_transfer(0x40,        # HOST_TO_DEVICE
+                result = self.device_type.ctrl_transfer(self.device,
+                                                   0x40,        # HOST_TO_DEVICE
                                                    bRequest,
                                                    wValue,
                                                    wIndex,
@@ -450,7 +465,8 @@ class FeatureIdentificationDevice(object):
 
         try:
             self.wait_for_usb_available()
-            result = self.device.ctrl_transfer(0xc0,        # DEVICE_TO_HOST
+            result = self.device_type.ctrl_transfer(self.device,
+                                               0xc0,        # DEVICE_TO_HOST
                                                bRequest,
                                                wValue,
                                                wIndex,
@@ -497,7 +513,7 @@ class FeatureIdentificationDevice(object):
             except:
                 log.error("exception reading upper_code 0x01 with page %d", page, exc_info=1)
             if buf is None or len(buf) < 64:
-                log.error("unable to read EEPROM")
+                log.error(f"unable to read EEPROM received buf of {buf} and len {len(buf)}")
                 return False
             buffers.append(buf)
         return self.settings.eeprom.parse(buffers)
@@ -808,7 +824,7 @@ class FeatureIdentificationDevice(object):
             while data is None:
                 try:
                     log.debug("waiting for %d bytes (timeout %dms)", block_len_bytes, timeout_ms)
-                    data = self.device.read(endpoint, block_len_bytes, timeout=timeout_ms)
+                    data = self.device_type.read(self.device, endpoint, block_len_bytes, timeout=timeout_ms)
                     log.debug("read %d bytes", len(data))
                 except Exception as exc:
                     if self.settings.state.trigger_source == SpectrometerState.TRIGGER_SOURCE_EXTERNAL:
@@ -817,6 +833,7 @@ class FeatureIdentificationDevice(object):
                         # log.debug("still waiting for external trigger")
                         return None
                     else:
+                        log.error(f"Encountered error on read of {exc}")
                         # if we fail even a single spectrum read, we return a
                         # False (poison-pill) and prepare to disconnect
                         return False
@@ -1940,7 +1957,7 @@ class FeatureIdentificationDevice(object):
     #
     # @todo don't override if the user has "manually" set in ENLIGHTEN
     def update_laser_watchdog(self):
-        if not self.settings.is_micro():
+        if not self.settings.is_micro() or not self.settings.eeprom.has_laser:
             return False
 
         throwaways_sec = self.settings.state.integration_time_ms    \

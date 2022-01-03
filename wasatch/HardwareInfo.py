@@ -3,6 +3,7 @@
 # This class captures aspects of the hardware which normally ENLIGHTEN can't / 
 # shouldn't see, which isn't otherwise reliably inferred from EEPROM, ModelInfo 
 # etc.
+
 class HardwareInfo(object):
 
     def __init__(self, vid=None, pid=None):

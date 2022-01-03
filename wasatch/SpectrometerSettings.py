@@ -4,10 +4,13 @@ import json
 import math
 import re
 
+from datetime import datetime
 from . import utils
 
 from .SpectrometerState import SpectrometerState
 from .DetectorRegions   import DetectorRegions
+from .MockUSBDevice     import MockUSBDevice
+from .RealUSBDevice     import RealUSBDevice
 from .HardwareInfo      import HardwareInfo
 from .DetectorROI       import DetectorROI
 from .FPGAOptions       import FPGAOptions
@@ -410,7 +413,7 @@ class SpectrometerSettings(object):
             if k in ["eeprom_backup"]:
                 continue # skip these
 
-            if isinstance(v, (DeviceID, EEPROM, FPGAOptions, SpectrometerState, HardwareInfo)):
+            if isinstance(v, (DeviceID, EEPROM, FPGAOptions, SpectrometerState, HardwareInfo, RealUSBDevice, MockUSBDevice, datetime)):
                 o = v.to_dict()
             elif isinstance(v, np.ndarray):
                 o = v.tolist()
