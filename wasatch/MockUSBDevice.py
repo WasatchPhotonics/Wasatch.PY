@@ -39,7 +39,7 @@ class MockUSBDevice(AbstractUSBDevice):
         #init attributes
         self.spec_readings = {}
         self.int_time = 1000
-        self.detector_gain = 10
+        self.detector_gain = 1
         self.detector_offset = 1
         self.detector_setpoint = 1
         self.detector_temp_raw = 40.0
@@ -71,7 +71,7 @@ class MockUSBDevice(AbstractUSBDevice):
 
         self.load_readings()
         self.load_eeprom(self.test_spec_eeprom)
-        self.covnert_eeprom()
+        self.convert_eeprom()
         self.reading_len = len(self.spec_readings)
         self.default_ctrl_return = [1 for i in range(64)]
         if self.eeprom_overrides:
@@ -193,7 +193,7 @@ class MockUSBDevice(AbstractUSBDevice):
 
     def cmd_get_tec_enable(self, *args):
         device, host, bRequest, wValue, wIndex, wLength = args
-        return [bool(self.detector_tec_enable)]
+        return [int(self.detector_tec_enable)]
 
     def get_int_time(self):
         return self.int_time
@@ -299,7 +299,7 @@ class MockUSBDevice(AbstractUSBDevice):
     def close(self):
         self.disconnect = True
 
-    def covnert_eeprom(self):
+    def convert_eeprom(self):
         self.eeprom_obj = EEPROM()
         for key, value in self.eeprom.items():
             try:

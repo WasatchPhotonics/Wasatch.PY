@@ -14,7 +14,7 @@ class HardwareInfo(object):
         return self.pid == 0x2000
 
     def is_arm(self):
-        return self.pid == 0x4000 or self.pid == 4000
+        return self.pid == 0x4000
 
     ##
     # I can't think of another way to determine whether or not a spectrometer 
