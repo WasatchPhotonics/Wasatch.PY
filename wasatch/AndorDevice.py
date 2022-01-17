@@ -58,9 +58,9 @@ class AndorDevice:
         else:
             self.driver = cdll.LoadLibrary(r"C:\Program Files\Andor SDK\atmcd32d.dll")
 
-        #self.settings.eeprom.model = self.device.model
-        #self.settings.eeprom.serial_number = self.device.serial_number
+        self.settings.eeprom.model = "Andor"
         self.settings.eeprom.detector = "Andor" # Ocean API doesn't have access to detector info
+        self.settings.eeprom.wavelength_coeffs = [0,1,0,0]
 
     def connect(self):
         cameraHandle = c_int()
@@ -244,6 +244,7 @@ class AndorDevice:
         sn = c_int()
         assert(self.SUCCESS == cdll.atmcd32d.GetCameraSerialNumber(byref(sn))), "can't get serial number"
         self.serial = f"CCD-{sn.value}"
+        self.settings.eeprom.serial_number = self.serial
         print(f"connected to {self.serial}")
 
     def init_tec_setpoint(self):
