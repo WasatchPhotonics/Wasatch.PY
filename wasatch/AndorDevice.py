@@ -2,6 +2,7 @@ import re
 import os
 import usb
 import time
+import json
 import queue
 import struct
 import logging
@@ -77,6 +78,20 @@ class AndorDevice:
         self.init_tec_setpoint()
         self.init_detector_area()
 
+        if not self.check_config_file():
+            self.config_values = {
+                'wp_serial_number': self.serial,
+                'wavelength_coeffs': [0,1,0,0],
+                'excitation_nm_float': 1,
+                }
+            f = open(self.config_file, 'w')
+            json.dump(self.config_values, f)
+        else:
+            f = open(self.config_file,)
+            self.config_values = dict(json.load(f))
+            self.settings.eeprom.wavelength_coeffs = list(self.config_values['wavelength_coeffs'])
+            self.settings.eeprom.excitation_nm_float = float(self.config_values['excitation_nm_float'])
+
         assert(self.SUCCESS == self.driver.CoolerON()), "unable to enable TEC"
         log.debug("enabled TEC")
 
@@ -98,6 +113,13 @@ class AndorDevice:
         self.connected = True
         self.settings.eeprom.active_pixels_horizontal = self.pixels 
         return True
+
+    def check_config_file(self):
+        self.config_dir = os.path.join(self.get_default_data_dir(), 'config')
+        self.config_file = os.path.join(self.config_dir, self.serial + '.json')
+        if not os.path.exists(self.config_dir):
+            os.makedirs(self.config_dir)
+        return os.path.isfile(self.config_file)
 
     def init_lambdas(self):
         f = {}
@@ -303,3 +325,14 @@ class AndorDevice:
             return False
 
         return f(value)
+
+    def update_wavelength_coeffs(self, coeffs):
+        self.settings.eeprom.wavelength_coeffs = coeffs
+        self.config_values['wavelength_coeffs'] = coeffs
+        f = open(self.config_file, 'w')
+        json.dump(self.config_values, f)
+
+    def get_default_data_dir(self):
+        if os.name == "nt":
+            return os.path.join(os.path.expanduser("~"), "Documents", "EnlightenSpectra")
+        return os.path.join(os.environ["HOME"], "EnlightenSpectra")
