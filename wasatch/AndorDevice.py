@@ -1,0 +1,304 @@
+import re
+import os
+import usb
+import time
+import queue
+import struct
+import logging
+import datetime
+from ctypes import *
+
+from .SpectrometerSettings        import SpectrometerSettings
+from .SpectrometerState           import SpectrometerState
+from .DeviceID                    import DeviceID
+from .Reading                     import Reading
+
+log = logging.getLogger(__name__)
+
+class AndorDevice:
+
+    SUCCESS = 20002             #!< see page 330 of Andor SDK documentation
+    SHUTTER_SPEED_MS = 35       #!< not sure where this comes from...ask Caleb - TS
+
+    def __init__(self, device_id, message_queue=None):
+        # if passed a string representation of a DeviceID, deserialize it
+        if type(device_id) is str:
+            device_id = DeviceID(label=device_id)
+
+        self.device_id      = device_id
+        self.message_queue  = message_queue
+
+        self.connected = False
+
+        # Receives ENLIGHTEN's 'change settings' commands in the spectrometer
+        # process. Although a logical queue, has nothing to do with multiprocessing.
+        self.command_queue = []
+
+        self.immediate_mode = False
+
+        self.settings = SpectrometerSettings(self.device_id)
+        self.summed_spectra         = None
+        self.sum_count              = 0
+        self.session_reading_count  = 0
+        self.take_one               = False
+        self.failure_count          = 0
+
+        self.process_id = os.getpid()
+        self.last_memory_check = datetime.datetime.now()
+        self.last_battery_percentage = 0
+        self.init_lambdas()
+        self.spec_index = 0 
+        self._scan_averaging = 1
+        self.dark = None
+        self.boxcar_half_width = 0
+
+        # select appropriate Andor library per architecture
+        if 64 == struct.calcsize("P") * 8:
+            self.driver = cdll.LoadLibrary(r"C:\Program Files\Andor SDK\atmcd64d.dll")
+        else:
+            self.driver = cdll.LoadLibrary(r"C:\Program Files\Andor SDK\atmcd32d.dll")
+
+        #self.settings.eeprom.model = self.device.model
+        #self.settings.eeprom.serial_number = self.device.serial_number
+        self.settings.eeprom.detector = "Andor" # Ocean API doesn't have access to detector info
+
+    def connect(self):
+        cameraHandle = c_int()
+        assert(self.SUCCESS == self.driver.GetCameraHandle(self.spec_index, byref(cameraHandle))), "unable to get camera handle"
+        assert(self.SUCCESS == self.driver.SetCurrentCamera(cameraHandle.value)), "unable to set current camera"
+        log.info("initializing camera...")
+
+        # not sure init_str is actually required
+        init_str = create_string_buffer(b'\000' * 16)
+        assert(self.SUCCESS == self.driver.Initialize(init_str)), "unable to initialize camera"
+        log.info("success")
+
+        self.get_serial_number()
+        self.init_tec_setpoint()
+        self.init_detector_area()
+
+        assert(self.SUCCESS == self.driver.CoolerON()), "unable to enable TEC"
+        log.debug("enabled TEC")
+
+        assert(self.SUCCESS == self.driver.SetAcquisitionMode(1)), "unable to set acquisition mode"
+        log.debug("configured acquisition mode (single scan)")
+
+        assert(self.SUCCESS == self.driver.SetTriggerMode(0)), "unable to set trigger mode"
+        log.debug("set trigger mode")
+
+        assert(self.SUCCESS == self.driver.SetReadMode(0)), "unable to set read mode"
+        log.debug("set read mode (full vertical binning)")
+
+        self.init_detector_speed()
+
+        assert(self.SUCCESS == self.driver.SetShutterEx(1, 1, self.SHUTTER_SPEED_MS, self.SHUTTER_SPEED_MS, 0)), "unable to set external shutter"
+        log.debug("set shutter to fully automatic external with internal always open")
+
+        self.set_integration_time_ms(10)
+        self.connected = True
+        self.settings.eeprom.active_pixels_horizontal = self.pixels 
+        return True
+
+    def init_lambdas(self):
+        f = {}
+        f["integration_time_ms"] = lambda x: self.set_integration_time_ms(x) # conversion from millisec to microsec
+        self.lambdas = f
+
+    def acquire_data(self):
+        reading = self.take_one_averaged_reading()
+        return reading
+
+    def take_one_averaged_reading(self):
+        averaging_enabled = (self.settings.state.scans_to_average > 1)
+
+        if averaging_enabled and not self.settings.state.free_running_mode:
+            # collect the entire averaged spectrum at once (added for
+            # BatchCollection with laser delay)
+            #
+            # So: we're NOT in "free-running" mode, so we're basically being
+            # slaved to parent process and doing exactly what is requested
+            # "on command."  That means we can perform a big, heavy blocking
+            # scan average all at once, because they requested it.
+            self.sum_count = 0
+            loop_count = self.settings.state.scans_to_average
+        else:
+            # we're in free-running mode
+            loop_count = 1
+
+        log.debug("take_one_averaged_reading: loop_count = %d", loop_count)
+
+        # either take one measurement (normal), or a bunch (blocking averaging)
+        reading = None
+        for loop_index in range(0, loop_count):
+
+            # start a new reading
+            # NOTE: reading.timestamp is when reading STARTED, not FINISHED!
+            reading = Reading(self.device_id)
+
+            # TODO...just include a copy of SpectrometerState? something to think
+            # about. That would actually provide a reason to roll all the
+            # temperature etc readouts into the SpectrometerState class...
+            try:
+                reading.integration_time_ms = self.settings.state.integration_time_ms
+                reading.laser_power_perc    = self.settings.state.laser_power_perc
+                reading.laser_power_mW      = self.settings.state.laser_power_mW
+                reading.laser_enabled       = self.settings.state.laser_enabled
+                reading.spectrum            = self.get_spectrum_raw()
+            except usb.USBError:
+                self.failure_count += 1
+                log.error(f"Andor Device: encountered USB error in reading for device {self.device}")
+
+            if reading.spectrum is None or reading.spectrum == []:
+                if self.failure_count > 3:
+                    return False
+
+            if not reading.failure:
+                if averaging_enabled:
+                    if self.sum_count == 0:
+                        self.summed_spectra = [float(i) for i in reading.spectrum]
+                    else:
+                        log.debug("device.take_one_averaged_reading: summing spectra")
+                        for i in range(len(self.summed_spectra)):
+                            self.summed_spectra[i] += reading.spectrum[i]
+                    self.sum_count += 1
+                    log.debug("device.take_one_averaged_reading: summed_spectra : %s ...", self.summed_spectra[0:9])
+
+            # count spectra
+            self.session_reading_count += 1
+            reading.session_count = self.session_reading_count
+            reading.sum_count = self.sum_count
+
+            # have we completed the averaged reading?
+            if averaging_enabled:
+                if self.sum_count >= self.settings.state.scans_to_average:
+                    reading.spectrum = [ x / self.sum_count for x in self.summed_spectra ]
+                    log.debug("device.take_one_averaged_reading: averaged_spectrum : %s ...", reading.spectrum[0:9])
+                    reading.averaged = True
+
+                    # reset for next average
+                    self.summed_spectra = None
+                    self.sum_count = 0
+            else:
+                # if averaging isn't enabled...then a single reading is the
+                # "averaged" final measurement (check reading.sum_count to confirm)
+                reading.averaged = True
+
+            # were we told to only take one (potentially averaged) measurement?
+            if self.take_one and reading.averaged:
+                log.debug("completed take_one")
+                self.change_setting("cancel_take_one", True)
+
+        log.debug("device.take_one_averaged_reading: returning %s", reading)
+        if reading.spectrum is not None and reading.spectrum != []:
+            self.failure_count = 0
+        # reading.dump_area_scan()
+        return reading
+
+    def get_spectrum_raw(self):
+        print("requesting spectrum");
+        #################
+        # read spectrum
+        #################
+        #int[] spec = new int[pixels];
+        spec_arr = c_long * self.pixels
+        spec_init_vals = [0] * self.pixels
+        spec = spec_arr(*spec_init_vals)
+
+        # ask for spectrum then collect, NOT multithreaded (though we should look into that!), blocks
+        #spec = new int[pixels];     //defaults to all zeros
+        self.driver.StartAcquisition();
+        self.driver.WaitForAcquisition();
+        success = self.driver.GetAcquiredData(spec, c_ulong(self.pixels));
+
+        if (success != self.SUCCESS):
+            print(f"getting spectra did not succeed. Received code of {success}. Returning")
+            return
+
+        convertedSpec = [x for x in spec]
+
+        #if (self.eeprom.featureMask.invertXAxis):
+         #   convertedSpec.reverse()
+
+        print(f"getSpectrumRaw: returning {len(spec)} pixels");
+        return convertedSpec;
+
+
+    def set_integration_time_ms(self, ms):
+        self.integration_time_ms = ms
+        print(f"setting integration time to {self.integration_time_ms}ms")
+
+        exposure = c_float()
+        accumulate = c_float()
+        kinetic = c_float()
+        assert(self.SUCCESS == self.driver.SetExposureTime(c_float(ms / 1000.0))), "unable to set integration time"
+        assert(self.SUCCESS == self.driver.GetAcquisitionTimings(byref(exposure), byref(accumulate), byref(kinetic))), "unable to read acquisition timings"
+        print(f"read integration time of {exposure.value:.3f}sec (expected {ms}ms)")
+
+    def close_ex_shutter(self):
+        assert(self.SUCCESS == self.driver.SetShutterEx(1, 1, self.SHUTTER_SPEED_MS, self.SHUTTER_SPEED_MS, 2)), "unable to set external shutter"
+
+    def open_ex_shutter(self):
+        assert(self.SUCCESS == self.driver.SetShutterEx(1, 1, self.SHUTTER_SPEED_MS, self.SHUTTER_SPEED_MS, 1)), "unable to set external shutter"
+
+    def get_serial_number(self):
+        sn = c_int()
+        assert(self.SUCCESS == cdll.atmcd32d.GetCameraSerialNumber(byref(sn))), "can't get serial number"
+        self.serial = f"CCD-{sn.value}"
+        print(f"connected to {self.serial}")
+
+    def init_tec_setpoint(self):
+        minTemp = c_int()
+        maxTemp = c_int()
+        assert(self.SUCCESS == self.driver.GetTemperatureRange(byref(minTemp), byref(maxTemp))), "unable to read temperature range"
+        self.detector_temp_min = minTemp.value
+        self.detector_temp_max = maxTemp.value
+
+        self.setpoint_deg_c = int(round((self.detector_temp_min + self.detector_temp_max) / 2.0))
+        assert(self.SUCCESS == self.driver.SetTemperature(self.setpoint_deg_c)), "unable to set temperature midpoint"
+        print(f"set TEC to {self.setpoint_deg_c} C (range {self.detector_temp_min}, {self.detector_temp_max})")
+
+    def init_detector_area(self):
+        xPixels = c_int()
+        yPixels = c_int()
+        assert(self.SUCCESS == self.driver.GetDetector(byref(xPixels), byref(yPixels))), "unable to read detector dimensions"
+        print(f"detector {xPixels.value} width x {yPixels.value} height")
+        self.pixels = xPixels.value
+
+    def init_detector_speed (self):
+        # set vertical to recommended
+        VSnumber = c_int()
+        speed = c_float()
+        assert(self.SUCCESS == self.driver.GetFastestRecommendedVSSpeed(byref(VSnumber), byref(speed))), "unable to get fastest recommended VS speed"
+        assert(self.SUCCESS == self.driver.SetVSSpeed(VSnumber.value)), f"unable to set VS speed {VSnumber.value}"
+        print(f"set vertical speed to {VSnumber.value}")
+
+        # set horizontal to max
+        nAD = c_int()
+        sIndex = c_int()
+        STemp = 0.0
+        HSnumber = 0
+        ADnumber = 0
+        assert(self.SUCCESS == self.driver.GetNumberADChannels(byref(nAD))), "unable to get number of AD channels"
+        for iAD in range(nAD.value):
+            assert(self.SUCCESS == self.driver.GetNumberHSSpeeds(iAD, 0, byref(sIndex))), f"unable to get number of HS speeds for AD {iAD}"
+            for iSpeed in range(sIndex.value):
+                assert(self.SUCCESS == self.driver.GetHSSpeed(iAD, 0, iSpeed, byref(speed))), f"unable to get HS speed for iAD {iAD}, iSpeed {iSpeed}"
+                if speed.value > STemp:
+                    STemp = speed.value
+                    HSnumber = iSpeed
+                    ADnumber = iAD
+        assert(self.SUCCESS == self.driver.SetADChannel(ADnumber)), "unable to set AD channel to {ADnumber}"
+        assert(self.SUCCESS == self.driver.SetHSSpeed(0, HSnumber)), "unable to set HS speed to {HSnumber}"
+        print(f"set AD channel {ADnumber} with horizontal speed {HSnumber} ({STemp})")
+
+    def change_setting(self,setting,value):
+        if setting == "scans_to_average":
+            self.sum_count = 0
+            self.settings.state.scans_to_average = int(value)
+            return
+        f = self.lambdas.get(setting, None)
+        if f is None:
+            # quietly fail no-ops
+            return False
+
+        return f(value)
