@@ -43,6 +43,7 @@ class AndorDevice:
         self.session_reading_count  = 0
         self.take_one               = False
         self.failure_count          = 0
+        self.dll_fail               = False
 
         self.process_id = os.getpid()
         self.last_memory_check = datetime.datetime.now()
@@ -54,16 +55,22 @@ class AndorDevice:
         self.boxcar_half_width = 0
 
         # select appropriate Andor library per architecture
-        if 64 == struct.calcsize("P") * 8:
-            self.driver = cdll.LoadLibrary(r"C:\Program Files\Andor SDK\atmcd64d.dll")
-        else:
-            self.driver = cdll.LoadLibrary(r"C:\Program Files\Andor SDK\atmcd32d.dll")
+        try:
+            if 64 == struct.calcsize("P") * 8:
+                self.driver = cdll.LoadLibrary(r"C:\Program Files\Andor SDKa\atmcd64d.dll")
+            else:
+                self.driver = cdll.LoadLibrary(r"C:\Program Files\Andor SDKa\atmcd32d.dll")
+        except Exception as e:
+            log.error(f"Error while loading DLL library of {e}")
+            self.dll_fail = True
 
         self.settings.eeprom.model = "Andor"
         self.settings.eeprom.detector = "Andor" # Ocean API doesn't have access to detector info
         self.settings.eeprom.wavelength_coeffs = [0,1,0,0]
 
     def connect(self):
+        if self.dll_fail:
+            return False
         cameraHandle = c_int()
         assert(self.SUCCESS == self.driver.GetCameraHandle(self.spec_index, byref(cameraHandle))), "unable to get camera handle"
         assert(self.SUCCESS == self.driver.SetCurrentCamera(cameraHandle.value)), "unable to set current camera"
