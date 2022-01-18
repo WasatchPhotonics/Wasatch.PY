@@ -48,7 +48,7 @@ class DeviceFinderUSB(object):
             pid = int(device.idProduct)
             log.debug("DeviceListFID: discovered vid 0x%04x, pid 0x%04x (count %d)", vid, pid, count)
 
-            if vid not in [0x24aa, 0x2457]:
+            if vid not in [0x24aa, 0x2457, 0x136e]:
                 continue
 
             if vid == 0x24aa and pid not in [ 0x1000, 0x2000, 0x4000 ]:

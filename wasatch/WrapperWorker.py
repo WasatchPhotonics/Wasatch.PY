@@ -4,6 +4,7 @@ import logging
 import time
 
 from .WasatchDevice        import WasatchDevice
+from .AndorDevice          import AndorDevice
 from .OceanDevice          import OceanDevice
 from .Reading              import Reading
 
@@ -30,12 +31,14 @@ class WrapperWorker(threading.Thread):
             settings_queue,
             message_queue,
             is_ocean,
+            is_andor,
             parent=None):
 
         threading.Thread.__init__(self)
 
         self.device_id      = device_id
         self.is_ocean       = is_ocean
+        self.is_andor       = is_andor
         self.command_queue  = command_queue
         self.response_queue = response_queue
         self.settings_queue = settings_queue
@@ -53,6 +56,11 @@ class WrapperWorker(threading.Thread):
             self.ocean_device = OceanDevice(
                 device_id = self.device_id,
                 message_queue = self.message_queue)
+        elif self.is_andor:
+            self.andor_device = AndorDevice(
+                device_id = self.device_id,
+                message_queue = self.message_queue
+                )
         else:
             try:
                 log.debug("instantiating WasatchDevice")
@@ -67,6 +75,8 @@ class WrapperWorker(threading.Thread):
         ok = False
         if self.is_ocean:
             ok = self.ocean_device.connect()
+        elif self.is_andor:
+            ok = self.andor_device.connect()
         else:
             try:
                 ok = self.wasatch_device.connect()
@@ -84,6 +94,8 @@ class WrapperWorker(threading.Thread):
         log.debug("returning SpectrometerSettings to parent")
         if self.is_ocean:
             self.settings_queue.put_nowait(self.ocean_device.settings)
+        elif self.is_andor:
+            self.settings_queue.put_nowait(self.andor_device.settings)
         else:
             self.settings_queue.put_nowait(self.wasatch_device.settings)
 
@@ -123,6 +135,8 @@ class WrapperWorker(threading.Thread):
                         # WasatchDevice.acquire_data.
                         if self.is_ocean:
                             self.ocean_device.change_setting(record.setting, record.value)
+                        elif self.is_andor:
+                            self.andor_device.change_setting(record.setting, record.value)
                         else:
                             self.wasatch_device.change_setting(record.setting, record.value)
 
@@ -159,6 +173,8 @@ class WrapperWorker(threading.Thread):
                 log.debug("acquiring data")
                 if self.is_ocean:
                     reading = self.ocean_device.acquire_data()
+                elif self.is_andor:
+                    reading = self.andor_device.acquire_data()
                 else:
                     reading = self.wasatch_device.acquire_data()
                 #log.debug("continuous_poll: acquire_data returned %s", str(reading))

@@ -173,6 +173,7 @@ class WasatchDeviceWrapper(object):
         self.poller       = None    # a handle to the child thread
         self.thread       = False
         self.is_ocean     = '0x2457' in str(device_id)
+        self.is_andor     = '0x136e' in str(device_id)
         self.mock         = 'test' in str(device_id)
 
         # this will contain a populated SpectrometerSettings object from the
@@ -233,7 +234,8 @@ class WasatchDeviceWrapper(object):
             response_queue = self.response_queue, # Main <-- child \
             settings_queue = self.settings_queue, # Main <-- child / consolidate into SpectrometerMessage?
             message_queue  = self.message_queue,
-            is_ocean       = self.is_ocean)
+            is_ocean       = self.is_ocean,
+            is_andor       = self.is_andor)
         log.debug("device wrapper: Instance created for worker")
 
         self.wrapper_worker.setDaemon(True)
