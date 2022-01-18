@@ -89,7 +89,7 @@ class AndorDevice:
             self.config_values = {
                 'detector_serial_number': self.serial,
                 'wavelength_coeffs': [0,1,0,0],
-                'excitation_nm_float': 1,
+                'excitation_nm_float': 0,
                 }
             f = open(self.config_file, 'w')
             json.dump(self.config_values, f)
