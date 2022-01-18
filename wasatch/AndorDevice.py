@@ -80,7 +80,7 @@ class AndorDevice:
 
         if not self.check_config_file():
             self.config_values = {
-                'wp_serial_number': self.serial,
+                'detector_serial_number': self.serial,
                 'wavelength_coeffs': [0,1,0,0],
                 'excitation_nm_float': 1,
                 }

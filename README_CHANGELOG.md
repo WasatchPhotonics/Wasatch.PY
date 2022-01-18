@@ -1,5 +1,7 @@
 # Changelog
 
+- 2022-01-18 2.0.0
+    - add support for Andor Spectrometers
 - 2021-10-18 1.1.35
     - added OceanDevice.py
     - Changed DeviceFinderUSB.py to use usb.core
