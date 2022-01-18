@@ -96,8 +96,8 @@ class AndorDevice:
         else:
             f = open(self.config_file,)
             self.config_values = dict(json.load(f))
-            self.settings.eeprom.wavelength_coeffs = list(self.config_values['wavelength_coeffs'])
-            self.settings.eeprom.excitation_nm_float = float(self.config_values['excitation_nm_float'])
+            self.settings.eeprom.wavelength_coeffs = self.config_values['wavelength_coeffs']
+            self.settings.eeprom.excitation_nm_float = self.config_values['excitation_nm_float']
 
         assert(self.SUCCESS == self.driver.CoolerON()), "unable to enable TEC"
         log.debug("enabled TEC")
