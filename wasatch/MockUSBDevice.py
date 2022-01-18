@@ -109,7 +109,7 @@ class MockUSBDevice(AbstractUSBDevice):
 
     def cmd_get_raw_ambient_temp(self, *args):
         log.info("\n\nTEMPERATURE ambient called\n\n")
-        return [random.randint(0,255)]*
+        return [random.randint(0,255)]*2
 
     def get_spec_folder(self):
         spec_match = []
