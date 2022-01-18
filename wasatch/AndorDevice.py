@@ -224,7 +224,7 @@ class AndorDevice:
         return reading
 
     def get_spectrum_raw(self):
-        print("requesting spectrum");
+        log.debug("requesting spectrum");
         #################
         # read spectrum
         #################
@@ -240,7 +240,7 @@ class AndorDevice:
         success = self.driver.GetAcquiredData(spec, c_ulong(self.pixels));
 
         if (success != self.SUCCESS):
-            print(f"getting spectra did not succeed. Received code of {success}. Returning")
+            log.debug(f"getting spectra did not succeed. Received code of {success}. Returning")
             return
 
         convertedSpec = [x for x in spec]
@@ -248,20 +248,20 @@ class AndorDevice:
         #if (self.eeprom.featureMask.invertXAxis):
          #   convertedSpec.reverse()
 
-        print(f"getSpectrumRaw: returning {len(spec)} pixels");
+        log.debug(f"getSpectrumRaw: returning {len(spec)} pixels");
         return convertedSpec;
 
 
     def set_integration_time_ms(self, ms):
         self.integration_time_ms = ms
-        print(f"setting integration time to {self.integration_time_ms}ms")
+        log.debug(f"setting integration time to {self.integration_time_ms}ms")
 
         exposure = c_float()
         accumulate = c_float()
         kinetic = c_float()
         assert(self.SUCCESS == self.driver.SetExposureTime(c_float(ms / 1000.0))), "unable to set integration time"
         assert(self.SUCCESS == self.driver.GetAcquisitionTimings(byref(exposure), byref(accumulate), byref(kinetic))), "unable to read acquisition timings"
-        print(f"read integration time of {exposure.value:.3f}sec (expected {ms}ms)")
+        log.debug(f"read integration time of {exposure.value:.3f}sec (expected {ms}ms)")
 
     def close_ex_shutter(self):
         assert(self.SUCCESS == self.driver.SetShutterEx(1, 1, self.SHUTTER_SPEED_MS, self.SHUTTER_SPEED_MS, 2)), "unable to set external shutter"
@@ -274,7 +274,7 @@ class AndorDevice:
         assert(self.SUCCESS == cdll.atmcd32d.GetCameraSerialNumber(byref(sn))), "can't get serial number"
         self.serial = f"CCD-{sn.value}"
         self.settings.eeprom.serial_number = self.serial
-        print(f"connected to {self.serial}")
+        log.debug(f"connected to {self.serial}")
 
     def init_tec_setpoint(self):
         minTemp = c_int()
@@ -285,13 +285,13 @@ class AndorDevice:
 
         self.setpoint_deg_c = int(round((self.detector_temp_min + self.detector_temp_max) / 2.0))
         assert(self.SUCCESS == self.driver.SetTemperature(self.setpoint_deg_c)), "unable to set temperature midpoint"
-        print(f"set TEC to {self.setpoint_deg_c} C (range {self.detector_temp_min}, {self.detector_temp_max})")
+        log.debug(f"set TEC to {self.setpoint_deg_c} C (range {self.detector_temp_min}, {self.detector_temp_max})")
 
     def init_detector_area(self):
         xPixels = c_int()
         yPixels = c_int()
         assert(self.SUCCESS == self.driver.GetDetector(byref(xPixels), byref(yPixels))), "unable to read detector dimensions"
-        print(f"detector {xPixels.value} width x {yPixels.value} height")
+        log.debug(f"detector {xPixels.value} width x {yPixels.value} height")
         self.pixels = xPixels.value
 
     def init_detector_speed (self):
@@ -300,7 +300,7 @@ class AndorDevice:
         speed = c_float()
         assert(self.SUCCESS == self.driver.GetFastestRecommendedVSSpeed(byref(VSnumber), byref(speed))), "unable to get fastest recommended VS speed"
         assert(self.SUCCESS == self.driver.SetVSSpeed(VSnumber.value)), f"unable to set VS speed {VSnumber.value}"
-        print(f"set vertical speed to {VSnumber.value}")
+        log.debug(f"set vertical speed to {VSnumber.value}")
 
         # set horizontal to max
         nAD = c_int()
@@ -319,7 +319,7 @@ class AndorDevice:
                     ADnumber = iAD
         assert(self.SUCCESS == self.driver.SetADChannel(ADnumber)), "unable to set AD channel to {ADnumber}"
         assert(self.SUCCESS == self.driver.SetHSSpeed(0, HSnumber)), "unable to set HS speed to {HSnumber}"
-        print(f"set AD channel {ADnumber} with horizontal speed {HSnumber} ({STemp})")
+        log.debug(f"set AD channel {ADnumber} with horizontal speed {HSnumber} ({STemp})")
 
     def change_setting(self,setting,value):
         if setting == "scans_to_average":
