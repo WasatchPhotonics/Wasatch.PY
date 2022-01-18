@@ -57,9 +57,9 @@ class AndorDevice:
         # select appropriate Andor library per architecture
         try:
             if 64 == struct.calcsize("P") * 8:
-                self.driver = cdll.LoadLibrary(r"C:\Program Files\Andor SDKa\atmcd64d.dll")
+                self.driver = cdll.LoadLibrary(r"C:\Program Files\Andor SDK\atmcd64d.dll")
             else:
-                self.driver = cdll.LoadLibrary(r"C:\Program Files\Andor SDKa\atmcd32d.dll")
+                self.driver = cdll.LoadLibrary(r"C:\Program Files\Andor SDK\atmcd32d.dll")
         except Exception as e:
             log.error(f"Error while loading DLL library of {e}")
             self.dll_fail = True
