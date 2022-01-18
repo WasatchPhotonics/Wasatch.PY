@@ -89,7 +89,7 @@ class MockUSBDevice(AbstractUSBDevice):
             (218,None): self.cmd_get_tec_enable,
             (0x34,None): self.cmd_get_raw_ambient_temp,
             (0xd5,None): self.cmd_get_laser_temp,
-            (0xd7, None): self.cmd_get_detect_temp,
+            (0xd7,None): self.cmd_get_detect_temp,
             (226,None): self.cmd_get_laser_enabled,
             (0xff,1): self.cmd_read_eeprom,
             }
