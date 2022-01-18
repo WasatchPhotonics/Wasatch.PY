@@ -403,6 +403,9 @@ class SpectrometerSettings(object):
     def has_marker(self):
         return self.eeprom.model == "WPX-8CHANNEL"
 
+    def is_andor(self):
+        return '0x136e' in str(self.device_id)
+
     def is_sig(self):
         return self.is_micro()
 

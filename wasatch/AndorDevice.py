@@ -124,11 +124,18 @@ class AndorDevice:
     def init_lambdas(self):
         f = {}
         f["integration_time_ms"] = lambda x: self.set_integration_time_ms(x) # conversion from millisec to microsec
+        f["shutter_enable"] = lambda x: self.set_shutter_enable(bool(x))
         self.lambdas = f
 
     def acquire_data(self):
         reading = self.take_one_averaged_reading()
         return reading
+
+    def set_shutter_enable(self, enable):
+        if enable:
+            self.open_ex_shutter()
+        else:
+            self.close_ex_shutter()
 
     def take_one_averaged_reading(self):
         averaging_enabled = (self.settings.state.scans_to_average > 1)
