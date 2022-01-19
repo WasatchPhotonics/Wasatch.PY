@@ -100,15 +100,12 @@ class MockUSBDevice(AbstractUSBDevice):
             self.reading_cycles[key] = cycle(value)
 
     def cmd_get_laser_temp(self, *args):
-        log.info("\n\nTEMPERATURE laser called\n\n")
         return [random.randint(0,255)]*2
 
     def cmd_get_detect_temp(self, *args):
-        log.info("\n\nTEMPERATURE detector called\n\n")
         return [random.randint(0,255)]*2
 
     def cmd_get_raw_ambient_temp(self, *args):
-        log.info("\n\nTEMPERATURE ambient called\n\n")
         return [random.randint(0,255)]*2
 
     def get_spec_folder(self):
