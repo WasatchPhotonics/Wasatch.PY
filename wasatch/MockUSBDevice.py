@@ -87,14 +87,26 @@ class MockUSBDevice(AbstractUSBDevice):
             (215,None): self.cmd_get_detector_temp,
             (216,None): self.cmd_set_setpoint,
             (218,None): self.cmd_get_tec_enable,
+            (0x34,None): self.cmd_get_raw_ambient_temp,
+            (0xd5,None): self.cmd_get_laser_temp,
+            (0xd7,None): self.cmd_get_detect_temp,
             (226,None): self.cmd_get_laser_enabled,
-            (255,1): self.cmd_read_eeprom,
+            (0xff,1): self.cmd_read_eeprom,
             }
         self.reading_cycles = {}
         # turn readings arrays into cycles so 
         # we have an infinite loop of spectra to go through
         for key,value in self.spec_readings.items():
             self.reading_cycles[key] = cycle(value)
+
+    def cmd_get_laser_temp(self, *args):
+        return [random.randint(0,255)]*2
+
+    def cmd_get_detect_temp(self, *args):
+        return [random.randint(0,255)]*2
+
+    def cmd_get_raw_ambient_temp(self, *args):
+        return [random.randint(0,255)]*2
 
     def get_spec_folder(self):
         spec_match = []

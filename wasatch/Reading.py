@@ -33,6 +33,8 @@ class Reading(object):
         self.battery_raw               = None
         self.battery_percentage        = None
         self.battery_charging          = None
+        self.laser_is_firing           = None
+        self.laser_can_fire            = None
 
         # for the rare case (BatchCollection with LaserMode "Spectrum") where the 
         # driver is asked to collect a dark just before enabling the laser

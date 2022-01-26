@@ -361,11 +361,19 @@ class EEPROM(object):
         # feature mask
         # ######################################################################
 
-        self.invert_x_axis           = 0 != self.feature_mask & 0x0001
-        self.bin_2x2                 = 0 != self.feature_mask & 0x0002
-        self.gen15                   = 0 != self.feature_mask & 0x0004
-        self.cutoff_filter_installed = 0 != self.feature_mask & 0x0008
-        self.hardware_even_odd       = 0 != self.feature_mask & 0x0010
+        if self.format >= 9:
+            self.invert_x_axis           = 0 != self.feature_mask & 0x0001
+            self.bin_2x2                 = 0 != self.feature_mask & 0x0002
+            self.gen15                   = 0 != self.feature_mask & 0x0004
+            self.cutoff_filter_installed = 0 != self.feature_mask & 0x0008
+            self.hardware_even_odd       = 0 != self.feature_mask & 0x0010
+        else:
+            self.invert_x_axis           = 0 
+            self.bin_2x2                 = 0
+            self.gen15                   = 0
+            self.cutoff_filter_installed = 0
+            self.hardware_even_odd       = 0
+
 
         # ######################################################################
         # sanity checks
