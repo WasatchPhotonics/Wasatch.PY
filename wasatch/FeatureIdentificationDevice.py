@@ -227,7 +227,7 @@ class FeatureIdentificationDevice(object):
 
         if (eeprom.has_cooling and degC != UNINITIALIZED_TEMPERATURE_DEG_C):
             #TEC doesn't do anything unless you give it a temperature first
-            log.debug("setting TEC setpoint to {0} deg C", degC)
+            log.debug(f"setting TEC setpoint to {degC} deg C")
             self.detector_tec_setpoint_degC = degC
             self.set_detector_tec_setpoint_degC(self.detector_tec_setpoint_degC)
 

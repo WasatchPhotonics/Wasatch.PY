@@ -1,5 +1,7 @@
 # Changelog
 
+- 2022-01-28 2.0.1
+    - fixed logging bug
 - 2022-01-18 2.0.0
     - add support for Andor Spectrometers
 - 2021-10-18 1.1.35
