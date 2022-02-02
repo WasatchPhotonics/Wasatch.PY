@@ -251,6 +251,8 @@ class MockUSBDevice(AbstractUSBDevice):
             self.parse_wpsc_eeprom(eeprom)
         else:
             self.eeprom = eeprom
+        log.debug("Mock USB EEPROM results are the following:")
+        log.debug(self.eeprom)
 
     def parse_wpsc_eeprom(self,eeprom_file):
         translated_eeprom = {}
