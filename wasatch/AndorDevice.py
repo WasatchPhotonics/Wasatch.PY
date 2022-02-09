@@ -44,6 +44,7 @@ class AndorDevice:
         self.take_one               = False
         self.failure_count          = 0
         self.dll_fail               = False
+        self.toggle_state           = False
 
         self.process_id = os.getpid()
         self.last_memory_check = datetime.datetime.now()
@@ -65,7 +66,7 @@ class AndorDevice:
             self.dll_fail = True
 
         self.settings.eeprom.model = "Andor"
-        self.settings.eeprom.detector = "Andor" # Ocean API doesn't have access to detector info
+        self.settings.eeprom.detector = "Andor" # Andor API doesn't have access to detector info
         self.settings.eeprom.wavelength_coeffs = [0,1,0,0]
         self.settings.eeprom.has_cooling = True
 
@@ -79,7 +80,10 @@ class AndorDevice:
 
         # not sure init_str is actually required
         init_str = create_string_buffer(b'\000' * 16)
-        assert(self.SUCCESS == self.driver.Initialize(init_str)), "unable to initialize camera"
+        result = self.driver.Initialize(init_str) 
+        if self.SUCCESS != result:
+            log.error(f"Error in initialize, error code was {result}")
+            assert(self.SUCCESS == result), "unable to initialize camera"
         log.info("success")
 
         self.get_serial_number()
@@ -177,6 +181,14 @@ class AndorDevice:
             # TODO...just include a copy of SpectrometerState? something to think
             # about. That would actually provide a reason to roll all the
             # temperature etc readouts into the SpectrometerState class...
+            if self.settings.eeprom.has_cooling and self.toggle_state:
+                c_temp = c_int()
+                result = self.driver.GetTemperature(c_temp)
+                if (self.SUCCESS != result):
+                    log.error(f"unable to read tec temp, result was {result}")
+                else:
+                    log.debug(f"andor read temperature, value of {c_temp.value}")
+                    reading.detector_temperature_degC = c_temp.value
             try:
                 reading.integration_time_ms = self.settings.state.integration_time_ms
                 reading.laser_power_perc    = self.settings.state.laser_power_perc
@@ -226,6 +238,7 @@ class AndorDevice:
             if self.take_one and reading.averaged:
                 log.debug("completed take_one")
                 self.change_setting("cancel_take_one", True)
+
 
         log.debug("device.take_one_averaged_reading: returning %s", reading)
         if reading.spectrum is not None and reading.spectrum != []:
@@ -300,7 +313,10 @@ class AndorDevice:
     def toggle_tec(self, toggle_state):
         c_toggle = c_int(toggle_state)
         self.toggle_state = c_toggle.value
-        assert(self.SUCCESS == self.driver.SetTemperature(self.setpoint_deg_c)), "unable to set temperature midpoint"
+        if toggle_state:
+            assert(self.SUCCESS == self.driver.CoolerON()), "unable to set temperature midpoint"
+        else:
+            assert(self.SUCCESS == self.driver.CoolerOFF()), "unable to set temperature midpoint"
         log.debug(f"Toggled TEC to state {toggle_state}")
 
     def set_tec_setpoint(self, set_temp):
