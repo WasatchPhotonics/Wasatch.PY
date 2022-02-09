@@ -67,6 +67,7 @@ class AndorDevice:
         self.settings.eeprom.model = "Andor"
         self.settings.eeprom.detector = "Andor" # Ocean API doesn't have access to detector info
         self.settings.eeprom.wavelength_coeffs = [0,1,0,0]
+        self.settings.eeprom.has_cooling = True
 
     def connect(self):
         if self.dll_fail:
@@ -130,8 +131,10 @@ class AndorDevice:
 
     def init_lambdas(self):
         f = {}
-        f["integration_time_ms"] = lambda x: self.set_integration_time_ms(x) # conversion from millisec to microsec
-        f["shutter_enable"] = lambda x: self.set_shutter_enable(bool(x))
+        f["integration_time_ms"]                = lambda x: self.set_integration_time_ms(x) # conversion from millisec to microsec
+        f["shutter_enable"]                     = lambda x: self.set_shutter_enable(bool(x))
+        f["detector_tec_enable"]                = lambda x: self.toggle_tec(bool(x))
+        f["detector_tec_setpoint_degC"]         = lambda x: self.set_tec_setpoint(int(round(x)))
         self.lambdas = f
 
     def acquire_data(self):
@@ -291,6 +294,21 @@ class AndorDevice:
         self.detector_temp_max = maxTemp.value
 
         self.setpoint_deg_c = int(round((self.detector_temp_min + self.detector_temp_max) / 2.0))
+        assert(self.SUCCESS == self.driver.SetTemperature(self.setpoint_deg_c)), "unable to set temperature midpoint"
+        log.debug(f"set TEC to {self.setpoint_deg_c} C (range {self.detector_temp_min}, {self.detector_temp_max})")
+
+    def toggle_tec(self, toggle_state):
+        c_toggle = c_int(toggle_state)
+        self.toggle_state = c_toggle.value
+        assert(self.SUCCESS == self.driver.SetTemperature(self.setpoint_deg_c)), "unable to set temperature midpoint"
+        log.debug(f"Toggled TEC to state {toggle_state}")
+
+    def set_tec_setpoint(self, set_temp):
+        if set_temp < self.detector_temp_min or set_temp > self.detector_temp_max:
+            return
+        if not self.toggle_state:
+            return
+        self.setpoint_deg_c = c_int(set_temp)
         assert(self.SUCCESS == self.driver.SetTemperature(self.setpoint_deg_c)), "unable to set temperature midpoint"
         log.debug(f"set TEC to {self.setpoint_deg_c} C (range {self.detector_temp_min}, {self.detector_temp_max})")
 
