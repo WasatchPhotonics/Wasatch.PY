@@ -178,9 +178,6 @@ class AndorDevice:
             # NOTE: reading.timestamp is when reading STARTED, not FINISHED!
             reading = Reading(self.device_id)
 
-            # TODO...just include a copy of SpectrometerState? something to think
-            # about. That would actually provide a reason to roll all the
-            # temperature etc readouts into the SpectrometerState class...
             if self.settings.eeprom.has_cooling and self.toggle_state:
                 c_temp = c_int()
                 result = self.driver.GetTemperature(0,c_temp)
