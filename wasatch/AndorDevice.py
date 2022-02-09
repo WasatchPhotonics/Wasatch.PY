@@ -183,7 +183,7 @@ class AndorDevice:
             # temperature etc readouts into the SpectrometerState class...
             if self.settings.eeprom.has_cooling and self.toggle_state:
                 c_temp = c_int()
-                result = self.driver.GetTemperature(c_temp)
+                result = self.driver.GetTemperature(0,c_temp)
                 if (self.SUCCESS != result):
                     log.error(f"unable to read tec temp, result was {result}")
                 else:
