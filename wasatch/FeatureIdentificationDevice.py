@@ -16,6 +16,8 @@ from time   import sleep
 from . import utils
 
 from .SpectrometerSettings import SpectrometerSettings
+from .SpectrometerResponse import SpectrometerResponse
+from .SpectrometerResponse import ErrorLevel
 from .SpectrometerState    import SpectrometerState
 from .DetectorRegions      import DetectorRegions
 from .StatusMessage        import StatusMessage
@@ -289,6 +291,7 @@ class FeatureIdentificationDevice(object):
         log.debug("connection successful")
         self.connected = True
         self.connecting = False
+        response = SpectrometerResponse()
 
         return self.connected
 
@@ -768,6 +771,7 @@ class FeatureIdentificationDevice(object):
         ########################################################################
         # send the ACQUIRE
         ########################################################################
+        response = SpectrometerResponse()
 
         # main use-case for NOT sending a trigger would be when reading
         # subsequent lines of data from area scan "fast" mode
@@ -831,12 +835,15 @@ class FeatureIdentificationDevice(object):
                         # we don't know how long we'll have to wait for the trigger, so
                         # just loop and hope
                         # log.debug("still waiting for external trigger")
-                        return None
+                        return response
                     else:
                         log.error(f"Encountered error on read of {exc}")
+                        response.error_msg = f"Encountered error on read"
+                        response.poison_pill = True
+                        response.error_lvl = ErrorLevel.high
                         # if we fail even a single spectrum read, we return a
                         # False (poison-pill) and prepare to disconnect
-                        return False
+                        return response
 
             # This is a convoluted way to iterate across the received bytes in 'data' as
             # two interleaved arrays, both only processing alternating bytes, but one (i)
@@ -864,7 +871,9 @@ class FeatureIdentificationDevice(object):
 
         if len(spectrum) != pixels:
             log.error("get_line read wrong number of pixels (expected %d, read %d)", pixels, len(spectrum))
-            return True
+            response.error_msg = "get_line read wrong number of pixels (expected %d, read %d)", pixels, len(spectrum) 
+            response.error_lvl = ErrorLevel.low
+            return response
             # if len(spectrum) < pixels:
             #     spectrum.extend([0] * (pixels - len(spectrum)))
             # else:
@@ -1038,7 +1047,8 @@ class FeatureIdentificationDevice(object):
         # Somewhat oddly, we're currently returning a TUPLE of the spectrum and
         # the area scan row count.  When "Fast" Area Scan is more commonplace 
         # we'll change this back to just returning the spectrum array directly.
-        return SpectrumAndRow(spectrum, area_scan_row_count)
+        response.data = SpectrumAndRow(spectrum, area_scan_row_count) 
+        return response
 
     ##
     # Until support for even/odd InGaAs gain and offset have been added to the

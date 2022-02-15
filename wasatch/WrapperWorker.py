@@ -172,55 +172,53 @@ class WrapperWorker(threading.Thread):
                 # shutdown.
                 log.debug("acquiring data")
                 if self.is_ocean:
-                    reading = self.ocean_device.acquire_data()
+                    reading_response = self.ocean_device.acquire_data()
                 elif self.is_andor:
-                    reading = self.andor_device.acquire_data()
+                    reading_response = self.andor_device.acquire_data()
                 else:
-                    reading = self.wasatch_device.acquire_data()
+                    reading_response = self.wasatch_device.acquire_data()
                 #log.debug("continuous_poll: acquire_data returned %s", str(reading))
             except Exception as exc:
                 log.critical("exception calling WasatchDevice.acquire_data", exc_info=1)
                 break
 
-            if reading is None:
-                log.debug("no Reading to be had")
-            elif isinstance(reading, bool):
-                # we received either a True (keepalive) or False (upstream poison pill)
-                log.debug(f"reading was bool ({reading})")
+            if reading_response.keep_alive == True:
+                # just pass it upstream and move on
+                log.debug("worker is flowing up keep alive")
+                try:
+                    self.response_queue.put(reading_response) # put(reading, timeout=2)
+                    sent_good = True
+                except:
+                    log.error("unable to push Reading %d to GUI", reading.session_count, exc_info=1)
+            elif reading_response.poison_pill:
+                # it was an upstream poison pill
+                #
+                # There's nothing we need to do here except 'break'...that will
+                # exit the loop, and the last thing this function does is flow-up
+                # a poison pill anyway, so we're done
+                log.critical("received upstream poison pill...exiting")
+                received_poison_pill_response = True
+                break
 
-                # was it just a keepalive?
-                if reading == True:
-                    # just pass it upstream and move on
-                    try:
-                        self.response_queue.put(reading) # put(reading, timeout=2)
-                        sent_good = True
-                    except:
-                        log.error("unable to push Reading %d to GUI", reading.session_count, exc_info=1)
-                else:
-                    # it was an upstream poison pill
-                    #
-                    # There's nothing we need to do here except 'break'...that will
-                    # exit the loop, and the last thing this function does is flow-up
-                    # a poison pill anyway, so we're done
-                    log.critical("received upstream poison pill...exiting")
-                    received_poison_pill_response = True
-                    break
+            elif reading_response.data is None:
+                log.debug("no worker saw no reading")
 
-            elif reading.failure is not None:
+            elif reading_response.data.failure is not None:
                 # this wasn't passed-up as a poison-pill, but we're going to treat it
                 # as one anyway
                 #
                 # @todo deprecate Reading.failure and just return False (poison pill?)
                 log.critical("hardware level error...exiting")
-                self.response_queue.put(False)
+                reading.poison_pill = True
+                self.response_queue.put(reading_response)
                 return False
 
-            elif reading.spectrum is not None:
-                log.debug("sending Reading %d back to GUI thread (%s)", reading.session_count, reading.spectrum[0:5])
+            elif reading_response.data.spectrum is not None:
+                log.debug("sending Reading %d back to GUI thread (%s)", reading_response.data.session_count, reading_response.data.spectrum[0:5])
                 try:
-                    self.response_queue.put_nowait(reading) # put(reading, timeout=2)
+                    self.response_queue.put_nowait(reading_response) # put(reading, timeout=2)
                 except:
-                    log.error("unable to push Reading %d to GUI", reading.session_count, exc_info=1)
+                    log.error("unable to push Reading %d to GUI", reading_response.data.session_count, exc_info=1)
 
             else:
                 log.error("received non-failure Reading without spectrum...ignoring?")
@@ -238,7 +236,7 @@ class WrapperWorker(threading.Thread):
             # send poison-pill notification upstream to Controller
             log.critical("exiting because of upstream poison-pill response")
             log.critical("sending poison-pill upstream to controller")
-            self.response_queue.put(False) 
+            self.response_queue.put(reading_response) 
 
             # Controller.ACQUISITION_TIMER_SLEEP_MS currently 50ms, so wait more
             log.critical("waiting long enough for Controller to receive it")
