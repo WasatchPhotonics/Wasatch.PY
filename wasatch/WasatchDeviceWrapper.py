@@ -405,22 +405,24 @@ class WasatchDeviceWrapper(object):
                 log.debug("get_final has nothing more to read, sending up readings")
                 break
 
+            # If we come across a keep_alive, ignore it for the moment.
+            # for now continue cleaning-out the queue.
+            if wrapper_reading.keep_alive:
+                # If that keep alive is associated with an error though float it up
+                if wrapper_reading.keep_alive and wrapper_reading.error_msg:
+                    last_reading = wrapper_reading
+                    break
+                log.debug("get_final_item: ignoring keepalive")
+                continue
+
             # If we come across a poison-pill, flow that up immediately --
             # game-over, we're done
             if wrapper_reading.poison_pill:
                 log.critical("get_final_item: poison-pill!")
                 return wrapper_reading
 
-            # If we come across a NONE or a True, ignore it for the moment.
-            # Returning "None" will always be the "default" action at the
-            # end, so for now continue cleaning-out the queue.
-            if wrapper_reading.keep_alive:
-                log.debug("get_final_item: ignoring keepalive")
-                continue
-
             # apparently we read a Reading
             log.debug("get_final_item: read Reading %s", str(wrapper_reading.data.session_count))
-            log.debug(f"reading data is {wrapper_reading.data}")
             last_reading = wrapper_reading
             dequeue_count += 1
 

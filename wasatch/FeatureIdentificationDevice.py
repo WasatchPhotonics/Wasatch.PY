@@ -871,8 +871,9 @@ class FeatureIdentificationDevice(object):
 
         if len(spectrum) != pixels:
             log.error("get_line read wrong number of pixels (expected %d, read %d)", pixels, len(spectrum))
-            response.error_msg = "get_line read wrong number of pixels (expected %d, read %d)", pixels, len(spectrum) 
+            response.error_msg = f"get_line read wrong number of pixels (expected {pixels}, read {len(spectrum)})"
             response.error_lvl = ErrorLevel.low
+            response.keep_alive = True
             return response
             # if len(spectrum) < pixels:
             #     spectrum.extend([0] * (pixels - len(spectrum)))

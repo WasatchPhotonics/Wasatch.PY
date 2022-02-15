@@ -311,6 +311,9 @@ class WasatchDevice(object):
         if take_one_response.poison_pill:
             log.debug(f"take_one_averaged_reading floating poison pill")
             return take_one_response
+        if take_one_response.keep_alive:
+            log.debug(f"floating up keep alive")
+            return take_one_response
 
         # don't perform dark subtraction, but pass the dark measurement along
         # with the averaged reading
@@ -552,12 +555,17 @@ class WasatchDevice(object):
                                 take_one_response.transfer_response(response)
                                 log.debug(f"get_line returned {spectrum_and_row}, breaking")
                                 break
+                            elif response.keep_alive:
+                                take_one_response.transfer_response(response)
+                                log.debug(f"get_line returned keep alive, passing up")
+                                return take_one_response
                             elif self.hardware.shutdown_requested:
                                 take_one_response.transfer_response(response)
                                 return take_one_response
                             elif spectrum_and_row.spectrum is None:
                                 log.debug("device.take_one_averaged_spectrum: get_line None, sending keepalive for now (area scan fast)")
                                 take_one_response.data = None
+                                take_one_response.keep_alive = True
                                 take_one_response.error_msg = "device.take_one_averaged_spectrum: get_line None, sending keepalive for now (area scan fast)" 
                                 take_one_response.error_lvl = ErrorLevel.low
                                 return take_one_response
@@ -582,6 +590,10 @@ class WasatchDevice(object):
                         log.critical("Error reading hardware data", exc_info=1)
                         reading.spectrum = None
                         reading.failure = str(exc)
+                        take_one_response.error_msg = exc
+                        take_one_response.error_lvl = ErrorLevel.medium
+                        take_one_response.keep_alive = True
+                        return take_one_response
 
             else:
 
@@ -593,6 +605,14 @@ class WasatchDevice(object):
                     while True:
                         response = self.hardware.get_line()
                         spectrum_and_row = response.data
+                        if response.poison_pill:
+                            # float up poison
+                            take_one_response.transfer_response(response)
+                            return take_one_response
+                        if response.keep_alive:
+                            # float up keep alive
+                            take_one_response.transfer_response(response)
+                            return take_one_response
                         if isinstance(spectrum_and_row, bool):
                             # get_line returned a poison-pill, so flow it upstream
                             take_one_response.poison_pill = True
@@ -619,6 +639,9 @@ class WasatchDevice(object):
                     log.debug("device.take_one_averaged_reading: got %s ... (row %d)", reading.spectrum[0:9], reading.area_scan_row_count)
                 except Exception as exc:
                     # if we got the timeout after switching from externally triggered back to internal, let it ride
+                    take_one_response.error_msg = exc
+                    take_one_response.error_lvl = ErrorLevel.medium
+                    take_one_response.keep_alive = True
                     if externally_triggered:
                         log.debug("caught exception from get_line while externally triggered...sending keepalive")
                         return take_one_response

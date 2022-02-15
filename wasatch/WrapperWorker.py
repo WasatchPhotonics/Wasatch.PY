@@ -181,6 +181,7 @@ class WrapperWorker(threading.Thread):
             except Exception as exc:
                 log.critical("exception calling WasatchDevice.acquire_data", exc_info=1)
                 break
+            log.info(f"response {reading_response} data is {reading_response.data}")
 
             if reading_response.keep_alive == True:
                 # just pass it upstream and move on
@@ -190,6 +191,8 @@ class WrapperWorker(threading.Thread):
                     sent_good = True
                 except:
                     log.error("unable to push Reading %d to GUI", reading.session_count, exc_info=1)
+                if reading_response.data.failure is not None:
+                    return
             elif reading_response.poison_pill:
                 # it was an upstream poison pill
                 #
@@ -209,7 +212,7 @@ class WrapperWorker(threading.Thread):
                 #
                 # @todo deprecate Reading.failure and just return False (poison pill?)
                 log.critical("hardware level error...exiting")
-                reading.poison_pill = True
+                reading_response.poison_pill = True
                 self.response_queue.put(reading_response)
                 return False
 
