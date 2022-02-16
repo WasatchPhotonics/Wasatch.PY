@@ -191,7 +191,7 @@ class WrapperWorker(threading.Thread):
                     sent_good = True
                 except:
                     log.error("unable to push Reading %d to GUI", reading.session_count, exc_info=1)
-                return
+                continue
             elif reading_response.poison_pill:
                 # it was an upstream poison pill
                 #
