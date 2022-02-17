@@ -167,6 +167,7 @@ class MockUSBDevice(AbstractUSBDevice):
         bytes = struct.pack('>e',self.detector_temp_raw)
         value = int.from_bytes(bytes,byteorder='big')
         value = value & 0x0F
+        log.info(f"sending temp value of {value}")
         return value.to_bytes(2, byteorder='big')
 
 
@@ -287,7 +288,7 @@ class MockUSBDevice(AbstractUSBDevice):
         self.spec_readings["default"] = []
         for object in parse_objects:
             object.load_data()
-        object.processed_reading.processed = [int(val) if val > 0 else 0 for val in object.processed_reading.processed]
+            object.processed_reading.processed = [int(val) if val > 0 else 0 for val in object.processed_reading.processed]
         self.spec_readings["default"].extend([struct.pack('H' * len(object.processed_reading.processed),*object.processed_reading.processed) for object in parse_objects])
 
     def to_dict():
