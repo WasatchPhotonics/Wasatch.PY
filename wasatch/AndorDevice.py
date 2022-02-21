@@ -99,6 +99,7 @@ class AndorDevice:
             self.settings.eeprom.wavelength_coeffs = self.config_values['wavelength_coeffs']
             self.settings.eeprom.excitation_nm_float = self.config_values['excitation_nm_float']
 
+        self.settings.eeprom.has_cooling = True
         assert(self.SUCCESS == self.driver.CoolerON()), "unable to enable TEC"
         log.debug("enabled TEC")
 
@@ -180,6 +181,12 @@ class AndorDevice:
                 reading.laser_power_mW      = self.settings.state.laser_power_mW
                 reading.laser_enabled       = self.settings.state.laser_enabled
                 reading.spectrum            = self.get_spectrum_raw()
+
+                temperature = c_float()
+                temp_success = self.driver.GetTemperatureF(byref(temperature))
+                log.debug(f"\n\ntemp code was {temp_success} and temp value is {temperature.value}\n\n")
+
+                reading.detector_temperature_degC = temperature.value
             except usb.USBError:
                 self.failure_count += 1
                 log.error(f"Andor Device: encountered USB error in reading for device {self.device}")
