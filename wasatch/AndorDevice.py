@@ -44,7 +44,7 @@ class AndorDevice:
         self.take_one               = False
         self.failure_count          = 0
         self.dll_fail               = False
-        self.toggle_state           = False
+        self.toggle_state           = True
 
         self.process_id = os.getpid()
         self.last_memory_check = datetime.datetime.now()
@@ -79,8 +79,7 @@ class AndorDevice:
         log.info("initializing camera...")
 
         # not sure init_str is actually required
-        init_str = create_string_buffer(b'\000' * 16)
-        result = self.driver.Initialize(init_str) 
+        result = self.driver.Initialize('') 
         if self.SUCCESS != result:
             log.error(f"Error in initialize, error code was {result}")
             assert(self.SUCCESS == result), "unable to initialize camera"
@@ -196,7 +195,6 @@ class AndorDevice:
 
                 temperature = c_float()
                 temp_success = self.driver.GetTemperatureF(byref(temperature))
-                log.debug(f"\n\ntemp code was {temp_success} and temp value is {temperature.value}\n\n")
 
                 reading.detector_temperature_degC = temperature.value
             except usb.USBError:
@@ -310,8 +308,8 @@ class AndorDevice:
         self.detector_temp_min = minTemp.value
         self.detector_temp_max = maxTemp.value
 
-        self.setpoint_deg_c = int(round((self.detector_temp_min + self.detector_temp_max) / 2.0))
-        assert(self.SUCCESS == self.driver.SetTemperature(self.setpoint_deg_c)), "unable to set temperature midpoint"
+        #self.setpoint_deg_c = int(round((self.detector_temp_min + self.detector_temp_max) / 2.0))
+        #assert(self.SUCCESS == self.driver.SetTemperature(self.setpoint_deg_c)), "unable to set temperature midpoint"
         log.debug(f"set TEC to {self.setpoint_deg_c} C (range {self.detector_temp_min}, {self.detector_temp_max})")
 
     def toggle_tec(self, toggle_state):
@@ -321,15 +319,20 @@ class AndorDevice:
             assert(self.SUCCESS == self.driver.CoolerON()), "unable to set temperature midpoint"
         else:
             assert(self.SUCCESS == self.driver.CoolerOFF()), "unable to set temperature midpoint"
-        log.debug(f"Toggled TEC to state {toggle_state}")
+        log.debug(f"Toggled TEC to state {c_toggle}")
 
     def set_tec_setpoint(self, set_temp):
         if set_temp < self.detector_temp_min or set_temp > self.detector_temp_max:
+            log.error(f"requested temp of {set_temp}, but it is outside range of min/max, {self.detector_temp_min}/{self.detector_temp_max}")
             return
         if not self.toggle_state:
+            log.error(f"returning beacuse toggle state is {self.toggle_state}")
             return
-        self.setpoint_deg_c = c_int(set_temp)
-        assert(self.SUCCESS == self.driver.SetTemperature(self.setpoint_deg_c)), "unable to set temperature midpoint"
+        self.setpoint_deg_c = set_temp
+        # I don't think CoolerON should need to be called, but I'm not seeing temperature changes
+        # when it is not present here.
+        assert(self.SUCCESS == self.driver.CoolerON()), "unable to enable TEC"
+        assert(self.SUCCESS == self.driver.SetTemperature(self.setpoint_deg_c)), "unable to set temperature"
         log.debug(f"set TEC to {self.setpoint_deg_c} C (range {self.detector_temp_min}, {self.detector_temp_max})")
 
     def init_detector_area(self):
