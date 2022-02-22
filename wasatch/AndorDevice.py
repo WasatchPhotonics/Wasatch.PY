@@ -104,6 +104,8 @@ class AndorDevice:
             self.settings.eeprom.excitation_nm_float = self.config_values['excitation_nm_float']
 
         self.settings.eeprom.has_cooling = True
+        self.settings.eeprom.max_temp_degC = self.detector_temp_max
+        self.settings.eeprom.min_temp_degC = self.detector_temp_min
         assert(self.SUCCESS == self.driver.CoolerON()), "unable to enable TEC"
         log.debug("enabled TEC")
 
@@ -308,7 +310,7 @@ class AndorDevice:
         self.detector_temp_min = minTemp.value
         self.detector_temp_max = maxTemp.value
 
-        #self.setpoint_deg_c = int(round((self.detector_temp_min + self.detector_temp_max) / 2.0))
+        self.setpoint_deg_c = int(round((self.detector_temp_min + self.detector_temp_max) / 2.0))
         #assert(self.SUCCESS == self.driver.SetTemperature(self.setpoint_deg_c)), "unable to set temperature midpoint"
         log.debug(f"set TEC to {self.setpoint_deg_c} C (range {self.detector_temp_min}, {self.detector_temp_max})")
 
