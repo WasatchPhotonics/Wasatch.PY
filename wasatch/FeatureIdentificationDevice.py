@@ -284,6 +284,11 @@ class FeatureIdentificationDevice(object):
 
         self.set_integration_time_ms(self.settings.eeprom.startup_integration_time_ms)
 
+        # for now, enable Gen 1.5 accessory connector by default
+        if self.settings.is_gen15():
+            log.debug("enabling Gen 1.5 accessory connector")
+            self.set_accessory_enable(True)
+
         # ######################################################################
         # Done
         # ######################################################################
@@ -1823,9 +1828,6 @@ class FeatureIdentificationDevice(object):
                 log.debug("Turning off laser modulation (full power)")
                 self.next_applied_laser_power = 100.0
                 log.debug("next_applied_laser_power = 100.0")
-                lsw = 0 # disabled
-                msw = 0
-                buf = [0] * 8
                 return self.set_mod_enable(False)
 
         period_us = 1000 if self.settings.state.laser_power_high_resolution else 100
@@ -2162,6 +2164,29 @@ class FeatureIdentificationDevice(object):
     #                           Accessory Connector
     #
     # ##########################################################################
+
+    # ##########################################################################
+    # Accessory Enable
+    # ##########################################################################
+
+    ## @todo change opcode (conflicts with GET_DETECTOR_START_LINE)
+    def set_accessory_enable(self, flag):
+        if not self.settings.is_gen15():
+            log.debug("accessory requires Gen 1.5")
+            return False
+        value = 1 if flag else 0
+        return self.send_code(bRequest        = 0x22,
+                              wValue          = value,
+                              wIndex          = 0,
+                              data_or_wLength = [0] * 8,
+                              label           = "SET_ACCESSORY_ENABLE")
+
+    ## @todo find out opcode
+    def get_discretes_enabled(self):
+        if not self.settings.is_gen15():
+            log.error("accessory requires Gen 1.5")
+            return False
+        # return self.get_code(0x37, label="GET_ACCESSORY_ENABLED", msb_len=1)
 
     # ##########################################################################
     # Fan
@@ -2693,6 +2718,7 @@ class FeatureIdentificationDevice(object):
         f["min_usb_interval_ms"]                = lambda x: self.settings.state.set("min_usb_interval_ms", int(round(x)))
         f["max_usb_interval_ms"]                = lambda x: self.settings.state.set("max_usb_interval_ms", int(round(x)))
 
+        f["accessory_enable"]                   = lambda x: self.set_accessory_enable(clean_bool(x))
         f["fan_enable"]                         = lambda x: self.set_fan_enable(clean_bool(x))
         f["lamp_enable"]                        = lambda x: self.set_lamp_enable(clean_bool(x))
         f["shutter_enable"]                     = lambda x: self.set_shutter_enable(clean_bool(x))

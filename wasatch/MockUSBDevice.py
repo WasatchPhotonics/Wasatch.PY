@@ -79,18 +79,18 @@ class MockUSBDevice(AbstractUSBDevice):
         # style is (bRequest,wValue) to allow for second tier op codes
         # if first tier, where wValue matters then wValue should be given as None
         self.cmd_dict = {
-            (178,None): self.cmd_set_int_time,
-            (182,None): self.cmd_set_offset,
-            (183,None): self.cmd_set_gain,
-            (190,None): self.cmd_toggle_laser,
-            (214,None): self.cmd_toggle_tec,
-            (215,None): self.cmd_get_detector_temp,
-            (216,None): self.cmd_set_setpoint,
-            (218,None): self.cmd_get_tec_enable,
+            (0xb2,None): self.cmd_set_int_time,
+            (0xb6,None): self.cmd_set_offset,
+            (0xb7,None): self.cmd_set_gain,
+            (0xbe,None): self.cmd_toggle_laser,
+            (0xd6,None): self.cmd_toggle_tec,
+            (0xd7,None): self.cmd_get_detector_temp,
+            (0xd8,None): self.cmd_set_setpoint,
+            (0xda,None): self.cmd_get_tec_enable,
             (0x34,None): self.cmd_get_raw_ambient_temp,
             (0xd5,None): self.cmd_get_laser_temp,
             (0xd7,None): self.cmd_get_detect_temp,
-            (226,None): self.cmd_get_laser_enabled,
+            (0xe2,None): self.cmd_get_laser_enabled,
             (0xff,1): self.cmd_read_eeprom,
             }
         self.reading_cycles = {}
@@ -103,7 +103,7 @@ class MockUSBDevice(AbstractUSBDevice):
         return [random.randint(0,255)]*2
 
     def cmd_get_detect_temp(self, *args):
-        return [random.randint(0,255)]*2
+        return [0, random.randint(0,255)]
 
     def cmd_get_raw_ambient_temp(self, *args):
         return [random.randint(0,255)]*2
@@ -167,6 +167,7 @@ class MockUSBDevice(AbstractUSBDevice):
         bytes = struct.pack('>e',self.detector_temp_raw)
         value = int.from_bytes(bytes,byteorder='big')
         value = value & 0x0F
+        log.info(f"sending temp value of {value}")
         return value.to_bytes(2, byteorder='big')
 
 
@@ -251,6 +252,8 @@ class MockUSBDevice(AbstractUSBDevice):
             self.parse_wpsc_eeprom(eeprom)
         else:
             self.eeprom = eeprom
+        log.debug("Mock USB EEPROM results are the following:")
+        log.debug(self.eeprom)
 
     def parse_wpsc_eeprom(self,eeprom_file):
         translated_eeprom = {}
@@ -285,7 +288,8 @@ class MockUSBDevice(AbstractUSBDevice):
         self.spec_readings["default"] = []
         for object in parse_objects:
             object.load_data()
-        self.spec_readings["default"].extend([struct.pack('e' * len(object.processed_reading.processed),*object.processed_reading.processed) for object in parse_objects])
+            object.processed_reading.processed = [int(val) if val > 0 else 0 for val in object.processed_reading.processed]
+        self.spec_readings["default"].extend([struct.pack('H' * len(object.processed_reading.processed),*object.processed_reading.processed) for object in parse_objects])
 
     def to_dict():
         return str(self)
