@@ -422,13 +422,15 @@ class WasatchDevice(object):
         # read battery every 10sec
         if self.settings.eeprom.has_battery:
             if self.settings.state.battery_timestamp is None or (datetime.datetime.now() >= self.settings.state.battery_timestamp + datetime.timedelta(seconds=10)):
-                reading.battery_raw = self.hardware.get_battery_state_raw()
+                res_raw = self.hardware.get_battery_state_raw()
+                reading.battery_raw = res_raw.data
                 if self.hardware.shutdown_requested:
                     log.debug("battery_raw shutdown")
                     acquire_response.poison_pill = True
                     return acquire_response
 
-                reading.battery_percentage = self.hardware.get_battery_percentage()
+                perc_res = self.hardware.get_battery_percentage()
+                reading.battery_percentage = perc_res.data
                 if self.hardware.shutdown_requested:
                     log.debug("battery_perc shutdown")
                     acquire_response.poison_pill = True

@@ -409,10 +409,10 @@ class FeatureIdentificationDevice(object):
             prefix, bRequest, wValue, wIndex, data_or_wLength)
 
         if dry_run:
-            return True
+            return SpectrometerResponse(keep_alive=True)
 
         if self.check_for_random_error():
-            return False
+            return SpectrometerResponse(poison_pill=False)
 
         retry_count = 0
         while True:
@@ -427,13 +427,13 @@ class FeatureIdentificationDevice(object):
             except Exception as exc:
                 log.critical("Hardware Failure FID Send Code Problem with ctrl transfer", exc_info=1)
                 self.schedule_disconnect(exc)
-                return False
+                return SpectrometerResponse(poison_pill=True)
 
             log.debug("%ssend_code: request 0x%02x value 0x%04x index 0x%04x data/len %s: result %s",
                 prefix, bRequest, wValue, wIndex, data_or_wLength, result)
 
             if not retry_on_error:
-                return True
+                return SpectrometerResponse(keep_alive=True)
 
             # retry logic enabled, so compare result to expected
             matched_expected = True
@@ -446,13 +446,13 @@ class FeatureIdentificationDevice(object):
                         break
 
             if matched_expected:
-                return True
+                return SpectrometerResponse(keep_alive=True)
 
             # apparently it didn't match expected
             retry_count += 1
             if retry_count > self.retry_max:
                 log.error("giving up after %d retries", retry_count)
-                return False
+                return SpectrometerResponse(poison_pill=True)
 
             # try again
             log.error("retrying (attempt %d)", retry_count + 1)
@@ -465,11 +465,11 @@ class FeatureIdentificationDevice(object):
 
         if self.shutdown_requested or (not self.connected and not self.connecting):
             log.debug("get_code: not attempting because not connected")
-            return result
+            return SpectrometerResponse()
 
         if self.check_for_random_error():
             log.debug("random error")
-            return False
+            return SpectrometerResponse(poison_pill=True)
 
         try:
             self.wait_for_usb_available()
@@ -482,7 +482,7 @@ class FeatureIdentificationDevice(object):
         except Exception as exc:
             log.critical("Hardware Failure FID Get Code Problem with ctrl transfer", exc_info=1)
             self.schedule_disconnect(exc)
-            return None
+            return SpectrometerResponse(poison_pill=True)
 
         log.debug("%sget_code: request 0x%02x value 0x%04x index 0x%04x = [%s]",
             prefix, bRequest, wValue, wIndex, result)
@@ -490,20 +490,20 @@ class FeatureIdentificationDevice(object):
         if result is None:
             log.critical("get_code[%s, %s]: received null", label, self.device_id)
             self.schedule_disconnect(exc)
-            return None
+            return SpectrometerResponse(keep_alive=True)
 
         # demarshall or return raw array
         value = 0
         if msb_len is not None:
             for i in range(msb_len):
                 value = value << 8 | result[i]
-            return value
+            return SpectrometerResponse(data=value)
         elif lsb_len is not None:
             for i in range(lsb_len):
                 value = (result[i] << (8 * i)) | value
-            return value
+            return SpectrometerResponse(data=value)
         else:
-            return result
+            return SpectrometerResponse(data=result)
 
     def get_upper_code(self, wValue, wIndex=0, wLength=64, label="", msb_len=None, lsb_len=None):
         return self.get_code(0xff, wValue, wIndex, wLength, label=label, msb_len=msb_len, lsb_len=lsb_len)
@@ -517,12 +517,16 @@ class FeatureIdentificationDevice(object):
         for page in range(EEPROM.MAX_PAGES):
             buf = None
             try:
-                buf = self.get_upper_code(0x01, page, label="GET_MODEL_CONFIG(%d)" % page)
+                response = self.get_upper_code(0x01, page, label="GET_MODEL_CONFIG(%d)" % page)
+                buf = response.data
+                if response.error_lvl != ErrorLevel.ok:
+                    return response
             except:
                 log.error("exception reading upper_code 0x01 with page %d", page, exc_info=1)
             if buf is None or len(buf) < 64:
-                log.error(f"unable to read EEPROM received buf of {buf} and len {len(buf)}")
-                return False
+                msg = "unable to read EEPROM received buf of {buf} and len {len(buf)}"
+                log.error(msg)
+                return SpectrometerResponse(error_lvl=ErrorLevel.medium,error_msg=msg)
             buffers.append(buf)
         return self.settings.eeprom.parse(buffers)
 
@@ -538,7 +542,8 @@ class FeatureIdentificationDevice(object):
         return False
 
     def read_fpga_compilation_options(self):
-        word = self.get_upper_code(0x04, label="READ_COMPILATION_OPTIONS", lsb_len=2)
+        response = self.get_upper_code(0x04, label="READ_COMPILATION_OPTIONS", lsb_len=2)
+        word = response.data
         self.settings.fpga_options.parse(word)
 
     # ##########################################################################
@@ -555,37 +560,41 @@ class FeatureIdentificationDevice(object):
     def get_battery_state_raw(self):
         now = datetime.datetime.now()
         if (self.settings.state.battery_timestamp is not None and now < self.settings.state.battery_timestamp + datetime.timedelta(seconds=1)):
-            return self.settings.state.battery_raw
+            return SpectrometerResponse(data=self.settings.state.battery_raw)
 
         self.settings.state.battery_timestamp = now
-        self.settings.state.battery_raw = self.get_upper_code(0x13, label="GET_BATTERY_STATE", msb_len=3)
+        response = self.get_upper_code(0x13, label="GET_BATTERY_STATE", msb_len=3)
+        self.settings.state.battery_raw = response.data
 
-        log.debug("battery_state_raw: 0x%06x", self.settings.state.battery_raw)
-        return self.settings.state.battery_raw
+        log.debug("battery_state_raw: {self.settings.state.battery_raw}")
+        return SpectrometerResponse(data=self.settings.state.battery_raw)
 
     def get_battery_percentage(self):
-        word = self.get_battery_state_raw()
+        response = self.get_battery_state_raw()
+        word = response.data
         lsb = (word >> 16) & 0xff
         msb = (word >>  8) & 0xff
         perc = msb + (1.0 * lsb / 256.0)
         log.debug("battery_perc: %.2f%%", perc)
-        return perc
+        return SpectrometerResponse(data=perc)
 
     def get_battery_charging(self):
-        word = self.get_battery_state_raw()
+        res = self.get_battery_state_raw()
+        word = res.data
         charging = (0 != (word & 0xff))
-        return charging
+        return SpectrometerResponse(data=charging)
 
     def get_integration_time_ms(self):
-        ms = self.get_code(0xbf, label="GET_INTEGRATION_TIME_MS", lsb_len=3)
+        response = self.get_code(0xbf, label="GET_INTEGRATION_TIME_MS", lsb_len=3)
+        ms = response.data
 
         if self.settings.state.integration_time_ms > 0:
-            log.debug("GET_INTEGRATION_TIME_MS: now %d", ms)
+            log.debug(f"GET_INTEGRATION_TIME_MS: now {ms}")
             self.settings.state.integration_time_ms = ms
         else:
             log.debug("declining to initialize session integration_time_ms from spectrometer")
 
-        return ms
+        return SpectrometerResponse(data=ms)
 
     ##
     # Puts ARM-based spectrometers into Device Firmware Update (DFU) mode.
@@ -594,15 +603,16 @@ class FeatureIdentificationDevice(object):
     #          support from Wasatch Photonics will void your warranty
     def set_dfu_enable(self, value=None):
         if not self.settings.is_arm():
-            log.error("DFU mode only supported for ARM-based spectrometers")
-            return False
+            msg = "DFU mode only supported for ARM-based spectrometers"
+            log.error(msg)
+            return SpectrometerResponse(error_lvl=ErrorLevel.low,error_msg=msg, keep_alive=True)
 
         result = self.send_code(0xfe, label="SET_DFU_ENABLE")
 
         self.queue_message("marquee_info", "%s in DFU mode" % self.settings.eeprom.serial_number)
 
         self.schedule_disconnect(Exception("DFU Mode"))
-        return result
+        return SpectrometerResponse(data=result)
 
     def set_detector_offset(self, value):
         word = utils.clamp_to_int16(value)
@@ -613,7 +623,7 @@ class FeatureIdentificationDevice(object):
     def set_detector_offset_odd(self, value):
         if not self.settings.is_ingaas():
             log.debug("SET_DETECTOR_OFFSET_ODD only supported on InGaAs")
-            return False
+            return SpectrometerResponse(keep_alive=True,error_lvl=ErrorLevel.low)
 
         word = utils.clamp_to_int16(value)
         self.settings.eeprom.detector_offset_odd = word
@@ -628,11 +638,13 @@ class FeatureIdentificationDevice(object):
     #
     # E.g., 231 dec == 0x01e7 == 1.90234375
     def get_detector_gain(self, update_session_eeprom=False):
-        result = self.get_code(0xc5, label="GET_DETECTOR_GAIN")
+        res = self.get_code(0xc5, label="GET_DETECTOR_GAIN")
+        result = res.data
 
         if result is None:
-            log.error("GET_DETECTOR_GAIN returned NULL!")
-            return -1
+            msg = "GET_DETECTOR_GAIN returned NULL!"
+            log.error(msg)
+            return SpectrometerResponse(error_lvl=ErrorLevel.medium,error_msg=msg,keep_alive=True)
 
         lsb = result[0] # LSB-MSB
         msb = result[1]
@@ -648,7 +660,7 @@ class FeatureIdentificationDevice(object):
         if self.settings.is_micro():
             self.settings.state.gain_db = gain
 
-        return gain
+        return SpectrometerResponse(data=gain)
 
     def get_detector_gain_odd(self, update_session_eeprom=False):
         if not self.settings.is_ingaas():
@@ -739,7 +751,8 @@ class FeatureIdentificationDevice(object):
         return available
 
     def get_microcontroller_firmware_version(self):
-        result = self.get_code(0xc0, label="GET_CODE_REVISION")
+        res = self.get_code(0xc0, label="GET_CODE_REVISION")
+        result = res.data
         version = "?.?.?.?"
         if result is not None and len(result) >= 4:
             version = "%d.%d.%d.%d" % (result[3], result[2], result[1], result[0]) # MSB-LSB
@@ -748,7 +761,8 @@ class FeatureIdentificationDevice(object):
 
     def get_fpga_firmware_version(self):
         s = ""
-        result = self.get_code(0xb4, label="GET_FPGA_REV")
+        res = self.get_code(0xb4, label="GET_FPGA_REV")
+        result = res.data
         if result is not None:
             for i in range(len(result)):
                 c = result[i]
@@ -1251,7 +1265,8 @@ class FeatureIdentificationDevice(object):
         if self.settings.state.selected_adc is None or self.settings.state.selected_adc != 0:
             self.select_adc(0)
 
-        result = self.get_code(0xd5, wLength=2, label="GET_ADC", lsb_len=2)
+        res = self.get_code(0xd5, wLength=2, label="GET_ADC", lsb_len=2)
+        result = res.data
         if not result:
             log.debug("Unable to read laser temperature")
             return 0
@@ -2383,7 +2398,8 @@ class FeatureIdentificationDevice(object):
         return self.get_code(0xef, label="GET_LASER_INTERLOCK", msb_len=1)
 
     def get_laser_enabled(self):
-        flag = 0 != self.get_code(0xe2, label="GET_LASER_ENABLED", msb_len=1)
+        res = self.get_code(0xe2, label="GET_LASER_ENABLED", msb_len=1)
+        flag = 0 != res.data
         log.debug("get_laser_enabled: %s", flag)
         self.settings.state.laser_enabled = flag
         return flag

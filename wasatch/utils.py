@@ -429,14 +429,17 @@ def clean_nan(a):
 def coeffs_look_valid(coeffs, count=None):
 
     if coeffs is None:
+        log.debug("no coeffs, returning False")
         return False
 
     if count is not None and len(coeffs) != count:
+        log.debug("coeff count is wrong, returning False")
         return False
 
     # check for NaN
     for i in range(len(coeffs)):
         if math.isnan(coeffs[i]):
+            log.debug("found NaN in coeff, returning False")
             return False 
 
     # check for [0, 1, 0...] default pattern
@@ -447,14 +450,17 @@ def coeffs_look_valid(coeffs, count=None):
         elif coeffs[i] != 0.0:
             all_default = False
     if all_default:
+        log.debug("coeffs all default, reutrning False")
         return False
 
     # check for constants (all coefficients the same value)
     all_const = True
+    log.info(coeffs)
     for i in range(1, len(coeffs)):
         if coeffs[0] != coeffs[i]:
             all_const = False
     if all_const:
+        log.debug("coeffs all const, returning False")
         return False
 
     return True
