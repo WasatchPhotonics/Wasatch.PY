@@ -209,7 +209,7 @@ class EEPROM(object):
         self.has_cooling                     = self.unpack((0, 36,  1), "?", "cooling")
         self.has_battery                     = self.unpack((0, 37,  1), "?", "battery")
         self.has_laser                       = self.unpack((0, 38,  1), "?", "laser")
-        if self.format >= 9:
+        if self.format > 9:
             self.feature_mask                = self.unpack((0, 39,  2), "H", "feature_mask")
         elif self.format >= 3:
             self.excitation_nm               = self.unpack((0, 39,  2), "H", "excitation_nm (unsigned)")

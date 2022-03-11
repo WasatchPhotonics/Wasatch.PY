@@ -4,6 +4,12 @@
     - fixed logging bug
 - 2022-01-18 2.0.0
     - add support for Andor Spectrometers
+- 2021-12-13 1.1.37
+    - dropped FeatureMask support from EEPROM format 9 (only support on format 10+)
+- 2021-10-28 1.1.36
+    - added FID.can\_laser\_fire() and is\_laser\_firing() (and corresponding Reading flags)
+    - grouped laser commands in FID
+    - switched some FID getters from returning 1/0 to True/False
 - 2021-10-18 1.1.35
     - added OceanDevice.py
     - Changed DeviceFinderUSB.py to use usb.core
