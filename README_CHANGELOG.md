@@ -1,5 +1,9 @@
 # Changelog
 
+- 2022-01-28 2.0.1
+    - fixed logging bug
+- 2022-01-18 2.0.0
+    - add support for Andor Spectrometers
 - 2021-12-13 1.1.37
     - dropped FeatureMask support from EEPROM format 9 (only support on format 10+)
 - 2021-10-28 1.1.36

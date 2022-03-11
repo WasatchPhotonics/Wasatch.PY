@@ -392,12 +392,12 @@ class WasatchDevice(object):
             try:
                 reading.detector_temperature_raw  = self.hardware.get_detector_temperature_raw()
                 if self.hardware.shutdown_requested:
-                    logger.debug("detector_temperature_raw shutdown")
+                    log.debug("detector_temperature_raw shutdown")
                     return False
 
                 reading.detector_temperature_degC = self.hardware.get_detector_temperature_degC(reading.detector_temperature_raw)
                 if self.hardware.shutdown_requested:
-                    logger.debug("detector_temperature_degC shutdown")
+                    log.debug("detector_temperature_degC shutdown")
                     return False
 
             except Exception as exc:
@@ -416,18 +416,18 @@ class WasatchDevice(object):
             if self.settings.state.battery_timestamp is None or (datetime.datetime.now() >= self.settings.state.battery_timestamp + datetime.timedelta(seconds=10)):
                 reading.battery_raw = self.hardware.get_battery_state_raw()
                 if self.hardware.shutdown_requested:
-                    logger.debug("battery_raw shutdown")
+                    log.debug("battery_raw shutdown")
                     return False
 
                 reading.battery_percentage = self.hardware.get_battery_percentage()
                 if self.hardware.shutdown_requested:
-                    logger.debug("battery_perc shutdown")
+                    log.debug("battery_perc shutdown")
                     return False
                 self.last_battery_percentage = reading.battery_percentage
 
                 reading.battery_charging = self.hardware.get_battery_charging()
                 if self.hardware.shutdown_requested:
-                    logger.debug("battery_charging shutdown")
+                    log.debug("battery_charging shutdown")
                     return False
 
                 log.debug("battery: level %.2f%% (%s)", reading.battery_percentage, "charging" if reading.battery_charging else "not charging")

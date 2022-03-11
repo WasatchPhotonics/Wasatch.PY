@@ -4,10 +4,13 @@ import json
 import math
 import re
 
+from datetime import datetime
 from . import utils
 
 from .SpectrometerState import SpectrometerState
 from .DetectorRegions   import DetectorRegions
+from .MockUSBDevice     import MockUSBDevice
+from .RealUSBDevice     import RealUSBDevice
 from .HardwareInfo      import HardwareInfo
 from .DetectorROI       import DetectorROI
 from .FPGAOptions       import FPGAOptions
@@ -400,6 +403,9 @@ class SpectrometerSettings(object):
     def has_marker(self):
         return self.eeprom.model == "WPX-8CHANNEL"
 
+    def is_andor(self):
+        return '0x136e' in str(self.device_id)
+
     def is_sig(self):
         return self.is_micro()
 
@@ -410,7 +416,7 @@ class SpectrometerSettings(object):
             if k in ["eeprom_backup"]:
                 continue # skip these
 
-            if isinstance(v, (DeviceID, EEPROM, FPGAOptions, SpectrometerState, HardwareInfo)):
+            if isinstance(v, (DeviceID, EEPROM, FPGAOptions, SpectrometerState, HardwareInfo, RealUSBDevice, MockUSBDevice, datetime)):
                 o = v.to_dict()
             elif isinstance(v, np.ndarray):
                 o = v.tolist()

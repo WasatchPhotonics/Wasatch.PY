@@ -99,3 +99,11 @@ ENV/
 
 # mypy
 .mypy_cache/
+
+# self logs
+wasatch_applog.txt
+
+# other
+.DS_Store
+.vs/*
+environment.yml

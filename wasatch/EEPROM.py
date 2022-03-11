@@ -45,6 +45,7 @@ class EEPROM(object):
         self.gen15                       = False
         self.cutoff_filter_installed     = False
         self.hardware_even_odd           = False
+        self.has_laser_tec               = False
         self.excitation_nm               = 0.0
         self.excitation_nm_float         = 0.0
         self.slit_size_um                = 0
@@ -361,11 +362,21 @@ class EEPROM(object):
         # feature mask
         # ######################################################################
 
-        self.invert_x_axis           = 0 != self.feature_mask & 0x0001
-        self.bin_2x2                 = 0 != self.feature_mask & 0x0002
-        self.gen15                   = 0 != self.feature_mask & 0x0004
-        self.cutoff_filter_installed = 0 != self.feature_mask & 0x0008
-        self.hardware_even_odd       = 0 != self.feature_mask & 0x0010
+        if self.format >= 9:
+            self.invert_x_axis           = 0 != self.feature_mask & 0x0001
+            self.bin_2x2                 = 0 != self.feature_mask & 0x0002
+            self.gen15                   = 0 != self.feature_mask & 0x0004
+            self.cutoff_filter_installed = 0 != self.feature_mask & 0x0008
+            self.hardware_even_odd       = 0 != self.feature_mask & 0x0010
+            self.has_laser_tec           = 0 != self.feature_mask & 0x0020
+        else:
+            self.invert_x_axis           = 0 
+            self.bin_2x2                 = 0
+            self.gen15                   = 0
+            self.cutoff_filter_installed = 0
+            self.hardware_even_odd       = 0
+            self.has_laser_tec           = 0
+
 
         # ######################################################################
         # sanity checks
@@ -405,6 +416,7 @@ class EEPROM(object):
         mask |= 0x0004 if self.gen15                   else 0
         mask |= 0x0008 if self.cutoff_filter_installed else 0
         mask |= 0x0010 if self.hardware_even_odd       else 0
+        mask |= 0x0020 if self.has_laser_tec           else 0
         return mask
 
     ##

@@ -229,7 +229,9 @@ class SpectrometerState(object):
         log.debug("  Wavenumber Correction:  %d", self.wavenumber_correction)
 
     def to_dict(self):
-        return self.__dict__
+        dict = self.__dict__
+        dict["battery_timestamp"] = str(dict["battery_timestamp"])
+        return dict
 
     def set(self, name, value):
         setattr(self, name, value)

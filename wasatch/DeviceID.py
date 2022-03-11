@@ -72,7 +72,7 @@ class DeviceID(object):
     ##
     # Instantiates a DeviceID object from either a usb.device or an
     # existing device_id string representation.
-    def __init__(self, device=None, label=None, directory=None):
+    def __init__(self, device=None, label=None, directory=None, device_type=None):
 
         self.type      = None
         self.vid       = None
@@ -80,6 +80,7 @@ class DeviceID(object):
         self.bus       = None
         self.address   = None
         self.directory = None
+        self.device_type = device_type
 
         if label is not None:
             # instantiate from an existing string id
@@ -243,4 +244,5 @@ class DeviceID(object):
         for k, v in self.__dict__.items():
             if k not in ["device"]:
                 d[k] = v
+            d["device_type"] = str(self.device_type)
         return d
