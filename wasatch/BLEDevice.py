@@ -21,12 +21,14 @@ class BLEDevice:
         self.device_type = self
         self.eeprom = eeprom
         self.ble_pid = str(hash(spec_name))
-        self.device_id = DeviceID(label=f"USB:{self.ble_pid[:8]}:0x16384:111111:111111", device_type="ble")
+        self.device_id = DeviceID(label=f"USB:{self.ble_pid[:8]}:0x16384:111111:111111", device_type=self)
         self.device_id = self.device_id
         self.bus = self.device_id.bus
         self.address = self.device_id.address
         self.vid = self.device_id.vid
         self.pid = self.device_id.pid
+        self.device_type = self
+        self.is_ble = True
 
         #init attributes
         self.spec_readings = {}
