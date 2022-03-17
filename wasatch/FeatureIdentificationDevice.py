@@ -517,8 +517,9 @@ class FeatureIdentificationDevice(object):
                 buf = self.get_upper_code(0x01, page, label="GET_MODEL_CONFIG(%d)" % page)
             except:
                 log.error("exception reading upper_code 0x01 with page %d", page, exc_info=1)
-            if buf is None or len(buf) < 64:
-                log.error(f"unable to read EEPROM received buf of {buf} and len {len(buf)}")
+            buf_len = 0 if buf is None else len(buf)
+            if buf is None or buf_len < 64:
+                log.error(f"unable to read EEPROM received buf of {buf} and len {buf_len}")
                 return False
             buffers.append(buf)
         return self.settings.eeprom.parse(buffers)

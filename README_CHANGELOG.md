@@ -1,5 +1,8 @@
 # Changelog
 
+- 2022-??-??
+    - explicitly prefer libusb0 backend (needed for 64-bit)
+    - fixed potential EEPROM logging bug
 - 2022-01-28 2.0.1
     - fixed logging bug
 - 2022-01-18 2.0.0
