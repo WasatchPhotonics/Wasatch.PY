@@ -28,6 +28,8 @@ class EEPROM(object):
     
     LATEST_REV = 12
     MAX_PAGES = 8
+    PAGE_LENGTH = 64
+    SUBPAGE_COUNT = 4
     MAX_RAMAN_INTENSITY_CALIBRATION_ORDER = 7
 
     def __init__(self):

@@ -256,6 +256,8 @@ class WasatchDeviceWrapper(object):
         # expect to read a single post-initialization SpectrometerSettings object off the queue
         time_start = datetime.datetime.now()
         settings_timeout_sec = 15
+        if self.is_ble:
+            settings_timeout_sec += 10
         self.settings = None
         log.debug("connect: blocking on settings_queue (waiting on child thread to send SpectrometerSettings)")
         while True:
