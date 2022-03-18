@@ -41,6 +41,7 @@ class BLEDevice:
         self.is_ble = True
         self.loop = loop
         self.performing_acquire = False
+        self.disconnect = False
         self.client = BleakClient(device)
         self.total_pixels_read = 0
         self.session_reading_count = 0
@@ -82,6 +83,9 @@ class BLEDevice:
         pixels_read = 0
         header_len = 2
         while (pixels_read < pixels):
+            if self.disconnect:
+                log.info("Disconnecting, stopping spectra acquire and returning None")
+                return
             if request_retry:
                 retry_count += 1
                 if (retry_count > MAX_RETRIES):
@@ -89,8 +93,6 @@ class BLEDevice:
                     return None;
 
             delay_ms = int(retry_count**5)
-            if self.disconnect:
-                return
 
             # if this is the first retry, assume that the sensor was
             # powered-down, and we need to wait for some throwaway
@@ -133,8 +135,6 @@ class BLEDevice:
                 offset = header_len + i * 2
                 intensity = int((response[offset+1] << 8) | response[offset])
                 spectrum[pixels_read] = intensity
-                if self.disconnect:
-                    return
 
                 pixels_read += 1
 
@@ -178,10 +178,6 @@ class BLEDevice:
             pages.append(buf)
         return pages
 
-    def make_async_loop(self, loop):
-        asyncio.set_event_loop(loop)
-        loop.run_forever()
-
     def get_pid_hex(self):
         return str(hex(self.pid))[2:]
 
@@ -211,6 +207,14 @@ class BLEDevice:
 
     def close(self):
         self.disconnect = True
+        fut = asyncio.run_coroutine_threadsafe(self.disconnect_spec(), self.loop)
+        result = fut.result()
+
+    async def disconnect_spec(self):
+        while self.perfomring_acquire:
+            asyncio.sleep(1)
+
+        await self.client.disconnect()
 
     def get_default_data_dir(self):
         return os.getcwd()
