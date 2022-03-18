@@ -42,6 +42,7 @@ class BLEDevice:
         self.loop = loop
         self.performing_acquire = False
         self.disconnect = False
+        self.disconnect_event = asyncio.Event()
         self.client = BleakClient(device)
         self.total_pixels_read = 0
         self.session_reading_count = 0
@@ -70,6 +71,8 @@ class BLEDevice:
         return result
 
     async def ble_acquire(self):
+        if self.disconnect_event.is_set():
+            return
         request = await self.client.write_gatt_char(DEVICE_ACQUIRE_UUID, bytes(0))
         pixels = self.settings.eeprom.active_pixels_horizontal
         spectrum = [0 for pix in range(pixels)]
@@ -83,6 +86,8 @@ class BLEDevice:
         pixels_read = 0
         header_len = 2
         while (pixels_read < pixels):
+            if self.disconnect_event.is_set():
+                return
             if self.disconnect:
                 log.info("Disconnecting, stopping spectra acquire and returning None")
                 return
@@ -101,6 +106,8 @@ class BLEDevice:
                 delay_ms = int(self.settings.state.integration_time_ms * THROWAWAY_SPECTRA)
 
             log.error(f"Retry requested, so waiting for {delay_ms}ms")
+            if self.disconnect_event.is_set():
+                return
             await asyncio.sleep(delay_ms)
 
             request_retry = False
@@ -118,6 +125,9 @@ class BLEDevice:
                 log.error(f"received invalid response of {response_len} bytes")
                 request_retry = True
                 continue
+            log.info(f"event being set is {self.disconnect_event.is_set()}")
+            if self.disconnect_event.is_set():
+                return
 
             # firstPixel is a big-endian UInt16
             first_pixel = int((response[0] << 8) | response[1])
@@ -135,6 +145,8 @@ class BLEDevice:
                 offset = header_len + i * 2
                 intensity = int((response[offset+1] << 8) | response[offset])
                 spectrum[pixels_read] = intensity
+                if self.disconnect_event.is_set():
+                    return
 
                 pixels_read += 1
 
@@ -206,14 +218,13 @@ class BLEDevice:
         return str(self) < str(other)
 
     def close(self):
+        log.info("BLE close called, trying to disconnect spec")
         self.disconnect = True
+        self.disconnect_event.set()
         fut = asyncio.run_coroutine_threadsafe(self.disconnect_spec(), self.loop)
         result = fut.result()
 
     async def disconnect_spec(self):
-        while self.perfomring_acquire:
-            asyncio.sleep(1)
-
         await self.client.disconnect()
 
     def get_default_data_dir(self):
