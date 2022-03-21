@@ -93,6 +93,7 @@ class SPIDevice:
             log.info(f"spi read page of {page}")
             eeprom_pages.append(page)
         self.settings.eeprom.parse(eeprom_pages)
+        self.settings.eeprom.active_pixels_horizontal = 1000
         return True
 
     def acquire_data(self):
