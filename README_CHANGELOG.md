@@ -1,5 +1,8 @@
 # Changelog
 
+- 2022-03-21 2.0.3
+    - renamed has\_laser\_tec to sig\_laser\_tec
+    - added has\_interlock\_feedback
 - 2022-03-17 2.0.2
     - explicitly prefer libusb0 backend (needed for 64-bit)
     - fixed potential EEPROM logging bug
