@@ -60,6 +60,12 @@ class BLEDevice:
         self.label = f"{self.settings.eeprom.serial_number} ({self.settings.eeprom.model})"
         return True
 
+    def init_lambdas(self):
+        f = {}
+        f["integration_time_ms"] = lambda x: asyncio.run_coroutine_threadsafe(self.set_integration_time_ms(x), self.loop)
+        f["shutter_enable"] = lambda x: self.set_shutter_enable(bool(x))
+        self.lambdas = f
+
     def acquire_data(self):
         if self.performing_acquire:
             return True
