@@ -33,6 +33,7 @@ class BLEDevice:
         self.ble_pid = str(hash(device.address))
         self.device_id = DeviceID(label=f"USB:{self.ble_pid[:8]}:0x16384:111111:111111", device_type=self)
         self.device_id = self.device_id
+        self.label = "BLE Device"
         self.bus = self.device_id.bus
         self.address = self.device_id.address
         self.vid = self.device_id.vid
@@ -56,6 +57,7 @@ class BLEDevice:
         fut = asyncio.run_coroutine_threadsafe(self.get_eeprom(), self.loop)
         self.settings.eeprom.buffers = fut.result()
         self.settings.eeprom.read_eeprom()
+        self.label = f"{self.settings.eeprom.serial_number} ({self.settings.eeprom.model})"
         return True
 
     def acquire_data(self):
@@ -167,6 +169,9 @@ class BLEDevice:
         return reading;
 
     def change_settings(self, setting, value):
+        pass
+
+    def change_device_setting(self, setting, value):
         pass
 
     async def connect_spec(self):
