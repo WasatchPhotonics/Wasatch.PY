@@ -43,6 +43,7 @@ class SPIDevice:
         self.message_queue  = message_queue
 
         self.connected = False
+        self.disconnect = False
 
         # Receives ENLIGHTEN's 'change settings' commands in the spectrometer
         # process. Although a logical queue, has nothing to do with multiprocessing.
@@ -93,10 +94,18 @@ class SPIDevice:
             log.info(f"spi read page of {page}")
             eeprom_pages.append(page)
         self.settings.eeprom.parse(eeprom_pages)
-        self.settings.eeprom.active_pixels_horizontal = 1000
+        self.settings.eeprom.active_pixels_horizontal = 1952
+        self.settings.state.integration_time_ms = 10
+        return True
+
+    def disconnect(self):
+        self.disconnect = True
         return True
 
     def acquire_data(self):
+        if self.disconnect:
+            log.debug("disconnecting, returning False for the spectrum")
+            return False
         averaging_enabled = (self.settings.state.scans_to_average > 1)
         reading = Reading(self.device_id)
 
@@ -106,6 +115,8 @@ class SPIDevice:
             reading.laser_power_mW      = self.settings.state.laser_power_mW
             reading.laser_enabled       = self.settings.state.laser_enabled
             reading.spectrum            = self.Acquire()
+            if reading.spectrum == False:
+                return False
         except usb.USBError:
             self.failure_count += 1
             log.error(f"SPI Device: encountered USB error in reading for device {self.device}")
@@ -180,6 +191,8 @@ class SPIDevice:
         return True
 
     def Acquire(self):
+        if self.disconnect:
+            return False
         #print("calling acquire")
         SPIBuf  = bytearray(2)
         spectra = []
