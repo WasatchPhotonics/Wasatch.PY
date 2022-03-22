@@ -1550,8 +1550,7 @@ class FeatureIdentificationDevice(object):
         tries = 0
         while True:
             self.set_strobe_enable(flag)
-            check = self.get_laser_enabled() != 0
-            if flag == check:
+            if flag == self.get_laser_enabled():
                 return True
             tries += 1
             if tries > 3:
@@ -1933,22 +1932,19 @@ class FeatureIdentificationDevice(object):
             log.error("EEPROM reports no laser installed")
             return False
 
-        if self.settings.is_arm():
-            log.debug("GET_LASER_INTERLOCK not supported on ARM (defaulting True)")
+        if not self.settings.eeprom.has_interlock_feedback:
+            log.debug("CAN_LASER_FIRE requires has_interlock_feedback (defaulting True)")
             return True
 
-        if self.settings.microcontroller_firmware_version != "10.0.0.11":
-            log.debug("GET_LASER_INTERLOCK not supported on %s (defaulting True)", self.settings.microcontroller_firmware_version)
-            return True
-
-        return 0 != self.get_code(0xef, label="GET_LASER_INTERLOCK", msb_len=1)
+        return 0 != self.get_code(0xef, label="CAN_LASER_FIRE", msb_len=1)
 
     ##
-    # This is an experimental command to determine if the laser actually is 
-    # firing, independent of the laser_enable or interlock status.
+    # Check if the laser actually IS firing, independent of laser_enable or 
+    # can_laser_fire.
     def is_laser_firing(self):
-        if not self.can_laser_fire():
-            return False
+        if not self.settings.eeprom.has_interlock_feedback:
+            log.debug("IS_LASER_FIRING requires has_interlock_feedback (defaulting to laser_enabled)")
+            return self.get_laser_enabled()
 
         return 0 != self.get_upper_code(0x0d, label="IS_LASER_FIRING", msb_len=1)
 
