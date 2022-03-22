@@ -11,12 +11,13 @@ from bleak import discover, BleakClient, BleakScanner
 from bleak.exc import BleakError
 
 from . import utils
-from wasatch.DeviceID import DeviceID
-from .AbstractUSBDevice import AbstractUSBDevice
-from .CSVLoader import CSVLoader
-from .SpectrometerSettings import SpectrometerSettings
-from wasatch.EEPROM import EEPROM
 from .Reading import Reading
+from .CSVLoader import CSVLoader
+from wasatch.EEPROM import EEPROM
+from wasatch.DeviceID import DeviceID
+from .ControlObject import ControlObject
+from .AbstractUSBDevice import AbstractUSBDevice
+from .SpectrometerSettings import SpectrometerSettings
 
 log = logging.getLogger(__name__)
 
@@ -46,6 +47,7 @@ class BLEDevice:
         self.device_type = self
         self.is_ble = True
         self.loop = loop
+        self.sum_count = 0
         self.performing_acquire = False
         self.disconnect = False
         self.disconnect_event = asyncio.Event()
@@ -71,7 +73,7 @@ class BLEDevice:
         f["integration_time_ms"] = lambda x: asyncio.run_coroutine_threadsafe(self.set_integration_time_ms(x), self.loop)
         f["detector_gain"] = lambda x: asyncio.run_coroutine_threadsafe(self.set_gain(x), self.loop)
         f["laser_enable"] = lambda x: asyncio.run_coroutine_threadsafe(self.set_laser(x), self.loop)
-        #f["detector_roi"] = lambda x: asyncio.run_coroutine_threadsafe(self.set_detector_roi(x), self.loop)
+        f["vertical_binning"] = lambda x: asyncio.run_coroutine_threadsafe(self.set_vertical_roi(x), self.loop)
         self.lambdas = f
 
     async def set_laser(self, value):
@@ -89,61 +91,40 @@ class BLEDevice:
         except Exception as e:
             log.error(f"Error trying to write int time {e}")
 
-    async def set_detector_roi(x, store=True):
-        if not self.settings.is_micro():
-            log.debug("Detector ROI only configurable on microRaman")
-            return False
-
-        if isinstance(args, DetectorROI):
-            roi = args
-            log.debug(f"passed DetectorROI: {roi}")
-        else:
-            # convert args to ROI
-            log.debug(f"creating DetectorROI from args: {args}")
-
-            if len(args) != 5:
-                log.error(f"invalid detector roi args: {args}")
+    async def set_vertical_roi(self, lines):
+        log.debug(f"veritcal roi setting to {lines}")
+        buf = bytearray()
+        try:
+            if not self.settings.is_micro():
+                log.debug("Detector ROI only configurable on microRaman")
                 return False
 
-            region = int(round(args[0]))
-            y0     = int(round(args[1]))
-            y1     = int(round(args[2]))
-            x0     = int(round(args[3]))
-            x1     = int(round(args[4]))
-            if not (0 <= region <= 3 and \
-                    y0 < y1 and \
-                    x0 < x1 and \
-                    y0 >= 0 and \
-                    x0 >= 0 and \
-                    y1 <= self.settings.eeprom.active_pixels_horizontal and \
-                    x1 <= self.settings.eeprom.active_pixels_horizontal):
-                log.error(f"invalid detector roi: {args}")
+            try:
+                start = lines[0]
+                end   = lines[1]
+            except:
+                log.error("set_vertical_binning requires a tuple of (start, stop) lines")
                 return False
-            roi = DetectorROI(region, y0, y1, x0, x1)
-            log.debug(f"created DetectorROI: {roi}")
-        # determine previous total pixels
-        self.prev_pixels = self.settings.pixels()
-        log.debug(f"prev_pixels = {self.prev_pixels}")
 
-        if store:
-            if self.settings.state.detector_regions is None:
-                log.debug("creating DetectorRegions")
-                self.settings.state.detector_regions = DetectorRegions()
+            if start < 0 or end < 0:
+                log.error("set_vertical_binning requires a tuple of POSITIVE (start, stop) lines")
+                return False
 
-            # this is a no-op if it's already present and unchanged
-            log.debug("saving DetectorROI in DetectorRegions")
-            self.settings.state.detector_regions.add(roi)
+            # enforce ascending order (also, note that stop line is "last line binned + 1", so stop must be > start)
+            if start >= end:
+                # (start, end) = (end, start)
+                log.error("set_vertical_binning requires ascending order (ignoring %d, %d)", start, end)
+                return False
 
-        log.debug(f"total_pixels now {self.settings.pixels()}")
+            b_start = int(start).to_bytes(2, byteorder='big')
+            b_end = int(end).to_bytes(2, byteorder='big')
+            buf.extend(b_start)
+            buf.extend(b_end)
+            log.debug(f"making BLE call to set veritcal roi to {buf}")
+            await self.client.write_gatt_char(DETECTOR_ROI_UUID, buf)
+        except Exception as e:
+            log.error(f"error trying to set vertical over ble of {e} with values {start} and {end}")
 
-        buf = utils.uint16_to_little_endian([ roi.y0, roi.y1, roi.x0, roi.x1 ])
-        log.debug("would send buf: %s", buf)
-        await self.client.write_gatt_char(DETECTOR_ROI_UUID, buf)
-
-        log.debug("waiting 1sec...")
-        sleep(1)
-
-        return result
 
     async def set_integration_time_ms(self, value):
         log.debug(f"BLE setting int time to {value}")
@@ -183,100 +164,151 @@ class BLEDevice:
         pixels = self.settings.eeprom.active_pixels_horizontal
         spectrum = [0 for pix in range(pixels)]
         request_retry = False
-        reading = Reading(self)
-        reading.integration_time_ms = self.settings.state.integration_time_ms
-        reading.laser_power_perc    = self.settings.state.laser_power_perc
-        reading.laser_power_mW      = self.settings.state.laser_power_mW
-        reading.laser_enabled       = self.settings.state.laser_enabled
-        retry_count = 0
-        pixels_read = 0
-        header_len = 2
-        while (pixels_read < pixels):
-            if self.disconnect_event.is_set():
-                return
-            if self.disconnect:
-                log.info("Disconnecting, stopping spectra acquire and returning None")
-                return
-            if request_retry:
-                retry_count += 1
-                if (retry_count > MAX_RETRIES):
-                    log.error(f"giving up after {MAX_RETRIES} retries")
-                    return None;
+        averaging_enabled = (self.settings.state.scans_to_average > 1)
 
-            delay_ms = int(retry_count**5)
+        if averaging_enabled and not self.settings.state.free_running_mode:
 
-            # if this is the first retry, assume that the sensor was
-            # powered-down, and we need to wait for some throwaway
-            # spectra 
-            if (retry_count == 1):
-                delay_ms = int(self.settings.state.integration_time_ms * THROWAWAY_SPECTRA)
+            self.sum_count = 0
+            loop_count = self.settings.state.scans_to_average
 
-            log.error(f"Retry requested, so waiting for {delay_ms}ms")
-            if self.disconnect_event.is_set():
-                return
-            await asyncio.sleep(delay_ms)
+        else:
+            # we're in free-running mode
+            loop_count = 1
+        reading = None
+        for loop_index in range(0, loop_count):
+            reading = Reading(self)
+            reading.integration_time_ms = self.settings.state.integration_time_ms
+            reading.laser_power_perc    = self.settings.state.laser_power_perc
+            reading.laser_power_mW      = self.settings.state.laser_power_mW
+            reading.laser_enabled       = self.settings.state.laser_enabled
+            retry_count = 0
+            pixels_read = 0
+            header_len = 2
+            while (pixels_read < pixels):
+                if self.disconnect_event.is_set():
+                    return
+                if self.disconnect:
+                    log.info("Disconnecting, stopping spectra acquire and returning None")
+                    return
+                if request_retry:
+                    retry_count += 1
+                    if (retry_count > MAX_RETRIES):
+                        log.error(f"giving up after {MAX_RETRIES} retries")
+                        return None;
 
-            request_retry = False
+                delay_ms = int(retry_count**5)
 
-            log.debug(f"requesting spectrum packet starting at pixel {pixels_read}")
-            request = pixels_read.to_bytes(2, byteorder="big")
-            await self.client.write_gatt_char(SPECTRUM_PIXELS_UUID, request)
+                # if this is the first retry, assume that the sensor was
+                # powered-down, and we need to wait for some throwaway
+                # spectra 
+                if (retry_count == 1):
+                    delay_ms = int(self.settings.state.integration_time_ms * THROWAWAY_SPECTRA)
 
-            log.debug(f"reading spectrumChar (pixelsRead {pixels_read})");
-            response = await self.client.read_gatt_char(READ_SPECTRUM_UUID)
+                log.error(f"Retry requested, so waiting for {delay_ms}ms")
+                if self.disconnect_event.is_set():
+                    return
+                await asyncio.sleep(delay_ms)
 
-            # make sure response length is even, and has both header and at least one pixel of data
-            response_len = len(response);
-            if (response_len < header_len or response_len % 2 != 0):
-                log.error(f"received invalid response of {response_len} bytes")
-                request_retry = True
-                continue
-            log.info(f"event being set is {self.disconnect_event.is_set()}")
-            if self.disconnect_event.is_set():
-                return
+                request_retry = False
 
-            # firstPixel is a big-endian UInt16
-            first_pixel = int((response[0] << 8) | response[1])
-            if (first_pixel > 2048 or first_pixel < 0):
-                log.error(f"received NACK (first_pixel {first_pixel}, retrying")
-                request_retry = True
-                continue
+                log.debug(f"requesting spectrum packet starting at pixel {pixels_read}")
+                request = pixels_read.to_bytes(2, byteorder="big")
+                await self.client.write_gatt_char(SPECTRUM_PIXELS_UUID, request)
 
-            pixels_in_packet = int((response_len - header_len) / 2);
+                log.debug(f"reading spectrumChar (pixelsRead {pixels_read})");
+                response = await self.client.read_gatt_char(READ_SPECTRUM_UUID)
 
-            log.debug(f"received spectrum packet starting at pixel {first_pixel} with {pixels_in_packet} pixels");
-
-            for i in range(pixels_in_packet):
-                # pixel intensities are little-endian UInt16
-                offset = header_len + i * 2
-                intensity = int((response[offset+1] << 8) | response[offset])
-                spectrum[pixels_read] = intensity
+                # make sure response length is even, and has both header and at least one pixel of data
+                response_len = len(response);
+                if (response_len < header_len or response_len % 2 != 0):
+                    log.error(f"received invalid response of {response_len} bytes")
+                    request_retry = True
+                    continue
+                log.info(f"event being set is {self.disconnect_event.is_set()}")
                 if self.disconnect_event.is_set():
                     return
 
-                pixels_read += 1
+                # firstPixel is a big-endian UInt16
+                first_pixel = int((response[0] << 8) | response[1])
+                if (first_pixel > 2048 or first_pixel < 0):
+                    log.error(f"received NACK (first_pixel {first_pixel}, retrying")
+                    request_retry = True
+                    continue
 
-                if (pixels_read == pixels):
-                    log.debug("read complete spectrum")
-                    if (i + 1 != pixels_in_packet):
-                        log.error(f"ignoring {pixels_in_packet - (i + 1)} trailing pixels");
-                    break
-            response = None;
-        for i in range(4):
-            spectrum[i] = spectrum[4]
+                pixels_in_packet = int((response_len - header_len) / 2);
 
-        spectrum[pixels-1] = spectrum[pixels-2]
-        log.debug("Spectrometer.takeOneAsync: returning completed spectrum");
-        reading.session_count = self.session_reading_count
-        reading.sum_count = 1
-        reading.spectrum = spectrum
+                log.debug(f"received spectrum packet starting at pixel {first_pixel} with {pixels_in_packet} pixels");
+
+                for i in range(pixels_in_packet):
+                    # pixel intensities are little-endian UInt16
+                    offset = header_len + i * 2
+                    intensity = int((response[offset+1] << 8) | response[offset])
+                    spectrum[pixels_read] = intensity
+                    if self.disconnect_event.is_set():
+                        return
+
+                    pixels_read += 1
+
+                    if (pixels_read == pixels):
+                        log.debug("read complete spectrum")
+                        if (i + 1 != pixels_in_packet):
+                            log.error(f"ignoring {pixels_in_packet - (i + 1)} trailing pixels");
+                        break
+                response = None;
+            for i in range(4):
+                spectrum[i] = spectrum[4]
+
+            spectrum[pixels-1] = spectrum[pixels-2]
+
+            self.session_reading_count += 1
+            reading.session_count = self.session_reading_count
+            reading.sum_count = self.sum_count
+            log.debug("Spectrometer.takeOneAsync: returning completed spectrum");
+            reading.spectrum = spectrum
+
+            if not reading.failure:
+                if averaging_enabled:
+                    if self.sum_count == 0:
+                        self.summed_spectra = [float(i) for i in reading.spectrum]
+                    else:
+                        log.debug("device.take_one_averaged_reading: summing spectra")
+                        for i in range(len(self.summed_spectra)):
+                            self.summed_spectra[i] += reading.spectrum[i]
+                    self.sum_count += 1
+                    log.debug("device.take_one_averaged_reading: summed_spectra : %s ...", self.summed_spectra[0:9])
+
+            # have we completed the averaged reading?
+            if averaging_enabled:
+                if self.sum_count >= self.settings.state.scans_to_average:
+                    reading.spectrum = [ x / self.sum_count for x in self.summed_spectra ]
+                    log.debug("device.take_one_averaged_reading: averaged_spectrum : %s ...", reading.spectrum[0:9])
+                    reading.averaged = True
+
+                    # reset for next average
+                    self.summed_spectra = None
+                    self.sum_count = 0
+            else:
+                # if averaging isn't enabled...then a single reading is the
+                # "averaged" final measurement (check reading.sum_count to confirm)
+                reading.averaged = True
+
         return reading;
 
     def change_settings(self, setting, value):
-        f = self.lambdas.get(setting,None)
-        if f is None:
+        control_object = ControlObject(setting, value)
+        log.debug("BLEDevice.change_setting: %s", control_object)
+
+        # Since scan averaging lives in WasatchDevice, handle commands which affect
+        # averaging at this level
+        if control_object.setting == "scans_to_average":
+            self.sum_count = 0
+            self.settings.state.scans_to_average = int(value)
             return
-        f(value)
+        else:
+            f = self.lambdas.get(setting,None)
+            if f is None:
+                return
+            f(value)
 
     def change_device_setting(self, setting, value):
         f = self.lambdas.get(setting,None)
