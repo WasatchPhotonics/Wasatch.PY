@@ -10,6 +10,7 @@ import asyncio
 from bleak import discover, BleakClient, BleakScanner
 from bleak.exc import BleakError
 
+from . import utils
 from wasatch.DeviceID import DeviceID
 from .AbstractUSBDevice import AbstractUSBDevice
 from .CSVLoader import CSVLoader
@@ -19,13 +20,15 @@ from .Reading import Reading
 
 log = logging.getLogger(__name__)
 
-SET_INT_UUID = "d1a7ff01-af78-4449-a34f-4da1afaf51bc"
-SET_GAIN_UUID = "d1a7ff02-af78-4449-a34f-4da1afaf51bc"
+INT_UUID = "d1a7ff01-af78-4449-a34f-4da1afaf51bc"
+GAIN_UUID = "d1a7ff02-af78-4449-a34f-4da1afaf51bc"
+LASER_STATE_UUID = "d1a7ff03-af78-4449-a34f-4da1afaf51bc"
 DEVICE_ACQUIRE_UUID = "d1a7ff04-af78-4449-a34f-4da1afaf51bc"
 SPECTRUM_PIXELS_UUID = "d1a7ff05-af78-4449-a34f-4da1afaf51bc"
 READ_SPECTRUM_UUID = "d1a7ff06-af78-4449-a34f-4da1afaf51bc"
 SELECT_EEPROM_PAGE_UUID = "d1a7ff07-af78-4449-a34f-4da1afaf51bc"
 READ_EEPROM_UUID = "d1a7ff08-af78-4449-a34f-4da1afaf51bc"
+DETECTOR_ROI_UUID = "d1a7ff0A-af78-4449-a34f-4da1afaf51bc"
 MAX_RETRIES = 4
 THROWAWAY_SPECTRA = 6
 
@@ -67,14 +70,86 @@ class BLEDevice:
         f = {}
         f["integration_time_ms"] = lambda x: asyncio.run_coroutine_threadsafe(self.set_integration_time_ms(x), self.loop)
         f["detector_gain"] = lambda x: asyncio.run_coroutine_threadsafe(self.set_gain(x), self.loop)
-        #f["shutter_enable"] = lambda x: self.set_shutter_enable(bool(x))
+        f["laser_enable"] = lambda x: asyncio.run_coroutine_threadsafe(self.set_laser(x), self.loop)
+        #f["detector_roi"] = lambda x: asyncio.run_coroutine_threadsafe(self.set_detector_roi(x), self.loop)
         self.lambdas = f
+
+    async def set_laser(self, value):
+        log.debug(f"BLE setting laser to {value}")
+        buf = bytearray()
+        laser_mode = 0
+        laser_type = 0
+        laser_watchdog = 0
+        try:
+            buf.append(laser_mode)
+            buf.append(laser_type)
+            buf.append(value)
+            buf.append(laser_watchdog)
+            await self.client.write_gatt_char(LASER_STATE_UUID, buf)
+        except Exception as e:
+            log.error(f"Error trying to write int time {e}")
+
+    async def set_detector_roi(x, store=True):
+        if not self.settings.is_micro():
+            log.debug("Detector ROI only configurable on microRaman")
+            return False
+
+        if isinstance(args, DetectorROI):
+            roi = args
+            log.debug(f"passed DetectorROI: {roi}")
+        else:
+            # convert args to ROI
+            log.debug(f"creating DetectorROI from args: {args}")
+
+            if len(args) != 5:
+                log.error(f"invalid detector roi args: {args}")
+                return False
+
+            region = int(round(args[0]))
+            y0     = int(round(args[1]))
+            y1     = int(round(args[2]))
+            x0     = int(round(args[3]))
+            x1     = int(round(args[4]))
+            if not (0 <= region <= 3 and \
+                    y0 < y1 and \
+                    x0 < x1 and \
+                    y0 >= 0 and \
+                    x0 >= 0 and \
+                    y1 <= self.settings.eeprom.active_pixels_horizontal and \
+                    x1 <= self.settings.eeprom.active_pixels_horizontal):
+                log.error(f"invalid detector roi: {args}")
+                return False
+            roi = DetectorROI(region, y0, y1, x0, x1)
+            log.debug(f"created DetectorROI: {roi}")
+        # determine previous total pixels
+        self.prev_pixels = self.settings.pixels()
+        log.debug(f"prev_pixels = {self.prev_pixels}")
+
+        if store:
+            if self.settings.state.detector_regions is None:
+                log.debug("creating DetectorRegions")
+                self.settings.state.detector_regions = DetectorRegions()
+
+            # this is a no-op if it's already present and unchanged
+            log.debug("saving DetectorROI in DetectorRegions")
+            self.settings.state.detector_regions.add(roi)
+
+        log.debug(f"total_pixels now {self.settings.pixels()}")
+
+        buf = utils.uint16_to_little_endian([ roi.y0, roi.y1, roi.x0, roi.x1 ])
+        log.debug("would send buf: %s", buf)
+        await self.client.write_gatt_char(DETECTOR_ROI_UUID, buf)
+
+        log.debug("waiting 1sec...")
+        sleep(1)
+
+        return result
 
     async def set_integration_time_ms(self, value):
         log.debug(f"BLE setting int time to {value}")
         try:
             value_bytes = value.to_bytes(2, byteorder='big')
-            await self.client.write_gatt_char(SET_INT_UUID, value_bytes)
+            await self.client.write_gatt_char(INT_UUID, value_bytes)
         except Exception as e:
             log.error(f"Error trying to write int time {e}")
 
@@ -85,7 +160,7 @@ class BLEDevice:
             msb = int(value)
             lsb = int((value - int(value)) * 256) & 0xff
             value_bytes = ((msb << 8) | lsb).to_bytes(2, byteorder='big')
-            await self.client.write_gatt_char(SET_GAIN_UUID, value_bytes)
+            await self.client.write_gatt_char(GAIN_UUID, value_bytes)
         except Exception as e:
             log.error(f"Error trying to write gain {e}")
 
@@ -104,7 +179,6 @@ class BLEDevice:
     async def ble_acquire(self):
         if self.disconnect_event.is_set():
             return
-        return True
         request = await self.client.write_gatt_char(DEVICE_ACQUIRE_UUID, bytes(0))
         pixels = self.settings.eeprom.active_pixels_horizontal
         spectrum = [0 for pix in range(pixels)]
