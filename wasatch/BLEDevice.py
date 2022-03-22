@@ -19,6 +19,7 @@ from .Reading import Reading
 
 log = logging.getLogger(__name__)
 
+SET_INT_UUID = "d1a7ff01-af78-4449-a34f-4da1afaf51bc"
 DEVICE_ACQUIRE_UUID = "d1a7ff04-af78-4449-a34f-4da1afaf51bc"
 SPECTRUM_PIXELS_UUID = "d1a7ff05-af78-4449-a34f-4da1afaf51bc"
 READ_SPECTRUM_UUID = "d1a7ff06-af78-4449-a34f-4da1afaf51bc"
@@ -49,6 +50,7 @@ class BLEDevice:
         self.session_reading_count = 0
         self.settings = SpectrometerSettings(self.device_id)
         self.settings.eeprom.detector = "ble"
+        self.init_lambdas()
 
     def connect(self):
         fut = asyncio.run_coroutine_threadsafe(self.connect_spec(), self.loop)
@@ -63,8 +65,13 @@ class BLEDevice:
     def init_lambdas(self):
         f = {}
         f["integration_time_ms"] = lambda x: asyncio.run_coroutine_threadsafe(self.set_integration_time_ms(x), self.loop)
-        f["shutter_enable"] = lambda x: self.set_shutter_enable(bool(x))
+        #f["shutter_enable"] = lambda x: self.set_shutter_enable(bool(x))
         self.lambdas = f
+
+    async def set_integration_time_ms(self, value):
+        log.debug(f"BLE setting int time to {value}")
+        value_bytes = value.to_bytes(2, byteorder='big')
+        await self.client.write_gatt_char(SET_INT_UUID, value_bytes)
 
     def acquire_data(self):
         if self.performing_acquire:
@@ -175,10 +182,16 @@ class BLEDevice:
         return reading;
 
     def change_settings(self, setting, value):
-        pass
+        f = self.lambdas.get(setting,None)
+        if f is None:
+            return
+        f(value)
 
     def change_device_setting(self, setting, value):
-        pass
+        f = self.lambdas.get(setting,None)
+        if f is None:
+            return
+        f(value)
 
     async def connect_spec(self):
         await self.client.connect()
