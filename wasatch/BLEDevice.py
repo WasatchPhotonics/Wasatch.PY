@@ -20,6 +20,7 @@ from .Reading import Reading
 log = logging.getLogger(__name__)
 
 SET_INT_UUID = "d1a7ff01-af78-4449-a34f-4da1afaf51bc"
+SET_GAIN_UUID = "d1a7ff02-af78-4449-a34f-4da1afaf51bc"
 DEVICE_ACQUIRE_UUID = "d1a7ff04-af78-4449-a34f-4da1afaf51bc"
 SPECTRUM_PIXELS_UUID = "d1a7ff05-af78-4449-a34f-4da1afaf51bc"
 READ_SPECTRUM_UUID = "d1a7ff06-af78-4449-a34f-4da1afaf51bc"
@@ -65,13 +66,28 @@ class BLEDevice:
     def init_lambdas(self):
         f = {}
         f["integration_time_ms"] = lambda x: asyncio.run_coroutine_threadsafe(self.set_integration_time_ms(x), self.loop)
+        f["detector_gain"] = lambda x: asyncio.run_coroutine_threadsafe(self.set_gain(x), self.loop)
         #f["shutter_enable"] = lambda x: self.set_shutter_enable(bool(x))
         self.lambdas = f
 
     async def set_integration_time_ms(self, value):
         log.debug(f"BLE setting int time to {value}")
-        value_bytes = value.to_bytes(2, byteorder='big')
-        await self.client.write_gatt_char(SET_INT_UUID, value_bytes)
+        try:
+            value_bytes = value.to_bytes(2, byteorder='big')
+            await self.client.write_gatt_char(SET_INT_UUID, value_bytes)
+        except Exception as e:
+            log.error(f"Error trying to write int time {e}")
+
+    async def set_gain(self, value):
+        log.debug(f"BLE setting gain to {value}")
+        #value_bytes = int(value).to_bytes(2, byteorder='big')
+        try:
+            msb = int(value)
+            lsb = int((value - int(value)) * 256) & 0xff
+            value_bytes = ((msb << 8) | lsb).to_bytes(2, byteorder='big')
+            await self.client.write_gatt_char(SET_GAIN_UUID, value_bytes)
+        except Exception as e:
+            log.error(f"Error trying to write gain {e}")
 
     def acquire_data(self):
         if self.performing_acquire:
@@ -88,6 +104,7 @@ class BLEDevice:
     async def ble_acquire(self):
         if self.disconnect_event.is_set():
             return
+        return True
         request = await self.client.write_gatt_char(DEVICE_ACQUIRE_UUID, bytes(0))
         pixels = self.settings.eeprom.active_pixels_horizontal
         spectrum = [0 for pix in range(pixels)]
