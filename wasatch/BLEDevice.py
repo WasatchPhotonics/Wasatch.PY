@@ -310,12 +310,6 @@ class BLEDevice:
                 return
             f(value)
 
-    def change_device_setting(self, setting, value):
-        f = self.lambdas.get(setting,None)
-        if f is None:
-            return
-        f(value)
-
     async def connect_spec(self):
         await self.client.connect()
         log.debug(f"Connected: {self.client.is_connected}")
