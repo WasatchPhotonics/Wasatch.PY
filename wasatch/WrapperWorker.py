@@ -34,6 +34,7 @@ class WrapperWorker(threading.Thread):
             is_ocean,
             is_andor,
             is_spi,
+            is_ble,
             parent=None):
 
         threading.Thread.__init__(self)
@@ -42,6 +43,7 @@ class WrapperWorker(threading.Thread):
         self.is_ocean       = is_ocean
         self.is_andor       = is_andor
         self.is_spi         = is_spi
+        self.is_ble         = is_ble
         self.command_queue  = command_queue
         self.response_queue = response_queue
         self.settings_queue = settings_queue
@@ -69,6 +71,8 @@ class WrapperWorker(threading.Thread):
                 device_id = self.device_id,
                 message_queue = self.message_queue
                 )
+        elif self.is_ble:
+            self.ble_device = self.device_id.device_type
         else:
             try:
                 log.debug("instantiating WasatchDevice")
@@ -87,6 +91,8 @@ class WrapperWorker(threading.Thread):
             ok = self.andor_device.connect()
         elif self.is_spi:
             ok = self.spi_device.connect()
+        elif self.is_ble:
+            ok = self.ble_device.connect()
         else:
             try:
                 ok = self.wasatch_device.connect()
@@ -108,6 +114,8 @@ class WrapperWorker(threading.Thread):
             self.settings_queue.put_nowait(self.andor_device.settings)
         elif self.is_spi:
             self.settings_queue.put_nowait(self.spi_device.settings)
+        elif self.is_ble:
+            self.settings_queue.put_nowait(self.ble_device.settings)  
         else:
             self.settings_queue.put_nowait(self.wasatch_device.settings)
 
@@ -151,6 +159,8 @@ class WrapperWorker(threading.Thread):
                             self.andor_device.change_setting(record.setting, record.value)
                         elif self.is_spi:
                             self.spi_device.change_setting(record.setting, record.value)
+                        elif self.is_ble:
+                            self.ble_device.change_settings(record.setting, record.value)
                         else:
                             self.wasatch_device.change_setting(record.setting, record.value)
 
@@ -191,6 +201,8 @@ class WrapperWorker(threading.Thread):
                     reading = self.andor_device.acquire_data()
                 elif self.is_spi:
                     reading = self.spi_device.acquire_data()
+                elif self.is_ble:
+                    reading = self.ble_device.acquire_data()
                 else:
                     reading = self.wasatch_device.acquire_data()
                 #log.debug("continuous_poll: acquire_data returned %s", str(reading))
