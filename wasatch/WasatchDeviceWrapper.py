@@ -14,6 +14,7 @@ from . import utils
 from .SpectrometerSettings import SpectrometerSettings
 from .ControlObject        import ControlObject
 from .WrapperWorker        import WrapperWorker
+from .BLEDevice            import BLEDevice
 from .Reading              import Reading
 
 log = logging.getLogger(__name__)
@@ -175,6 +176,7 @@ class WasatchDeviceWrapper(object):
         self.is_ocean     = '0x2457' in str(device_id)
         self.is_andor     = '0x136e' in str(device_id)
         self.mock         = 'test' in str(device_id)
+        self.is_ble       = isinstance(device_id.device_type, BLEDevice)
 
         # this will contain a populated SpectrometerSettings object from the
         # WasatchDevice, for relay to the instantiating Controller
@@ -235,7 +237,8 @@ class WasatchDeviceWrapper(object):
             settings_queue = self.settings_queue, # Main <-- child / consolidate into SpectrometerMessage?
             message_queue  = self.message_queue,
             is_ocean       = self.is_ocean,
-            is_andor       = self.is_andor)
+            is_andor       = self.is_andor,
+            is_ble         = self.is_ble)
         log.debug("device wrapper: Instance created for worker")
 
         self.wrapper_worker.setDaemon(True)
@@ -253,6 +256,8 @@ class WasatchDeviceWrapper(object):
         # expect to read a single post-initialization SpectrometerSettings object off the queue
         time_start = datetime.datetime.now()
         settings_timeout_sec = 15
+        if self.is_ble:
+            settings_timeout_sec += 10
         self.settings = None
         log.debug("connect: blocking on settings_queue (waiting on child thread to send SpectrometerSettings)")
         while True:

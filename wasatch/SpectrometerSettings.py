@@ -343,13 +343,13 @@ class SpectrometerSettings(object):
         log.debug("generated %d wavelengths from %.2f to %.2f",
             len(self.wavelengths), self.wavelengths[0], self.wavelengths[-1])
 
-        # keep legacy excitation in sync with floating-point
         if self.has_excitation():
-            self.eeprom.excitation_nm = float(round(self.excitation(), 0))
-            self.wavenumbers = utils.generate_wavenumbers(self.excitation(), self.wavelengths,
+            excitation = self.excitation()
+            self.eeprom.excitation_nm = float(round(excitation, 0)) # keep legacy excitation in sync with floating-point
+            self.wavenumbers = utils.generate_wavenumbers(excitation, self.wavelengths,
                 wavenumber_correction=self.state.wavenumber_correction)
-            log.debug("generated %d wavenumbers from %.2f to %.2f (after correction %.2f)",
-                len(self.wavenumbers), self.wavenumbers[0], self.wavenumbers[-1], self.state.wavenumber_correction)
+            log.debug("generated %d wavenumbers from %.2f to %.2f (after correction %.2f) using excitation %.3f",
+                len(self.wavenumbers), self.wavenumbers[0], self.wavenumbers[-1], self.state.wavenumber_correction, excitation)
 
     # ##########################################################################
     #

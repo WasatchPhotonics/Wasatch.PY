@@ -1,5 +1,6 @@
 import usb
 import logging
+import usb.backend.libusb0 as libusb0
 from .AbstractUSBDevice import AbstractUSBDevice
 
 log = logging.getLogger(__name__)
@@ -14,7 +15,7 @@ class RealUSBDevice(AbstractUSBDevice):
         self.address = self.device_id.address
 
     def find(self, *args, **kwargs):
-        return usb.core.find(*args, **kwargs)
+        return usb.core.find(*args, **kwargs, backend=libusb0.get_backend())
 
     def set_configuration(self, device):
         device.set_configuration()
