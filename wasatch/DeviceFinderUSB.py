@@ -1,5 +1,6 @@
 import logging
 import usb
+import usb.backend.libusb0 as libusb0
 
 log = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ class DeviceFinderUSB(object):
     def find_usb_devices(self):
         device_ids = []
         count = 0
-        for device in usb.core.find(find_all=True):
+        for device in usb.core.find(find_all=True, backend=libusb0.get_backend()):
             count += 1
             vid = int(device.idVendor)
             pid = int(device.idProduct)
