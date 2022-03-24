@@ -314,6 +314,9 @@ class WasatchDevice(object):
         if take_one_response.keep_alive:
             log.debug(f"floating up keep alive")
             return take_one_response
+        if take_one_response.data == None:
+            log.debug("Received a none reading, floating it up")
+            return take_one_response
 
         # don't perform dark subtraction, but pass the dark measurement along
         # with the averaged reading
@@ -448,7 +451,8 @@ class WasatchDevice(object):
 
                 log.debug("battery: level %.2f%% (%s)", reading.battery_percentage, "charging" if reading.battery_charging else "not charging")
             else:
-                reading.battery_percentage = self.last_battery_percentage
+                if reading is not None:
+                    reading.battery_percentage = self.last_battery_percentage
 
         # log.debug("device.acquire_spectrum: returning %s", reading)
         acquire_response.data = reading
@@ -569,7 +573,7 @@ class WasatchDevice(object):
                                 return take_one_response
                             elif spectrum_and_row.spectrum is None:
                                 log.debug("device.take_one_averaged_spectrum: get_line None, sending keepalive for now (area scan fast)")
-                                take_one_response.data = None
+                                take_one_response.data = reading
                                 take_one_response.keep_alive = True
                                 take_one_response.error_msg = "device.take_one_averaged_spectrum: get_line None, sending keepalive for now (area scan fast)" 
                                 take_one_response.error_lvl = ErrorLevel.low
@@ -627,7 +631,7 @@ class WasatchDevice(object):
                             take_one_response.poison_pill = True
                             return take_one_response
 
-                        if spectrum_and_row.spectrum is None:
+                        if spectrum_and_row is None or spectrum_and_row.spectrum is None:
                             # FeatureIdentificationDevice can return None when waiting
                             # on an external trigger.  
                             log.debug("device.take_one_averaged_spectrum: get_line None, sending keepalive for now")
