@@ -16,8 +16,10 @@ from .CSVLoader import CSVLoader
 from wasatch.EEPROM import EEPROM
 from wasatch.DeviceID import DeviceID
 from .ControlObject import ControlObject
+from .SpectrometerResponse import ErrorLevel
 from .AbstractUSBDevice import AbstractUSBDevice
 from .SpectrometerSettings import SpectrometerSettings
+from .SpectrometerResponse import SpectrometerResponse
 
 log = logging.getLogger(__name__)
 
@@ -155,7 +157,7 @@ class BLEDevice:
         fut = asyncio.run_coroutine_threadsafe(self.ble_acquire(), self.loop)
         self.performing_acquire = False
         result = fut.result()
-        return result
+        return SpectrometerResult(data=result)
 
     async def ble_acquire(self):
         if self.disconnect_event.is_set():

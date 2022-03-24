@@ -1528,24 +1528,24 @@ class FeatureIdentificationDevice(object):
             return SpectrometerResponse(data=0,error_lvl=ErrorLevel.low,error_msg="raw value exceeded 12bits")
 
         # can't take log of zero
-        if raw == 0:
+        if raw.data == 0:
             return SpectrometerResponse(data=0, error_msg="can't take log of 0", error_lvl=ErrorLevel.low)
 
         degC = 0
         try:
-            voltage    = 2.5 * raw / 4096
+            voltage    = 2.5 * raw.data / 4096
             resistance = 21450.0 * voltage / (2.5 - voltage) # LB confirms
 
             if resistance < 0:
                 log.error("get_laser_temperature_degC: can't compute degC: raw = 0x%04x, voltage = %f, resistance = %f",
-                    raw, voltage, resistance)
+                    raw.data, voltage, resistance)
                 return SpectrometerResponse(data=0, error_msg="can't computer laser temperature", error_lvl=ErrorLevel.low)
 
             logVal     = math.log(resistance / 10000.0)
             insideMain = logVal + 3977.0 / (25 + 273.0)
             degC       = 3977.0 / insideMain - 273.0
 
-            log.debug("Laser temperature: %.2f deg C (0x%04x raw)" % (degC, raw))
+            log.debug("Laser temperature: %.2f deg C (0x%04x raw)" % (degC, raw.data))
         except:
             log.error("exception computing laser temperature", exc_info=1)
 
@@ -1651,7 +1651,8 @@ class FeatureIdentificationDevice(object):
         tries = 0
         while True:
             self.set_strobe_enable(flag)
-            if flag == self.get_laser_enabled():
+            res = self.get_laser_enabled()
+            if flag == res.data:
                 return SpectrometerResponse(data=True)
             tries += 1
             if tries > 3:

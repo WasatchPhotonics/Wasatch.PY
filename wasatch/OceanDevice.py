@@ -12,6 +12,8 @@ import seabreeze.spectrometers as sb
 from seabreeze.spectrometers import Spectrometer, list_devices
 
 from .SpectrometerSettings        import SpectrometerSettings
+from .SpectrometerResponse        import SpectrometerResponse
+from .SpectrometerResponse        import ErrorLevel
 from .SpectrometerState           import SpectrometerState
 from .DeviceID                    import DeviceID
 from .Reading                     import Reading
@@ -64,13 +66,13 @@ class OceanDevice:
         if self.device == None:
             log.error("Ocean Device: No ocean device found. Returning")
             self.message_queue.put_nowait(None)
-            return False
+            return SpectrometerResponse(data=False,error_msg="No ocean devices found")
         self.spec = Spectrometer(self.device)
         self.settings.eeprom.model = self.device.model
         self.settings.eeprom.serial_number = self.device.serial_number
         self.settings.eeprom.active_pixels_horizontal = self.device.features['spectrometer'][0]._spectrum_num_pixel 
         self.settings.eeprom.detector = "Ocean" # Ocean API doesn't have access to detector info
-        return True
+        return SpectrometerResponse(data=True)
 
 
     def init_lambdas(self):
@@ -125,7 +127,7 @@ class OceanDevice:
 
             if reading.spectrum is None or reading.spectrum == []:
                 if self.failure_count > 3:
-                    return False
+                    return SpectrometerResponse(data=False,error-msg="failed to acquire spectra")
 
             if not reading.failure:
                 if averaging_enabled:
@@ -167,7 +169,7 @@ class OceanDevice:
         if reading.spectrum is not None and reading.spectrum != []:
             self.failure_count = 0
         # reading.dump_area_scan()
-        return reading
+        return SpectrometerResponse(data=reading)
 
     def change_setting(self,setting,value):
         if setting == "scans_to_average":
@@ -177,6 +179,6 @@ class OceanDevice:
         f = self.lambdas.get(setting, None)
         if f is None:
             # quietly fail no-ops
-            return False
+            return SpectrometerResponse(data=False)
 
         return f(value)

@@ -11,6 +11,8 @@ from ctypes import *
 
 from .SpectrometerSettings        import SpectrometerSettings
 from .SpectrometerState           import SpectrometerState
+from .SpectrometerResponse        import SpectrometerResponse
+from .SpectrometerResponse        import ErrorLevel
 from .DeviceID                    import DeviceID
 from .Reading                     import Reading
 
@@ -70,7 +72,7 @@ class AndorDevice:
 
     def connect(self):
         if self.dll_fail:
-            return False
+            return SpectrometerResponse(data=False,error_lvl=ErrorLevel.high,error_msg="couldn't load Andor dll")
         cameraHandle = c_int()
         assert(self.SUCCESS == self.driver.GetCameraHandle(self.spec_index, byref(cameraHandle))), "unable to get camera handle"
         assert(self.SUCCESS == self.driver.SetCurrentCamera(cameraHandle.value)), "unable to set current camera"
@@ -119,7 +121,7 @@ class AndorDevice:
         self.set_integration_time_ms(10)
         self.connected = True
         self.settings.eeprom.active_pixels_horizontal = self.pixels 
-        return True
+        return SpectrometerResponse(data=True)
 
     def check_config_file(self):
         self.config_dir = os.path.join(self.get_default_data_dir(), 'config')
@@ -186,7 +188,7 @@ class AndorDevice:
 
             if reading.spectrum is None or reading.spectrum == []:
                 if self.failure_count > 3:
-                    return False
+                    return SpectrometerResponse(data=False,error_msg="exceeded failure for readings")
 
             if not reading.failure:
                 if averaging_enabled:
@@ -228,7 +230,7 @@ class AndorDevice:
         if reading.spectrum is not None and reading.spectrum != []:
             self.failure_count = 0
         # reading.dump_area_scan()
-        return reading
+        return SpectrometerResponse(data=reading)
 
     def get_spectrum_raw(self):
         log.debug("requesting spectrum");
@@ -336,7 +338,7 @@ class AndorDevice:
         f = self.lambdas.get(setting, None)
         if f is None:
             # quietly fail no-ops
-            return False
+            return SpectrometerResponse(data=False)
 
         return f(value)
 
