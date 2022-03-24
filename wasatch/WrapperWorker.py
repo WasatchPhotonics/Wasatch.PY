@@ -163,15 +163,6 @@ class WrapperWorker(threading.Thread):
                 log.critical("exiting per command queue (poison pill received)")
                 break
 
-            # has ENLIGHTEN crashed and stopped sending us heartbeats?
-            if False and thread_timeout_sec is not None:
-                sec_since_last_command = (now - last_command).total_seconds()
-                log.debug("sec_since_last_command = %d sec", sec_since_last_command)
-                if sec_since_last_command > thread_timeout_sec:
-                    log.critical("thread killing self (%d sec since last command, timeout %d sec)",
-                        sec_since_last_command, thread_timeout_sec)
-                    break
-
             # ##################################################################
             # Relay one upstream reading (Spectrometer -> GUI)
             # ##################################################################
@@ -192,7 +183,7 @@ class WrapperWorker(threading.Thread):
                 #log.debug("continuous_poll: acquire_data returned %s", str(reading))
             except Exception as exc:
                 log.critical("exception calling WasatchDevice.acquire_data", exc_info=1)
-                break
+                continue
             log.info(f"response {reading_response} data is {reading_response.data}")
 
             if reading_response.keep_alive == True:
@@ -204,28 +195,15 @@ class WrapperWorker(threading.Thread):
                 except:
                     log.error("unable to push Reading %d to GUI", reading.session_count, exc_info=1)
                 continue
-            elif reading_response.poison_pill:
-                # it was an upstream poison pill
-                #
-                # There's nothing we need to do here except 'break'...that will
-                # exit the loop, and the last thing this function does is flow-up
-                # a poison pill anyway, so we're done
-                log.critical("received upstream poison pill...exiting")
-                received_poison_pill_response = True
-                break
 
             elif reading_response.data is None:
                 log.debug("no worker saw no reading")
 
             elif reading_response.data.failure is not None:
-                # this wasn't passed-up as a poison-pill, but we're going to treat it
-                # as one anyway
-                #
-                # @todo deprecate Reading.failure and just return False (poison pill?)
+                # reading was a failure, maintain connection, but pass up the failure
                 log.critical("hardware level error...exiting")
                 reading_response.poison_pill = True
                 self.response_queue.put(reading_response)
-                return False
 
             elif reading_response.data.spectrum is not None:
                 log.debug("sending Reading %d back to GUI thread (%s)", reading_response.data.session_count, reading_response.data.spectrum[0:5])
@@ -245,17 +223,7 @@ class WrapperWorker(threading.Thread):
         ########################################################################
         # we have exited the loop
         ########################################################################
-
-        if received_poison_pill_response:
-            # send poison-pill notification upstream to Controller
-            log.critical("exiting because of upstream poison-pill response")
-            log.critical("sending poison-pill upstream to controller")
-            self.response_queue.put(reading_response) 
-
-            # Controller.ACQUISITION_TIMER_SLEEP_MS currently 50ms, so wait more
-            log.critical("waiting long enough for Controller to receive it")
-            time.sleep(1)
-        elif received_poison_pill_command:
+        if received_poison_pill_command:
             log.critical("exiting because of downstream poison-pill command")
         else:
             log.critical("exiting for no reason?!")
