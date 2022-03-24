@@ -309,13 +309,13 @@ class WasatchDevice(object):
         take_one_response = self.take_one_averaged_reading()
         reading = take_one_response.data
         if take_one_response.poison_pill:
-            log.debug(f"take_one_averaged_reading floating poison pill")
+            log.debug(f"take_one_averaged_reading floating poison pill {take_one_response}")
             return take_one_response
         if take_one_response.keep_alive:
             log.debug(f"floating up keep alive")
             return take_one_response
         if take_one_response.data == None:
-            log.debug("Received a none reading, floating it up")
+            log.debug(f"Received a none reading, floating it up {take_one_response}")
             return take_one_response
 
         # don't perform dark subtraction, but pass the dark measurement along
@@ -573,10 +573,7 @@ class WasatchDevice(object):
                                 return take_one_response
                             elif spectrum_and_row.spectrum is None:
                                 log.debug("device.take_one_averaged_spectrum: get_line None, sending keepalive for now (area scan fast)")
-                                take_one_response.data = reading
-                                take_one_response.keep_alive = True
-                                take_one_response.error_msg = "device.take_one_averaged_spectrum: get_line None, sending keepalive for now (area scan fast)" 
-                                take_one_response.error_lvl = ErrorLevel.low
+                                take_one_response.transfer_response(response)
                                 return take_one_response
 
                             # mimic "slow" results to minimize downstream fuss
@@ -635,8 +632,7 @@ class WasatchDevice(object):
                             # FeatureIdentificationDevice can return None when waiting
                             # on an external trigger.  
                             log.debug("device.take_one_averaged_spectrum: get_line None, sending keepalive for now")
-                            take_one_response.error_msg = "device.take_one_averaged_spectrum: get_line None, sending keepalive for now"
-                            take_one_response.error_lvl = ErrorLevel.low
+                            take_one_response.transfer_response(response)
                             return take_one_response
                         else:
                             break

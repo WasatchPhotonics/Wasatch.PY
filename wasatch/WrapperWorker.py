@@ -196,6 +196,11 @@ class WrapperWorker(threading.Thread):
                     log.error("unable to push Reading %d to GUI", reading.session_count, exc_info=1)
                 continue
 
+            elif reading_response.error_msg != "":
+                if reading_response.data == None:
+                    reading_response.data = Reading()
+                self.response_queue.put(reading_response)
+
             elif reading_response.data is None:
                 log.debug("no worker saw no reading")
 
