@@ -157,7 +157,7 @@ class BLEDevice:
         fut = asyncio.run_coroutine_threadsafe(self.ble_acquire(), self.loop)
         self.performing_acquire = False
         result = fut.result()
-        return SpectrometerResult(data=result)
+        return SpectrometerResponse(data=result)
 
     async def ble_acquire(self):
         if self.disconnect_event.is_set():
@@ -295,6 +295,24 @@ class BLEDevice:
                 reading.averaged = True
 
         return reading;
+    # both this and change_setting are needed
+    # change_device_setting is called by the controller
+    # while change_setting is being called by the wrapper_worker
+    def change_device_setting(self, setting, value):
+        control_object = ControlObject(setting, value)
+        log.debug("BLEDevice.change_setting: %s", control_object)
+
+        # Since scan averaging lives in WasatchDevice, handle commands which affect
+        # averaging at this level
+        if control_object.setting == "scans_to_average":
+            self.sum_count = 0
+            self.settings.state.scans_to_average = int(value)
+            return
+        else:
+            f = self.lambdas.get(setting,None)
+            if f is None:
+                return
+            f(value)
 
     def change_settings(self, setting, value):
         control_object = ControlObject(setting, value)

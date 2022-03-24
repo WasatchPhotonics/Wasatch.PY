@@ -127,7 +127,7 @@ class OceanDevice:
 
             if reading.spectrum is None or reading.spectrum == []:
                 if self.failure_count > 3:
-                    return SpectrometerResponse(data=False,error-msg="failed to acquire spectra")
+                    return SpectrometerResponse(data=False,error_msg="failed to acquire spectra")
 
             if not reading.failure:
                 if averaging_enabled:
