@@ -420,6 +420,134 @@ class FeatureIdentificationDevice:
             return True
         return False
 
+    ##
+    # Until support for even/odd InGaAs gain and offset have been added to the
+    # firmware, apply the correction in software.
+    def _correct_ingaas_gain_and_offset(self, spectrum: list[float]) -> bool:
+        if not self.settings.is_ingaas() or self.settings.eeprom.hardware_even_odd:
+            return False
+
+        # if even and odd pixels have the same settings, there's no point in doing anything
+        if self.settings.eeprom.detector_gain_odd   == self.settings.eeprom.detector_gain and \
+           self.settings.eeprom.detector_offset_odd == self.settings.eeprom.detector_offset:
+            return False
+
+        log.debug("rescaling InGaAs odd pixels from even gain %.4f, offset %d to odd gain %.4f, offset %d",
+            self.settings.eeprom.detector_gain,
+            self.settings.eeprom.detector_offset,
+            self.settings.eeprom.detector_gain_odd,
+            self.settings.eeprom.detector_offset_odd)
+
+        log.debug("before: %d, %d, %d, %d, %d", spectrum[0], spectrum[1], spectrum[2], spectrum[3], spectrum[4])
+
+        # iterate over the ODD pixels of the spectrum
+        for i in range(1, len(spectrum), 2):
+
+            # back-out the incorrectly applied "even" gain and offset
+            old = float(spectrum[i])
+            raw = (old - self.settings.eeprom.detector_offset) / self.settings.eeprom.detector_gain
+
+            # apply the correct "odd" gain and offset
+            spectrum[i] = (raw * self.settings.eeprom.detector_gain_odd) + self.settings.eeprom.detector_offset_odd
+
+            if i < 5 or i > len(spectrum) - 5:
+                log.debug("  pixel %4d: old %.2f raw %.2f new %.2f", i, old, raw, spectrum[i])
+
+        log.debug("after: %d, %d, %d, %d, %d", spectrum[0], spectrum[1], spectrum[2], spectrum[3], spectrum[4])
+
+        return True
+
+    def _apply_2x2_binning(self, spectrum: list[float]) -> list[float]:
+        if not self.settings.eeprom.bin_2x2:
+            return spectrum
+
+        def bin2x2(a):
+            if a is None or len(a) == 0:
+                return a
+            binned = []
+            for i in range(len(a)-1):
+                binned.append((a[i] + a[i+1]) / 2.0)
+            binned.append(a[-1])
+            return binned
+
+        if self.settings.state.detector_regions is None:
+            log.debug("applying bin_2x2")
+            return bin2x2(spectrum)
+
+        log.debug("applying bin_2x2 to regions")
+        combined = []
+        for subspectrum in self.settings.state.detector_regions.split(spectrum):
+            combined.extend(bin2x2(subspectrum))
+        return combined
+
+    def _correct_bad_pixels(self, spectrum: list[float]) -> bool:
+        """
+        If a spectrometer has bad_pixels configured in the EEPROM, then average
+        over them in the driver.
+        Note this function modifies the passed array in-place, rather than
+        returning a modified copy.
+        @note assumes bad_pixels is previously sorted
+        """
+
+        if self.settings is None or \
+                self.settings.eeprom is None or \
+                self.settings.eeprom.bad_pixels is None or \
+                len(self.settings.eeprom.bad_pixels) == 0 or \
+                self.settings.state.detector_regions is not None:
+            return False
+
+        if spectrum is None or len(spectrum) == 0:
+            return False
+
+        pixels = len(spectrum)
+        bad_pixels = self.settings.eeprom.bad_pixels
+
+        # iterate over each bad pixel
+        i = 0
+        while i < len(bad_pixels):
+
+            bad_pix = bad_pixels[i]
+
+            if bad_pix == 0:
+                # handle the left edge
+                next_good = bad_pix + 1
+                while next_good in bad_pixels and next_good < pixels:
+                    next_good += 1
+                    i += 1
+                if next_good < pixels:
+                    for j in range(next_good):
+                        spectrum[j] = spectrum[next_good]
+            else:
+
+                # find previous good pixel
+                prev_good = bad_pix - 1
+                while prev_good in bad_pixels and prev_good >= 0:
+                    prev_good -= 1
+
+                if prev_good >= 0:
+                    # find next good pixel
+                    next_good = bad_pix + 1
+                    while next_good in bad_pixels and next_good < pixels:
+                        next_good += 1
+                        i += 1
+
+                    if next_good < pixels:
+                        # for now, draw a line between previous and next_good pixels
+                        # TODO: consider some kind of curve-fit
+                        delta = float(spectrum[next_good] - spectrum[prev_good])
+                        rng   = next_good - prev_good
+                        step  = delta / rng
+                        for j in range(rng - 1):
+                            spectrum[prev_good + j + 1] = spectrum[prev_good] + step * (j + 1)
+                    else:
+                        # we ran off the high end, so copy-right
+                        for j in range(bad_pix, pixels):
+                            spectrum[j] = spectrum[prev_good]
+
+            # advance to next bad pixel
+            i += 1
+        return True
+
     def _send_code(self, 
                   bRequest: int, 
                   wValue: int = 0, 
@@ -606,8 +734,8 @@ class FeatureIdentificationDevice:
         reg = reg & 0xffff
         return self.get_upper_code(0x14, wIndex=reg, label="GET_BATTERY_REG", msb_len=2)
 
-    # cache values for 1sec
     def get_battery_state_raw(self) -> SpectrometerResponse:
+        """Retrieves the raw battery reading and then caches it for 1 sec"""
         now = datetime.datetime.now()
         if (self.settings.state.battery_timestamp is not None and now < self.settings.state.battery_timestamp + datetime.timedelta(seconds=1)):
             return SpectrometerResponse(data=self.settings.state.battery_raw)
@@ -792,7 +920,7 @@ class FeatureIdentificationDevice:
                 value, self.settings.pixels())
         return SpectrometerResponse(data=value)
 
-    def get_microcontroller_firmware_version(self):
+    def get_microcontroller_firmware_version(self) -> SpectrometerResponse:
         res = self._get_code(0xc0, label="GET_CODE_REVISION")
         result = res.data
         version = "?.?.?.?"
@@ -801,7 +929,7 @@ class FeatureIdentificationDevice:
         self.settings.microcontroller_firmware_version = version
         return SpectrometerResponse(data=version)
 
-    def get_fpga_firmware_version(self):
+    def get_fpga_firmware_version(self) -> SpectrometerResponse:
         s = ""
         res = self._get_code(0xb4, label="GET_FPGA_REV")
         result = res.data
@@ -813,21 +941,19 @@ class FeatureIdentificationDevice:
         self.settings.fpga_firmware_version = s
         return SpectrometerResponse(data=s)
 
-    ##
-    # Send "acquire", then immediately read the bulk endpoint(s).
-    #
-    # Probably the most important method in this class, more commonly called
-    # "getSpectrum" in most drivers.
-    #
-    # @param trigger (Input) send an initial ACQUIRE
-    #
-    # @returns tuple of (spectrum[], area_scan_row_count) for success
-    # @returns None when it times-out while waiting for an external trigger
-    #          (interpret as, "didn't find any fish this time, try again in a bit")
-    # @returns False (bool) when it times-out or encounters an exception
-    #          when NOT in external-triggered mode
-    # @throws exception on timeout (unless external triggering enabled)
-    def get_line(self, trigger=True):
+    def get_line(self, trigger: bool = True) -> SpectrometerResponse:
+        """
+        Send "acquire", then immediately read the bulk endpoint(s).
+        Probably the most important method in this class, more commonly called
+        "getSpectrum" in most drivers.
+        @param trigger (Input) send an initial ACQUIRE
+        @returns tuple of (spectrum[], area_scan_row_count) for success
+        @returns None when it times-out while waiting for an external trigger
+                 (interpret as, "didn't find any fish this time, try again in a bit")
+        @returns False (bool) when it times-out or encounters an exception
+                 when NOT in external-triggered mode
+        @throws exception on timeout (unless external triggering enabled)
+        """
 
         ########################################################################
         # send the ACQUIRE
@@ -953,7 +1079,7 @@ class FeatureIdentificationDevice:
         # this should be done in the FPGA, but older FW didn't have that
         # implemented, so fix in SW unless EEPROM indicates "already handled"
         if self.settings.is_ingaas() and not self.settings.eeprom.hardware_even_odd:
-            self.correct_ingaas_gain_and_offset(spectrum)
+            self._correct_ingaas_gain_and_offset(spectrum)
 
         ########################################################################
         # Area Scan (rare)
@@ -1055,7 +1181,7 @@ class FeatureIdentificationDevice:
         ########################################################################
 
         if self.settings.state.bad_pixel_mode == SpectrometerState.BAD_PIXEL_MODE_AVERAGE:
-            self.correct_bad_pixels(spectrum)
+            self._correct_bad_pixels(spectrum)
 
         ########################################################################
         # Swap Alternating Pixels (very rare)
@@ -1077,7 +1203,7 @@ class FeatureIdentificationDevice:
         ########################################################################
 
         # apply so-called "2x2 pixel binning" 
-        spectrum = self.apply_2x2_binning(spectrum)
+        spectrum = self._apply_2x2_binning(spectrum)
 
         ########################################################################
         # Graph Alternating Pixels
@@ -1110,142 +1236,14 @@ class FeatureIdentificationDevice:
         response.data = SpectrumAndRow(spectrum, area_scan_row_count) 
         return response
 
-    ##
-    # Until support for even/odd InGaAs gain and offset have been added to the
-    # firmware, apply the correction in software.
-    def correct_ingaas_gain_and_offset(self, spectrum):
-        if not self.settings.is_ingaas() or self.settings.eeprom.hardware_even_odd:
-            return False
-
-        # if even and odd pixels have the same settings, there's no point in doing anything
-        if self.settings.eeprom.detector_gain_odd   == self.settings.eeprom.detector_gain and \
-           self.settings.eeprom.detector_offset_odd == self.settings.eeprom.detector_offset:
-            return False
-
-        log.debug("rescaling InGaAs odd pixels from even gain %.4f, offset %d to odd gain %.4f, offset %d",
-            self.settings.eeprom.detector_gain,
-            self.settings.eeprom.detector_offset,
-            self.settings.eeprom.detector_gain_odd,
-            self.settings.eeprom.detector_offset_odd)
-
-        log.debug("before: %d, %d, %d, %d, %d", spectrum[0], spectrum[1], spectrum[2], spectrum[3], spectrum[4])
-
-        # iterate over the ODD pixels of the spectrum
-        for i in range(1, len(spectrum), 2):
-
-            # back-out the incorrectly applied "even" gain and offset
-            old = float(spectrum[i])
-            raw = (old - self.settings.eeprom.detector_offset) / self.settings.eeprom.detector_gain
-
-            # apply the correct "odd" gain and offset
-            spectrum[i] = (raw * self.settings.eeprom.detector_gain_odd) + self.settings.eeprom.detector_offset_odd
-
-            if i < 5 or i > len(spectrum) - 5:
-                log.debug("  pixel %4d: old %.2f raw %.2f new %.2f", i, old, raw, spectrum[i])
-
-        log.debug("after: %d, %d, %d, %d, %d", spectrum[0], spectrum[1], spectrum[2], spectrum[3], spectrum[4])
-
-        return True
-
-    ##
-    # If a spectrometer has bad_pixels configured in the EEPROM, then average
-    # over them in the driver.
-    #
-    # Note this function modifies the passed array in-place, rather than
-    # returning a modified copy.
-    #
-    # @note assumes bad_pixels is previously sorted
-    def correct_bad_pixels(self, spectrum):
-
-        if self.settings is None or \
-                self.settings.eeprom is None or \
-                self.settings.eeprom.bad_pixels is None or \
-                len(self.settings.eeprom.bad_pixels) == 0 or \
-                self.settings.state.detector_regions is not None:
-            return False
-
-        if spectrum is None or len(spectrum) == 0:
-            return False
-
-        pixels = len(spectrum)
-        bad_pixels = self.settings.eeprom.bad_pixels
-
-        # iterate over each bad pixel
-        i = 0
-        while i < len(bad_pixels):
-
-            bad_pix = bad_pixels[i]
-
-            if bad_pix == 0:
-                # handle the left edge
-                next_good = bad_pix + 1
-                while next_good in bad_pixels and next_good < pixels:
-                    next_good += 1
-                    i += 1
-                if next_good < pixels:
-                    for j in range(next_good):
-                        spectrum[j] = spectrum[next_good]
-            else:
-
-                # find previous good pixel
-                prev_good = bad_pix - 1
-                while prev_good in bad_pixels and prev_good >= 0:
-                    prev_good -= 1
-
-                if prev_good >= 0:
-                    # find next good pixel
-                    next_good = bad_pix + 1
-                    while next_good in bad_pixels and next_good < pixels:
-                        next_good += 1
-                        i += 1
-
-                    if next_good < pixels:
-                        # for now, draw a line between previous and next_good pixels
-                        # TODO: consider some kind of curve-fit
-                        delta = float(spectrum[next_good] - spectrum[prev_good])
-                        rng   = next_good - prev_good
-                        step  = delta / rng
-                        for j in range(rng - 1):
-                            spectrum[prev_good + j + 1] = spectrum[prev_good] + step * (j + 1)
-                    else:
-                        # we ran off the high end, so copy-right
-                        for j in range(bad_pix, pixels):
-                            spectrum[j] = spectrum[prev_good]
-
-            # advance to next bad pixel
-            i += 1
-        return True
-
-    def apply_2x2_binning(self, spectrum):
-        if not self.settings.eeprom.bin_2x2:
-            return spectrum
-
-        def bin2x2(a):
-            if a is None or len(a) == 0:
-                return a
-            binned = []
-            for i in range(len(a)-1):
-                binned.append((a[i] + a[i+1]) / 2.0)
-            binned.append(a[-1])
-            return binned
-
-        if self.settings.state.detector_regions is None:
-            log.debug("applying bin_2x2")
-            return bin2x2(spectrum)
-
-        log.debug("applying bin_2x2 to regions")
-        combined = []
-        for subspectrum in self.settings.state.detector_regions.split(spectrum):
-            combined.extend(bin2x2(subspectrum))
-        return combined
-
-    ## Send the updated integration time in a control message to the device
-    #
-    # @warning disabled EEPROM range-checking by customer
-    #          request; range limits in EEPROM are defined as 16-bit
-    #          values, while integration time is actually a 24-bit value,
-    #          such that the EEPROM is artificially limiting our range.
-    def set_integration_time_ms(self, ms):
+    def set_integration_time_ms(self, ms: float) -> SpectrometerResponse:
+        """
+        Send the updated integration time in a control message to the device
+        @warning disabled EEPROM range-checking by customer
+             request; range limits in EEPROM are defined as 16-bit
+             values, while integration time is actually a 24-bit value,
+             such that the EEPROM is artificially limiting our range.
+        """
         ms = max(1, int(round(ms)))
 
         lsw =  ms        & 0xffff
@@ -1263,14 +1261,14 @@ class FeatureIdentificationDevice:
     # Temperature
     # ##########################################################################
 
-    def select_adc(self, n):
+    def select_adc(self, n: int) -> SpectrometerResponse:
         log.debug("select_adc -> %d", n)
         self.settings.state.selected_adc = n
         result = self._send_code(0xed, n, label="SELECT_ADC")
         self._get_code(0xd5, wLength=2, label="GET_ADC (throwaway)") # stabilization read
         return result
 
-    def get_secondary_adc_calibrated(self, raw=None):
+    def get_secondary_adc_calibrated(self, raw: float = None) -> SpectrometerResponse:
         response = SpectrometerResponse()
         if not self._has_linearity_coeffs():
             log.debug("secondary_adc_calibrated: no calibration")
@@ -1293,7 +1291,7 @@ class FeatureIdentificationDevice:
         response.data = calibrated
         return response
 
-    def get_secondary_adc_raw(self):
+    def get_secondary_adc_raw(self) -> SpectrometerResponse:
         # flip to secondary ADC if needed
         if self.settings.state.selected_adc is None or self.settings.state.selected_adc != 1:
             self.select_adc(1)
@@ -1301,19 +1299,6 @@ class FeatureIdentificationDevice:
         value = self._get_code(0xd5, wLength=2, label="GET_ADC", lsb_len=2) & 0xfff
         log.debug("secondary_adc_raw: 0x%04x", value)
         return value
-
-    ## @note little-endian, reverse of get_detector_temperature_raw
-    def get_laser_temperature_raw(self):
-        # flip to primary ADC if needed
-        if self.settings.state.selected_adc is None or self.settings.state.selected_adc != 0:
-            self.select_adc(0)
-
-        res = self._get_code(0xd5, wLength=2, label="GET_ADC", lsb_len=2)
-        if not res.data:
-            log.debug("Unable to read laser temperature")
-            return result
-        res.data = res.data & 0xfff
-        return res
 
     ##
     # Laser temperature conversion doesn't use EEPROM coeffs at all.
@@ -1337,7 +1322,7 @@ class FeatureIdentificationDevice:
     # \endverbatim
     #
     # @param raw    the value read from the thermistor's 12-bit ADC
-    def get_laser_temperature_degC(self, raw=None):
+    def get_laser_temperature_degC(self, raw: float = None) -> SpectrometerResponse:
         if not isinstance(raw, SpectrometerResponse):
             raw = SpectrometerResponse(data=raw)
         if raw is None:
@@ -1375,16 +1360,14 @@ class FeatureIdentificationDevice:
         return SpectrometerResponse(data=degC)
 
     ## @note big-endian, reverse of get_laser_temperature_raw
-    def get_detector_temperature_raw(self):
+    def get_detector_temperature_raw(self) -> SpectrometerResponse:
         return self._get_code(0xd7, label="GET_CCD_TEMP", msb_len=2)
 
-    def get_detector_temperature_degC(self, raw=None):
-        if not isinstance(raw, SpectrometerResponse):
-            raw = SpectrometerResponse(data=raw)
-        if raw.data is None:
-            raw = self.get_detector_temperature_raw()
+    def get_detector_temperature_degC(self, raw: float = None) -> SpectrometerResponse:
+        if raw is None:
+            raw = self.get_detector_temperature_raw().data
 
-        if raw.data is None:
+        if raw is None:
             return raw
 
         degC = self.settings.eeprom.adc_to_degC_coeffs[0]             \
@@ -1393,12 +1376,13 @@ class FeatureIdentificationDevice:
         log.debug("Detector temperature: %.2f deg C (0x%04x raw)" % (degC, raw))
         return SpectrometerResponse(data=degC)
 
-    ##
-    # Attempt to set the CCD cooler setpoint. Verify that it is within an
-    # acceptable range. Ideally this is to prevent condensation and other
-    # issues. This value is a default and is hugely dependent on the
-    # environmental conditions.
-    def set_detector_tec_setpoint_degC(self, degC):
+    def set_detector_tec_setpoint_degC(self, degC: float) -> SpectrometerResponse:
+        """
+        Attempt to set the CCD cooler setpoint. Verify that it is within an
+        acceptable range. Ideally this is to prevent condensation and other
+        issues. This value is a default and is hugely dependent on the
+        environmental conditions.
+        """
         if not self.settings.eeprom.has_cooling:
             log.error("unable to control TEC: EEPROM reports no cooling")
             return SpectrometerResponse(data=False, error_lvl=ErrorLevel.low, error_msg="unable to control TEC: EEPROM reports no cooling")
@@ -1424,20 +1408,20 @@ class FeatureIdentificationDevice:
         self.detector_tec_setpoint_has_been_set = True
         return ok
 
-    def get_detector_tec_setpoint_degC(self):
+    def get_detector_tec_setpoint_degC(self) -> SpectrometerResponse:
         if self.detector_tec_setpoint_has_been_set:
-            return self.settings.state.tec_setpoint_degC
+            return SpectrometerResponse(self.settings.state.tec_setpoint_degC)
         log.error("Detector TEC setpoint has not yet been applied")
-        return 0.0
+        return SpectrometerResponse(0.0)
 
-    def get_detector_tec_setpoint_raw(self):
+    def get_detector_tec_setpoint_raw(self) -> SpectrometerResponse:
         return self.get_dac(0)
 
-    def get_dac(self, dacIndex=0):
+    def get_dac(self, dacIndex: int = 0) -> SpectrometerResponse:
         return self._get_code(0xd9, wIndex=dacIndex, label="GET_DAC", lsb_len=2)
 
     ## @todo rename set_detector_tec_enable
-    def set_tec_enable(self, flag):
+    def set_tec_enable(self, flag: bool) -> SpectrometerResponse:
         if not self.settings.eeprom.has_cooling:
             log.debug("unable to control TEC: EEPROM reports no cooling")
             return SpectrometerResponse(data=False, error_msg="unable to control TEC: EEPROM reports no cooling")
@@ -1456,22 +1440,20 @@ class FeatureIdentificationDevice:
             self.settings.state.tec_enabled = flag
         return ok
 
-    ##
-    # Set the source for incoming acquisition triggers.
-    #
-    # @param value either 0 for "internal" or 1 for "external"
-    #
-    # With internal triggering (the default), the spectrometer expects the
-    # USB host to explicitly send a START_ACQUISITION (ACQUIRE) opcode to
-    # begin each integration.  In external triggering, the spectrometer
-    # waits for the rising edge on a signal connected to a pin on the OEM
-    # accessory connector.
-    #
-    # Technically on ARM, the microcontroller is continuously monitoring
-    # both the external pin and listening for internal software opcodes.
-    # On the FX2 you need to explicitly place the microcontroller into
-    # external triggering mode to avail the feature.
-    def set_trigger_source(self, value):
+    def set_trigger_source(self, value: bool) -> SpectrometerResponse:
+        """
+        Set the source for incoming acquisition triggers.
+        @param value either 0 for "internal" or 1 for "external"
+        With internal triggering (the default), the spectrometer expects the
+        USB host to explicitly send a START_ACQUISITION (ACQUIRE) opcode to
+        begin each integration.  In external triggering, the spectrometer
+        waits for the rising edge on a signal connected to a pin on the OEM
+        accessory connector.
+        Technically on ARM, the microcontroller is continuously monitoring
+        both the external pin and listening for internal software opcodes.
+        On the FX2 you need to explicitly place the microcontroller into
+        external triggering mode to avail the feature.
+        """
         self.settings.state.trigger_source = value
         log.debug("trigger_source now %s", value)
 
@@ -1492,7 +1474,7 @@ class FeatureIdentificationDevice:
     # to GET.  Note that the set command is expecting a 5-byte unsigned
     # value, the highest byte of which we pass as part of an 8-byte buffer.
     # Not sure why.
-    def set_high_gain_mode_enable(self, flag):
+    def set_high_gain_mode_enable(self, flag: bool) -> SpectrometerResponse:
         log.debug("Set high gain mode: %s", flag)
         if not self.settings.is_ingaas():
             log.debug("SET_HIGH_GAIN_MODE_ENABLE only supported on InGaAs")
@@ -1506,22 +1488,22 @@ class FeatureIdentificationDevice:
         self.settings.state.high_gain_mode_enabled = flag
         return self._send_code(0xeb, wValue=value, wIndex=0, data_or_wLength=buf, label="SET_HIGH_GAIN_MODE_ENABLE")
 
-    def get_high_gain_mode_enabled(self):
+    def get_high_gain_mode_enabled(self) -> SpectrometerResponse:
         if not self.settings.is_ingaas():
             log.debug("GET_HIGH_GAIN_MODE_ENABLE only supported on InGaAs")
-            return self.settings.eeprom.high_gain_mode_enabled
+            return SpectrometerResponse(self.settings.eeprom.high_gain_mode_enabled)
 
         self.settings.state.high_gain_mode_enabled = 0 != self._get_code(0xec, lsb_len=1, label="GET_HIGH_GAIN_MODE_ENABLED")
-        return SpectrometerResponse(data=self.settings.state.high_gain_mode_enabled)
+        return SpectrometerResponse(self.settings.state.high_gain_mode_enabled)
 
     ############################################################################
     # Laser commands
     ############################################################################
 
-    def get_opt_laser_control(self):
+    def get_opt_laser_control(self) -> SpectrometerResponse:
         return self.get_upper_code(0x09, label="GET_OPT_LASER_CONTROL", msb_len=1)
 
-    def get_opt_has_laser(self):
+    def get_opt_has_laser(self) -> SpectrometerResponse:
         available = (0 != self.get_upper_code(0x08, label="GET_OPT_HAS_LASER", msb_len=1).data)
         if available != self.settings.eeprom.has_laser:
             log.error("OPT_HAS_LASER opcode result %s != EEPROM has_laser %s (using opcode)",
@@ -1529,7 +1511,7 @@ class FeatureIdentificationDevice:
         return SpectrometerResponse(data=available)
 
     ## @note little-endian, reverse of get_detector_temperature_raw
-    def get_laser_temperature_raw(self):
+    def get_laser_temperature_raw(self) -> SpectrometerResponse:
         # flip to primary ADC if needed
         if self.settings.state.selected_adc is None or self.settings.state.selected_adc != 0:
             self.select_adc(0)
@@ -1537,75 +1519,17 @@ class FeatureIdentificationDevice:
         result = self._get_code(0xd5, wLength=2, label="GET_ADC", lsb_len=2)
         if not result.data:
             log.debug("Unable to read laser temperature")
-            return 0
+            return SpectrometerResponse(0)
         result.data = result.data & 0xfff
         return result
 
-    ##
-    # Laser temperature conversion doesn't use EEPROM coeffs at all.
-    # Most Wasatch Raman systems use an IPS Wavelength-Stabilized TO-56
-    # laser, which internally uses a Betatherm 10K3CG3 thermistor.
-    #
-    # @see https://www.ipslasers.com/data-sheets/SM-TO-56-Data-Sheet-IPS.pdf
-    #
-    # The official conversion from thermistor resistance (in ohms) to degC is:
-    #
-    # \verbatim
-    # 1 / (   C1
-    #       + C2 * ln(ohms)
-    #       + C3 * pow(ln(ohms), 3)
-    #     )
-    # - 273.15
-    #
-    # Where: C1 = 0.00113
-    #        C2 = 0.000234
-    #        C3 = 8.78e-8
-    # \endverbatim
-    #
-    # @param raw    the value read from the thermistor's 12-bit ADC
-    def get_laser_temperature_degC(self, raw=None):
-        if not isinstance(raw, SpectrometerResponse):
-            raw = SpectrometerResponse(data=raw)
-        if raw.data is None:
-            raw = self.get_laser_temperature_raw()
-
-        if raw.data is None:
-            return raw
-
-        if raw.data > 0xfff:
-            log.error("get_laser_temperature_degC: read raw value 0x%04x exceeds 12 bits", raw)
-            return SpectrometerResponse(data=0,error_lvl=ErrorLevel.low,error_msg="raw value exceeded 12bits")
-
-        # can't take log of zero
-        if raw.data == 0:
-            return SpectrometerResponse(data=0, error_msg="can't take log of 0", error_lvl=ErrorLevel.low)
-
-        degC = 0
-        try:
-            voltage    = 2.5 * raw.data / 4096
-            resistance = 21450.0 * voltage / (2.5 - voltage) # LB confirms
-
-            if resistance < 0:
-                log.error("get_laser_temperature_degC: can't compute degC: raw = 0x%04x, voltage = %f, resistance = %f",
-                    raw.data, voltage, resistance)
-                return SpectrometerResponse(data=0, error_msg="can't computer laser temperature", error_lvl=ErrorLevel.low)
-
-            logVal     = math.log(resistance / 10000.0)
-            insideMain = logVal + 3977.0 / (25 + 273.0)
-            degC       = 3977.0 / insideMain - 273.0
-
-            log.debug("Laser temperature: %.2f deg C (0x%04x raw)" % (degC, raw.data))
-        except:
-            log.error("exception computing laser temperature", exc_info=1)
-
-        return SpectrometerResponse(data=degC)
-
-    ##
-    # On spectrometers supporting two lasers, select the primary (0) or
-    # secondary (1).  Laser Enable, laser power etc should all then
-    # affect the currently-selected laser.
-    # @warning conflicts with GET_RAMAN_MODE_ENABLE
-    def set_selected_laser(self, value):
+    def set_selected_laser(self, value: int) -> SpectrometerResponse:
+        """
+        On spectrometers supporting two lasers, select the primary (0) or
+        secondary (1).  Laser Enable, laser power etc should all then
+        affect the currently-selected laser.
+        @warning conflicts with GET_RAMAN_MODE_ENABLE
+        """
         n = 1 if value else 0
 
         if not self.settings.eeprom.has_laser:
@@ -1621,28 +1545,26 @@ class FeatureIdentificationDevice:
                               data_or_wLength = [0] * 8,
                               label           = "SET_SELECTED_LASER")
 
-    def get_selected_laser(self):
+    def get_selected_laser(self) -> SpectrometerResponse:
         return SpectrometerResponse(data=self.settings.state.selected_laser)
 
-    def get_laser_enabled(self):
+    def get_laser_enabled(self) -> SpectrometerResponse:
         flag = 0 != self._get_code(0xe2, label="GET_LASER_ENABLED", msb_len=1).data
         log.debug("get_laser_enabled: %s", flag)
         self.settings.state.laser_enabled = flag
         return SpectrometerResponse(data=flag)
 
-    ##
-    # Turn the laser on or off.
-    #
-    # If laser power hasn't yet been externally configured, applies the default
-    # of full-power.
-    #
-    # If the new laser state is on, AND if laser ramping has been enabled, then
-    # the function will internally use the (blocking) software laser ramping
-    # algorithm; otherwise the new state will be applied immediately.
-    #
-    # @param flag (Input) bool (True turns laser on, False turns laser off)
-    # @returns whether the new state was applied
-    def set_laser_enable(self, flag):
+    def set_laser_enable(self, flag: bool) -> SpectrometerResponse:
+        """
+        Turn the laser on or off.
+        If laser power hasn't yet been externally configured, applies the default
+        of full-power.
+        If the new laser state is on, AND if laser ramping has been enabled, then
+        the function will internally use the (blocking) software laser ramping
+        algorithm; otherwise the new state will be applied immediately.
+        @param flag (Input) bool (True turns laser on, False turns laser off)
+        @returns whether the new state was applied
+        """
         if not self.settings.eeprom.has_laser:
             log.error("unable to control laser: EEPROM reports no laser installed")
             return SpectrometerResponse(data=False, error_msg="no laser installed")
@@ -1658,11 +1580,12 @@ class FeatureIdentificationDevice:
             self._set_laser_enable_immediate(flag)
         return SpectrometerResponse(data=True)
 
-    ##
-    # Enable software (blocking) laser power ramping algorithm.
-    # @param flag (Input) whether laser ramping is enabled (default False)
-    # @see _set_laser_enable_ramp
-    def set_laser_power_ramping_enable(self, flag):
+    def set_laser_power_ramping_enable(self, flag: bool) -> SpectrometerResponse:
+        """
+        Enable software (blocking) laser power ramping algorithm.
+        @param flag (Input) whether laser ramping is enabled (default False)
+        @see _set_laser_enable_ramp
+        """
         self.settings.state.laser_power_ramping_enabled = flag
 
     ##
@@ -2925,7 +2848,41 @@ class FeatureIdentificationDevice:
         process_f["set_detector_gain"] = self.set_detector_gain
         process_f["set_detector_gain_odd"] = self.set_detector_gain_odd
         process_f["set_area_scan_enable"] = self.set_area_scan_enable
+        process_f["get_sensor_line_length"] = self.get_sensor_line_length
+        process_f["get_microcontroller_firmware_version"] = self.get_microcontroller_firmware_version
+        process_f["get_fpga_firmware_version"] = self.get_fpga_firmware_version
+        process_f["get_line"] = self.get_line
+        process_f["set_integration_time_ms"] = self.set_integration_time_ms
+        process_f["select_adc"] = self.select_adc
+        process_f["get_secondary_adc_calibrated"] = self.get_secondary_adc_calibrated
+        process_f["get_secondary_adc_raw"] = self.get_secondary_adc_raw
+        process_f["get_laser_temperature_raw"] = self.get_laser_temperature_raw
+        process_f["get_laser_temperature_degC"] = self.get_laser_temperature_degC
+        process_f["get_detector_temperature_raw"] = self.get_detector_temperature_raw
+        process_f["get_detector_temperature_degC"] = self.get_detector_temperature_degC
+        process_f["get_detector_tec_setpoint_degC"] = self.get_detector_tec_setpoint_degC
+        process_f["get_dac"] = self.get_dac
+        process_f["set_tec_enable"] = self.set_tec_enable
+        process_f["set_trigger_source"] = self.set_trigger_source
+        process_f["set_high_gain_mode_enable"] = self.set_high_gain_mode_enable
+        process_f["get_high_gain_mode_enabled"] = self.get_high_gain_mode_enabled
+        process_f["get_opt_laser_control"] = self.get_opt_laser_control
+        process_f["get_opt_has_laser"] = self.get_opt_has_laser
+        process_f["set_detector_tec_setpoint_degC"] = self.set_detector_tec_setpoint_degC
+        process_f["get_detector_tec_setpoint_raw"] = self.get_detector_tec_setpoint_raw
+        process_f["set_selected_laser"] = self.set_selected_laser
+        process_f["get_selected_laser"] = self.get_selected_laser
+        process_f["get_laser_enabled"] = self.get_laser_enabled
+        process_f["set_laser_enable"] = self.set_laser_enable
+        process_f[""] = self.
+        process_f[""] = self.
+        process_f[""] = self.
+        process_f[""] = self.
+        process_f[""] = self.
+        process_f[""] = self.
+
         return process_f
+
 
     ##
     # Please keep this list in sync with README_SETTINGS.md
