@@ -85,14 +85,18 @@ class SPIDevice:
             pass
 
         # Configure the SPI bus
-        self.SPI.configure(baudrate=8000000, phase=0, polarity=0, bits=8)
+        self.SPI.configure(baudrate=20000000, phase=0, polarity=0, bits=8)
 
     def connect(self):
         eeprom_pages = []
         for i in range(EEPROM.MAX_PAGES):
+            response = bytearray(2)
+            while self.ready.value:
+                self.SPI.readinto(response,0,2)
             page = self.EEPROMReadPage(i)
-            log.info(f"spi read page of {page}")
+            log.info(f"spi read page {i} with data {page}")
             eeprom_pages.append(page)
+        eeprom_pages = [[val for val in page[9:74]] for page in eeprom_pages]
         self.settings.eeprom.parse(eeprom_pages)
         self.settings.eeprom.active_pixels_horizontal = 1952
         self.settings.state.integration_time_ms = 10
@@ -153,13 +157,13 @@ class SPIDevice:
         return True
 
     def EEPROMReadPage(self, page):
-        EEPROMPage  = bytearray(68)
+        EEPROMPage  = bytearray(74)
         command     = bytearray(7)
         command     = [0x3C, 0x00, 0x02, 0xB0, (0x40 + page), 0xFF, 0x3E]
         self.SPI.write(command, 0, 7)
         time.sleep(0.01)
         command = [0x3C, 0x00, 0x01, 0x31, 0xFF, 0x3E]
-        self.SPI.write_readinto(command, EEPROMPage, 0, 6, 0, 68)
+        self.SPI.write_readinto(command, EEPROMPage)
         return EEPROMPage
 
 
