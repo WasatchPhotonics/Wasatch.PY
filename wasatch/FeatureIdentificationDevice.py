@@ -1588,32 +1588,31 @@ class FeatureIdentificationDevice:
         """
         self.settings.state.laser_power_ramping_enabled = flag
 
-    ##
-    # @returns whether software laser power ramping is enabled
-    # @see _set_laser_enable_ramp
-    def get_laser_power_ramping_enabled(self):
+    def get_laser_power_ramping_enabled(self) -> SpectrometerResponse:
+        """
+        @returns whether software laser power ramping is enabled
+        @see _set_laser_enable_ramp
+        """
         return SpectrometerResponse(data=self.settings.state.laser_power_ramping_enabled)
 
-    ##
-    # The user has requested to update the laser firing state (on or off), and
-    # either laser power ramping is not enabled, or the requested state is "off",
-    # so apply the new laser state to the spectrometer immediately.
-    #
-    # Because the ability to immediately disable a laser is a safety-related
-    # feature (noting that truly safety-critical capabilities should be
-    # implemented in hardware, and generally can't be robustly achieved through
-    # Python scripts), this function takes the unusual step of looping over
-    # multiple attempts to set the laser state until either the command succeeds,
-    # or 3 consecutive failures have occured.
-    #
-    # This behavior was added after a developmental, unreleased prototype was
-    # found to occasionally drop USB packets, and was therefore susceptible to
-    # inadvertently failing to disable the laser upon command.
-    #
-    # @private (as callers are recommended to use set_laser_enable)
-    # @param flag (Input) whether the laser should be on (true) or off (false)
-    # @returns true if new state was successfully applied
-    def _set_laser_enable_immediate(self, flag):
+    def _set_laser_enable_immediate(self, flag: bool) -> SpectrometerResponse:
+        """
+        The user has requested to update the laser firing state (on or off), and
+        either laser power ramping is not enabled, or the requested state is "off",
+        so apply the new laser state to the spectrometer immediately.
+        Because the ability to immediately disable a laser is a safety-related
+        feature (noting that truly safety-critical capabilities should be
+        implemented in hardware, and generally can't be robustly achieved through
+        Python scripts), this function takes the unusual step of looping over
+        multiple attempts to set the laser state until either the command succeeds,
+        or 3 consecutive failures have occured.
+        This behavior was added after a developmental, unreleased prototype was
+        found to occasionally drop USB packets, and was therefore susceptible to
+        inadvertently failing to disable the laser upon command.
+        @private (as callers are recommended to use set_laser_enable)
+        @param flag (Input) whether the laser should be on (true) or off (false)
+        @returns true if new state was successfully applied
+        """
         log.debug("Send laser enable: %s", flag)
         if flag:
             self.last_applied_laser_power = 0.0
@@ -1634,66 +1633,67 @@ class FeatureIdentificationDevice:
             else:
                 log.error("laser_enable %s command failed, re-trying", flag)
 
-    ##
-    # EXPERIMENTAL: Enable the laser (turn it on), and then gradually step the
-    # laser power from the previously-applied power level to the most recently-
-    # requested power level.
-    #
-    # This function was added for one OEM using one particular 100mW single-mode
-    # 830nm laser, and likely would add little value to newer systems using
-    # multi-mode lasers.
-    #
-    # Different Wasatch Photonics spectrometers have used various internal lasers
-    # in different models over time.  Some low-power, single-mode lasers in
-    # particular took a few seconds for the measured output power to stabilize
-    # after a change in requested laser power.  For instance, if the laser had
-    # been at 50% power, and the user changed it to 60%, there could be a short
-    # over-power surge to 62%, followed by a quick drop to 58%, before the power
-    # would gradually converge to 60% over a period of 5+ seconds.  Graphically,
-    # a sample measured power trace might resemble the following:
-    #
-    # \verbatim
-    # 60%       ^  ____------->
-    #          | \/
-    #          |
-    # 50% _____|
-    #    (sample measured laser power over time)
-    # \endverbatim
-    #
-    # At customer request, a software algorithm was provided to provide marginal
-    # reduction in stabilization time by manually stepping the laser power to the
-    # desired value.  In testing, this could reduce the average stabilization
-    # period from ~6sec to ~4sec.  The revised power trace might resemble the
-    # following:
-    #
-    # \verbatim
-    # 60%        ' _,--------->
-    #           / '
-    #          |
-    # 50% _____|
-    #    (sample measured laser power over time)
-    # \endverbatim
-    #
-    # The algorithm essentially functions by jumping the laser power to a mid-
-    # point 80% of the way between the previous power level and the new level,
-    # and then stepping the laser incrementally from the 80% midpoint to the
-    # final level in a curve with exponential die-off.  The number of steps used
-    # to ramp the laser is defined in SpectrometerState.laser_power_ramp_increments,
-    # and a hardcoded 10ms delay is applied after each jump.
-    #
-    # This is a blocking function (does not internally spawn a background thread),
-    # and so will block the caller for the duration of the ramp (typically 4sec+).
-    #
-    # Users are not recommended to call this method directly; it will be used
-    # internally by set_laser_enable() if laser ramping has been configured,
-    # which is not enabled by default.
-    #
-    # @note does not currently support second / external laser
-    # @note currently hard-coded to use 1% power resolution (100µs period),
-    #       while driver default is 0.1% (1000µs period)
-    #
-    # @private (use set_laser_enable)
-    def _set_laser_enable_ramp(self):
+   
+    def _set_laser_enable_ramp(self) -> SpectrometerResponse:
+        """
+        EXPERIMENTAL: Enable the laser (turn it on), and then gradually step the
+        laser power from the previously-applied power level to the most recently-
+        requested power level.
+    
+        This function was added for one OEM using one particular 100mW single-mode
+        830nm laser, and likely would add little value to newer systems using
+        multi-mode lasers.
+    
+        Different Wasatch Photonics spectrometers have used various internal lasers
+        in different models over time.  Some low-power, single-mode lasers in
+        particular took a few seconds for the measured output power to stabilize
+        after a change in requested laser power.  For instance, if the laser had
+        been at 50% power, and the user changed it to 60%, there could be a short
+        over-power surge to 62%, followed by a quick drop to 58%, before the power
+        would gradually converge to 60% over a period of 5+ seconds.  Graphically,
+        a sample measured power trace might resemble the following:
+    
+        \verbatim
+        60%       ^  ____------->
+                | \/
+                |
+        50% _____|
+        (sample measured laser power over time)
+        \endverbatim
+    
+        At customer request, a software algorithm was provided to provide marginal
+        reduction in stabilization time by manually stepping the laser power to the
+        desired value.  In testing, this could reduce the average stabilization
+        period from ~6sec to ~4sec.  The revised power trace might resemble the
+        following:
+    
+        \verbatim
+        60%        ' _,--------->
+                / '
+                |
+        50% _____|
+        (sample measured laser power over time)
+        \endverbatim
+    
+        The algorithm essentially functions by jumping the laser power to a mid-
+        point 80% of the way between the previous power level and the new level,
+        and then stepping the laser incrementally from the 80% midpoint to the
+        final level in a curve with exponential die-off.  The number of steps used
+        to ramp the laser is defined in SpectrometerState.laser_power_ramp_increments,
+        and a hardcoded 10ms delay is applied after each jump.
+    
+        This is a blocking function (does not internally spawn a background thread),
+        and so will block the caller for the duration of the ramp (typically 4sec+).
+    
+        Users are not recommended to call this method directly; it will be used
+        internally by set_laser_enable() if laser ramping has been configured,
+        which is not enabled by default.
+    
+        @note does not currently support second / external laser
+        @note currently hard-coded to use 1% power resolution (100µs period),
+            while driver default is 0.1% (1000µs period)
+        @private (use set_laser_enable)
+        """
         prefix = "set_laser_enable_ramp"
 
         # todo: should make enums for all opcodes
@@ -1768,10 +1768,10 @@ class FeatureIdentificationDevice:
         self.last_applied_laser_power = self.next_applied_laser_power
         log.debug("%s: last_applied_laser_power = %d", prefix, self.next_applied_laser_power)
 
-    def has_laser_power_calibration(self):
+    def has_laser_power_calibration(self) -> SpectrometerResponse:
         return self.settings.eeprom.has_laser_power_calibration()
 
-    def set_laser_power_mW(self, mW_in):
+    def set_laser_power_mW(self, mW_in: int) -> SpectrometerResponse:
         if mW_in is None or not self.has_laser_power_calibration():
             log.error("EEPROM doesn't have laser power calibration")
             self.settings.state.laser_power_mW = 0
@@ -1791,16 +1791,18 @@ class FeatureIdentificationDevice:
         self.settings.state.laser_power_mW = mW
         return self.set_laser_power_perc(perc, set_in_perc=False)
 
-    def set_laser_power_high_resolution(self, flag):
+    def set_laser_power_high_resolution(self, flag: bool) -> SpectrometerResponse:
         self.settings.state.laser_power_high_resolution = True if flag else False
+        return SpectrometerResponse()
 
-    def set_laser_power_require_modulation(self, flag):
+    def set_laser_power_require_modulation(self, flag: bool) -> SpectrometerResponse:
         self.settings.state.laser_power_require_modulation = True if flag else False
+        return SpectrometerResponse()
 
     ##
     # @todo support floating-point value, as we have a 12-bit ADC and can provide
     # a bit more precision than 100 discrete steps (goal to support 0.1 - .125% resolution)
-    def set_laser_power_perc(self, value_in, set_in_perc=True):
+    def set_laser_power_perc(self, value_in: float, set_in_perc: bool = True) -> SpectrometerResponse:
         if not self.settings.eeprom.has_laser:
             log.error("unable to control laser: EEPROM reports no laser installed")
             return SpectrometerResponse(data=False,error_msg="no laser installed")
@@ -1890,7 +1892,7 @@ class FeatureIdentificationDevice:
     # @todo talk to Jason about changing modulation PERIOD to longer
     #     value (200us? 400? 1000?), OR whether pulse WIDTH can be
     #     in smaller unit (500ns? 100ns?)
-    def set_laser_power_perc_immediate(self, value):
+    def set_laser_power_perc_immediate(self, value: float) -> SpectrometerResponse:
 
         # laser can flicker if we're on the wrong ADC?
 
@@ -2874,8 +2876,14 @@ class FeatureIdentificationDevice:
         process_f["get_selected_laser"] = self.get_selected_laser
         process_f["get_laser_enabled"] = self.get_laser_enabled
         process_f["set_laser_enable"] = self.set_laser_enable
-        process_f[""] = self.
-        process_f[""] = self.
+        process_f["set_laser_power_ramping_enable"] = self.set_laser_power_ramping_enable
+        process_f["get_laser_power_ramping_enabled"] = self.get_laser_power_ramping_enabled
+        process_f["has_laser_power_calibration"] = self.has_laser_power_calibration
+        process_f["set_laser_power_mW"] = self.set_laser_power_mW
+        process_f["set_laser_power_high_resolution"] = self.set_laser_power_high_resolution
+        process_f["set_laser_power_require_modulation"] = self.set_laser_power_require_modulation
+        process_f["set_laser_power_perc"] = self.set_laser_power_perc
+        process_f["set_laser_power_perc_immediate"] = self.set_laser_power_perc_immediate
         process_f[""] = self.
         process_f[""] = self.
         process_f[""] = self.
