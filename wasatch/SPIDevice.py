@@ -91,8 +91,13 @@ class SPIDevice:
         eeprom_pages = []
         for i in range(EEPROM.MAX_PAGES):
             page = self.EEPROMReadPage(i)
-            log.info(f"spi read page of {page}")
+            page = page[9:73]
             eeprom_pages.append(page)
+        page_ints = [str([f'{val:#02x}' for val in page]) for page in eeprom_pages]
+        page_int_p = '\n'.join(page_ints)
+        new_line = '\n'
+        log.info(f"raw eeprom page is {new_line}{eeprom_pages}")
+        log.info(f"read eeprom: {new_line}{page_int_p}")
         self.settings.eeprom.parse(eeprom_pages)
         self.settings.eeprom.active_pixels_horizontal = 1952
         self.settings.state.integration_time_ms = 10
@@ -153,15 +158,14 @@ class SPIDevice:
         return True
 
     def EEPROMReadPage(self, page):
-        EEPROMPage  = bytearray(68)
+        EEPROMPage  = bytearray(74)
         command     = bytearray(7)
         command     = [0x3C, 0x00, 0x02, 0xB0, (0x40 + page), 0xFF, 0x3E]
         self.SPI.write(command, 0, 7)
         time.sleep(0.01)
         command = [0x3C, 0x00, 0x01, 0x31, 0xFF, 0x3E]
-        self.SPI.write_readinto(command, EEPROMPage, 0, 6, 0, 68)
+        self.SPI.write_readinto(command, EEPROMPage)
         return EEPROMPage
-
 
     def EEPROMWritePage(self, page, write_array):
         #write_array = [str(item) for item in write_array]
@@ -193,26 +197,30 @@ class SPIDevice:
     def Acquire(self):
         if self.disconnect:
             return False
-        #print("calling acquire")
+        log.debug("calling acquire")
         SPIBuf  = bytearray(2)
         spectra = []
         # Send and acquire trigger
         self.trigger.value = True
 
         # Wait until the data is ready
+        log.debug("waiting for data to be ready")
         while not self.ready.value:
             #print("data is not ready")
             pass
+        log.debug("data is ready")
 
         # Relase the trigger
         self.trigger.value = False
 
         # Read in the spectra
+        log.debug("reading spectra pixels")
         while self.ready.value:
             self.SPI.readinto(SPIBuf, 0, 2)
             pixel = (SPIBuf[0] << 8) + SPIBuf[1]
             spectra.append(pixel)
 
+        log.debug("returning spectra")
         return spectra
 
     def init_lambdas(self):
