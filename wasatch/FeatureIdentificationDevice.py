@@ -139,7 +139,7 @@ class FeatureIdentificationDevice:
                 elif request.args == [] and request.kwargs == {}:
                     responses.append(proc_func())
                 else:
-                    responses.append(proc_func(*args, **kwargs))
+                    responses.append(proc_func(*request.args, **request.kwargs))
             except Exception as e:
                 log.error(f"error in handling request {request} of {e}")
                 responses.append(SpectrometerResponse(error_msg="error processing cmd", error_lvl=ErrorLevel.medium))
@@ -1346,19 +1346,19 @@ class FeatureIdentificationDevice:
 
         degC = 0
         try:
-            voltage    = 2.5 * raw / 4096
+            voltage    = 2.5 * raw.data / 4096
             resistance = 21450.0 * voltage / (2.5 - voltage) # LB confirms
 
             if resistance < 0:
                 log.error("get_laser_temperature_degC: can't compute degC: raw = 0x%04x, voltage = %f, resistance = %f",
-                    raw, voltage, resistance)
+                    raw.data, voltage, resistance)
                 return SpectrometerResponse(data=0, error_level=ErrorLevel.low, error_msg="Can't compute temperature")
 
             logVal     = math.log(resistance / 10000.0)
             insideMain = logVal + 3977.0 / (25 + 273.0)
             degC       = 3977.0 / insideMain - 273.0
 
-            log.debug("Laser temperature: %.2f deg C (0x%04x raw)" % (degC, raw))
+            log.debug("Laser temperature: %.2f deg C (0x%04x raw)" % (degC, raw.data))
         except:
             log.error("exception computing laser temperature", exc_info=1)
 
@@ -1579,7 +1579,7 @@ class FeatureIdentificationDevice:
             self.set_laser_power_perc(100.0)
 
         self.settings.state.laser_enabled = flag
-        if flag and self.get_laser_power_ramping_enabled():
+        if flag and self.get_laser_power_ramping_enabled().data:
             self._set_laser_enable_ramp()
         else:
             self._set_laser_enable_immediate(flag)
@@ -2956,5 +2956,94 @@ class FeatureIdentificationDevice:
         process_f["write_eeprom"] = self.write_eeprom
         process_f["set_log_level"] = self.set_log_level
         process_f["queue_message"] = self.queue_message
+
+        ##################################################################
+        # What follows is the old init-lambdas that are squashed into process_f
+        # Long term, the upstream requests should be changed to match the new format
+        # This is an easy fix for the time being to make things behave
+        ##################################################################
+        # spectrometer control
+        process_f["laser_enable"]                       = lambda x: self.set_laser_enable(bool(x))
+        process_f["integration_time_ms"]                = lambda x: self.set_integration_time_ms(x)
+
+        process_f["detector_tec_setpoint_degC"]         = lambda x: self.set_detector_tec_setpoint_degC(int(round(x)))
+        process_f["detector_tec_enable"]                = lambda x: self.set_tec_enable(bool(x))
+        process_f["detector_gain"]                      = lambda x: self.set_detector_gain(float(x))
+        process_f["detector_offset"]                    = lambda x: self.set_detector_offset(int(round(x)))
+        process_f["detector_gain_odd"]                  = lambda x: self.set_detector_gain_odd(float(x))
+        process_f["detector_offset_odd"]                = lambda x: self.set_detector_offset_odd(int(round(x)))
+        process_f["degC_to_dac_coeffs"]                 = lambda x: self.settings.eeprom.set("degC_to_dac_coeffs", x)
+
+        process_f["laser_power_perc"]                   = lambda x: self.set_laser_power_perc(x)
+        process_f["laser_power_mW"]                     = lambda x: self.set_laser_power_mW(x)
+        process_f["laser_temperature_setpoint_raw"]     = lambda x: self.set_laser_temperature_setpoint_raw(int(round(x)))
+        process_f["laser_power_ramping_enable"]         = lambda x: self.set_laser_power_ramping_enable(bool(x))
+        process_f["laser_power_ramp_increments"]        = lambda x: self.settings.state.set("laser_power_ramp_increments", int(x))
+        process_f["laser_power_high_resolution"]        = lambda x: self.set_laser_power_high_resolution(x)
+        process_f["laser_power_require_modulation"]     = lambda x: self.set_laser_power_require_modulation(x)
+        process_f["selected_laser"]                     = lambda x: self.set_selected_laser(int(x))
+
+        process_f["high_gain_mode_enable"]              = lambda x: self.set_high_gain_mode_enable(bool(x))
+        process_f["trigger_source"]                     = lambda x: self.set_trigger_source(int(x))
+        process_f["enable_secondary_adc"]               = lambda x: self.settings.state.set("secondary_adc_enabled", bool(x))
+        process_f["area_scan_enable"]                   = lambda x: self.set_area_scan_enable(bool(x))
+        process_f["area_scan_fast"]                     = lambda x: self.settings.state.set("area_scan_fast", bool(x))
+
+        process_f["bad_pixel_mode"]                     = lambda x: self.settings.state.set("bad_pixel_mode", int(x))
+        process_f["min_usb_interval_ms"]                = lambda x: self.settings.state.set("min_usb_interval_ms", int(round(x)))
+        process_f["max_usb_interval_ms"]                = lambda x: self.settings.state.set("max_usb_interval_ms", int(round(x)))
+
+        process_f["accessory_enable"]                   = lambda x: self.set_accessory_enable(bool(x))
+        process_f["fan_enable"]                         = lambda x: self.set_fan_enable(bool(x))
+        process_f["lamp_enable"]                        = lambda x: self.set_lamp_enable(bool(x))
+        process_f["shutter_enable"]                     = lambda x: self.set_shutter_enable(bool(x))
+        process_f["strobe_enable"]                      = lambda x: self.set_strobe_enable(bool(x))
+        process_f["mod_enable"]                         = lambda x: self.set_mod_enable(bool(x))
+        process_f["mod_period_us"]                      = lambda x: self.set_mod_period_us(int(round(x)))
+        process_f["mod_width_us"]                       = lambda x: self.set_mod_width_us(int(round(x)))
+
+        # BatchCollection
+        process_f["free_running_mode"]                  = lambda x: self.settings.state.set("free_running_mode", bool(x))
+        process_f["acquisition_laser_trigger_enable"]   = lambda x: self.settings.state.set("acquisition_laser_trigger_enable", bool(x))
+        process_f["acquisition_laser_trigger_delay_ms"] = lambda x: self.settings.state.set("acquisition_laser_trigger_delay_ms", int(round(x)))
+        process_f["acquisition_take_dark_enable"]       = lambda x: self.settings.state.set("acquisition_take_dark_enable", bool(x))
+
+        # microRaman
+       #f["raman_mode_enable"]                  = lambda x: self.set_raman_mode_enable(bool(x))
+        process_f["raman_delay_ms"]                     = lambda x: self.set_raman_delay_ms(int(round(x)))
+        process_f["laser_watchdog_sec"]                 = lambda x: self.set_laser_watchdog_sec(int(round(x)))
+
+        # regions
+        process_f["vertical_binning"]                   = lambda x: self.set_vertical_binning(x)
+        process_f["single_region"]                      = lambda x: self.set_single_region(int(round(x)))
+        process_f["clear_regions"]                      = lambda x: self.clear_regions()
+        process_f["detector_roi"]                       = lambda x: self.set_detector_roi(x)
+        process_f["pixel_mode"]                         = lambda x: self.set_pixel_mode(x)
+
+        # EEPROM updates
+        process_f["update_eeprom"]                      = lambda x: self.update_session_eeprom(x)
+        process_f["replace_eeprom"]                     = lambda x: self.replace_session_eeprom(x)
+        process_f["write_eeprom"]                       = lambda x: self.write_eeprom()
+
+        # manufacturing
+        process_f["reset_fpga"]                         = lambda x: self.reset_fpga()
+        process_f["dfu_enable"]                         = lambda x: self.set_dfu_enable()
+
+        # legacy
+        process_f["allow_default_gain_reset"]           = lambda x: setattr(self, "allow_default_gain_reset", bool(x))
+
+        # experimental (R&D)
+        process_f["graph_alternating_pixels"]           = lambda x: self.settings.state.set("graph_alternating_pixels", bool(x))
+        process_f["swap_alternating_pixels"]            = lambda x: self.settings.state.set("swap_alternating_pixels", bool(x))
+        process_f["invert_x_axis"]                      = lambda x: self.settings.eeprom.set("invert_x_axis", bool(x))
+        process_f["bin_2x2"]                            = lambda x: self.settings.eeprom.set("bin_2x2", bool(x))
+        process_f["wavenumber_correction"]              = lambda x: self.settings.set_wavenumber_correction(float(x))
+
+        # heartbeats & connection data
+        process_f["raise_exceptions"]                   = lambda x: setattr(self, "raise_exceptions", bool(x))
+        process_f["log_level"]                          = lambda x: self.set_log_level(x)
+        process_f["num_connected_devices"]              = lambda x: self.settings.set_num_connected_devices(int(x))
+        process_f["subprocess_timeout_sec"]             = lambda x: None
+        process_f["heartbeat"]                          = lambda x: None
 
         return process_f
