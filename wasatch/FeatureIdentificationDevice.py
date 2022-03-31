@@ -10,7 +10,7 @@ import usb.util
 import os
 import re
 
-from typing import TypeVar, Any
+from typing import TypeVar, Any, Callable
 from random import randint
 from time   import sleep
 
@@ -126,7 +126,6 @@ class FeatureIdentificationDevice:
         self.retry_max = 3
 
         # initialize the table of lambdas used to process setting changes
-        self.lambdas = self.init_lambdas()
         self.process_f = self.init_process_funcs()
 
     def handle_requests(self, requests: list[SpectrometerRequest]) -> SpectrometerResponse:
@@ -2887,7 +2886,7 @@ class FeatureIdentificationDevice:
         process_f["get_laser_temperature_setpoint_raw"] = self.get_laser_temperature_setpoint_raw
         process_f["set_laser_temperature_setpoint_raw"] = self.set_laser_temperature_setpoint_raw
         process_f["update_laser_watchdog"] = self.update_laser_watchdog
-        process_f["get_laser_interlock"] = self.get_laser_interlockget_laser_interlock
+        process_f["get_laser_interlock"] = self.get_laser_interlock
         process_f["can_laser_fire"] = self.can_laser_fire
         process_f["reset_fpga"] = self.reset_fpga
         process_f["get_trigger_source"] = self.get_trigger_source
@@ -2918,7 +2917,7 @@ class FeatureIdentificationDevice:
         process_f["set_mod_width_us"] = self.set_mod_width_us
         process_f["get_mod_width_us"] = self.get_mod_width_us
         process_f["set_mod_delay_us"] = self.set_mod_delay_us
-        process_f["get_mod_delay_us"] = self.get_mod_delay_usget_mod_delay_us
+        process_f["get_mod_delay_us"] = self.get_mod_delay_us
         #process_f["set_mod_duration_us_NOT_USED"] = self.set_mod_duration_us_NOT_USED
         process_f["get_mod_duration_us"] = self.get_mod_duration_us
         process_f["set_strobe_enable"] = self.set_strobe_enable
@@ -2957,6 +2956,5 @@ class FeatureIdentificationDevice:
         process_f["write_eeprom"] = self.write_eeprom
         process_f["set_log_level"] = self.set_log_level
         process_f["queue_message"] = self.queue_message
-        process_f["write_setting"] = self.write_setting
 
         return process_f

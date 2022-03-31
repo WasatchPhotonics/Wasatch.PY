@@ -24,7 +24,7 @@ class SpectrometerResponse:
         self.keep_alive = old_response.keep_alive
 
     def __str__(self):
-        return f"<SpectrometerResponse ({id(self)}), {self.error_lvl}, Keep Alive {self.keep_alive}, Poison Pill {self.poison_pill}, msg {self.error_msg[:5]}>"
+        return f"<SpectrometerResponse ({id(self)}), {self.error_lvl}, Keep Alive {self.keep_alive}, Poison Pill {self.poison_pill}, msg {self.error_msg}>"
 
     def clear(self):
         self.data = None

@@ -99,7 +99,7 @@ class WasatchDevice(object):
         log.debug("WasatchDevice.disconnect: calling hardware disconnect")
         try:
             req = SpectrometerRequest("disconnect")
-            self.hardware.handle_request([req])
+            self.hardware.handle_requests([req])
         except Exception as exc:
             log.critical("Issue disconnecting hardware", exc_info=1)
 
@@ -158,7 +158,7 @@ class WasatchDevice(object):
         req_int = SpectrometerRequest('get_integration_time_ms')
         req_gain = SpectrometerRequest('get_detector_gain')# note we don't pass update_session_eeprom, so this doesn't really do anything
         reqs = [req_fw_v, req_fpga_v, req_int, req_gain]
-        self.hardware.handle_request(reqs) 
+        self.hardware.handle_requests(reqs) 
         # could read the defaults for these ss.state volatiles from FID too:
         #
         # self.tec_setpoint_degC
@@ -294,7 +294,7 @@ class WasatchDevice(object):
         if auto_enable_laser:
             log.debug("acquire_spectum: enabling laser, then sleeping %d ms", self.settings.state.acquisition_laser_trigger_delay_ms)
             req = SpectrometerRequest('set_laser_enable', args=[True])
-            self.hardware.handle_request([req])
+            self.hardware.handle_requests([req])
             if self.hardware.shutdown_requested:
                 log.debug(f"auto_enable_laser shutdown requested")
                 acquire_response.poison_pill = True
@@ -338,7 +338,7 @@ class WasatchDevice(object):
             if force or auto_enable_laser:
                 log.debug("acquire_spectrum: disabling laser post-acquisition")
                 req = SpectrometerRequest('set_laser_enable', args=[False])
-                self.hardware.handle_request([req])
+                self.hardware.handle_requests([req])
                 acquire_response.poison_pill = True
             return acquire_response # for convenience
 
@@ -356,7 +356,7 @@ class WasatchDevice(object):
                 count = 2 if self.settings.state.secondary_adc_enabled else 1
                 for throwaway in range(count):
                     req = SpectrometerRequest('get_laser_temperature_raw')
-                    res = self.hardware.handle_request([req])
+                    res = self.hardware.handle_requests([req])[0]
                     if res.error_msg != '':
                         return res
                     reading.laser_temperature_raw  = res.data
@@ -365,7 +365,7 @@ class WasatchDevice(object):
 
 
                 req = SpectrometerRequest('get_laser_temperature_degC', args=[reading.laser_temperature_raw])
-                res = self.hardware.handle_request([req])
+                res = self.hardware.handle_requests([req])[0]
                 if res.error_msg != '':
                     return res
                 reading.laser_temperature_degC = res.data
@@ -395,7 +395,7 @@ class WasatchDevice(object):
 
                 for throwaway in range(2):
                     req = SpectrometerRequest("get_secondary_adc_raw")
-                    res = self.hardware.handle_requests([req])
+                    res = self.hardware.handle_requests([req])[0]
                     if res.error_msg != '':
                         return res
                     reading.secondary_adc_raw = res.data
@@ -403,12 +403,12 @@ class WasatchDevice(object):
                         return disable_laser(force=True)
 
                 req = SpectrometerRequest("get_secondary_adc_calibrated", args =[reading.secondary_adc_raw])
-                res = self.hardware.handle_requests([req])
+                res = self.hardware.handle_requests([req])[0]
                 if res.error_msg != '':
                     return res
                 reading.secondary_adc_calibrated = res.data 
                 req = SpectrometerRequest("select_adc", args=[0])
-                res = self.hardware.handle_requests([req])
+                res = self.hardware.handle_requests([req])[0]
                 if res.error_msg != '':
                     return res
                 if self.hardware.shutdown_requested:
@@ -432,7 +432,7 @@ class WasatchDevice(object):
         if self.settings.eeprom.has_cooling:
             try:
                 req = SpectrometerRequest("get_detector_temperature_raw")
-                res = self.hardware.handle_requests([req])
+                res = self.hardware.handle_requests([req])[0]
                 if res.error_msg != '':
                     return res
                 reading.detector_temperature_raw  = res.data
@@ -442,7 +442,7 @@ class WasatchDevice(object):
                     return acquire_response
 
                 req = SpectrometerRequest("get_detector_temperature_raw", args=[reading.detector_temperature_raw])
-                res = self.hardware.handle_requests([req])
+                res = self.hardware.handle_requests([req])[0]
                 if res.error_msg != '':
                     return res
                 reading.detector_temperature_degC = res.data
@@ -466,7 +466,7 @@ class WasatchDevice(object):
         if self.settings.eeprom.has_battery:
             if self.settings.state.battery_timestamp is None or (datetime.datetime.now() >= self.settings.state.battery_timestamp + datetime.timedelta(seconds=10)):
                 req = SpectrometerRequest("get_battery_state_raw")
-                res = self.hardware.handle_requests([req])
+                res = self.hardware.handle_requests([req])[0]
                 if res.error_msg != '':
                    return res
                 reading.battery_raw = res.data
@@ -476,7 +476,7 @@ class WasatchDevice(object):
                     return acquire_response
 
                 req = SpectrometerRequest("get_battery_percentage")
-                res = self.hardware.handle_requests([req])
+                res = self.hardware.handle_requests([req])[0]
                 if res.error_msg != '':
                    return res
                 reading.battery_percentage = res.data
@@ -487,7 +487,7 @@ class WasatchDevice(object):
                 self.last_battery_percentage = reading.battery_percentage
 
                 req = SpectrometerRequest("get_battery_percentage")
-                res = self.hardware.handle_requests([req])
+                res = self.hardware.handle_requests([req])[0]
                 if res.error_msg != '':
                     return res
                 reading.battery_charging = res.data
@@ -521,7 +521,7 @@ class WasatchDevice(object):
             for i in range(count):
                 log.debug("performing optional throwaway %d of %d before ramanMicro TakeOne", i, count)
                 req = SpectrometerRequest("get_line")
-                res = self.hardware.handle_requests([req])
+                res = self.hardware.handle_requests([req])[0]
                 if res.error_msg != '':
                     return res
                 spectrum_and_row = res.data
@@ -606,7 +606,7 @@ class WasatchDevice(object):
                         while True:
                             log.debug(f"trying to read fast area scan row")
                             req = SpectrometerRequest("get_line",kwargs={"trigger":first})
-                            res = self.hardware.handle_requests([req])
+                            res = self.hardware.handle_requests([req])[0]
                             if res.error_msg != '':
                                 return res
                             response = res.data
@@ -665,15 +665,15 @@ class WasatchDevice(object):
                 try:
                     while True:
                         req = SpectrometerRequest("get_line")
-                        res = self.hardware.handle_requests([req])
+                        res = self.hardware.handle_requests([req])[0]
                         if res.error_msg != '':
                             return res
                         spectrum_and_row = res.data
-                        if response.poison_pill:
+                        if res.poison_pill:
                             # float up poison
                             take_one_response.transfer_response(response)
                             return take_one_response
-                        if response.keep_alive:
+                        if res.keep_alive:
                             # float up keep alive
                             take_one_response.transfer_response(response)
                             return take_one_response
