@@ -14,6 +14,7 @@ from . import utils
 from .FeatureIdentificationDevice import FeatureIdentificationDevice
 from .SpectrometerSettings        import SpectrometerSettings
 from .SpectrometerResponse        import SpectrometerResponse
+from .SpectrometerRequest         import SpectrometerRequest
 from .SpectrometerResponse        import ErrorLevel
 from .BalanceAcquisition          import BalanceAcquisition
 from .SpectrometerState           import SpectrometerState
@@ -97,7 +98,8 @@ class WasatchDevice(object):
     def disconnect(self):
         log.debug("WasatchDevice.disconnect: calling hardware disconnect")
         try:
-            self.hardware.disconnect()
+            req = SpectrometerRequest("disconnect")
+            self.hardware.handle_request([req])
         except Exception as exc:
             log.critical("Issue disconnecting hardware", exc_info=1)
 
@@ -151,11 +153,12 @@ class WasatchDevice(object):
         self.settings = self.hardware.settings
 
         # generic post-initialization stuff 
-        self.hardware.get_microcontroller_firmware_version()
-        self.hardware.get_fpga_firmware_version()
-        self.hardware.get_integration_time_ms()
-        self.hardware.get_detector_gain()           # note we don't pass update_session_eeprom, so this doesn't really do anything
-
+        req_fw_v = SpectrometerRequest('get_microcontroller_firmware_version')
+        req_fpga_v = SpectrometerRequest('get_fpga_firmware_version')
+        req_int = SpectrometerRequest('get_integration_time_ms')
+        req_gain = SpectrometerRequest('get_detector_gain')# note we don't pass update_session_eeprom, so this doesn't really do anything
+        reqs = [req_fw_v, req_fpga_v, req_int, req_gain]
+        self.hardware.handle_request(reqs) 
         # could read the defaults for these ss.state volatiles from FID too:
         #
         # self.tec_setpoint_degC
@@ -262,6 +265,7 @@ class WasatchDevice(object):
         averaging_enabled = (self.settings.state.scans_to_average > 1)
         acquire_response = SpectrometerResponse()
 
+
         ########################################################################
         # Batch Collection silliness
         ########################################################################
@@ -289,7 +293,8 @@ class WasatchDevice(object):
         log.debug("acquire_spectrum: auto_enable_laser = %s", auto_enable_laser)
         if auto_enable_laser:
             log.debug("acquire_spectum: enabling laser, then sleeping %d ms", self.settings.state.acquisition_laser_trigger_delay_ms)
-            self.hardware.set_laser_enable(True)
+            req = SpectrometerRequest('set_laser_enable', args=[True])
+            self.hardware.handle_request([req])
             if self.hardware.shutdown_requested:
                 log.debug(f"auto_enable_laser shutdown requested")
                 acquire_response.poison_pill = True
@@ -332,7 +337,8 @@ class WasatchDevice(object):
         def disable_laser(force=False):
             if force or auto_enable_laser:
                 log.debug("acquire_spectrum: disabling laser post-acquisition")
-                self.hardware.set_laser_enable(False)
+                req = SpectrometerRequest('set_laser_enable', args=[False])
+                self.hardware.handle_request([req])
                 acquire_response.poison_pill = True
             return acquire_response # for convenience
 
@@ -349,18 +355,29 @@ class WasatchDevice(object):
             try:
                 count = 2 if self.settings.state.secondary_adc_enabled else 1
                 for throwaway in range(count):
-                    reading.laser_temperature_raw  = self.hardware.get_laser_temperature_raw()
+                    req = SpectrometerRequest('get_laser_temperature_raw')
+                    res = self.hardware.handle_request([req])
+                    if res.error_msg != '':
+                        return res
+                    reading.laser_temperature_raw  = res.data
                     if self.hardware.shutdown_requested:
                         return disable_laser(force=True)
 
-                reading.laser_temperature_degC = self.hardware.get_laser_temperature_degC(reading.laser_temperature_raw)
+
+                req = SpectrometerRequest('get_laser_temperature_degC', args=[reading.laser_temperature_raw])
+                res = self.hardware.handle_request([req])
+                if res.error_msg != '':
+                    return res
+                reading.laser_temperature_degC = res.data
                 if self.hardware.shutdown_requested:
                     return disable_laser(force=True)
 
                 if not auto_enable_laser:
-                    reading.laser_enabled = self.hardware.get_laser_enabled()
-                    reading.laser_can_fire = self.hardware.can_laser_fire()
-                    reading.laser_is_firing = self.hardware.is_laser_firing()
+                    req_en = SpectrometerRequest("get_laser_enabled")
+                    req_can = SpectrometerRequest("can_laser_fire")
+                    req_is = SpectrometerRequest("is_laser_firing")
+                    reqs = [req_en, req_can, req_is]
+                    self.hardware.handle_requests(reqs)
 
                 if self.hardware.shutdown_requested:
                     return disable_laser(force=True)
@@ -371,17 +388,29 @@ class WasatchDevice(object):
         # read secondary ADC if requested
         if self.settings.state.secondary_adc_enabled:
             try:
-                self.hardware.select_adc(1)
+                req = SpectrometerRequest("select_adc", args=[1])
+                self.hardware.handle_requests([req])
                 if self.hardware.shutdown_requested:
                     return disable_laser(force=True)
 
                 for throwaway in range(2):
-                    reading.secondary_adc_raw = self.hardware.get_secondary_adc_raw()
+                    req = SpectrometerRequest("get_secondary_adc_raw")
+                    res = self.hardware.handle_requests([req])
+                    if res.error_msg != '':
+                        return res
+                    reading.secondary_adc_raw = res.data
                     if self.hardware.shutdown_requested:
                         return disable_laser(force=True)
 
-                reading.secondary_adc_calibrated = self.hardware.get_secondary_adc_calibrated(reading.secondary_adc_raw)
-                self.hardware.select_adc(0)
+                req = SpectrometerRequest("get_secondary_adc_calibrated", args =[reading.secondary_adc_raw])
+                res = self.hardware.handle_requests([req])
+                if res.error_msg != '':
+                    return res
+                reading.secondary_adc_calibrated = res.data 
+                req = SpectrometerRequest("select_adc", args=[0])
+                res = self.hardware.handle_requests([req])
+                if res.error_msg != '':
+                    return res
                 if self.hardware.shutdown_requested:
                     return disable_laser(force=True)
 
@@ -402,13 +431,21 @@ class WasatchDevice(object):
         # read detector temperature if applicable
         if self.settings.eeprom.has_cooling:
             try:
-                reading.detector_temperature_raw  = self.hardware.get_detector_temperature_raw()
+                req = SpectrometerRequest("get_detector_temperature_raw")
+                res = self.hardware.handle_requests([req])
+                if res.error_msg != '':
+                    return res
+                reading.detector_temperature_raw  = res.data
                 if self.hardware.shutdown_requested:
                     log.debug("detector_temperature_raw shutdown")
                     acquire_response.poison_pill = True
                     return acquire_response
 
-                reading.detector_temperature_degC = self.hardware.get_detector_temperature_degC(reading.detector_temperature_raw)
+                req = SpectrometerRequest("get_detector_temperature_raw", args=[reading.detector_temperature_raw])
+                res = self.hardware.handle_requests([req])
+                if res.error_msg != '':
+                    return res
+                reading.detector_temperature_degC = res.data
                 if self.hardware.shutdown_requested:
                     log.debug("detector_temperature_degC shutdown")
                     acquire_response.poison_pill = True
@@ -428,22 +465,32 @@ class WasatchDevice(object):
         # read battery every 10sec
         if self.settings.eeprom.has_battery:
             if self.settings.state.battery_timestamp is None or (datetime.datetime.now() >= self.settings.state.battery_timestamp + datetime.timedelta(seconds=10)):
-                res_raw = self.hardware.get_battery_state_raw()
-                reading.battery_raw = res_raw.data
+                req = SpectrometerRequest("get_battery_state_raw")
+                res = self.hardware.handle_requests([req])
+                if res.error_msg != '':
+                   return res
+                reading.battery_raw = res.data
                 if self.hardware.shutdown_requested:
                     log.debug("battery_raw shutdown")
                     acquire_response.poison_pill = True
                     return acquire_response
 
-                perc_res = self.hardware.get_battery_percentage()
-                reading.battery_percentage = perc_res.data
+                req = SpectrometerRequest("get_battery_percentage")
+                res = self.hardware.handle_requests([req])
+                if res.error_msg != '':
+                   return res
+                reading.battery_percentage = res.data
                 if self.hardware.shutdown_requested:
                     log.debug("battery_perc shutdown")
                     acquire_response.poison_pill = True
                     return acquire_response
                 self.last_battery_percentage = reading.battery_percentage
 
-                reading.battery_charging = self.hardware.get_battery_charging()
+                req = SpectrometerRequest("get_battery_percentage")
+                res = self.hardware.handle_requests([req])
+                if res.error_msg != '':
+                    return res
+                reading.battery_charging = res.data
                 if self.hardware.shutdown_requested:
                     log.debug("battery_charging shutdown")
                     acquire_response.poison_pill = True
@@ -473,7 +520,11 @@ class WasatchDevice(object):
                 count += 1
             for i in range(count):
                 log.debug("performing optional throwaway %d of %d before ramanMicro TakeOne", i, count)
-                spectrum_and_row = self.hardware.get_line()
+                req = SpectrometerRequest("get_line")
+                res = self.hardware.handle_requests([req])
+                if res.error_msg != '':
+                    return res
+                spectrum_and_row = res.data
     ##
     # @returns Reading on success, true or false on "stop processing" conditions
     def take_one_averaged_reading(self):
@@ -554,7 +605,11 @@ class WasatchDevice(object):
                         row_data = {}
                         while True:
                             log.debug(f"trying to read fast area scan row")
-                            response = self.hardware.get_line(trigger=first)
+                            req = SpectrometerRequest("get_line",kwargs={"trigger":first})
+                            res = self.hardware.handle_requests([req])
+                            if res.error_msg != '':
+                                return res
+                            response = res.data
                             spectrum_and_row = response.data
                             first = False
                             if response.poison_pill:
@@ -609,8 +664,11 @@ class WasatchDevice(object):
                 externally_triggered = self.settings.state.trigger_source == SpectrometerState.TRIGGER_SOURCE_EXTERNAL
                 try:
                     while True:
-                        response = self.hardware.get_line()
-                        spectrum_and_row = response.data
+                        req = SpectrometerRequest("get_line")
+                        res = self.hardware.handle_requests([req])
+                        if res.error_msg != '':
+                            return res
+                        spectrum_and_row = res.data
                         if response.poison_pill:
                             # float up poison
                             take_one_response.transfer_response(response)
@@ -774,7 +832,8 @@ class WasatchDevice(object):
             else:
                 # send setting downstream to be processed by the spectrometer HAL
                 # (probably FeatureIdentificationDevice)
-                self.hardware.write_setting(control_object)
+                req = SpectrometerRequest(control_object.setting, args=[control_object.value])
+                self.hardware.handle_requests([req])
 
             if control_object.setting == "free_running_mode" and not self.hardware.settings.state.free_running_mode:
                 # we just LEFT free-running mode (went on "pause"), so toss any

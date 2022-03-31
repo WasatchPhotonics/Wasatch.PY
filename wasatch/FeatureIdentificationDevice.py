@@ -129,16 +129,22 @@ class FeatureIdentificationDevice:
         self.lambdas = self.init_lambdas()
         self.process_f = self.init_process_funcs()
 
-    def handle_request(self, request: SpectrometerRequest) -> SpectrometerResponse:
-        try:
-            cmd = request.cmd
-            proc_func = self.process_f.get(cmd, None)
-            if proc_func == None:
-                return SpectrometerResponse(error_msg=f"unsupported cmd {request.cmd}", error_lvl=ErrorLevel.low)
-            if request.args == [] and request.kwargs == {}:
-                return proc_func()
-            else:
-                return proc_func(*args, **kwargs)
+    def handle_requests(self, requests: list[SpectrometerRequest]) -> SpectrometerResponse:
+        responses = []
+        for request in requests:
+            try:
+                cmd = request.cmd
+                proc_func = self.process_f.get(cmd, None)
+                if proc_func == None:
+                    responses.append(SpectrometerResponse(error_msg=f"unsupported cmd {request.cmd}", error_lvl=ErrorLevel.low))
+                elif request.args == [] and request.kwargs == {}:
+                    responses.append(proc_func())
+                else:
+                    responses.append(proc_func(*args, **kwargs))
+            except Exception as e:
+                log.error(f"error in handling request {request} of {e}")
+                responses.append(SpectrometerResponse(error_msg="error processing cmd", error_lvl=ErrorLevel.medium))
+        return responses
 
     def connect(self) -> SpectrometerResponse:
         """
@@ -1944,7 +1950,7 @@ class FeatureIdentificationDevice:
 
     ##
     # @note never used, provided for OEM
-    def get_laser_temperature_setpoint_raw(self):
+    def get_laser_temperature_setpoint_raw(self) -> SpectrometerResponse:
         if not self.settings.eeprom.has_laser:
             log.error("unable to control laser: EEPROM reports no laser installed")
             return SpectrometerResponse(data=None,error_msg="no laser installed")
@@ -1955,58 +1961,21 @@ class FeatureIdentificationDevice:
         res.data = result.data[0]
         return res
 
-    def set_laser_temperature_setpoint_raw(self, value):
+    def set_laser_temperature_setpoint_raw(self, value: int) -> SpectrometerResponse:
         log.debug("Send laser temperature setpoint raw: %d", value)
         return self._send_code(0xe7, value, label="SET_LASER_TEC_SETPOINT")
 
-    def get_laser_watchdog_sec(self):
-        self.settings.state.laser_watchdog_sec = \
-            self.get_upper_code(0x17, label="GET_LASER_WATCHDOG_SEC", msb_len=2)
-        return self.settings.state.laser_watchdog_sec
-
-    def set_laser_watchdog_sec(self, sec):
-        if not self.settings.is_micro():
-            log.error("Laser watchdog only supported on microRaman")
-            return SpectrometerResponse(data=False,error_msg="laser watchdog not supported")
-
-        # send value as big-endian
-        msb = (sec >> 8) & 0xff
-        lsb =  sec       & 0xff
-        value = (msb << 8) | lsb
-
-        self.settings.state.laser_watchdog_sec = sec
-        return self._send_code(bRequest        = 0xff,
-                              wValue          = 0x18,
-                              wIndex          = value,
-                              data_or_wLength = [0] * 8,
-                              label           = "SET_LASER_WATCHDOG_SEC")
-
-    ##
-    # Automatically set the laser watchdog long enough to handle the current
-    # integration time, assuming we have to perform 6 throwaways on the sensor
-    # in case it went to sleep.
-    #
-    # @todo don't override if the user has "manually" set in ENLIGHTEN
-    def update_laser_watchdog(self):
-        if not self.settings.is_micro():
-            return SpectrometerResponse(data=False, error_msg="watchdog not supported")
-
-        throwaways_sec = self.settings.state.integration_time_ms    \
-                       * (8 + self.settings.state.scans_to_average) \
-                       / 1000.0
-        watchdog_sec = int(max(10, throwaways_sec)) * 2
-        return self.set_laser_watchdog_sec(watchdog_sec)
-
     ## legacy wrapper over can_laser_fire
-    def get_laser_interlock(self):
+    def get_laser_interlock(self) -> SpectrometerResponse:
         return self.can_laser_fire()
 
-    ##
-    # @note only works on FX2-based spectrometers with FW >= 10.0.0.11
-    # @returns True if there is a laser and either the interlock is
-    #          closed (in firing position), or there is no readable
-    #          interlock
-    def can_laser_fire(self):
+    def can_laser_fire(self) -> SpectrometerResponse:
+        """
+        @note only works on FX2-based spectrometers with FW >= 10.0.0.11
+        @returns True if there is a laser and either the interlock is
+         closed (in firing position), or there is no readable
+         interlock
+        """
         if not self.settings.eeprom.has_laser:
             log.error("EEPROM reports no laser installed")
             return SpectrometerResponse(data=False,error_msg="no laser installed")
@@ -2017,21 +1986,24 @@ class FeatureIdentificationDevice:
 
         return SpectrometerResponse(data=0 != self._get_code(0xef, label="CAN_LASER_FIRE", msb_len=1))
 
-    ##
-    # Check if the laser actually IS firing, independent of laser_enable or 
-    # can_laser_fire.
-    def is_laser_firing(self):
+    def is_laser_firing(self) -> SpectrometerResponse:
+        """
+        Check if the laser actually IS firing, independent of laser_enable or 
+        can_laser_fire.
+        """
         if not self.settings.eeprom.has_interlock_feedback:
             log.debug("IS_LASER_FIRING requires has_interlock_feedback (defaulting to laser_enabled)")
             return self.get_laser_enabled()
 
-        return SpectrometerResponse(data=0 != self.get_upper_code(0x0d, label="IS_LASER_FIRING", msb_len=1))
+        res = self.get_upper_code(0x0d, label="IS_LASER_FIRING", msb_len=1)
+        res.data = 0 != res.data
+        return res
 
     ############################################################################
     # (end of laser commands)
     ############################################################################
 
-    def reset_fpga(self):
+    def reset_fpga(self) -> SpectrometerResponse:
         log.debug("fid: resetting FPGA")
         result = self._send_code(0xb5, label="RESET_FPGA")
         log.debug("fid: sleeping 3sec")
@@ -2048,20 +2020,22 @@ class FeatureIdentificationDevice:
     # the device as ARM and FX2 implementations differ as of 2017-08-02
     #
     # @note never called by ENLIGHTEN - provided for OEMs
-    def get_trigger_source(self):
+    def get_trigger_source(self) -> SpectrometerResponse:
         value = self._get_code(0xd3, label="GET_TRIGGER_SOURCE", msb_len=1)
-        self.settings.state.trigger_source = value
+        self.settings.state.trigger_source = value.data
         return value
 
     ##
     # @note not called by ENLIGHTEN
     # @warning conflicts with GET_SELECTED_LASER
-    def get_raman_mode_enabled_NOT_USED(self):
-        return SpectrometerResponse(data=0 != self.get_upper_code(0x15, label="GET_RAMAN_MODE_ENABLED", msb_len=1))
+    def get_raman_mode_enabled_NOT_USED(self) -> SpectrometerResponse:
+        res = self.get_upper_code(0x15, label="GET_RAMAN_MODE_ENABLED", msb_len=1)
+        res.data = 0 != res.data
+        return res
 
     ##
     # Enable "Raman mode" (automatic laser) in the spectrometer firmware.
-    def set_raman_mode_enable_NOT_USED(self, flag):
+    def set_raman_mode_enable_NOT_USED(self, flag: bool) -> SpectrometerResponse:
         if not self.settings.is_micro():
             log.debug("Raman mode only supported on microRaman")
             return SpectrometerResponse(data=False,error_msg="raman mode not supported")
@@ -2072,12 +2046,12 @@ class FeatureIdentificationDevice:
                               data_or_wLength = [0] * 8,
                               label           = "SET_RAMAN_MODE_ENABLE")
 
-    def get_raman_delay_ms(self):
-        self.settings.state.raman_delay_ms = \
-            self.get_upper_code(0x19, label="GET_RAMAN_DELAY_MS", msb_len=2)
-        return self.settings.state.raman_delay_ms
+    def get_raman_delay_ms(self) -> SpectrometerResponse:
+        res = self.get_upper_code(0x19, label="GET_RAMAN_DELAY_MS", msb_len=2)
+        self.settings.state.raman_delay_ms = res.data
+        return res
 
-    def set_raman_delay_ms(self, ms):
+    def set_raman_delay_ms(self, ms: int) -> SpectrometerResponse:
         if not self.settings.is_micro():
             log.debug("Raman delay only supported on microRaman")
             return SpectrometerResponse(data=False,error_msg="raman delay not supported")
@@ -2094,7 +2068,7 @@ class FeatureIdentificationDevice:
                               data_or_wLength = [0] * 8,
                               label           = "SET_RAMAN_DELAY_MS")
 
-    def get_laser_watchdog_sec(self):
+    def get_laser_watchdog_sec(self) -> SpectrometerResponse:
         res = self.get_upper_code(0x17, label="GET_LASER_WATCHDOG_SEC", msb_len=2)
         self.settings.state.laser_watchdog_sec = res.data
         return res
@@ -2116,13 +2090,13 @@ class FeatureIdentificationDevice:
                               data_or_wLength = [0] * 8,
                               label           = "SET_LASER_WATCHDOG_SEC")
 
-    ##
-    # Automatically set the laser watchdog long enough to handle the current
-    # integration time, assuming we have to perform 6 throwaways on the sensor
-    # in case it went to sleep.
-    #
-    # @todo don't override if the user has "manually" set in ENLIGHTEN
-    def update_laser_watchdog(self):
+    def update_laser_watchdog(self) -> SpectrometerResponse:
+        """
+        Automatically set the laser watchdog long enough to handle the current
+        integration time, assuming we have to perform 6 throwaways on the sensor
+        in case it went to sleep.
+        @todo don't override if the user has "manually" set in ENLIGHTEN
+        """
         if not self.settings.is_micro() or not self.settings.eeprom.has_laser:
             return SpectrometerResponse(data=False,error_msg="update laser watchdog not supported")
 
@@ -2132,7 +2106,7 @@ class FeatureIdentificationDevice:
         watchdog_sec = int(max(10, throwaways_sec)) * 2
         return self.set_laser_watchdog_sec(watchdog_sec)
 
-    def set_vertical_binning(self, lines):
+    def set_vertical_binning(self, lines: tuple[int, int]) -> SpectrometerResponse:
         if not self.settings.is_micro():
             log.debug("Vertical Binning only configurable on microRaman")
             return SpectrometerResponse(data=False,error_msg="vertical binning not supported")
@@ -2159,12 +2133,16 @@ class FeatureIdentificationDevice:
                              wIndex          = start,
                              data_or_wLength = [0] * 8,
                              label           = "SET_CCD_START_LINE")
+        if ok1.error_msg != '':
+            return ok1
 
         ok2 = self._send_code(bRequest        = 0xff,
                              wValue          = 0x23,
                              wIndex          = end,
                              data_or_wLength = [0] * 8,
                              label           = "SET_CCD_STOP_LINE")
+        if ok2.error_msg != '':
+            return ok2
         return SpectrometerResponse(data=ok1.data and ok2.data)
 
     ## 
@@ -2177,7 +2155,7 @@ class FeatureIdentificationDevice:
     # b10   12-bit     10-bit
     # b11   12-bit     12-bit
     # \endverbose
-    def set_pixel_mode(self, mode):
+    def set_pixel_mode(self, mode: float) -> SpectrometerResponse:
         if not self.settings.is_micro():
             log.debug("Pixel Mode only configurable on microRaman")
             return SpectrometerResponse(data=False,error_msg="pixel mode not supported")
@@ -2194,7 +2172,7 @@ class FeatureIdentificationDevice:
 
         return result
 
-    def clear_regions(self):
+    def clear_regions(self) -> SpectrometerResponse:
         x1 = self.settings.eeprom.active_pixels_horizontal
         y1 = self.settings.eeprom.active_pixels_vertical
         log.debug(f"resettings detector to full ({x1}, {y1}) extent")
@@ -2204,16 +2182,17 @@ class FeatureIdentificationDevice:
 
         return self.set_detector_roi([0, 0, y1, 0, x1], store=False)
 
-    ##
-    # This function uses the the multi-region feature to select just a single 
-    # pre-configured region at a time.  Whichever region is selected, that 
-    # region's parameters are written to "region 0" of the spectrometer, and
-    # the global wavecal is updated to use that region's calibration.
-    #
-    # @todo consider clear_region() function to restore physical ROI to 
-    #       (0, active_vertical_pixels, 0, active_horizontal_pixels)
-    #       (leave wavecal alone?)
-    def set_single_region(self, n):
+    def set_single_region(self, n: int) -> SpectrometerResponse:
+        """
+        This function uses the the multi-region feature to select just a single 
+        pre-configured region at a time.  Whichever region is selected, that 
+        region's parameters are written to "region 0" of the spectrometer, and
+        the global wavecal is updated to use that region's calibration.
+       
+        @todo consider clear_region() function to restore physical ROI to 
+            (0, active_vertical_pixels, 0, active_horizontal_pixels)
+            (leave wavecal alone?)
+        """
         if self.settings.state.detector_regions is None:
             log.debug(f"no detector regions configured")
             return SpectrometerResponse(data=False,error_msg="no regions configured")
@@ -2228,18 +2207,20 @@ class FeatureIdentificationDevice:
 
         # send a "fake" ROI downstream, overriding to position 0
         self.set_detector_roi([0, roi.y0, roi.y1, roi.x0, roi.x1], store=False)
+        return SpSpectrometerResponse()
 
-    ##
-    # Note this only sends the ROI downstream to the spectrometer (and stores
-    # it in DetectorRegions).  If you want to update the wavecal and store
-    # the "selected" region index, use set_region() instead (which calls this).
-    #
-    # You should use set_region() if you are selecting one of the standard
-    # regions already configured on the EEPROM.  You should use set_detector_roi()
-    # if you're making ad-hoc ROIs which aren't configured on the EEPROM.
-    #
-    # @param args: either a DetectorROI or a tuple of (region, y0, y1, x0, x1)
-    def set_detector_roi(self, args, store=True):
+    def set_detector_roi(self, args: list[float], store: bool = True) -> SpectrometerResponse:
+        """
+        Note this only sends the ROI downstream to the spectrometer (and stores
+        it in DetectorRegions).  If you want to update the wavecal and store
+        the "selected" region index, use set_region() instead (which calls this).
+        
+        You should use set_region() if you are selecting one of the standard
+        regions already configured on the EEPROM.  You should use set_detector_roi()
+        if you're making ad-hoc ROIs which aren't configured on the EEPROM.
+        
+        @param args: either a DetectorROI or a tuple of (region, y0, y1, x0, x1)
+        """
         if not self.settings.is_micro():
             log.debug("Detector ROI only configurable on microRaman")
             return SpectrometerResponse(data=False,error_msg="Detector ROI not configurable")
@@ -2307,7 +2288,7 @@ class FeatureIdentificationDevice:
 
         return result
 
-    def get_fpga_configuration_register(self, label=""):
+    def get_fpga_configuration_register(self, label: str = "") -> SpectrometerResponse:
         raw = self._get_code(0xb3, lsb_len=2, label="GET_FPGA_CONFIGURATION_REGISTER")
         log.debug(f"FPGA Configuration Register: 0x{raw:04x} ({label})")
         return raw
@@ -2323,7 +2304,7 @@ class FeatureIdentificationDevice:
     # ##########################################################################
 
     ## @todo change opcode (conflicts with GET_DETECTOR_START_LINE)
-    def set_accessory_enable(self, flag):
+    def set_accessory_enable(self, flag: bool) -> SpectrometerResponse:
         if not self.settings.is_gen15():
             log.debug("accessory requires Gen 1.5")
             return SpectrometerResponse(data=False,error_msg="requires gen1.5")
@@ -2335,7 +2316,7 @@ class FeatureIdentificationDevice:
                               label           = "SET_ACCESSORY_ENABLE")
 
     ## @todo find out opcode
-    def get_discretes_enabled(self):
+    def get_discretes_enabled(self) -> SpectrometerResponse:
         if not self.settings.is_gen15():
             log.error("accessory requires Gen 1.5")
             return SpectrometerResponse(data=False,error_msg="requires gen1.5")
@@ -2345,7 +2326,7 @@ class FeatureIdentificationDevice:
     # Fan
     # ##########################################################################
 
-    def set_fan_enable(self, flag):
+    def set_fan_enable(self, flag: bool) -> SpectrometerResponse:
         if not self.settings.is_gen15():
             log.debug("fan requires Gen 1.5")
             return SpectrometerResponse(data=False,error_msg="fan requires gen15.")
@@ -2356,7 +2337,7 @@ class FeatureIdentificationDevice:
                               data_or_wLength = [0] * 8,
                               label           = "SET_FAN_ENABLE")
 
-    def get_fan_enabled(self):
+    def get_fan_enabled(self) -> SpectrometerResponse:
         if not self.settings.is_gen15():
             log.error("fan requires Gen 1.5")
             return SpectrometerResponse(data=False,error_msg="fan requires gen1.5")
@@ -2366,7 +2347,7 @@ class FeatureIdentificationDevice:
     # Lamp
     # ##########################################################################
 
-    def set_lamp_enable(self, flag):
+    def set_lamp_enable(self, flag: bool) -> SpectrometerResponse:
         if not self.settings.is_gen15():
             log.debug("lamp requires Gen 1.5")
             return SpectrometerResponse(data=False,error_msg="lamp requires gen1.5")
@@ -2377,17 +2358,19 @@ class FeatureIdentificationDevice:
                               data_or_wLength = [0] * 8,
                               label           = "SET_LAMP_ENABLE")
 
-    def get_lamp_enabled(self):
+    def get_lamp_enabled(self) -> SpectrometerResponse:
         if not self.settings.is_gen15():
             log.error("lamp requires Gen 1.5")
             return SpectrometerResponse(data=False,error_msg="lamp requires gen1.5")
-        return 0 != self._get_code(0x33, label="GET_LAMP_ENABLED", msb_len=1)
+        res = self._get_code(0x33, label="GET_LAMP_ENABLED", msb_len=1)
+        res.data = 0 != res.data
+        return res
 
     # ##########################################################################
     # Shutter
     # ##########################################################################
 
-    def set_shutter_enable(self, flag):
+    def set_shutter_enable(self, flag: bool) -> SpectrometerResponse:
         if not self.settings.is_gen15():
             log.debug("shutter requires Gen 1.5")
             return SpectrometerResponse(data=False,error_msg="shutter requires gen1.5")
@@ -2398,73 +2381,77 @@ class FeatureIdentificationDevice:
                               data_or_wLength = [0] * 8,
                               label           = "SET_SHUTTER_ENABLE")
 
-    def get_shutter_enabled(self):
+    def get_shutter_enabled(self) -> SpectrometerResponse:
         if not self.settings.is_gen15():
             log.error("shutter requires Gen 1.5")
             return SpectrometerResponse(data=False,error_msg="shutter requires gen1.5")
-        return SpectrometerResponse(data=0 != self._get_code(0x31, label="GET_SHUTTER_ENABLED", msb_len=1))
-
+        res = SpectrometerResponse(data=0 != self._get_code(0x31, label="GET_SHUTTER_ENABLED", msb_len=1))
+        res.data = 0 != res.data
+        return res 
     # ##########################################################################
     # Laser Modulation and Continuous Strobe
     # ##########################################################################
 
-    def set_mod_enable(self, flag):
+    def set_mod_enable(self, flag: bool) -> SpectrometerResponse:
         self.settings.state.mod_enabled = flag
         value = 1 if flag else 0
         return self._send_code(0xbd, value, label="SET_MOD_ENABLE")
 
-    def get_mod_enabled(self):
-        flag = 0 != self._get_code(0xe3, label="GET_MOD_ENABLED", msb_len=1)
+    def get_mod_enabled(self) -> SpectrometerResponse:
+        res = self._get_code(0xe3, label="GET_MOD_ENABLED", msb_len=1)
+        if res.error_msg != '':
+            return res
+        flag = 0 != res.data
         self.settings.state.mod_enabled = flag
         return SpectrometerResponse(data=flag)
 
-    def set_mod_period_us(self, us):
+    def set_mod_period_us(self, us: float) -> SpectrometerResponse:
         self.settings.state.mod_period_us = us
         (lsw, msw, buf) = self._to40bit(us)
         return self._send_code(0xc7, lsw, msw, buf, label="SET_MOD_PERIOD")
 
-    def get_mod_period_us(self):
+    def get_mod_period_us(self) -> SpectrometerResponse:
         value = self._get_code(0xcb, label="GET_MOD_PERIOD", lsb_len=5)
         self.settings.state.mod_period_us = value
         return value
 
-    def set_mod_width_us(self, us):
+    def set_mod_width_us(self, us: float) -> SpectrometerResponse:
         self.settings.state.mod_width_us = us
         (lsw, msw, buf) = self._to40bit(us)
         return self._send_code(0xdb, lsw, msw, buf, label="SET_MOD_WIDTH")
 
-    def get_mod_width_us(self):
+    def get_mod_width_us(self) -> SpectrometerResponse:
         value = self._get_code(0xdc, label="GET_MOD_WIDTH", lsb_len=5)
-        self.settings.state.mod_width_us = value
+        self.settings.state.mod_width_us = value.data
         return value
 
-    def set_mod_delay_us(self, us):
+    def set_mod_delay_us(self, us: float) -> SpectrometerResponse:
         self.settings.state.mod_delay_us = us
         (lsw, msw, buf) = self._to40bit(us)
         return self._send_code(0xc6, lsw, msw, buf, label="SET_MOD_DELAY")
 
-    def get_mod_delay_us(self):
+    def get_mod_delay_us(self) -> SpectrometerResponse:
         value = self._get_code(0xca, label="GET_MOD_DELAY", lsb_len=5)
-        self.settings.state.mod_delay_us = value
+        self.settings.state.mod_delay_us = value.data
         return value
 
-    def set_mod_duration_us_NOT_USED(self, us):
+    def set_mod_duration_us_NOT_USED(self, us: float) -> SpectrometerResponse:
         self.settings.state.mod_duration_us = us
         (lsw, msw, buf) = self._to40bit(us)
         return self._send_code(0xb9, lsw, msw, buf, label="SET_MOD_DURATION")
 
-    def get_mod_duration_us(self):
+    def get_mod_duration_us(self) -> SpectrometerResponse:
         value = self._get_code(0xc3, label="GET_MOD_DURATION", lsb_len=5)
-        self.settings.state.mod_duration_us = value
+        self.settings.state.mod_duration_us = value.data
         return value
 
     ## this is a synonym for _set_laser_enable_immediate(), but without side-effects
-    def set_strobe_enable(self, flag):
+    def set_strobe_enable(self, flag: bool) -> SpectrometerResponse:
         value = 1 if flag else 0
         return self._send_code(0xbe, value, label="SET_STROBE_ENABLE")
 
     ## a literal pass-through to get_laser_enabled()
-    def get_strobe_enabled(self):
+    def get_strobe_enabled(self) -> SpectrometerResponse:
         return self.get_laser_enabled()
 
     # ##########################################################################
@@ -2472,7 +2459,7 @@ class FeatureIdentificationDevice:
     # ##########################################################################
 
     ## @see https://www.nxp.com/docs/en/data-sheet/LM75B.pdf
-    def get_ambient_temperature_degC(self):
+    def get_ambient_temperature_degC(self) -> SpectrometerResponse:
         if not self.settings.is_gen15():
             log.error("ambient temperature requires Gen 1.5")
             return SpectrometerResponse(data=False,error_msg="ambient temp requires gen1.5")
@@ -2495,80 +2482,93 @@ class FeatureIdentificationDevice:
     # added for wasatch-shell
     # ##########################################################################
 
-    def get_tec_enabled(self):
+    def get_tec_enabled(self) -> SpectrometerResponse:
         if not self.settings.eeprom.has_cooling:
             log.error("unable to control TEC: EEPROM reports no cooling")
             return SpectrometerResponse(data=False,error_msg="no cooling reported")
-        return SpectrometerResponse(data=0 != self._get_code(0xda, label="GET_CCD_TEC_ENABLED", msb_len=1))
+        res = self._get_code(0xda, label="GET_CCD_TEC_ENABLED", msb_len=1)
+        res.data = 0 != res.data
+        if res.error_msg != '':
+            return res
+        return res
 
-    def get_actual_frames(self):
+    def get_actual_frames(self) -> SpectrometerResponse:
         return self._get_code(0xe4, label="GET_ACTUAL_FRAMES", lsb_len=2)
 
-    def get_actual_integration_time_us(self):
+    def get_actual_integration_time_us(self) -> SpectrometerResponse:
         return self._get_code(0xdf, label="GET_ACTUAL_INTEGRATION_TIME_US", lsb_len=3)
 
-    def get_detector_offset(self):
+    def get_detector_offset(self) -> SpectrometerResponse:
         value = self._get_code(0xc4, label="GET_DETECTOR_OFFSET", lsb_len=2)
-        self.settings.eeprom.detector_offset = value
+        self.settings.eeprom.detector_offset = value.data
         return value
 
-    def get_detector_offset_odd(self):
+    def get_detector_offset_odd(self) -> SpectrometerResponse:
         if not self.settings.is_ingaas():
             log.debug("GET_DETECTOR_OFFSET_ODD only supported on InGaAs")
             return SpectrometerResponse(data=self.settings.eeprom.detector_offset_odd)
 
         value = self._get_code(0x9e, label="GET_DETECTOR_OFFSET_ODD", lsb_len=2)
-        self.settings.eeprom.detector_offset_odd = value
+        if value.error_msg != '':
+            return value
+        self.settings.eeprom.detector_offset_odd = value.data
         return value
 
-    def get_ccd_sensing_threshold(self):
+    def get_ccd_sensing_threshold(self) -> SpectrometerResponse:
         return self._get_code(0xd1, label="GET_CCD_SENSING_THRESHOLD", lsb_len=2)
 
-    def get_ccd_threshold_sensing_mode(self):
+    def get_ccd_threshold_sensing_mode(self) -> SpectrometerResponse:
         return self._get_code(0xcf, label="GET_CCD_THRESHOLD_SENSING_MODE", msb_len=1)
 
-    def get_external_trigger_output(self):
+    def get_external_trigger_output(self) -> SpectrometerResponse:
         return self._get_code(0xe1, label="GET_EXTERNAL_TRIGGER_OUTPUT", msb_len=1)
 
-    def get_laser_interlock(self):
+    def get_laser_interlock(self) -> SpectrometerResponse:
         if self.settings.is_arm():
             log.error("GET_LASER_INTERLOCK not supported on ARM")
             return SpectrometerResponse(data=False,error_msg="laser interlock not supported")
         return self._get_code(0xef, label="GET_LASER_INTERLOCK", msb_len=1)
 
-    def get_laser_enabled(self):
+    def get_laser_enabled(self) -> SpectrometerResponse:
         res = self._get_code(0xe2, label="GET_LASER_ENABLED", msb_len=1)
         flag = 0 != res.data
         log.debug("get_laser_enabled: %s", flag)
         self.settings.state.laser_enabled = flag
         return SpectrometerResponse(data=flag)
 
-    def set_mod_linked_to_integration(self, flag):
+    def set_mod_linked_to_integration(self, flag: bool) -> SpectrometerResponse:
         value = 1 if flag else 0
         return self._send_code(0xdd, value, label="SET_MOD_LINKED_TO_INTEGRATION")
 
-    def get_mod_linked_to_integration(self):
-        return SpectrometerResponse(data=0 != self._get_code(0xde, label="GET_MOD_LINKED_TO_INTEGRATION", msb_len=1))
+    def get_mod_linked_to_integration(self) -> SpectrometerResponse:
+        res = self._get_code(0xde, label="GET_MOD_LINKED_TO_INTEGRATION", msb_len=1)
+        if res.error_msg != '':
+            return res
+        res.data = 0 != res.data
+        return res
 
     def get_selected_adc(self):
         value = self._get_code(0xee, label="GET_SELECTED_ADC", msb_len=1)
+        if value.error_msg != '':
+            return value
         if self.settings.state.selected_adc != value.data:
             log.error("GET_SELECTED_ADC %d != state.selected_adc %d", value, self.settings.state.selected_adc)
             self.settings.state.selected_adc = value.data
         return value
 
-    ##
-    # A configurable delay from when an inbound trigger signal is
-    # received by the spectrometer, until the triggered acquisition actually starts.
-    #
-    # Default value is 0us.
-    #
-    # Unit is in 0.5 microseconds (500ns), so value of 25 would represent 12.5us.
-    #
-    # Value is 24bit, so max value is 16777216 (8.388608 sec).
-    #
-    # Like triggering, only currently supported on ARM.
-    def set_trigger_delay(self, half_us):
+    def set_trigger_delay(self, half_us: float) -> SpectrometerResponse:
+        """
+        A confenurable delay from when an inbound trigger signal is
+        received by the spectrometer, until the triggered acquisition actually starts.
+        
+        Default value is 0us.
+        
+        Unit is in 0.5 microseconds (500ns), so value of 25 would represent 12.5us.
+        
+        Value is 24bit, so max value is 16777216 (8.388608 sec).
+        
+        Like triggering, only currently supported on ARM.
+        """
         if not self.settings.is_arm():
             log.error("SET_TRIGGER_DELAY only supported on ARM")
             return False
@@ -2577,34 +2577,50 @@ class FeatureIdentificationDevice:
         return self._send_code(0xaa, wValue=lsw, wIndex=msb, label="SET_TRIGGER_DELAY")
 
     # not tested
-    def get_trigger_delay(self):
+    def get_trigger_delay(self) -> SpectrometerResponse:
         if not self.settings.is_arm():
             log.error("GET_TRIGGER_DELAY only supported on ARM")
             return -1
         return self._get_code(0xe4, label="GET_TRIGGER_DELAY", lsb_len=3) # not sure about LSB
 
-    def get_vr_continuous_ccd(self):
-        return SpectrometerResponse(data=0 != self._get_code(0xcc, label="GET_VR_CONTINUOUS_CCD", msb_len=1))
+    def get_vr_continuous_ccd(self) -> SpectrometerResponse:
+        res = self._get_code(0xcc, label="GET_VR_CONTINUOUS_CCD", msb_len=1)
+        if res.error_msg != '':
+            return res
+        res.data = 0 != res.data
+        return res
 
-    def get_vr_num_frames(self):
-        return SpectrometerResponse(data=self._get_code(0xcd, label="GET_VR_NUM_FRAMES", msb_len=1))
+    def get_vr_num_frames(self) -> SpectrometerResponse:
+        return self._get_code(0xcd, label="GET_VR_NUM_FRAMES", msb_len=1)
 
-    def get_opt_actual_integration_time(self):
-        return SpectrometerResponse(data=0 != self.get_upper_code(0x0b, label="GET_OPT_ACT_INT_TIME", msb_len=1))
+    def get_opt_actual_integration_time(self) -> SpectrometerResponse:
+        res = self.get_upper_code(0x0b, label="GET_OPT_ACT_INT_TIME", msb_len=1) 
+        if res.error_msg != '':
+            return res
+        res.data = 0 != res.data
+        return res
 
-    def get_opt_area_scan(self):
-        return SpectrometerResponse(data=0 != self.get_upper_code(0x0a, label="GET_OPT_AREA_SCAN", msb_len=1))
+    def get_opt_area_scan(self) -> SpectrometerResponse:
+        res = self.get_upper_code(0x0a, label="GET_OPT_AREA_SCAN", msb_len=1)
+        if res.error_msg != '':
+            return res
+        res.data = 0 != res.data
+        return res
 
-    def get_opt_cf_select(self):
-        return SpectrometerResponse(data=0 != self.get_upper_code(0x07, label="GET_OPT_CF_SELECT", msb_len=1))
+    def get_opt_cf_select(self) -> SpectrometerResponse:
+        res = self.get_upper_code(0x07, label="GET_OPT_CF_SELECT", msb_len=1)
+        if res.error_msg != '':
+            return res
+        res.data = 0 != res.data
+        return res
 
-    def get_opt_data_header_tab(self):
+    def get_opt_data_header_tab(self) -> SpectrometerResponse:
         return self.get_upper_code(0x06, label="GET_OPT_DATA_HEADER_TAB", msb_len=1)
 
-    def get_opt_horizontal_binning(self):
+    def get_opt_horizontal_binning(self) -> SpectrometerResponse:
         return self.get_upper_code(0x0c, label="GET_OPT_HORIZONTAL_BINNING", msb_len=1)
 
-    def get_opt_integration_time_resolution(self):
+    def get_opt_integration_time_resolution(self) -> SpectrometerResponse:
         return self.get_upper_code(0x05, label="GET_OPT_INTEGRATION_TIME_RESOLUTION", msb_len=1)
 
     # ##########################################################################
@@ -2612,7 +2628,7 @@ class FeatureIdentificationDevice:
     # ##########################################################################
 
     ## @param value (Input) tuple of (bool enable, int mode)
-    def set_analog_output_mode(self, value):
+    def set_analog_output_mode(self, value: tuple[bool, int]) -> SpectrometerResponse:
         if not self.settings.is_gen2():
             logger.error("analog output only available on Gen2")
             return SpectrometerResponse(data=False,error_msg="analog output unsupported")
@@ -2652,7 +2668,7 @@ class FeatureIdentificationDevice:
                               wIndex    = wIndex,
                               label     = "SET_ANALOG_OUT_MODE")
 
-    def set_analog_output_value(self, value):
+    def set_analog_output_value(self, value: int) -> SpectrometerResponse:
         if not self.settings.is_gen2():
             logger.error("analog output only available on Gen2")
             return SpectrometerResponse(data=False,error_msg="analog output unsupported")
@@ -2679,13 +2695,15 @@ class FeatureIdentificationDevice:
                               wIndex    = value,
                               label     = "SET_ANALOG_OUT_VALUE")
 
-    ## @returns triplet of (bool enable, int mode, int value)
-    def get_analog_output_state(self):
+    def get_analog_output_state(self) -> SpectrometerResponse:
         if not self.settings.is_gen2():
             logger.error("analog output only available on Gen2")
             return SpectrometerResponse(data=False,error_msg="analog output unsupported")
 
-        data = self.get_upper_code(0x1a, wLength=3, label="GET_ANALOG_OUT_STATE")
+        res = self.get_upper_code(0x1a, wLength=3, label="GET_ANALOG_OUT_STATE")
+        if res.error_msg != '':
+            return res
+        data = res.data
         if (data is None or len(data) != 3):
             logger.error("invalid analog out state read: %s", data)
             return SpectrometerResponse(data=False,error_msg="invalid analog out state read")
@@ -2703,9 +2721,8 @@ class FeatureIdentificationDevice:
                 self.state.analog_out_value)
         return SpectrometerResponse(data=data)
 
-    ##
     # @returns decivolts
-    def get_analog_input_value(self):
+    def get_analog_input_value(self) -> SpectrometerResponse:
         if not self.settings.is_gen2():
             logger.error("analog input only available on Gen2")
             return SpectrometerResponse(data=False,error_msg="analog input unsupported")
@@ -2715,10 +2732,11 @@ class FeatureIdentificationDevice:
     # EEPROM Cruft
     # ##########################################################################
 
-    ##
-    # Given a (serial_number, EEPROM) pair, update this process's "session"
-    # EEPROM with just the EDITABLE fields of the passed EEPROM.
-    def update_session_eeprom(self, pair):
+    def update_session_eeprom(self, pair: tuple[str, EEPROM]) -> SpectrometerResponse:
+        """
+        Given a (serial_number, EEPROM) pair, update this process's "session"
+        EEPROM with just the EDITABLE fields of the passed EEPROM.
+        """
         log.debug("fid.update_session_eeprom: %s updating EEPROM instance", self.settings.eeprom.serial_number)
 
         if not self.eeprom_backup:
@@ -2727,10 +2745,11 @@ class FeatureIdentificationDevice:
         self.settings.eeprom.update_editable(pair[1])
         return SpectrometerResponse(data=True)
 
-    ##
-    # Given a (serial_number, EEPROM) pair, replace this process's "session"
-    # EEPROM with the passed EEPROM.
-    def replace_session_eeprom(self, pair):
+    def replace_session_eeprom(self, pair: tuple[str, EEPROM]) -> SpectrometerResponse:
+        """
+        Given a (serial_number, EEPROM) pair, replace this process's "session"
+        EEPROM with the passed EEPROM.
+        """
         log.debug("fid.replace_session_eeprom: %s replacing EEPROM instance", self.settings.eeprom.serial_number)
 
         if not self.eeprom_backup:
@@ -2738,9 +2757,10 @@ class FeatureIdentificationDevice:
 
         self.settings.eeprom = pair[1]
         self.settings.eeprom.dump()
+        return SpectrometerResponse()
 
     ## Actually store the current session EEPROM fields to the spectrometer.
-    def write_eeprom(self):
+    def write_eeprom(self) -> SpectrometerResponse:
         if not self.eeprom_backup:
             log.critical("expected to update or replace EEPROM object before write command")
             self.queue_message("marquee_error", "Failed to write EEPROM")
@@ -2789,17 +2809,18 @@ class FeatureIdentificationDevice:
     # Interprocess Communications
     # ##########################################################################
 
-    ##
     # @todo move string-to-enum converter to AppLog
-    def set_log_level(self, s):
+    def set_log_level(self, s: str) -> SpectrometerResponse:
         lvl = logging.DEBUG if s == "DEBUG" else logging.INFO
         log.debug("fid.set_log_level: setting to %s", lvl)
         logging.getLogger().setLevel(lvl)
+        return SpectrometerResponse()
 
-    ##
-    # If an upstream queue is defined, send the name-value pair.  Does nothing
-    # if the caller hasn't provided a queue.
-    def queue_message(self, setting, value):
+    def queue_message(self, setting, value) -> SpectrometerResponse:
+        """
+        If an upstream queue is defined, send the name-value pair.  Does nothing
+        if the caller hasn't provided a queue.
+        """
         if self.message_queue is None:
             return SpectrometerResponse(data=False)
 
@@ -2811,28 +2832,7 @@ class FeatureIdentificationDevice:
             return SpectrometerResponse(data=False,error_msg="failed to enqueue messsage")
         return SpectrometerResponse(data=True)
 
-    ##
-    # Perform the specified setting such as physically writing the laser
-    # on, changing the integration time, turning the cooler on, etc.
-    def write_setting(self, record):
-        setting = record.setting
-        value   = record.value
-
-        log.debug("fid.write_setting: %s -> %s", setting, value)
-
-        if setting not in self.lambdas:
-            # noisily fail unsupported tokens
-            log.error("Unknown setting to write: %s", setting)
-            return SpectrometerResponse(data=False,error_msg="setting unknown")
-
-        f = self.lambdas.get(setting, None)
-        if f is None:
-            # quietly fail no-ops
-            return SpectrometerResponse(data=False)
-
-        return f(value)
-
-    def init_process_funcs(self) -> Dict[str, Callable[..., Any]]:
+    def init_process_funcs(self) -> dict[str, Callable[..., Any]]:
         process_f = {}
 
         process_f["connect"] = self.connect
@@ -2884,103 +2884,79 @@ class FeatureIdentificationDevice:
         process_f["set_laser_power_require_modulation"] = self.set_laser_power_require_modulation
         process_f["set_laser_power_perc"] = self.set_laser_power_perc
         process_f["set_laser_power_perc_immediate"] = self.set_laser_power_perc_immediate
-        process_f[""] = self.
-        process_f[""] = self.
-        process_f[""] = self.
-        process_f[""] = self.
+        process_f["get_laser_temperature_setpoint_raw"] = self.get_laser_temperature_setpoint_raw
+        process_f["set_laser_temperature_setpoint_raw"] = self.set_laser_temperature_setpoint_raw
+        process_f["update_laser_watchdog"] = self.update_laser_watchdog
+        process_f["get_laser_interlock"] = self.get_laser_interlockget_laser_interlock
+        process_f["can_laser_fire"] = self.can_laser_fire
+        process_f["reset_fpga"] = self.reset_fpga
+        process_f["get_trigger_source"] = self.get_trigger_source
+        #process_f["get_raman_mode_enabled_NOT_USED"] = self.get_raman_mode_enabled_NOT_USED
+        #process_f["set_raman_mode_enable_NOT_USED"] = self.set_raman_mode_enable_NOT_USED
+        process_f["get_raman_delay_ms"] = self.get_raman_delay_ms
+        process_f["set_raman_delay_ms"] = self.set_raman_delay_ms
+        process_f["get_laser_watchdog_sec"] = self.get_laser_watchdog_sec
+        process_f["set_laser_watchdog_sec"] = self.set_laser_watchdog_sec
+        process_f["set_vertical_binning"] = self.set_vertical_binning
+        process_f["set_pixel_mode"] = self.set_pixel_mode
+        process_f["clear_regions"] = self.clear_regions
+        process_f["set_single_region"] = self.set_single_region
+        process_f["set_detector_roi"] = self.set_detector_roi
+        process_f["get_fpga_configuration_register"] = self.get_fpga_configuration_register
+        process_f["set_accessory_enable"] = self.set_accessory_enable
+        process_f["get_discretes_enabled"] = self.get_discretes_enabled
+        process_f["set_fan_enable"] = self.set_fan_enable
+        process_f["get_fan_enabled"] = self.get_fan_enabled
+        process_f["set_lamp_enable"] = self.set_lamp_enable
+        process_f["get_lamp_enabled"] = self.get_lamp_enabled
+        process_f["set_shutter_enable"] = self.set_shutter_enable
+        process_f["get_shutter_enabled"] = self.get_shutter_enabled
+        process_f["set_mod_enable"] = self.set_mod_enable
+        process_f["get_mod_enabled"] = self.get_mod_enabled
+        process_f["set_mod_period_us"] = self.set_mod_period_us
+        process_f["get_mod_period_us"] = self.get_mod_period_us
+        process_f["set_mod_width_us"] = self.set_mod_width_us
+        process_f["get_mod_width_us"] = self.get_mod_width_us
+        process_f["set_mod_delay_us"] = self.set_mod_delay_us
+        process_f["get_mod_delay_us"] = self.get_mod_delay_usget_mod_delay_us
+        #process_f["set_mod_duration_us_NOT_USED"] = self.set_mod_duration_us_NOT_USED
+        process_f["get_mod_duration_us"] = self.get_mod_duration_us
+        process_f["set_strobe_enable"] = self.set_strobe_enable
+        process_f["get_strobe_enabled"] = self.get_strobe_enabled
+        process_f["get_ambient_temperature_degC"] = self.get_ambient_temperature_degC
+        process_f["get_tec_enabled"] = self.get_tec_enabled
+        process_f["get_actual_frames"] = self.get_actual_frames
+        process_f["get_actual_integration_time_us"] = self.get_actual_integration_time_us
+        process_f["get_detector_offset"] = self.get_detector_offset
+        process_f["get_detector_offset_odd"] = self.get_detector_offset_odd
+        process_f["get_ccd_sensing_threshold"] = self.get_ccd_sensing_threshold
+        process_f["get_ccd_threshold_sensing_mode"] = self.get_ccd_threshold_sensing_mode
+        process_f["get_external_trigger_output"] = self.get_external_trigger_output
+        process_f["get_laser_interlock"] = self.get_laser_interlock
+        process_f["can_laser_fire"] = self.can_laser_fire
+        process_f["is_laser_firing"] = self.is_laser_firing
+        process_f["get_laser_enabled"] = self.get_laser_enabled
+        process_f["set_mod_linked_to_integration"] = self.set_mod_linked_to_integration
+        process_f["get_selected_adc"] = self.get_selected_adc
+        process_f["set_trigger_delay"] = self.set_trigger_delay
+        process_f["get_trigger_delay"] = self.get_trigger_delay
+        process_f["get_vr_continuous_ccd"] = self.get_vr_continuous_ccd
+        process_f["get_vr_num_frames"] = self.get_vr_num_frames
+        process_f["get_opt_actual_integration_time"] = self.get_opt_actual_integration_time
+        process_f["get_opt_area_scan"] = self.get_opt_area_scan
+        process_f["get_opt_cf_select"] = self.get_opt_cf_select
+        process_f["get_opt_data_header_tab"] = self.get_opt_data_header_tab
+        process_f["get_opt_horizontal_binning"] = self.get_opt_horizontal_binning
+        process_f["get_opt_integration_time_resolution"] = self.get_opt_integration_time_resolution
+        process_f["set_analog_output_mode"] = self.set_analog_output_mode
+        process_f["set_analog_output_value"] = self.set_analog_output_value
+        process_f["get_analog_output_state"] = self.get_analog_output_state
+        process_f["get_analog_input_value"] = self.get_analog_input_value
+        process_f["update_session_eeprom"] = self.update_session_eeprom
+        process_f["replace_session_eeprom"] = self.replace_session_eeprom
+        process_f["write_eeprom"] = self.write_eeprom
+        process_f["set_log_level"] = self.set_log_level
+        process_f["queue_message"] = self.queue_message
+        process_f["write_setting"] = self.write_setting
 
         return process_f
-
-
-    ##
-    # Please keep this list in sync with README_SETTINGS.md
-    def init_lambdas(self) -> Dict[str, Callable[..., Any]]:
-        f = {}
-
-        def clean_bool(x): return True if x else False
-
-        # spectrometer control
-        f["laser_enable"]                       = lambda x: self.set_laser_enable(clean_bool(x))
-        f["integration_time_ms"]                = lambda x: self.set_integration_time_ms(x)
-
-        f["detector_tec_setpoint_degC"]         = lambda x: self.set_detector_tec_setpoint_degC(int(round(x)))
-        f["detector_tec_enable"]                = lambda x: self.set_tec_enable(clean_bool(x))
-        f["detector_gain"]                      = lambda x: self.set_detector_gain(float(x))
-        f["detector_offset"]                    = lambda x: self.set_detector_offset(int(round(x)))
-        f["detector_gain_odd"]                  = lambda x: self.set_detector_gain_odd(float(x))
-        f["detector_offset_odd"]                = lambda x: self.set_detector_offset_odd(int(round(x)))
-        f["degC_to_dac_coeffs"]                 = lambda x: self.settings.eeprom.set("degC_to_dac_coeffs", x)
-
-        f["laser_power_perc"]                   = lambda x: self.set_laser_power_perc(x)
-        f["laser_power_mW"]                     = lambda x: self.set_laser_power_mW(x)
-        f["laser_temperature_setpoint_raw"]     = lambda x: self.set_laser_temperature_setpoint_raw(int(round(x)))
-        f["laser_power_ramping_enable"]         = lambda x: self.set_laser_power_ramping_enable(clean_bool(x))
-        f["laser_power_ramp_increments"]        = lambda x: self.settings.state.set("laser_power_ramp_increments", int(x))
-        f["laser_power_high_resolution"]        = lambda x: self.set_laser_power_high_resolution(x)
-        f["laser_power_require_modulation"]     = lambda x: self.set_laser_power_require_modulation(x)
-        f["selected_laser"]                     = lambda x: self.set_selected_laser(int(x))
-
-        f["high_gain_mode_enable"]              = lambda x: self.set_high_gain_mode_enable(clean_bool(x))
-        f["trigger_source"]                     = lambda x: self.set_trigger_source(int(x))
-        f["enable_secondary_adc"]               = lambda x: self.settings.state.set("secondary_adc_enabled", clean_bool(x))
-        f["area_scan_enable"]                   = lambda x: self.set_area_scan_enable(clean_bool(x))
-        f["area_scan_fast"]                     = lambda x: self.settings.state.set("area_scan_fast", clean_bool(x))
-
-        f["bad_pixel_mode"]                     = lambda x: self.settings.state.set("bad_pixel_mode", int(x))
-        f["min_usb_interval_ms"]                = lambda x: self.settings.state.set("min_usb_interval_ms", int(round(x)))
-        f["max_usb_interval_ms"]                = lambda x: self.settings.state.set("max_usb_interval_ms", int(round(x)))
-
-        f["accessory_enable"]                   = lambda x: self.set_accessory_enable(clean_bool(x))
-        f["fan_enable"]                         = lambda x: self.set_fan_enable(clean_bool(x))
-        f["lamp_enable"]                        = lambda x: self.set_lamp_enable(clean_bool(x))
-        f["shutter_enable"]                     = lambda x: self.set_shutter_enable(clean_bool(x))
-        f["strobe_enable"]                      = lambda x: self.set_strobe_enable(clean_bool(x))
-        f["mod_enable"]                         = lambda x: self.set_mod_enable(clean_bool(x))
-        f["mod_period_us"]                      = lambda x: self.set_mod_period_us(int(round(x)))
-        f["mod_width_us"]                       = lambda x: self.set_mod_width_us(int(round(x)))
-
-        # BatchCollection
-        f["free_running_mode"]                  = lambda x: self.settings.state.set("free_running_mode", clean_bool(x))
-        f["acquisition_laser_trigger_enable"]   = lambda x: self.settings.state.set("acquisition_laser_trigger_enable", clean_bool(x))
-        f["acquisition_laser_trigger_delay_ms"] = lambda x: self.settings.state.set("acquisition_laser_trigger_delay_ms", int(round(x)))
-        f["acquisition_take_dark_enable"]       = lambda x: self.settings.state.set("acquisition_take_dark_enable", clean_bool(x))
-
-        # microRaman
-       #f["raman_mode_enable"]                  = lambda x: self.set_raman_mode_enable(clean_bool(x))
-        f["raman_delay_ms"]                     = lambda x: self.set_raman_delay_ms(int(round(x)))
-        f["laser_watchdog_sec"]                 = lambda x: self.set_laser_watchdog_sec(int(round(x)))
-
-        # regions
-        f["vertical_binning"]                   = lambda x: self.set_vertical_binning(x)
-        f["single_region"]                      = lambda x: self.set_single_region(int(round(x)))
-        f["clear_regions"]                      = lambda x: self.clear_regions()
-        f["detector_roi"]                       = lambda x: self.set_detector_roi(x)
-        f["pixel_mode"]                         = lambda x: self.set_pixel_mode(x)
-
-        # EEPROM updates
-        f["update_eeprom"]                      = lambda x: self.update_session_eeprom(x)
-        f["replace_eeprom"]                     = lambda x: self.replace_session_eeprom(x)
-        f["write_eeprom"]                       = lambda x: self.write_eeprom()
-
-        # manufacturing
-        f["reset_fpga"]                         = lambda x: self.reset_fpga()
-        f["dfu_enable"]                         = lambda x: self.set_dfu_enable()
-
-        # legacy
-        f["allow_default_gain_reset"]           = lambda x: setattr(self, "allow_default_gain_reset", clean_bool(x))
-
-        # experimental (R&D)
-        f["graph_alternating_pixels"]           = lambda x: self.settings.state.set("graph_alternating_pixels", clean_bool(x))
-        f["swap_alternating_pixels"]            = lambda x: self.settings.state.set("swap_alternating_pixels", clean_bool(x))
-        f["invert_x_axis"]                      = lambda x: self.settings.eeprom.set("invert_x_axis", clean_bool(x))
-        f["bin_2x2"]                            = lambda x: self.settings.eeprom.set("bin_2x2", clean_bool(x))
-        f["wavenumber_correction"]              = lambda x: self.settings.set_wavenumber_correction(float(x))
-
-        # heartbeats & connection data
-        f["raise_exceptions"]                   = lambda x: setattr(self, "raise_exceptions", clean_bool(x))
-        f["log_level"]                          = lambda x: self.set_log_level(x)
-        f["num_connected_devices"]              = lambda x: self.settings.set_num_connected_devices(int(x))
-        f["subprocess_timeout_sec"]             = lambda x: None
-        f["heartbeat"]                          = lambda x: None
-
-        return f
