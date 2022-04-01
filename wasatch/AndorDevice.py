@@ -12,6 +12,7 @@ from ctypes import *
 from .SpectrometerSettings        import SpectrometerSettings
 from .SpectrometerState           import SpectrometerState
 from .SpectrometerResponse        import SpectrometerResponse
+from .SpectrometerRequest         import SpectrometerRequest
 from .SpectrometerResponse        import ErrorLevel
 from .DeviceID                    import DeviceID
 from .Reading                     import Reading
@@ -19,11 +20,35 @@ from .Reading                     import Reading
 log = logging.getLogger(__name__)
 
 class AndorDevice:
+    """
+    This is the basic implementation of our interface with Andor cameras     
+
+    @todo convert the different asserts to SpectrometerResponse returns
+    ##########################################################################
+    This class adopts the external device interface structure
+    This invlovles receiving a request through the handle_request function
+    A request is processed based on the key in the request
+    The processing function passes the commands to the requested device
+    Once it recevies a response from the connected device it then passes that
+    back up the chain
+                               Enlighten Request
+                                       |
+                                handle_requests
+                                       |
+                                 ------------
+                                /   /  |  \  \
+             { get_laser status, acquire, set_laser_watchdog, etc....}
+                                \   \  |  /  /
+                                 ------------
+                                       |
+                         {self.driver.some_andor_sdk_call}
+    ############################################################################
+    """
 
     SUCCESS = 20002             #!< see page 330 of Andor SDK documentation
     SHUTTER_SPEED_MS = 35       #!< not sure where this comes from...ask Caleb - TS
 
-    def __init__(self, device_id, message_queue=None):
+    def __init__(self, device_id, message_queue=None) -> None:
         # if passed a string representation of a DeviceID, deserialize it
         if type(device_id) is str:
             device_id = DeviceID(label=device_id)
@@ -70,83 +95,81 @@ class AndorDevice:
         self.settings.eeprom.detector = "Andor" # Ocean API doesn't have access to detector info
         self.settings.eeprom.wavelength_coeffs = [0,1,0,0]
 
-    def connect(self):
-        if self.dll_fail:
-            return SpectrometerResponse(data=False,error_lvl=ErrorLevel.high,error_msg="couldn't load Andor dll")
-        cameraHandle = c_int()
-        assert(self.SUCCESS == self.driver.GetCameraHandle(self.spec_index, byref(cameraHandle))), "unable to get camera handle"
-        assert(self.SUCCESS == self.driver.SetCurrentCamera(cameraHandle.value)), "unable to set current camera"
-        log.info("initializing camera...")
+        self.process_f = self._init_process_funcs()
 
-        # not sure init_str is actually required
-        init_str = create_string_buffer(b'\000' * 16)
-        assert(self.SUCCESS == self.driver.Initialize(init_str)), "unable to initialize camera"
-        log.info("success")
+    ###############################################################
+    # Private Methods
+    ###############################################################
 
-        self.get_serial_number()
-        self.init_tec_setpoint()
-        self.init_detector_area()
+    def _init_process_funcs(self) -> dict[str, Callable[..., Any]]:
+        process_f = {}
 
-        if not self.check_config_file():
-            self.config_values = {
-                'detector_serial_number': self.serial,
-                'wavelength_coeffs': [0,1,0,0],
-                'excitation_nm_float': 0,
-                }
-            f = open(self.config_file, 'w')
-            json.dump(self.config_values, f)
-        else:
-            f = open(self.config_file,)
-            self.config_values = dict(json.load(f))
-            self.settings.eeprom.wavelength_coeffs = self.config_values['wavelength_coeffs']
-            self.settings.eeprom.excitation_nm_float = self.config_values['excitation_nm_float']
+        process_f["connect"] = self.connect
+        process_f["acquire_data"] = self.acquire_data
+        process_f["set_shutter_enable"] = self.set_shutter_enable
+        process_f["set_integration_time_ms"] = self.set_integration_time_ms
+        process_f["get_serial_number"] = self.get_serial_number
+        process_f["init_tec_setpoint"] = self.init_tec_setpoint
+        process_f["init_detector_area"] = self.init_detector_area
+        process_f["scans_to_average"] = self.scans_to_average
 
-        assert(self.SUCCESS == self.driver.CoolerON()), "unable to enable TEC"
-        log.debug("enabled TEC")
+        ##################################################################
+        # What follows is the old init-lambdas that are squashed into process_f
+        # Long term, the upstream requests should be changed to match the new format
+        # This is an easy fix for the time being to make things behave
+        ##################################################################
+        process_f["integration_time_ms"] = lambda x: self.set_integration_time_ms(x) # conversion from millisec to microsec
+        process_f["shutter_enable"] = lambda x: self.set_shutter_enable(bool(x))
 
-        assert(self.SUCCESS == self.driver.SetAcquisitionMode(1)), "unable to set acquisition mode"
-        log.debug("configured acquisition mode (single scan)")
+        return process_f
 
-        assert(self.SUCCESS == self.driver.SetTriggerMode(0)), "unable to set trigger mode"
-        log.debug("set trigger mode")
+    def _update_wavelength_coeffs(self, coeffs: list[float]) -> None:
+        self.settings.eeprom.wavelength_coeffs = coeffs
+        self.config_values['wavelength_coeffs'] = coeffs
+        f = open(self.config_file, 'w')
+        json.dump(self.config_values, f)
 
-        assert(self.SUCCESS == self.driver.SetReadMode(0)), "unable to set read mode"
-        log.debug("set read mode (full vertical binning)")
+    def _get_default_data_dir(self) -> str:
+        if os.name == "nt":
+            return os.path.join(os.path.expanduser("~"), "Documents", "EnlightenSpectra")
+        return os.path.join(os.environ["HOME"], "EnlightenSpectra")
 
-        self.init_detector_speed()
-
-        assert(self.SUCCESS == self.driver.SetShutterEx(1, 1, self.SHUTTER_SPEED_MS, self.SHUTTER_SPEED_MS, 0)), "unable to set external shutter"
-        log.debug("set shutter to fully automatic external with internal always open")
-
-        self.set_integration_time_ms(10)
-        self.connected = True
-        self.settings.eeprom.active_pixels_horizontal = self.pixels 
-        return SpectrometerResponse(data=True)
-
-    def check_config_file(self):
-        self.config_dir = os.path.join(self.get_default_data_dir(), 'config')
+    def _check_config_file(self) -> bool:
+        self.config_dir = os.path.join(self._get_default_data_dir(), 'config')
         self.config_file = os.path.join(self.config_dir, self.serial + '.json')
         if not os.path.exists(self.config_dir):
             os.makedirs(self.config_dir)
         return os.path.isfile(self.config_file)
 
-    def init_lambdas(self):
-        f = {}
-        f["integration_time_ms"] = lambda x: self.set_integration_time_ms(x) # conversion from millisec to microsec
-        f["shutter_enable"] = lambda x: self.set_shutter_enable(bool(x))
-        self.lambdas = f
+    def _get_spectrum_raw(self) -> list[float]:
+        log.debug("requesting spectrum");
+        #################
+        # read spectrum
+        #################
+        #int[] spec = new int[pixels];
+        spec_arr = c_long * self.pixels
+        spec_init_vals = [0] * self.pixels
+        spec = spec_arr(*spec_init_vals)
 
-    def acquire_data(self):
-        reading = self.take_one_averaged_reading()
-        return reading
+        # ask for spectrum then collect, NOT multithreaded (though we should look into that!), blocks
+        #spec = new int[pixels];     //defaults to all zeros
+        self.driver.StartAcquisition();
+        self.driver.WaitForAcquisition();
+        success = self.driver.GetAcquiredData(spec, c_ulong(self.pixels));
 
-    def set_shutter_enable(self, enable):
-        if enable:
-            self.open_ex_shutter()
-        else:
-            self.close_ex_shutter()
+        if (success != self.SUCCESS):
+            log.debug(f"getting spectra did not succeed. Received code of {success}. Returning")
+            return
 
-    def take_one_averaged_reading(self):
+        convertedSpec = [x for x in spec]
+
+        #if (self.eeprom.featureMask.invertXAxis):
+         #   convertedSpec.reverse()
+
+        log.debug(f"getSpectrumRaw: returning {len(spec)} pixels");
+        return convertedSpec;
+
+    def _take_one_averaged_reading(self) -> SpectrometerResponse:
         averaging_enabled = (self.settings.state.scans_to_average > 1)
 
         if averaging_enabled and not self.settings.state.free_running_mode:
@@ -181,7 +204,7 @@ class AndorDevice:
                 reading.laser_power_perc    = self.settings.state.laser_power_perc
                 reading.laser_power_mW      = self.settings.state.laser_power_mW
                 reading.laser_enabled       = self.settings.state.laser_enabled
-                reading.spectrum            = self.get_spectrum_raw()
+                reading.spectrum            = self._get_spectrum_raw()
             except usb.USBError:
                 self.failure_count += 1
                 log.error(f"Andor Device: encountered USB error in reading for device {self.device}")
@@ -232,36 +255,82 @@ class AndorDevice:
         # reading.dump_area_scan()
         return SpectrometerResponse(data=reading)
 
-    def get_spectrum_raw(self):
-        log.debug("requesting spectrum");
-        #################
-        # read spectrum
-        #################
-        #int[] spec = new int[pixels];
-        spec_arr = c_long * self.pixels
-        spec_init_vals = [0] * self.pixels
-        spec = spec_arr(*spec_init_vals)
+    def _close_ex_shutter(self) -> SpectrometerResponse:
+        assert(self.SUCCESS == self.driver.SetShutterEx(1, 1, self.SHUTTER_SPEED_MS, self.SHUTTER_SPEED_MS, 2)), "unable to set external shutter"
+        return SpectrometerResponse(True)
 
-        # ask for spectrum then collect, NOT multithreaded (though we should look into that!), blocks
-        #spec = new int[pixels];     //defaults to all zeros
-        self.driver.StartAcquisition();
-        self.driver.WaitForAcquisition();
-        success = self.driver.GetAcquiredData(spec, c_ulong(self.pixels));
+    def _open_ex_shutter(self) -> SpectrometerResponse:
+        assert(self.SUCCESS == self.driver.SetShutterEx(1, 1, self.SHUTTER_SPEED_MS, self.SHUTTER_SPEED_MS, 1)), "unable to set external shutter"
+        return SpectrometerResponse(True)
 
-        if (success != self.SUCCESS):
-            log.debug(f"getting spectra did not succeed. Received code of {success}. Returning")
-            return
+    ###############################################################
+    # Public Methods
+    ###############################################################
 
-        convertedSpec = [x for x in spec]
+    def connect(self) -> SpectrometerResponse:
+        if self.dll_fail:
+            return SpectrometerResponse(data=False,error_lvl=ErrorLevel.high,error_msg="couldn't load Andor dll")
+        cameraHandle = c_int()
+        assert(self.SUCCESS == self.driver.GetCameraHandle(self.spec_index, byref(cameraHandle))), "unable to get camera handle"
+        assert(self.SUCCESS == self.driver.SetCurrentCamera(cameraHandle.value)), "unable to set current camera"
+        log.info("initializing camera...")
 
-        #if (self.eeprom.featureMask.invertXAxis):
-         #   convertedSpec.reverse()
+        # not sure init_str is actually required
+        init_str = create_string_buffer(b'\000' * 16)
+        assert(self.SUCCESS == self.driver.Initialize(init_str)), "unable to initialize camera"
+        log.info("success")
 
-        log.debug(f"getSpectrumRaw: returning {len(spec)} pixels");
-        return convertedSpec;
+        self.get_serial_number()
+        self.init_tec_setpoint()
+        self.init_detector_area()
 
+        if not self._check_config_file():
+            self.config_values = {
+                'detector_serial_number': self.serial,
+                'wavelength_coeffs': [0,1,0,0],
+                'excitation_nm_float': 0,
+                }
+            f = open(self.config_file, 'w')
+            json.dump(self.config_values, f)
+        else:
+            f = open(self.config_file,)
+            self.config_values = dict(json.load(f))
+            self.settings.eeprom.wavelength_coeffs = self.config_values['wavelength_coeffs']
+            self.settings.eeprom.excitation_nm_float = self.config_values['excitation_nm_float']
 
-    def set_integration_time_ms(self, ms):
+        assert(self.SUCCESS == self.driver.CoolerON()), "unable to enable TEC"
+        log.debug("enabled TEC")
+
+        assert(self.SUCCESS == self.driver.SetAcquisitionMode(1)), "unable to set acquisition mode"
+        log.debug("configured acquisition mode (single scan)")
+
+        assert(self.SUCCESS == self.driver.SetTriggerMode(0)), "unable to set trigger mode"
+        log.debug("set trigger mode")
+
+        assert(self.SUCCESS == self.driver.SetReadMode(0)), "unable to set read mode"
+        log.debug("set read mode (full vertical binning)")
+
+        self.init_detector_speed()
+
+        assert(self.SUCCESS == self.driver.SetShutterEx(1, 1, self.SHUTTER_SPEED_MS, self.SHUTTER_SPEED_MS, 0)), "unable to set external shutter"
+        log.debug("set shutter to fully automatic external with internal always open")
+
+        self.set_integration_time_ms(10)
+        self.connected = True
+        self.settings.eeprom.active_pixels_horizontal = self.pixels 
+        return SpectrometerResponse(data=True)
+
+    def acquire_data(self) -> SpectrometerResponse:
+        reading = self._take_one_averaged_reading()
+        return SpectrometerResponse(reading)
+
+    def set_shutter_enable(self, enable: bool) -> SpectrometerResponse:
+        if enable:
+            return self._open_ex_shutter()
+        else:
+            return self._close_ex_shutter()
+
+    def set_integration_time_ms(self, ms: float) -> SpectrometerResponse:
         self.integration_time_ms = ms
         log.debug(f"setting integration time to {self.integration_time_ms}ms")
 
@@ -271,21 +340,17 @@ class AndorDevice:
         assert(self.SUCCESS == self.driver.SetExposureTime(c_float(ms / 1000.0))), "unable to set integration time"
         assert(self.SUCCESS == self.driver.GetAcquisitionTimings(byref(exposure), byref(accumulate), byref(kinetic))), "unable to read acquisition timings"
         log.debug(f"read integration time of {exposure.value:.3f}sec (expected {ms}ms)")
+        return SpectrometerResponse(data=True)
 
-    def close_ex_shutter(self):
-        assert(self.SUCCESS == self.driver.SetShutterEx(1, 1, self.SHUTTER_SPEED_MS, self.SHUTTER_SPEED_MS, 2)), "unable to set external shutter"
-
-    def open_ex_shutter(self):
-        assert(self.SUCCESS == self.driver.SetShutterEx(1, 1, self.SHUTTER_SPEED_MS, self.SHUTTER_SPEED_MS, 1)), "unable to set external shutter"
-
-    def get_serial_number(self):
+    def get_serial_number(self) -> SpectrometerResponse:
         sn = c_int()
         assert(self.SUCCESS == cdll.atmcd32d.GetCameraSerialNumber(byref(sn))), "can't get serial number"
         self.serial = f"CCD-{sn.value}"
         self.settings.eeprom.serial_number = self.serial
         log.debug(f"connected to {self.serial}")
+        return SpectrometerResponse(data)
 
-    def init_tec_setpoint(self):
+    def init_tec_setpoint(self) -> SpectrometerResponse:
         minTemp = c_int()
         maxTemp = c_int()
         assert(self.SUCCESS == self.driver.GetTemperatureRange(byref(minTemp), byref(maxTemp))), "unable to read temperature range"
@@ -295,15 +360,17 @@ class AndorDevice:
         self.setpoint_deg_c = int(round((self.detector_temp_min + self.detector_temp_max) / 2.0))
         assert(self.SUCCESS == self.driver.SetTemperature(self.setpoint_deg_c)), "unable to set temperature midpoint"
         log.debug(f"set TEC to {self.setpoint_deg_c} C (range {self.detector_temp_min}, {self.detector_temp_max})")
+        return SpectrometerResponse(data)
 
-    def init_detector_area(self):
+    def init_detector_area(self) -> SpectrometerResponse:
         xPixels = c_int()
         yPixels = c_int()
         assert(self.SUCCESS == self.driver.GetDetector(byref(xPixels), byref(yPixels))), "unable to read detector dimensions"
         log.debug(f"detector {xPixels.value} width x {yPixels.value} height")
         self.pixels = xPixels.value
+        return SpectrometerResponse(data)
 
-    def init_detector_speed (self):
+    def init_detector_speed(self) -> SpectrometerResponse:
         # set vertical to recommended
         VSnumber = c_int()
         speed = c_float()
@@ -329,26 +396,27 @@ class AndorDevice:
         assert(self.SUCCESS == self.driver.SetADChannel(ADnumber)), "unable to set AD channel to {ADnumber}"
         assert(self.SUCCESS == self.driver.SetHSSpeed(0, HSnumber)), "unable to set HS speed to {HSnumber}"
         log.debug(f"set AD channel {ADnumber} with horizontal speed {HSnumber} ({STemp})")
+        return SpectrometerResponse(True)
 
-    def change_setting(self,setting,value):
-        if setting == "scans_to_average":
-            self.sum_count = 0
-            self.settings.state.scans_to_average = int(value)
-            return
-        f = self.lambdas.get(setting, None)
-        if f is None:
-            # quietly fail no-ops
-            return SpectrometerResponse(data=False)
+    def scans_to_average(value: int) -> SpectrometerResponse:
+        self.sum_count = 0
+        self.settings.state.scans_to_average = int(value)
+        return SpectrometerResponse(True)
 
-        return f(value)
+    def handle_requests(self, requests: list[SpectrometerRequest]) -> SpectrometerResponse:
+        responses = []
+        for request in requests:
+            try:
+                cmd = request.cmd
+                proc_func = self.process_f.get(cmd, None)
+                if proc_func == None:
+                    responses.append(SpectrometerResponse(error_msg=f"unsupported cmd {request.cmd}", error_lvl=ErrorLevel.low))
+                elif request.args == [] and request.kwargs == {}:
+                    responses.append(proc_func())
+                else:
+                    responses.append(proc_func(*request.args, **request.kwargs))
+            except Exception as e:
+                log.error(f"error in handling request {request} of {e}")
+                responses.append(SpectrometerResponse(error_msg="error processing cmd", error_lvl=ErrorLevel.medium))
+        return responses
 
-    def update_wavelength_coeffs(self, coeffs):
-        self.settings.eeprom.wavelength_coeffs = coeffs
-        self.config_values['wavelength_coeffs'] = coeffs
-        f = open(self.config_file, 'w')
-        json.dump(self.config_values, f)
-
-    def get_default_data_dir(self):
-        if os.name == "nt":
-            return os.path.join(os.path.expanduser("~"), "Documents", "EnlightenSpectra")
-        return os.path.join(os.environ["HOME"], "EnlightenSpectra")

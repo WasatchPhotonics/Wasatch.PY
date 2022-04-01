@@ -58,7 +58,7 @@ class FeatureIdentificationDevice:
     back up the chain
                                Enlighten Request
                                        |
-                                 handle_request
+                                handle_requests
                                        |
                                  ------------
                                 /   /  |  \  \
@@ -125,8 +125,7 @@ class FeatureIdentificationDevice:
         self.retry_ms = 5
         self.retry_max = 3
 
-        # initialize the table of lambdas used to process setting changes
-        self.process_f = self.init_process_funcs()
+        self.process_f = self._init_process_funcs()
 
     def handle_requests(self, requests: list[SpectrometerRequest]) -> SpectrometerResponse:
         responses = []
@@ -2831,7 +2830,7 @@ class FeatureIdentificationDevice:
             return SpectrometerResponse(data=False,error_msg="failed to enqueue messsage")
         return SpectrometerResponse(data=True)
 
-    def init_process_funcs(self) -> dict[str, Callable[..., Any]]:
+    def _init_process_funcs(self) -> dict[str, Callable[..., Any]]:
         process_f = {}
 
         process_f["connect"] = self.connect

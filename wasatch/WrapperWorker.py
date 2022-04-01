@@ -3,6 +3,9 @@ import datetime
 import logging
 import time
 
+from .SpectrometerResponse import SpectrometerResponse
+from .SpectrometerRequest  import SpectrometerRequest
+from .SpectrometerResponse import ErrorLevel
 from .WasatchDevice        import WasatchDevice
 from .AndorDevice          import AndorDevice
 from .OceanDevice          import OceanDevice
@@ -21,6 +24,8 @@ class WrapperWorker(threading.Thread):
     #   - ideally on configured integration times per spectrometer
     #   - note that this is essentially ADDED to the total measurement time
     #     of EACH AND EVERY INTEGRATION
+    # TODO: replace if check for each type of spec with single call
+    # TODO: Create ABC of hardware device that keeps common functions like handle_requests
     POLLER_WAIT_SEC = 0.05    # .05sec = 50ms = update from hardware device at 20Hz
 
     def __init__(
@@ -77,12 +82,13 @@ class WrapperWorker(threading.Thread):
 
         log.debug("calling connect")
         ok = False
+        req = SpectrometerRequest("connect")
         if self.is_ocean:
-            ok = self.ocean_device.connect()
+            ok = self.ocean_device.handle_requests([req])
         elif self.is_andor:
-            ok = self.andor_device.connect()
+            ok = self.andor_device.handle_requests([req])
         elif self.is_ble:
-            ok = self.ble_device.connect()
+            ok = self.ble_device.handle_requests([req])
         else:
             try:
                 ok = self.wasatch_device.connect()
@@ -90,7 +96,7 @@ class WrapperWorker(threading.Thread):
                 log.critical("exception connecting", exc_info=1)
                 return self.settings_queue.put(None) # put(None, timeout=2)
 
-        if not ok:
+        if not ok.data:
             log.critical("failed to connect")
             return self.settings_queue.put(None) # put(None, timeout=2)
 
@@ -142,11 +148,11 @@ class WrapperWorker(threading.Thread):
                         # where it gets read during the next call to
                         # WasatchDevice.acquire_data.
                         if self.is_ocean:
-                            self.ocean_device.change_setting(record.setting, record.value)
+                            self.ocean_device.handle_requests(record.setting, record.value)
                         elif self.is_andor:
-                            self.andor_device.change_setting(record.setting, record.value)
+                            self.andor_device.handle_requests(record.setting, record.value)
                         elif self.is_ble:
-                            self.ble_device.change_settings(record.setting, record.value)
+                            self.ble_device.handle_requests(record.setting, record.value)
                         else:
                             self.wasatch_device.change_setting(record.setting, record.value)
 
@@ -172,12 +178,13 @@ class WrapperWorker(threading.Thread):
                 # than subprocess_timeout_sec, this call itself will trigger
                 # shutdown.
                 log.debug("acquiring data")
+                req = SpectrometerRequest("acquire_data")
                 if self.is_ocean:
-                    reading_response = self.ocean_device.acquire_data()
+                    reading_response = self.ocean_device.handle_requests([req])
                 elif self.is_andor:
-                    reading_response = self.andor_device.acquire_data()
+                    reading_response = self.andor_device.handle_requests([req])
                 elif self.is_ble:
-                    reading_response = self.ble_device.acquire_data()
+                    reading_response = self.ble_device.handle_requests([req])
                 else:
                     reading_response = self.wasatch_device.acquire_data()
                 #log.debug("continuous_poll: acquire_data returned %s", str(reading))

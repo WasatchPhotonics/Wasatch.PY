@@ -21,6 +21,29 @@ from .Reading                     import Reading
 log = logging.getLogger(__name__)
 
 class OceanDevice:
+    """
+    This is the basic implementation of our interface with Ocean Spectrometers     
+
+    ##########################################################################
+    This class adopts the external device interface structure
+    This invlovles receiving a request through the handle_request function
+    A request is processed based on the key in the request
+    The processing function passes the commands to the requested device
+    Once it recevies a response from the connected device it then passes that
+    back up the chain
+                               Enlighten Request
+                                       |
+                                handle_requests
+                                       |
+                                 ------------
+                                /   /  |  \  \
+             { get_laser status, acquire, set_laser_watchdog, etc....}
+                                \   \  |  /  /
+                                 ------------
+                                       |
+                               {self.ocean_call}
+    ############################################################################
+    """
 
     def __init__(self, device_id, message_queue=None):
 
@@ -51,41 +74,29 @@ class OceanDevice:
         self.process_id = os.getpid()
         self.last_memory_check = datetime.datetime.now()
         self.last_battery_percentage = 0
-        self.init_lambdas()
 
-    def connect(self):
-        self.device = None
-        try:
-            devices = list_devices()
-        except:
-            devices = list_devices()
-        for device in devices:
-            pyusb_device = device._raw_device.pyusb_device
-            if pyusb_device.idVendor == self.device_id.vid and pyusb_device.idProduct == self.device_id.pid:
-                self.device = device
-        if self.device == None:
-            log.error("Ocean Device: No ocean device found. Returning")
-            self.message_queue.put_nowait(None)
-            return SpectrometerResponse(data=False,error_msg="No ocean devices found")
-        self.spec = Spectrometer(self.device)
-        self.settings.eeprom.model = self.device.model
-        self.settings.eeprom.serial_number = self.device.serial_number
-        self.settings.eeprom.active_pixels_horizontal = self.device.features['spectrometer'][0]._spectrum_num_pixel 
-        self.settings.eeprom.detector = "Ocean" # Ocean API doesn't have access to detector info
-        return SpectrometerResponse(data=True)
+        self.process_f = self._init_process_funcs()
 
+    ###############################################################
+    # Private Methods
+    ###############################################################
 
-    def init_lambdas(self):
-        f = {}
+    def _init_process_funcs(self) -> dict[str, Callable[..., Any]]:
+        process_f = {}
+
+        process_f["connect"] = self.connect
+        process_f["acquire_data"] = self.acquire_data
+        process_f["scans_to_average"] = self._scans_to_average
+        ##################################################################
+        # What follows is the old init-lambdas that are squashed into process_f
+        # Long term, the upstream requests should be changed to match the new format
+        # This is an easy fix for the time being to make things behave
+        ##################################################################
         f["integration_time_ms"] = lambda x: self.spec.integration_time_micros(int(round(x*1000))) # conversion from millisec to microsec
-        self.lambdas = f
 
-    def acquire_data(self):
-        self.settings.wavelengths = self.spec.wavelengths()# setting wavelengths one init doesn't work for some reaons
-        reading = self.take_one_averaged_reading()
-        return reading
+        return process_f
 
-    def take_one_averaged_reading(self):
+    def _take_one_averaged_reading(self):
         averaging_enabled = (self.settings.state.scans_to_average > 1)
 
         if averaging_enabled and not self.settings.state.free_running_mode:
@@ -171,14 +182,54 @@ class OceanDevice:
         # reading.dump_area_scan()
         return SpectrometerResponse(data=reading)
 
-    def change_setting(self,setting,value):
-        if setting == "scans_to_average":
-            self.sum_count = 0
-            self.settings.state.scans_to_average = int(value)
-            return
-        f = self.lambdas.get(setting, None)
-        if f is None:
-            # quietly fail no-ops
-            return SpectrometerResponse(data=False)
+    ###############################################################
+    # Public Methods
+    ###############################################################
 
-        return f(value)
+    def connect(self) -> SpectrometerResponse:
+        self.device = None
+        try:
+            devices = list_devices()
+        except:
+            devices = list_devices()
+        for device in devices:
+            pyusb_device = device._raw_device.pyusb_device
+            if pyusb_device.idVendor == self.device_id.vid and pyusb_device.idProduct == self.device_id.pid:
+                self.device = device
+        if self.device == None:
+            log.error("Ocean Device: No ocean device found. Returning")
+            self.message_queue.put_nowait(None)
+            return SpectrometerResponse(data=False,error_msg="No ocean devices found")
+        self.spec = Spectrometer(self.device)
+        self.settings.eeprom.model = self.device.model
+        self.settings.eeprom.serial_number = self.device.serial_number
+        self.settings.eeprom.active_pixels_horizontal = self.device.features['spectrometer'][0]._spectrum_num_pixel 
+        self.settings.eeprom.detector = "Ocean" # Ocean API doesn't have access to detector info
+        return SpectrometerResponse(data=True)
+
+    def acquire_data(self):
+        self.settings.wavelengths = self.spec.wavelengths()# setting wavelengths one init doesn't work for some reaons
+        reading = self._take_one_averaged_reading()
+        return reading
+
+    def scans_to_average(self, value: int) -> SpectrometerResponse:
+        self.sum_count = 0
+        self.settings.state.scans_to_average = int(value)
+        return SpectrometerResponse(True)
+
+    def handle_requests(self, requests: list[SpectrometerRequest]) -> SpectrometerResponse:
+        responses = []
+        for request in requests:
+            try:
+                cmd = request.cmd
+                proc_func = self.process_f.get(cmd, None)
+                if proc_func == None:
+                    responses.append(SpectrometerResponse(error_msg=f"unsupported cmd {request.cmd}", error_lvl=ErrorLevel.low))
+                elif request.args == [] and request.kwargs == {}:
+                    responses.append(proc_func())
+                else:
+                    responses.append(proc_func(*request.args, **request.kwargs))
+            except Exception as e:
+                log.error(f"error in handling request {request} of {e}")
+                responses.append(SpectrometerResponse(error_msg="error processing cmd", error_lvl=ErrorLevel.medium))
+        return responses
