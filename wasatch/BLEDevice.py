@@ -421,7 +421,7 @@ class BLEDevice:
     def to_dict() -> str:
         return str(self)
 
-    def scans_to_average(self) -> None:
+    def scans_to_average(self, value: int) -> None:
         self.sum_count = 0
         self.settings.state.scans_to_average = int(value)
 

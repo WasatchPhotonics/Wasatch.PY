@@ -148,11 +148,14 @@ class WrapperWorker(threading.Thread):
                         # where it gets read during the next call to
                         # WasatchDevice.acquire_data.
                         if self.is_ocean:
-                            self.ocean_device.handle_requests(record.setting, record.value)
+                            req = SpectrometerRequest(record.setting, args=[record.value])
+                            self.ocean_device.handle_requests([req])
                         elif self.is_andor:
-                            self.andor_device.handle_requests(record.setting, record.value)
+                            req = SpectrometerRequest(record.setting, args=[record.value])
+                            self.andor_device.handle_requests([req])
                         elif self.is_ble:
-                            self.ble_device.handle_requests(record.setting, record.value)
+                            req = SpectrometerRequest(record.setting, args=[record.value])
+                            self.ble_device.handle_requests([req])
                         else:
                             self.wasatch_device.change_setting(record.setting, record.value)
 
@@ -186,7 +189,7 @@ class WrapperWorker(threading.Thread):
                 elif self.is_ble:
                     (reading_response,) = self.ble_device.handle_requests([req])
                 else:
-                    (reading_response,) = self.wasatch_device.acquire_data()
+                    reading_response = self.wasatch_device.acquire_data()
                 #log.debug("continuous_poll: acquire_data returned %s", str(reading))
             except Exception as exc:
                 log.critical("exception calling WasatchDevice.acquire_data", exc_info=1)
