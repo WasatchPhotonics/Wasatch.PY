@@ -8,6 +8,7 @@ import struct
 import logging
 import datetime
 from ctypes import *
+from typing import TypeVar, Any, Callable
 
 from .SpectrometerSettings        import SpectrometerSettings
 from .SpectrometerState           import SpectrometerState
@@ -75,7 +76,6 @@ class AndorDevice:
         self.process_id = os.getpid()
         self.last_memory_check = datetime.datetime.now()
         self.last_battery_percentage = 0
-        self.init_lambdas()
         self.spec_index = 0 
         self._scan_averaging = 1
         self.dark = None
@@ -322,7 +322,7 @@ class AndorDevice:
 
     def acquire_data(self) -> SpectrometerResponse:
         reading = self._take_one_averaged_reading()
-        return SpectrometerResponse(reading)
+        return reading
 
     def set_shutter_enable(self, enable: bool) -> SpectrometerResponse:
         if enable:
@@ -403,7 +403,7 @@ class AndorDevice:
         self.settings.state.scans_to_average = int(value)
         return SpectrometerResponse(True)
 
-    def handle_requests(self, requests: list[SpectrometerRequest]) -> SpectrometerResponse:
+    def handle_requests(self, requests: list[SpectrometerRequest]) -> list[SpectrometerResponse]:
         responses = []
         for request in requests:
             try:

@@ -127,7 +127,7 @@ class FeatureIdentificationDevice:
 
         self.process_f = self._init_process_funcs()
 
-    def handle_requests(self, requests: list[SpectrometerRequest]) -> SpectrometerResponse:
+    def handle_requests(self, requests: list[SpectrometerRequest]) -> list[SpectrometerResponse]:
         responses = []
         for request in requests:
             try:

@@ -7,6 +7,7 @@ import struct
 import logging
 import asyncio
 
+from typing import TypeVar, Any, Callable
 from bleak import discover, BleakClient, BleakScanner
 from bleak.exc import BleakError
 
@@ -20,6 +21,7 @@ from .SpectrometerResponse import ErrorLevel
 from .AbstractUSBDevice import AbstractUSBDevice
 from .SpectrometerSettings import SpectrometerSettings
 from .SpectrometerResponse import SpectrometerResponse
+from .SpectrometerRequest  import SpectrometerRequest
 
 log = logging.getLogger(__name__)
 
@@ -81,7 +83,6 @@ class BLEDevice:
         self.session_reading_count = 0
         self.settings = SpectrometerSettings(self.device_id)
         self.settings.eeprom.detector = "ble"
-        self.init_lambdas()
 
         self.process_f = self._init_process_funcs()
 
@@ -392,7 +393,7 @@ class BLEDevice:
         fut = asyncio.run_coroutine_threadsafe(self._ble_acquire(), self.loop)
         self.performing_acquire = False
         result = fut.result()
-        return SpectrometerResponse(data=result)
+        return result
 
     # both this and change_setting are needed
     # change_device_setting is called by the controller
@@ -408,10 +409,8 @@ class BLEDevice:
             self.settings.state.scans_to_average = int(value)
             return
         else:
-            f = self.lambdas.get(setting,None)
-            if f is None:
-                return
-            f(value)
+            req = SpectrometerRequest(setting, args=[value])
+            self.handle_requests([req])
 
     def get_pid_hex(self) -> str:
         return str(hex(self.pid))[2:]
@@ -433,7 +432,7 @@ class BLEDevice:
         fut = asyncio.run_coroutine_threadsafe(self._disconnect_spec(), self.loop)
         result = fut.result()
 
-    def handle_requests(self, requests: list[SpectrometerRequest]) -> SpectrometerResponse:
+    def handle_requests(self, requests: list[SpectrometerRequest]) -> list[SpectrometerResponse]:
         responses = []
         for request in requests:
             try:

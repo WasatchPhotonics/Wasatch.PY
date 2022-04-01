@@ -84,11 +84,11 @@ class WrapperWorker(threading.Thread):
         ok = False
         req = SpectrometerRequest("connect")
         if self.is_ocean:
-            ok = self.ocean_device.handle_requests([req])
+            (ok,) = self.ocean_device.handle_requests([req])
         elif self.is_andor:
-            ok = self.andor_device.handle_requests([req])
+            (ok,) = self.andor_device.handle_requests([req])
         elif self.is_ble:
-            ok = self.ble_device.handle_requests([req])
+            (ok,) = self.ble_device.handle_requests([req])
         else:
             try:
                 ok = self.wasatch_device.connect()
@@ -180,13 +180,13 @@ class WrapperWorker(threading.Thread):
                 log.debug("acquiring data")
                 req = SpectrometerRequest("acquire_data")
                 if self.is_ocean:
-                    reading_response = self.ocean_device.handle_requests([req])
+                    (reading_response,) = self.ocean_device.handle_requests([req])
                 elif self.is_andor:
-                    reading_response = self.andor_device.handle_requests([req])
+                    (reading_response,) = self.andor_device.handle_requests([req])
                 elif self.is_ble:
-                    reading_response = self.ble_device.handle_requests([req])
+                    (reading_response,) = self.ble_device.handle_requests([req])
                 else:
-                    reading_response = self.wasatch_device.acquire_data()
+                    (reading_response,) = self.wasatch_device.acquire_data()
                 #log.debug("continuous_poll: acquire_data returned %s", str(reading))
             except Exception as exc:
                 log.critical("exception calling WasatchDevice.acquire_data", exc_info=1)

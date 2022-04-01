@@ -5,6 +5,7 @@ import time
 import queue
 import logging
 import datetime
+from typing import TypeVar, Any, Callable
 
 import seabreeze
 seabreeze.use("pyseabreeze")
@@ -12,6 +13,7 @@ import seabreeze.spectrometers as sb
 from seabreeze.spectrometers import Spectrometer, list_devices
 
 from .SpectrometerSettings        import SpectrometerSettings
+from .SpectrometerRequest         import SpectrometerRequest
 from .SpectrometerResponse        import SpectrometerResponse
 from .SpectrometerResponse        import ErrorLevel
 from .SpectrometerState           import SpectrometerState
@@ -96,7 +98,7 @@ class OceanDevice:
 
         return process_f
 
-    def _take_one_averaged_reading(self):
+    def _take_one_averaged_reading(self) -> SpectrometerResponse:
         averaging_enabled = (self.settings.state.scans_to_average > 1)
 
         if averaging_enabled and not self.settings.state.free_running_mode:
@@ -217,7 +219,7 @@ class OceanDevice:
         self.settings.state.scans_to_average = int(value)
         return SpectrometerResponse(True)
 
-    def handle_requests(self, requests: list[SpectrometerRequest]) -> SpectrometerResponse:
+    def handle_requests(self, requests: list[SpectrometerRequest]) -> list[SpectrometerResponse]:
         responses = []
         for request in requests:
             try:
