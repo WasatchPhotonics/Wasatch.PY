@@ -92,7 +92,7 @@ class BLEDevice:
             log.error(f"Error trying to write int time {e}")
 
     async def set_vertical_roi(self, lines):
-        log.debug(f"veritcal roi setting to {lines}")
+        log.debug(f"vertical roi setting to {lines}")
         buf = bytearray()
         try:
             if not self.settings.is_micro():
@@ -120,7 +120,7 @@ class BLEDevice:
             b_end = int(end).to_bytes(2, byteorder='big')
             buf.extend(b_start)
             buf.extend(b_end)
-            log.debug(f"making BLE call to set veritcal roi to {buf}")
+            log.debug(f"making BLE call to set vertical roi to {buf}")
             await self.client.write_gatt_char(DETECTOR_ROI_UUID, buf)
         except Exception as e:
             log.error(f"error trying to set vertical over ble of {e} with values {start} and {end}")
@@ -150,10 +150,10 @@ class BLEDevice:
             return True
         if self.disconnect:
             return
-        self.perfroming_acquire = True
+        self.performing_acquire = True
         self.session_reading_count += 1
         fut = asyncio.run_coroutine_threadsafe(self.ble_acquire(), self.loop)
-        self.perfroming_acquire = False
+        self.performing_acquire = False
         result = fut.result()
         return result
 
@@ -309,12 +309,6 @@ class BLEDevice:
             if f is None:
                 return
             f(value)
-
-    def change_device_setting(self, setting, value):
-        f = self.lambdas.get(setting,None)
-        if f is None:
-            return
-        f(value)
 
     async def connect_spec(self):
         await self.client.connect()

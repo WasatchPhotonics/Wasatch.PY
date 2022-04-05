@@ -44,6 +44,7 @@ class AndorDevice:
         self.take_one               = False
         self.failure_count          = 0
         self.dll_fail               = False
+        self.toggle_state           = True
 
         self.process_id = os.getpid()
         self.last_memory_check = datetime.datetime.now()
@@ -65,8 +66,9 @@ class AndorDevice:
             self.dll_fail = True
 
         self.settings.eeprom.model = "Andor"
-        self.settings.eeprom.detector = "Andor" # Ocean API doesn't have access to detector info
+        self.settings.eeprom.detector = "Andor" # Andor API doesn't have access to detector info
         self.settings.eeprom.wavelength_coeffs = [0,1,0,0]
+        self.settings.eeprom.has_cooling = True
 
     def connect(self):
         if self.dll_fail:
@@ -77,8 +79,10 @@ class AndorDevice:
         log.info("initializing camera...")
 
         # not sure init_str is actually required
-        init_str = create_string_buffer(b'\000' * 16)
-        assert(self.SUCCESS == self.driver.Initialize(init_str)), "unable to initialize camera"
+        result = self.driver.Initialize('') 
+        if self.SUCCESS != result:
+            log.error(f"Error in initialize, error code was {result}")
+            assert(self.SUCCESS == result), "unable to initialize camera"
         log.info("success")
 
         self.get_serial_number()
@@ -99,6 +103,9 @@ class AndorDevice:
             self.settings.eeprom.wavelength_coeffs = self.config_values['wavelength_coeffs']
             self.settings.eeprom.excitation_nm_float = self.config_values['excitation_nm_float']
 
+        self.settings.eeprom.has_cooling = True
+        self.settings.eeprom.max_temp_degC = self.detector_temp_max
+        self.settings.eeprom.min_temp_degC = self.detector_temp_min
         assert(self.SUCCESS == self.driver.CoolerON()), "unable to enable TEC"
         log.debug("enabled TEC")
 
@@ -130,8 +137,10 @@ class AndorDevice:
 
     def init_lambdas(self):
         f = {}
-        f["integration_time_ms"] = lambda x: self.set_integration_time_ms(x) # conversion from millisec to microsec
-        f["shutter_enable"] = lambda x: self.set_shutter_enable(bool(x))
+        f["integration_time_ms"]                = lambda x: self.set_integration_time_ms(x) # conversion from millisec to microsec
+        f["shutter_enable"]                     = lambda x: self.set_shutter_enable(bool(x))
+        f["detector_tec_enable"]                = lambda x: self.toggle_tec(bool(x))
+        f["detector_tec_setpoint_degC"]         = lambda x: self.set_tec_setpoint(int(round(x)))
         self.lambdas = f
 
     def acquire_data(self):
@@ -171,15 +180,25 @@ class AndorDevice:
             # NOTE: reading.timestamp is when reading STARTED, not FINISHED!
             reading = Reading(self.device_id)
 
-            # TODO...just include a copy of SpectrometerState? something to think
-            # about. That would actually provide a reason to roll all the
-            # temperature etc readouts into the SpectrometerState class...
+            if self.settings.eeprom.has_cooling and self.toggle_state:
+                c_temp = c_int()
+                result = self.driver.GetTemperature(0,c_temp)
+                if (self.SUCCESS != result):
+                    log.error(f"unable to read tec temp, result was {result}")
+                else:
+                    log.debug(f"andor read temperature, value of {c_temp.value}")
+                    reading.detector_temperature_degC = c_temp.value
             try:
                 reading.integration_time_ms = self.settings.state.integration_time_ms
                 reading.laser_power_perc    = self.settings.state.laser_power_perc
                 reading.laser_power_mW      = self.settings.state.laser_power_mW
                 reading.laser_enabled       = self.settings.state.laser_enabled
                 reading.spectrum            = self.get_spectrum_raw()
+
+                temperature = c_float()
+                temp_success = self.driver.GetTemperatureF(byref(temperature))
+
+                reading.detector_temperature_degC = temperature.value
             except usb.USBError:
                 self.failure_count += 1
                 log.error(f"Andor Device: encountered USB error in reading for device {self.device}")
@@ -223,6 +242,7 @@ class AndorDevice:
             if self.take_one and reading.averaged:
                 log.debug("completed take_one")
                 self.change_setting("cancel_take_one", True)
+
 
         log.debug("device.take_one_averaged_reading: returning %s", reading)
         if reading.spectrum is not None and reading.spectrum != []:
@@ -290,8 +310,31 @@ class AndorDevice:
         self.detector_temp_min = minTemp.value
         self.detector_temp_max = maxTemp.value
 
-        self.setpoint_deg_c = int(round((self.detector_temp_min + self.detector_temp_max) / 2.0))
-        assert(self.SUCCESS == self.driver.SetTemperature(self.setpoint_deg_c)), "unable to set temperature midpoint"
+        self.setpoint_deg_c = self.detector_temp_min
+        #assert(self.SUCCESS == self.driver.SetTemperature(self.setpoint_deg_c)), "unable to set temperature midpoint"
+        log.debug(f"set TEC to {self.setpoint_deg_c} C (range {self.detector_temp_min}, {self.detector_temp_max})")
+
+    def toggle_tec(self, toggle_state):
+        c_toggle = c_int(toggle_state)
+        self.toggle_state = c_toggle.value
+        if toggle_state:
+            assert(self.SUCCESS == self.driver.CoolerON()), "unable to set temperature midpoint"
+        else:
+            assert(self.SUCCESS == self.driver.CoolerOFF()), "unable to set temperature midpoint"
+        log.debug(f"Toggled TEC to state {c_toggle}")
+
+    def set_tec_setpoint(self, set_temp):
+        if set_temp < self.detector_temp_min or set_temp > self.detector_temp_max:
+            log.error(f"requested temp of {set_temp}, but it is outside range of min/max, {self.detector_temp_min}/{self.detector_temp_max}")
+            return
+        if not self.toggle_state:
+            log.error(f"returning beacuse toggle state is {self.toggle_state}")
+            return
+        self.setpoint_deg_c = set_temp
+        # I don't think CoolerON should need to be called, but I'm not seeing temperature changes
+        # when it is not present here.
+        assert(self.SUCCESS == self.driver.CoolerON()), "unable to enable TEC"
+        assert(self.SUCCESS == self.driver.SetTemperature(self.setpoint_deg_c)), "unable to set temperature"
         log.debug(f"set TEC to {self.setpoint_deg_c} C (range {self.detector_temp_min}, {self.detector_temp_max})")
 
     def init_detector_area(self):
