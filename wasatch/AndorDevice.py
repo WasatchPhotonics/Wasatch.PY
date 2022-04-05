@@ -112,6 +112,7 @@ class AndorDevice:
         process_f["set_integration_time_ms"] = self.set_integration_time_ms
         process_f["get_serial_number"] = self.get_serial_number
         process_f["init_tec_setpoint"] = self.init_tec_setpoint
+        process_f["set_tec_setpoint"] = self.set_tec_setpoint
         process_f["init_detector_area"] = self.init_detector_area
         process_f["scans_to_average"] = self.scans_to_average
 
@@ -122,6 +123,8 @@ class AndorDevice:
         ##################################################################
         process_f["integration_time_ms"] = lambda x: self.set_integration_time_ms(x) # conversion from millisec to microsec
         process_f["shutter_enable"] = lambda x: self.set_shutter_enable(bool(x))
+        process_f["detector_tec_enable"]                = lambda x: self.toggle_tec(bool(x))
+        process_f["detector_tec_setpoint_degC"]         = lambda x: self.set_tec_setpoint(int(round(x)))
 
         return process_f
 
@@ -211,7 +214,7 @@ class AndorDevice:
                 reading.laser_power_perc    = self.settings.state.laser_power_perc
                 reading.laser_power_mW      = self.settings.state.laser_power_mW
                 reading.laser_enabled       = self.settings.state.laser_enabled
-                reading.spectrum            = self.get_spectrum_raw()
+                reading.spectrum            = self._get_spectrum_raw()
 
                 temperature = c_float()
                 temp_success = self.driver.GetTemperatureF(byref(temperature))
@@ -331,6 +334,9 @@ class AndorDevice:
         self.set_integration_time_ms(10)
         self.connected = True
         self.settings.eeprom.active_pixels_horizontal = self.pixels 
+        self.settings.eeprom.has_cooling = True
+        self.settings.eeprom.max_temp_degC = self.detector_temp_max
+        self.settings.eeprom.min_temp_degC = self.detector_temp_min
         return SpectrometerResponse(data=True)
 
     def acquire_data(self) -> SpectrometerResponse:
@@ -357,11 +363,11 @@ class AndorDevice:
 
     def get_serial_number(self) -> SpectrometerResponse:
         sn = c_int()
-        assert(self.SUCCESS == cdll.atmcd32d.GetCameraSerialNumber(byref(sn))), "can't get serial number"
+        assert(self.SUCCESS == self.driver.GetCameraSerialNumber(byref(sn))), "can't get serial number"
         self.serial = f"CCD-{sn.value}"
         self.settings.eeprom.serial_number = self.serial
         log.debug(f"connected to {self.serial}")
-        return SpectrometerResponse(data)
+        return SpectrometerResponse(True)
 
     def init_tec_setpoint(self) -> SpectrometerResponse:
         minTemp = c_int()
@@ -373,6 +379,7 @@ class AndorDevice:
         self.setpoint_deg_c = self.detector_temp_min
         #assert(self.SUCCESS == self.driver.SetTemperature(self.setpoint_deg_c)), "unable to set temperature midpoint"
         log.debug(f"set TEC to {self.setpoint_deg_c} C (range {self.detector_temp_min}, {self.detector_temp_max})")
+        return SpectrometerResponse(True)
 
     def toggle_tec(self, toggle_state):
         c_toggle = c_int(toggle_state)
@@ -382,6 +389,7 @@ class AndorDevice:
         else:
             assert(self.SUCCESS == self.driver.CoolerOFF()), "unable to set temperature midpoint"
         log.debug(f"Toggled TEC to state {c_toggle}")
+        return SpectrometerResponse(True)
 
     def set_tec_setpoint(self, set_temp):
         if set_temp < self.detector_temp_min or set_temp > self.detector_temp_max:
@@ -396,7 +404,7 @@ class AndorDevice:
         assert(self.SUCCESS == self.driver.CoolerON()), "unable to enable TEC"
         assert(self.SUCCESS == self.driver.SetTemperature(self.setpoint_deg_c)), "unable to set temperature"
         log.debug(f"set TEC to {self.setpoint_deg_c} C (range {self.detector_temp_min}, {self.detector_temp_max})")
-        return SpectrometerResponse(data)
+        return SpectrometerResponse(True)
 
     def init_detector_area(self) -> SpectrometerResponse:
         xPixels = c_int()
@@ -404,7 +412,7 @@ class AndorDevice:
         assert(self.SUCCESS == self.driver.GetDetector(byref(xPixels), byref(yPixels))), "unable to read detector dimensions"
         log.debug(f"detector {xPixels.value} width x {yPixels.value} height")
         self.pixels = xPixels.value
-        return SpectrometerResponse(data)
+        return SpectrometerResponse(True)
 
     def init_detector_speed(self) -> SpectrometerResponse:
         # set vertical to recommended
@@ -434,7 +442,7 @@ class AndorDevice:
         log.debug(f"set AD channel {ADnumber} with horizontal speed {HSnumber} ({STemp})")
         return SpectrometerResponse(True)
 
-    def scans_to_average(value: int) -> SpectrometerResponse:
+    def scans_to_average(self, value: int) -> SpectrometerResponse:
         self.sum_count = 0
         self.settings.state.scans_to_average = int(value)
         return SpectrometerResponse(True)
