@@ -11,6 +11,7 @@ import datetime
 # Needed for Mac side
 # Device Finder should already have done this
 # For thoroughness though doing here anyway
+# This is required for finding the usb <-> serial board
 import usb.core
 usb.core.find()
 
@@ -24,6 +25,8 @@ from .EEPROM                      import EEPROM
 log = logging.getLogger(__name__)
 
 class SPIDevice:
+
+    INTEGRATION_ADDRESS = 0x11
 
     def __init__(self, device_id, message_queue):
         # if passed a string representation of a DeviceID, deserialize it
@@ -44,6 +47,7 @@ class SPIDevice:
 
         self.connected = False
         self.disconnect = False
+        self.acquiring = False
 
         # Receives ENLIGHTEN's 'change settings' commands in the spectrometer
         # process. Although a logical queue, has nothing to do with multiprocessing.
@@ -96,7 +100,7 @@ class SPIDevice:
             page = self.EEPROMReadPage(i)
             log.info(f"spi read page {i} with data {page}")
             eeprom_pages.append(page)
-        eeprom_pages = [[val for val in page[9:74]] for page in eeprom_pages]
+        eeprom_pages = [bytearray([val for val in page[9:74]]) for page in eeprom_pages]
         self.settings.eeprom.parse(eeprom_pages)
         self.settings.eeprom.active_pixels_horizontal = 1952
         self.settings.state.integration_time_ms = 10
@@ -107,6 +111,7 @@ class SPIDevice:
         return True
 
     def acquire_data(self):
+        log.debug("spi starts reading")
         if self.disconnect:
             log.debug("disconnecting, returning False for the spectrum")
             return False
@@ -166,6 +171,27 @@ class SPIDevice:
         self.SPI.write_readinto(command, EEPROMPage)
         return EEPROMPage
 
+    def set_integration_time_ms(self, value):
+        while self.acquiring:
+            time.sleep(0.01)
+            continue
+        self.SPIWrite(value, self.INTEGRATION_ADDRESS)
+        self.settings.state.integration_time_ms = value
+
+    def SPIWrite(self, value, address):
+        command = bytearray(8)
+        # Convert the int into bytes.
+        txData = bytearray(2)
+        txData[1]   = value >> 8
+        txData[0]   = value - (txData[1] << 8)
+        # A write command consists of opening and closing delimeters, the payload size which is data + 1 (for the command byte),
+        # the command/address with the MSB set for a write operation, the payload data, and the CRC. This function does not 
+        # caluculate the CRC nor read back the status.
+        # Refer to ENG-150 for additional information
+        command = [0x3C, 0x00, 0x03, (address+0x80), txData[0], txData[1], 0xFF, 0x3E]
+        self.SPI.write(command, 0, 8)
+        time.sleep(0.01)
+
     def EEPROMWritePage(self, page, write_array):
         #write_array = [str(item) for item in write_array]
         command     = bytearray(7)
@@ -184,18 +210,19 @@ class SPIDevice:
         self.SPI.write(EEPROMWrCmd, 0, 70)
         command = [0x3C, 0x00, 0x02, 0xB0, (0x80 + page), 0xFF, 0x3E]
         self.SPI.write(command, 0, 7)
+        time.sleep(0.1)
 
     def change_setting(self,setting,value):
-        control_object = ControlObject(setting, value)
         log.info(f"spi being told to change setting {setting} to {value}")
         f = self.lambdas.get(setting,None)
         if f is not None:
-            f(control_object)
+            f(value)
         return True
 
     def Acquire(self):
         if self.disconnect:
             return False
+        self.acquiring = True
         log.debug("calling acquire")
         SPIBuf  = bytearray(2)
         spectra = []
@@ -205,7 +232,7 @@ class SPIDevice:
         # Wait until the data is ready
         log.debug("waiting for data to be ready")
         while not self.ready.value:
-            #print("data is not ready")
+            #log.debug("spi waiting")
             pass
         log.debug("data is ready")
 
@@ -219,12 +246,15 @@ class SPIDevice:
             pixel = (SPIBuf[0] << 8) + SPIBuf[1]
             spectra.append(pixel)
 
-        log.debug("returning spectra")
+        log.debug(f"returning spectra of length ({len(spectra)})")
+        self.acquiring = False
         return spectra
 
     def init_lambdas(self):
         f = {}
 
         f["write_eeprom"]                       = lambda x: self.write_eeprom()
+        f["replace_eeprom"]                     = lambda x: self.write_eeprom()
+        f["integration_time_ms"]                = lambda x: self.set_integration_time_ms(x)
 
         self.lambdas = f
