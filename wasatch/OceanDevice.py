@@ -88,13 +88,13 @@ class OceanDevice:
 
         process_f["connect"] = self.connect
         process_f["acquire_data"] = self.acquire_data
-        process_f["scans_to_average"] = self._scans_to_average
+        process_f["scans_to_average"] = self.scans_to_average
         ##################################################################
         # What follows is the old init-lambdas that are squashed into process_f
         # Long term, the upstream requests should be changed to match the new format
         # This is an easy fix for the time being to make things behave
         ##################################################################
-        f["integration_time_ms"] = lambda x: self.spec.integration_time_micros(int(round(x*1000))) # conversion from millisec to microsec
+        process_f["integration_time_ms"] = lambda x: self.spec.integration_time_micros(int(round(x*1000))) # conversion from millisec to microsec
 
         return process_f
 
