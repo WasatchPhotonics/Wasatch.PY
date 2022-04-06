@@ -178,40 +178,31 @@ class WasatchDevice(object):
     #                                                                          #
     # ######################################################################## #
 
-    ##
-    # Process all enqueued settings, then read actual data (spectrum and
-    # temperatures) from the device.
-    #
-    # This function is called by WasatchDeviceWrapper.continuous_poll.
-    #
-    # Somewhat confusingly, this function can return any of the following:
-    #
-    # @return False     a poison-pill sent upstream to device shutdown
-    # @return True      keepalive
-    # @return None      keepalive
-    # @return Reading   a partial or complete spectrometer Reading (may itself
-    #                   have Reading.failure set other than None)
-    #
-    # @see Controller.acquire_reading
-    def acquire_data(self):
+    def acquire_data(self) -> SpectrometerResponse:
+        """
+        Process all enqueued settings, then read actual data (spectrum and
+        temperatures) from the device.
+
+        @see Controller.acquire_reading
+        """
         log.debug("acquire_data: start")
 
         self.monitor_memory()
 
         if self.hardware.shutdown_requested:
             log.critical("acquire_data: hardware shutdown requested")
-            return False
+            return SpectrometerResponse(False)
 
         # process queued commands, and find out if we've been asked to read a
         # spectrum
         needs_acquisition = self.process_commands()
         if not (needs_acquisition or self.settings.state.free_running_mode):
-            return None
+            return SpectrometerResponse(None)
 
         # if we don't yet have an integration time, nothing to do
         if self.settings.state.integration_time_ms <= 0:
             log.debug("skipping acquire_data because no integration_time_ms")
-            return None
+            return SpectrometerResponse(None)
 
         # note that right now, all we return are Readings (encapsulating both
         # spectra and temperatures).  If we disable spectra (turn off

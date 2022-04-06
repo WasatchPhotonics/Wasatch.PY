@@ -197,7 +197,7 @@ class WrapperWorker(threading.Thread):
             if reading_response == None:
                 log.error(f"Got None reading response. Should not get naked response. Happened with request {req}")
                 continue
-            log.info(f"response {reading_response} data is {reading_response.data}")
+            log.debug(f"response {reading_response} data is {reading_response.data}")
 
             if reading_response.keep_alive == True:
                 # just pass it upstream and move on
