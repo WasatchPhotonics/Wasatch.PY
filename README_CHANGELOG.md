@@ -1,5 +1,6 @@
 # Changelog
-
+- 2022-04-06 2.1.0
+    - Setup interface devices in new architecture
 - 2022-03-21 2.0.3
     - renamed has\_laser\_tec to sig\_laser\_tec
     - added has\_interlock\_feedback
