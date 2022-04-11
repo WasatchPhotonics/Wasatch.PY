@@ -21,6 +21,7 @@ from .SpectrometerResponse import SpectrometerResponse
 from .SpectrometerRequest  import SpectrometerRequest
 from .SpectrometerResponse import ErrorLevel
 from .SpectrometerState    import SpectrometerState
+from .InterfaceDevice      import InterfaceDevice
 from .DetectorRegions      import DetectorRegions
 from .StatusMessage        import StatusMessage
 from .DetectorROI          import DetectorROI
@@ -39,7 +40,7 @@ class SpectrumAndRow:
         if spectrum is not None:
             self.spectrum = spectrum.copy()
 
-class FeatureIdentificationDevice:
+class FeatureIdentificationDevice(InterfaceDevice):
     """
     This is the basic implementation of our FeatureIdentificationDevice (FID)
     spectrometer USB API as defined in ENG-0001.
@@ -81,6 +82,7 @@ class FeatureIdentificationDevice:
         @param message_queue [out] if provided, provides an outbound (from FID)
         queue for writing StatusMessage objects upstream
         """
+        super().__init__()
         self.device_id = device_id
         self.message_queue = message_queue
 

@@ -17,12 +17,13 @@ from .SpectrometerRequest         import SpectrometerRequest
 from .SpectrometerResponse        import SpectrometerResponse
 from .SpectrometerResponse        import ErrorLevel
 from .SpectrometerState           import SpectrometerState
+from .InterfaceDevice             import InterfaceDevice
 from .DeviceID                    import DeviceID
 from .Reading                     import Reading
 
 log = logging.getLogger(__name__)
 
-class OceanDevice:
+class OceanDevice(InterfaceDevice):
     """
     This is the basic implementation of our interface with Ocean Spectrometers     
 
@@ -48,7 +49,7 @@ class OceanDevice:
     """
 
     def __init__(self, device_id, message_queue=None):
-
+        super().__init__()
         # if passed a string representation of a DeviceID, deserialize it
         if type(device_id) is str:
             device_id = DeviceID(label=device_id)
@@ -218,20 +219,3 @@ class OceanDevice:
         self.sum_count = 0
         self.settings.state.scans_to_average = int(value)
         return SpectrometerResponse(True)
-
-    def handle_requests(self, requests: list[SpectrometerRequest]) -> list[SpectrometerResponse]:
-        responses = []
-        for request in requests:
-            try:
-                cmd = request.cmd
-                proc_func = self.process_f.get(cmd, None)
-                if proc_func == None:
-                    responses.append(SpectrometerResponse(error_msg=f"unsupported cmd {request.cmd}", error_lvl=ErrorLevel.low))
-                elif request.args == [] and request.kwargs == {}:
-                    responses.append(proc_func())
-                else:
-                    responses.append(proc_func(*request.args, **request.kwargs))
-            except Exception as e:
-                log.error(f"error in handling request {request} of {e}")
-                responses.append(SpectrometerResponse(error_msg="error processing cmd", error_lvl=ErrorLevel.medium))
-        return responses

@@ -17,6 +17,7 @@ from .CSVLoader import CSVLoader
 from wasatch.EEPROM import EEPROM
 from wasatch.DeviceID import DeviceID
 from .ControlObject import ControlObject
+from .InterfaceDevice import InterfaceDevice
 from .SpectrometerResponse import ErrorLevel
 from .AbstractUSBDevice import AbstractUSBDevice
 from .SpectrometerSettings import SpectrometerSettings
@@ -37,7 +38,7 @@ DETECTOR_ROI_UUID = "d1a7ff0A-af78-4449-a34f-4da1afaf51bc"
 MAX_RETRIES = 4
 THROWAWAY_SPECTRA = 6
 
-class BLEDevice:
+class BLEDevice(InterfaceDevice):
     """
     This is the basic implementation of our interface with BLE Spectrometers.
 
@@ -63,6 +64,7 @@ class BLEDevice:
     """
 
     def __init__(self, device, loop):
+        super().__init__()
         self.ble_pid = str(hash(device.address))
         self.device_id = DeviceID(label=f"USB:{self.ble_pid[:8]}:0x16384:111111:111111", device_type=self)
         self.device_id = self.device_id
@@ -431,21 +433,4 @@ class BLEDevice:
         self.disconnect_event.set()
         fut = asyncio.run_coroutine_threadsafe(self._disconnect_spec(), self.loop)
         result = fut.result()
-
-    def handle_requests(self, requests: list[SpectrometerRequest]) -> list[SpectrometerResponse]:
-        responses = []
-        for request in requests:
-            try:
-                cmd = request.cmd
-                proc_func = self.process_f.get(cmd, None)
-                if proc_func == None:
-                    responses.append(SpectrometerResponse(error_msg=f"unsupported cmd {request.cmd}", error_lvl=ErrorLevel.low))
-                elif request.args == [] and request.kwargs == {}:
-                    responses.append(proc_func())
-                else:
-                    responses.append(proc_func(*request.args, **request.kwargs))
-            except Exception as e:
-                log.error(f"error in handling request {request} of {e}")
-                responses.append(SpectrometerResponse(error_msg="error processing cmd", error_lvl=ErrorLevel.medium))
-        return responses
 
