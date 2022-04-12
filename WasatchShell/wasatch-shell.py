@@ -3,7 +3,6 @@
 import datetime
 import platform
 import argparse
-import readline
 import logging
 import time
 import sys
@@ -16,8 +15,9 @@ from wasatch import utils
 from wasatch.WasatchBus         import WasatchBus
 from wasatch.WasatchDevice      import WasatchDevice
 from wasatch.BalanceAcquisition import BalanceAcquisition
+from wasatch.RealUSBDevice      import RealUSBDevice
 
-VERSION = "2.2.6"
+VERSION = "2.3.0"
 
 log = logging.getLogger(__name__)
 
@@ -471,10 +471,11 @@ class WasatchShell(object):
 
         device_id = bus.device_ids[0]
         log.debug("open: trying to connect to %s", device_id)
+        device_id.device_type = RealUSBDevice(device_id)
         device = WasatchDevice(device_id)
 
         ok = device.connect()
-        if not ok: 
+        if not ok.data: 
             log.critical("open: can't connect to device on bus 1")
             return
 
@@ -539,7 +540,8 @@ class WasatchShell(object):
         self.device.change_setting("acquire", True, allow_immediate=False)
 
         # now collect the spectrum
-        reading = self.device.acquire_data()
+        reading_response = self.device.acquire_data()
+        reading = reading_response.data
         if reading is None or isinstance(reading, bool) or reading.spectrum is None:
             self.display("ERROR: get_spectrum failed")
             return

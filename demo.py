@@ -34,6 +34,7 @@ from wasatch.WasatchBus           import WasatchBus
 from wasatch.OceanDevice          import OceanDevice
 from wasatch.WasatchDevice        import WasatchDevice
 from wasatch.WasatchDeviceWrapper import WasatchDeviceWrapper
+from wasatch.RealUSBDevice        import RealUSBDevice
 
 log = logging.getLogger(__name__)
 
@@ -115,6 +116,7 @@ class WasatchDemo(object):
 
         device_id = self.bus.device_ids[0]
         log.debug("connect: trying to connect to %s", device_id)
+        device_id.device_type = RealUSBDevice(device_id)
 
         if self.args.non_blocking:
             # this is still buggy on MacOS
@@ -190,14 +192,14 @@ class WasatchDemo(object):
 
     def attempt_reading(self):
         try:
-            reading = self.acquire_reading()
+            reading_response = self.acquire_reading()
         except Exception as exc:
             log.critical("attempt_reading caught exception", exc_info=1)
             self.exiting = True
             return
 
-        if isinstance(reading, bool):
-            if reading:
+        if isinstance(reading_response.data, bool):
+            if reading_response.data:
                 log.debug("received poison-pill, exiting")
                 self.exiting = True
                 return
@@ -205,11 +207,11 @@ class WasatchDemo(object):
                 log.debug("no reading available")
                 return
 
-        if reading.failure:
+        if reading_response.data.failure:
             self.exiting = True
             return
 
-        self.process_reading(reading)
+        self.process_reading(reading_response.data)
 
     def acquire_reading(self):
         # We want the demo to effectively block on new scans, so keep

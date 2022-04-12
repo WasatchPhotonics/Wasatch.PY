@@ -204,7 +204,7 @@ class SpectrometerState(object):
 
     def dump(self):
         log.debug("SpectrometerState:")
-        log.debug("  Integration Time:       %dms", self.integration_time_ms)
+        log.debug(f"  Integration Time:       {self.integration_time_ms}")
         log.debug("  TEC Setpoint:           %.2f degC", self.tec_setpoint_degC)
         log.debug("  TEC Enabled:            %s", self.tec_enabled)
         log.debug("  High Gain Mode Enabled: %s", self.high_gain_mode_enabled)

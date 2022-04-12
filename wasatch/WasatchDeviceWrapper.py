@@ -12,6 +12,8 @@ from . import applog
 from . import utils
 
 from .SpectrometerSettings import SpectrometerSettings
+from .SpectrometerResponse import SpectrometerResponse
+from .SpectrometerResponse import ErrorLevel
 from .ControlObject        import ControlObject
 from .WrapperWorker        import WrapperWorker
 from .BLEDevice            import BLEDevice
@@ -388,8 +390,8 @@ class WasatchDeviceWrapper(object):
     # In the currently implementation, it seems unlikely that a "True" will ever
     # be passed up (we're basically converting them to None here).
     def get_final_item(self, keep_averaged=False):
-        last_reading  = None
-        last_averaged = None
+        last_reading  = SpectrometerResponse()
+        last_averaged = SpectrometerResponse()
         dequeue_count = 0
 
         # kludge - memory profiling
@@ -400,31 +402,33 @@ class WasatchDeviceWrapper(object):
         while True:
             # without waiting (don't block), just get the first item off the
             # queue if there is one
-            reading = None
+            wrapper_reading = SpectrometerResponse()
             if not self.response_queue.empty():
-                reading = self.response_queue.get_nowait()
+                wrapper_reading = self.response_queue.get_nowait()
             else:
                 # If there is nothing more to read, then we've emptied the queue
+                log.debug("get_final has nothing more to read, sending up readings")
                 break
+
+            # If we come across a keep_alive, ignore it for the moment.
+            # for now continue cleaning-out the queue.
+            if wrapper_reading.keep_alive or wrapper_reading.data is None:
+                # If that keep alive is associated with an error though float it up
+                if wrapper_reading.keep_alive and wrapper_reading.error_msg:
+                    last_reading = wrapper_reading
+                    break
+                log.debug("get_final_item: ignoring keepalive")
+                continue
 
             # If we come across a poison-pill, flow that up immediately --
             # game-over, we're done
-            if isinstance(reading, bool) and reading == False:
+            if wrapper_reading.poison_pill:
                 log.critical("get_final_item: poison-pill!")
-                reading = None
-                return False
-
-            # If we come across a NONE or a True, ignore it for the moment.
-            # Returning "None" will always be the "default" action at the
-            # end, so for now continue cleaning-out the queue.
-            if reading is None or isinstance(reading, bool):
-                log.debug("get_final_item: ignoring keepalive")
-                reading = None
-                continue
+                return wrapper_reading
 
             # apparently we read a Reading
-            log.debug("get_final_item: read Reading %s", str(reading.session_count))
-            last_reading = reading
+            log.debug("get_final_item: read Reading %s", str(wrapper_reading.data.session_count))
+            last_reading = wrapper_reading
             dequeue_count += 1
 
             # Was this the final spectrum in an averaged sequence?
@@ -435,16 +439,16 @@ class WasatchDeviceWrapper(object):
             # It is the purpose of this function ("get FINAL item...")
             # to PURGE THE QUEUE -- we are not intending to leave any
             # values in the queue (None, bool, or Readings of any kind.
-            if keep_averaged and reading.averaged:
-                last_averaged = reading
+            if keep_averaged and wrapper_reading.data.averaged:
+                last_averaged = wrapper_reading
 
-            reading = None
-        reading = None
 
-        if last_reading is None:
+        if last_reading.data is None:
+            log.debug("wrapper worker floating up keep alive last reading")
             # apparently we didn't read anything...just pass up a keepalive
             last_averaged = None
-            return None
+            last_reading.keep_alive = True
+            return last_reading
 
         # apparently we read at least some readings.  For interest, how how many
         # readings did we throw away (not return up to ENLIGHTEN)?
@@ -453,7 +457,7 @@ class WasatchDeviceWrapper(object):
 
         # if we're doing averaging, and we found one or more averaged readings,
         # return the latest of those
-        if last_averaged is not None:
+        if last_averaged.data is not None:
             if WasatchDeviceWrapper.DISABLE_RESPONSE_QUEUE:
                 self.previous_reading = last_averaged
             last_reading = None
