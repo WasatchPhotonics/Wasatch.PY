@@ -298,7 +298,7 @@ class AndorDevice:
 
     def get_serial_number(self):
         sn = c_int()
-        assert(self.SUCCESS == cdll.atmcd32d.GetCameraSerialNumber(byref(sn))), "can't get serial number"
+        assert(self.SUCCESS == self.driver.GetCameraSerialNumber(byref(sn))), "can't get serial number"
         self.serial = f"CCD-{sn.value}"
         self.settings.eeprom.serial_number = self.serial
         log.debug(f"connected to {self.serial}")
