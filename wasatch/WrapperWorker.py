@@ -217,7 +217,7 @@ class WrapperWorker(threading.Thread):
             elif reading_response.data is None:
                 log.debug("no worker saw no reading")
 
-            elif reading_response.data.failure is not None:
+            elif reading_response.data == False or reading_response.data.failure is not None:
                 # reading was a failure, maintain connection, but pass up the failure
                 log.critical("hardware level error...exiting")
                 reading_response.poison_pill = True
