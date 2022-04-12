@@ -323,6 +323,8 @@ class MockUSBDevice(AbstractUSBDevice):
             except:
                 log.error(f"Unable to set {key} on eeprom object")
         self.eeprom_obj.generate_write_buffers()
+        if self.eeprom.get("format", None):
+            self.eeprom_obj.write_buffers[0][63] = self.eeprom["format"]
 
     def get_default_data_dir(self):
         return os.getcwd()
