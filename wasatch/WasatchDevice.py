@@ -432,7 +432,7 @@ class WasatchDevice(object):
                     acquire_response.poison_pill = True
                     return acquire_response
 
-                req = SpectrometerRequest("get_detector_temperature_raw", args=[reading.detector_temperature_raw])
+                req = SpectrometerRequest("get_detector_temperature_degC", args=[reading.detector_temperature_raw])
                 res = self.hardware.handle_requests([req])[0]
                 if res.error_msg != '':
                     return res

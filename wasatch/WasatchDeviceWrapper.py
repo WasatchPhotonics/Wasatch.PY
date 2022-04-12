@@ -412,7 +412,7 @@ class WasatchDeviceWrapper(object):
 
             # If we come across a keep_alive, ignore it for the moment.
             # for now continue cleaning-out the queue.
-            if wrapper_reading.keep_alive:
+            if wrapper_reading.keep_alive or wrapper_reading.data is None:
                 # If that keep alive is associated with an error though float it up
                 if wrapper_reading.keep_alive and wrapper_reading.error_msg:
                     last_reading = wrapper_reading

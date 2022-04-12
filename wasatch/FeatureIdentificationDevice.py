@@ -1339,11 +1339,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         if raw.data > 0xfff:
             log.error("get_laser_temperature_degC: read raw value 0x%04x exceeds 12 bits", raw.data)
-            return SpectrometerResponse(data=0, error_lvl=ErrorLevel.low, error_msg=f"get_laser_temperature_degC: read raw value {raw.data:#4x} exceeds 12 bits")
+            return SpectrometerResponse(data=None, error_lvl=ErrorLevel.low, error_msg=f"get_laser_temperature_degC: read raw value {raw.data:#4x} exceeds 12 bits")
 
         # can't take log of zero
         if raw.data == 0:
-            return SpectrometerResponse(data=0, error_msg="can't take log of 0", error_lvl=ErrorLevel.low)
+            return SpectrometerResponse(data=None, error_msg="can't take log of 0", error_lvl=ErrorLevel.low)
 
         degC = 0
         try:
