@@ -309,7 +309,6 @@ class BLEDevice(InterfaceDevice):
                 if self.pixels_read == pixels:
                     log.debug("read complete spectrum")
                     self.session_reading_count += 1
-                    self.pixels_read = 0
                     if (i + 1 != pixels_in_packet):
                         log.error(f"ignoring {pixels_in_packet - (i + 1)} trailing pixels");
                     break
@@ -353,10 +352,10 @@ class BLEDevice(InterfaceDevice):
 
         response = SpectrometerResponse()
         response.data = reading
-        if len(reading.spectrum) != pixels:
-            response.incomplete = True
-            response.progress = len(reading.spectrum)/pixels
+        response.progress = self.pixels_read/pixels
+        if response.progress == 1:
             self.spectrum = [0 for pix in range(pixels)]
+            self.pixels_read = 0
 
         return response
 
