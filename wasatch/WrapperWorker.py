@@ -70,6 +70,7 @@ class WrapperWorker(threading.Thread):
                 )
         elif self.is_ble:
             self.ble_device = self.device_id.device_type
+            self.ble_device.disconnect = False
         else:
             try:
                 log.debug("instantiating WasatchDevice")
@@ -219,7 +220,7 @@ class WrapperWorker(threading.Thread):
 
             elif reading_response.data == False or reading_response.data.failure is not None:
                 # reading was a failure, maintain connection, but pass up the failure
-                log.critical("hardware level error...exiting")
+                log.critical(f"hardware level error...exiting because reading_response.data is {reading_response.data} or reading_response.data.failure")
                 reading_response.poison_pill = True
                 self.response_queue.put(reading_response)
 

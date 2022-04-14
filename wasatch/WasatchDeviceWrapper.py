@@ -131,7 +131,7 @@ log = logging.getLogger(__name__)
 # - Reading.copy() doesn't help
 # - exc_clear() doesn't help
 #
-class WasatchDeviceWrapper(object):
+class WasatchDeviceWrapper:
 
     ACQUISITION_MODE_KEEP_ALL      = 0 # don't drop frames
     ACQUISITION_MODE_LATEST        = 1 # only grab most-recent frame (allow dropping)
@@ -271,7 +271,6 @@ class WasatchDeviceWrapper(object):
             log.info(f"got spectrometer settings for device, returning settings to controller")
             self.connected = True
             self.settings = self.settings_queue.get_nowait()
-            del self.settings_queue
             self.connect_start_time = datetime.datetime(year=datetime.MAXYEAR, month=1, day=1)
             return self.settings
         else:

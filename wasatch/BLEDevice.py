@@ -44,10 +44,10 @@ class BLEDevice(InterfaceDevice):
 
     ##########################################################################
     This class adopts the external device interface structure
-    This invlovles receiving a request through the handle_request function
+    This involves receiving a request through the handle_request function
     A request is processed based on the key in the request
     The processing function passes the commands to the requested device
-    Once it recevies a response from the connected device it then passes that
+    Once it receives a response from the connected device it then passes that
     back up the chain
                                Enlighten Request
                                        |
@@ -79,12 +79,13 @@ class BLEDevice(InterfaceDevice):
         self.sum_count = 0
         self.performing_acquire = False
         self.disconnect = False
-        self.disconnect_event = asyncio.Event()
         self.client = BleakClient(device)
         self.total_pixels_read = 0
         self.session_reading_count = 0
         self.settings = SpectrometerSettings(self.device_id)
         self.settings.eeprom.detector = "ble"
+        self.retry_count = 0
+        self.pixels_read = 0
 
         self.process_f = self._init_process_funcs()
 
@@ -214,13 +215,15 @@ class BLEDevice(InterfaceDevice):
         return SpectrometerResponse(True)
 
     async def _ble_acquire(self) -> SpectrometerResponse:
-        if self.disconnect_event.is_set():
+        if self.disconnect:
+            log.debug("ble spec is set to disconnect, returning False")
             return SpectrometerResponse(False)
         request = await self.client.write_gatt_char(DEVICE_ACQUIRE_UUID, bytes(0))
         pixels = self.settings.eeprom.active_pixels_horizontal
-        spectrum = [0 for pix in range(pixels)]
         request_retry = False
         averaging_enabled = (self.settings.state.scans_to_average > 1)
+        if self.pixels_read == 0:
+            self.spectrum = [0 for pix in range(pixels)]
 
         if averaging_enabled and not self.settings.state.free_running_mode:
 
@@ -237,90 +240,89 @@ class BLEDevice(InterfaceDevice):
             reading.laser_power_perc    = self.settings.state.laser_power_perc
             reading.laser_power_mW      = self.settings.state.laser_power_mW
             reading.laser_enabled       = self.settings.state.laser_enabled
-            retry_count = 0
-            pixels_read = 0
             header_len = 2
-            while (pixels_read < pixels):
-                if self.disconnect_event.is_set():
+            if self.disconnect:
+                log.debug("ble spec is set to disconnect, returning False")
+                log.info("Disconnecting, stopping spectra acquire and returning None")
+                return SpectrometerResponse(False)
+            if request_retry:
+                self.retry_count += 1
+                if (self.retry_count > MAX_RETRIES):
+                    log.error(f"giving up after {MAX_RETRIES} retries")
                     return SpectrometerResponse(False)
+
+            delay_ms = int(self.retry_count**5)
+
+            # if this is the first retry, assume that the sensor was
+            # powered-down, and we need to wait for some throwaway
+            # spectra 
+            if (self.retry_count == 1):
+                delay_ms = int(self.settings.state.integration_time_ms * THROWAWAY_SPECTRA)
+
+            log.error(f"Retry requested, so waiting for {delay_ms}ms")
+            if self.disconnect:
+                log.debug("ble spec is set to disconnect, returning False")
+                return SpectrometerResponse(False)
+            await asyncio.sleep(delay_ms)
+
+            request_retry = False
+
+            log.debug(f"requesting spectrum packet starting at pixel {self.pixels_read}")
+            request = self.pixels_read.to_bytes(2, byteorder="big")
+            await self.client.write_gatt_char(SPECTRUM_PIXELS_UUID, request)
+
+            log.debug(f"reading spectrumChar (pixelsRead {self.pixels_read})");
+            response = await self.client.read_gatt_char(READ_SPECTRUM_UUID)
+
+            # make sure response length is even, and has both header and at least one pixel of data
+            response_len = len(response);
+            if (response_len < header_len or response_len % 2 != 0):
+                log.error(f"received invalid response of {response_len} bytes")
+                request_retry = True
+                continue
+            if self.disconnect:
+                log.debug("ble spec is set to disconnect, returning False")
+                return SpectrometerResponse(False)
+
+            # firstPixel is a big-endian UInt16
+            first_pixel = int((response[0] << 8) | response[1])
+            if (first_pixel > 2048 or first_pixel < 0):
+                log.error(f"received NACK (first_pixel {first_pixel}, retrying")
+                request_retry = True
+                continue
+
+            pixels_in_packet = int((response_len - header_len) / 2);
+
+            log.debug(f"received spectrum packet starting at pixel {first_pixel} with {pixels_in_packet} pixels");
+
+            for i in range(pixels_in_packet):
+                # pixel intensities are little-endian UInt16
+                offset = header_len + i * 2
+                intensity = int((response[offset+1] << 8) | response[offset])
+                self.spectrum[self.pixels_read] = intensity
                 if self.disconnect:
-                    log.info("Disconnecting, stopping spectra acquire and returning None")
-                    return SpectrometerResponse(False)
-                if request_retry:
-                    retry_count += 1
-                    if (retry_count > MAX_RETRIES):
-                        log.error(f"giving up after {MAX_RETRIES} retries")
-                        return SpectrometerResponse(False)
-
-                delay_ms = int(retry_count**5)
-
-                # if this is the first retry, assume that the sensor was
-                # powered-down, and we need to wait for some throwaway
-                # spectra 
-                if (retry_count == 1):
-                    delay_ms = int(self.settings.state.integration_time_ms * THROWAWAY_SPECTRA)
-
-                log.error(f"Retry requested, so waiting for {delay_ms}ms")
-                if self.disconnect_event.is_set():
-                    return SpectrometerResponse(False)
-                await asyncio.sleep(delay_ms)
-
-                request_retry = False
-
-                log.debug(f"requesting spectrum packet starting at pixel {pixels_read}")
-                request = pixels_read.to_bytes(2, byteorder="big")
-                await self.client.write_gatt_char(SPECTRUM_PIXELS_UUID, request)
-
-                log.debug(f"reading spectrumChar (pixelsRead {pixels_read})");
-                response = await self.client.read_gatt_char(READ_SPECTRUM_UUID)
-
-                # make sure response length is even, and has both header and at least one pixel of data
-                response_len = len(response);
-                if (response_len < header_len or response_len % 2 != 0):
-                    log.error(f"received invalid response of {response_len} bytes")
-                    request_retry = True
-                    continue
-                log.info(f"event being set is {self.disconnect_event.is_set()}")
-                if self.disconnect_event.is_set():
+                    log.debug("ble spec is set to disconnect, returning False")
                     return SpectrometerResponse(False)
 
-                # firstPixel is a big-endian UInt16
-                first_pixel = int((response[0] << 8) | response[1])
-                if (first_pixel > 2048 or first_pixel < 0):
-                    log.error(f"received NACK (first_pixel {first_pixel}, retrying")
-                    request_retry = True
-                    continue
+                self.pixels_read += 1
 
-                pixels_in_packet = int((response_len - header_len) / 2);
-
-                log.debug(f"received spectrum packet starting at pixel {first_pixel} with {pixels_in_packet} pixels");
-
-                for i in range(pixels_in_packet):
-                    # pixel intensities are little-endian UInt16
-                    offset = header_len + i * 2
-                    intensity = int((response[offset+1] << 8) | response[offset])
-                    spectrum[pixels_read] = intensity
-                    if self.disconnect_event.is_set():
-                        return SpectrometerResponse(False)
-
-                    pixels_read += 1
-
-                    if (pixels_read == pixels):
-                        log.debug("read complete spectrum")
-                        if (i + 1 != pixels_in_packet):
-                            log.error(f"ignoring {pixels_in_packet - (i + 1)} trailing pixels");
-                        break
-                response = None;
+                if self.pixels_read == pixels:
+                    log.debug("read complete spectrum")
+                    self.session_reading_count += 1
+                    if (i + 1 != pixels_in_packet):
+                        log.error(f"ignoring {pixels_in_packet - (i + 1)} trailing pixels");
+                    break
+            response = None;
+            #### WHILE LOOP ENDS HERE ####
             for i in range(4):
-                spectrum[i] = spectrum[4]
+                self.spectrum[i] = self.spectrum[4]
 
-            spectrum[pixels-1] = spectrum[pixels-2]
+            self.spectrum[pixels-1] = self.spectrum[pixels-2]
 
-            self.session_reading_count += 1
             reading.session_count = self.session_reading_count
             reading.sum_count = self.sum_count
             log.debug("Spectrometer.takeOneAsync: returning completed spectrum");
-            reading.spectrum = spectrum
+            reading.spectrum = self.spectrum
 
             if not reading.failure:
                 if averaging_enabled:
@@ -348,7 +350,14 @@ class BLEDevice(InterfaceDevice):
                 # "averaged" final measurement (check reading.sum_count to confirm)
                 reading.averaged = True
 
-        return SpectrometerResponse(reading)
+        response = SpectrometerResponse()
+        response.data = reading
+        response.progress = self.pixels_read/pixels
+        if response.progress == 1:
+            self.spectrum = [0 for pix in range(pixels)]
+            self.pixels_read = 0
+
+        return response
 
     async def _get_eeprom(self) -> list[list[int]]:
         log.debug("Trying BLE eeprom read")
@@ -358,7 +367,7 @@ class BLEDevice(InterfaceDevice):
             pos = 0
             for j in range(EEPROM.SUBPAGE_COUNT):
                 page_ids = bytearray([i, j])
-                log.debug(f"Writing to tell gateway to get page {i} ands ubpage {j}")
+                log.debug(f"Writing to tell gateway to get page {i} ands subpage {j}")
                 request = await self.client.write_gatt_char(SELECT_EEPROM_PAGE_UUID, page_ids)
                 log.debug("Attempting to read page data")
                 response = await self.client.read_gatt_char(READ_EEPROM_UUID)
@@ -389,6 +398,7 @@ class BLEDevice(InterfaceDevice):
         if self.performing_acquire:
             return SpectrometerResponse(True)
         if self.disconnect:
+            log.debug("ble spec is set to disconnect, returning False")
             return SpectrometerResponse(False)
         self.performing_acquire = True
         self.session_reading_count += 1
@@ -430,7 +440,6 @@ class BLEDevice(InterfaceDevice):
     def close(self) -> None:
         log.info("BLE close called, trying to disconnect spec")
         self.disconnect = True
-        self.disconnect_event.set()
         fut = asyncio.run_coroutine_threadsafe(self._disconnect_spec(), self.loop)
         result = fut.result()
 
