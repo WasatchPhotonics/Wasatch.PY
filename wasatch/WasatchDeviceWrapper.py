@@ -179,6 +179,7 @@ class WasatchDeviceWrapper(object):
         self.is_andor     = '0x136e' in str(device_id)
         self.mock         = 'test' in str(device_id)
         self.is_ble       = isinstance(device_id.device_type, BLEDevice)
+        self.connect_start_time = datetime.datetime(year=datetime.MAXYEAR, month=1, day=1)
 
         # this will contain a populated SpectrometerSettings object from the
         # WasatchDevice, for relay to the instantiating Controller
@@ -256,53 +257,26 @@ class WasatchDeviceWrapper(object):
         kill_myself = False
 
         # expect to read a single post-initialization SpectrometerSettings object off the queue
-        time_start = datetime.datetime.now()
-        settings_timeout_sec = 15
-        if self.is_ble:
-            settings_timeout_sec += 10
+        self.connect_start_time = datetime.datetime.now()
         self.settings = None
         log.debug("connect: blocking on settings_queue (waiting on child thread to send SpectrometerSettings)")
-        while True:
-            if not self.settings_queue.empty():
-                self.settings = self.settings_queue.get_nowait()
-                break
 
-            if (datetime.datetime.now() - time_start).total_seconds() > settings_timeout_sec:
-                log.error("connect: gave up waiting for SpectrometerSettings")
-                kill_myself = True
-                break
-            else:
-                log.debug("connect: still waiting for SpectrometerSettings")
-                time.sleep(0.1)
-
-        if self.settings is None:
-            log.error("connect: received poison-pill from child thread")
-            kill_myself = True
-
-        if kill_myself:
-            # Apparently something failed in initialization of the device, and it
-            # never succeeded in sending a SpectrometerSettings object. Do our best to
-            # kill the thread
-
-            # MZ: should this bit be merged with disconnect()?
-            self.settings = None
-            self.closing = True
-
-            log.warn("connect: releasing thread")
-            return False
-
-        # AttributeError: 'AutoProxy[Queue]' object has no attribute 'close'
-        del self.settings_queue
-
-        log.info("connect: received SpectrometerSettings from child")
-
-        # After we return True, the Controller will then take a handle to our received
-        # settings object, and will keep a reference to this Wrapper object for sending
-        # commands and reading spectra.
-        log.debug("connect: succeeded")
-        self.connected = True
+        log.debug("connect: setup connection, returning to controller for settings polling")
 
         return True
+
+    def poll_settings(self):
+        log.debug("polling device settings")
+        if not self.settings_queue.empty():
+            log.info(f"got spectrometer settings for device, returning settings to controller")
+            self.connected = True
+            self.settings = self.settings_queue.get_nowait()
+            del self.settings_queue
+            self.connect_start_time = datetime.datetime(year=datetime.MAXYEAR, month=1, day=1)
+            return self.settings
+        else:
+            log.debug("settings still not obtained, returning")
+            return None
 
     def disconnect(self):
         # send poison pill to the child
@@ -312,14 +286,9 @@ class WasatchDeviceWrapper(object):
             self.command_queue.put(None) 
         except:
             pass
-        try:
-            self.wrapper_worker.join()
-        except Exception as exc:
-            log.critical("disconnect: Cannot terminate thread", exc_info=1)
-
         time.sleep(0.1)
         log.debug("disconnect: done")
-        self.thread = None
+        del self.thread
 
         self.connected = False
 

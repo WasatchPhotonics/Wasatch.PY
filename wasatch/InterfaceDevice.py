@@ -1,5 +1,10 @@
+import logging
+
 from .SpectrometerResponse import SpectrometerResponse
+from .SpectrometerResponse import ErrorLevel
 from .SpectrometerRequest  import SpectrometerRequest
+
+log = logging.getLogger(__name__)
 
 class InterfaceDevice:
     def __init__(self) -> None:
