@@ -36,7 +36,7 @@ class Workflow:
             return False
 
         device_id = bus.device_ids[0]
-        print("connecting to {device_id}")
+        print(f"connecting to {device_id}")
         device_id.device_type = RealUSBDevice(device_id)
         device = WasatchDevice(device_id)
         ok = device.connect()
