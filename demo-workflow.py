@@ -130,7 +130,7 @@ class Workflow:
         for pixel in peak_pixels:
             peak_cm = self.settings.wavenumbers[pixel]
             if abs(EXPECTED_PEAK - peak_cm) <= PEAK_TOLERANCE_CM:
-                print(f"found expected {EXPECTED_PEAK}cm⁻¹ at pixel {pixel} ({peak_cm}cm⁻¹)")
+                print(f"found expected {EXPECTED_PEAK}cm⁻¹ at pixel {pixel} ({peak_cm:0.2f}cm⁻¹)")
                 peak_pixel = pixel
                 break
 
