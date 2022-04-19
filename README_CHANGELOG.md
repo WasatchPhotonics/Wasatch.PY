@@ -1,4 +1,10 @@
 # Changelog
+
+- 2022-04-19 2.1.1
+    - restored automatic laser disable at connect
+    - restored automatic TEC enable at connect
+    - added demo-workflow.py
+    - added 'make pip-install-local'
 - 2022-04-06 2.1.0
     - Setup interface devices in new architecture
 - 2022-03-21 2.0.3
