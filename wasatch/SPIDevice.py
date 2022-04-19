@@ -17,14 +17,42 @@ usb.core.find()
 
 from .SpectrometerSettings        import SpectrometerSettings
 from .SpectrometerState           import SpectrometerState
+from .SpectrometerResponse        import SpectrometerResponse
+from .SpectrometerRequest         import SpectrometerRequest
+from .SpectrometerResponse        import ErrorLevel
 from .ControlObject               import ControlObject
 from .DeviceID                    import DeviceID
+from .InterfaceDevice             import InterfaceDevice
 from .Reading                     import Reading
 from .EEPROM                      import EEPROM
 
 log = logging.getLogger(__name__)
 
-class SPIDevice:
+class SPIDevice(InterfaceDevice):
+    """
+    This implements SPI communication via the FT232H usb converter.     
+
+    @todo convert the different asserts to SpectrometerResponse returns
+    ##########################################################################
+    This class adopts the external device interface structure
+    This involves receiving a request through the handle_request function
+    A request is processed based on the key in the request
+    The processing function passes the commands to the requested device
+    Once it receives a response from the connected device it then passes that
+    back up the chain
+                               Enlighten Request
+                                       |
+                                handle_requests
+                                       |
+                                 ------------
+                                /   /  |  \  \
+             { get_laser status, acquire, set_laser_watchdog, etc....}
+                                \   \  |  /  /
+                                 ------------
+                                       |
+                         {self.driver.some_andor_sdk_call}
+    ############################################################################
+    """
 
     INTEGRATION_ADDRESS = 0x11
 
@@ -104,7 +132,8 @@ class SPIDevice:
         self.settings.eeprom.parse(eeprom_pages)
         self.settings.eeprom.active_pixels_horizontal = 1952
         self.settings.state.integration_time_ms = 10
-        return True
+        log.info("SPI connect done, returning True")
+        return SpectrometerResponse(True)
 
     def disconnect(self):
         self.disconnect = True
@@ -145,7 +174,7 @@ class SPIDevice:
         reading.session_count = self.session_reading_count
         reading.sum_count = self.sum_count
 
-        return reading
+        return SpectrometerResponse(reading)
 
     def write_eeprom(self):
         try:
@@ -162,13 +191,20 @@ class SPIDevice:
         return True
 
     def EEPROMReadPage(self, page):
-        EEPROMPage  = bytearray(74)
-        command     = bytearray(7)
-        command     = [0x3C, 0x00, 0x02, 0xB0, (0x40 + page), 0xFF, 0x3E]
-        self.SPI.write(command, 0, 7)
-        time.sleep(0.01)
-        command = [0x3C, 0x00, 0x01, 0x31, 0xFF, 0x3E]
-        self.SPI.write_readinto(command, EEPROMPage)
+        while True:
+            EEPROMPage  = bytearray(74)
+            command     = bytearray(7)
+            command     = [0x3C, 0x00, 0x02, 0xB0, (0x40 + page), 0xFF, 0x3E]
+            self.SPI.write(command, 0, 7)
+            time.sleep(0.01)
+            command = [0x3C, 0x00, 0x01, 0x31, 0xFF, 0x3E]
+            self.SPI.write_readinto(command, EEPROMPage)
+            log.debug(f"read eeprom page of {EEPROMPage}")
+            if EEPROMPage[:6] == [0x3,0x3,0x3,0x3,0x3,0x3]:
+                log.info(f"trying to read page {page}, got response status of {EEPROMPage[:6]}")
+                continue
+            else:
+                break
         return EEPROMPage
 
     def set_integration_time_ms(self, value):

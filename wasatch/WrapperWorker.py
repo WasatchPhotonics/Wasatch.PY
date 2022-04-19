@@ -202,7 +202,7 @@ class WrapperWorker(threading.Thread):
                 elif self.is_andor:
                     (reading_response,) = self.andor_device.handle_requests([req])
                 elif self.is_spi:
-                    reading = self.spi_device.acquire_data()
+                    reading_response = self.spi_device.acquire_data()
                 elif self.is_ble:
                     (reading_response,) = self.ble_device.handle_requests([req])
                 else:
@@ -211,8 +211,8 @@ class WrapperWorker(threading.Thread):
             except Exception as exc:
                 log.critical("exception calling WasatchDevice.acquire_data", exc_info=1)
                 continue
-            if reading_response == None:
-                log.error(f"Got None reading response. Should not get naked response. Happened with request {req}")
+            if not isinstance(reading_response, SpectrometerResponse):
+                log.error(f"Reading is not type ReadingResponse. Should not get naked responses. Happened with request {req}")
                 continue
             log.debug(f"response {reading_response} data is {reading_response.data}")
 
