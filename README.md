@@ -42,6 +42,14 @@ settings, originally provided to simplify multi-process applications and summari
 
 - [Key-Value Settings](README_SETTINGS.md)
 
+# PyPi
+
+Looking for Wasatch.PY from `pip` ([PyPi](https://pypi.org/))?  Look no further!  The
+latest released version of Wasatch.PY can be loaded into your environment with a simple
+pip command:
+
+    $ pip install wasatch
+
 # Dependencies
 
 Wasatch.PY normally uses the Python 3.x build of [Miniconda](https://conda.io/miniconda.html)
