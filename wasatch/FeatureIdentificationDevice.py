@@ -726,12 +726,16 @@ class FeatureIdentificationDevice(InterfaceDevice):
             buffers.append(buf)
         return SpectrometerResponse(data=self.settings.eeprom.parse(buffers))
 
-    # @todo check for NaN
-    def _has_linearity_coeffs(self) -> bool:
+    def has_linearity_coeffs(self) -> bool:
         """
-        at least one linearity coeff is other than 0 or -1
+        At least one linearity coeff is other than 0 or -1 (and no NaN).
+
+        Public because used by wasatch-shell.
         """
         if self.settings.eeprom.linearity_coeffs:
+            for c in self.settings.eeprom.linearity_coeffs:
+                if math.isnan(c):
+                    return False
             for c in self.settings.eeprom.linearity_coeffs:
                 if c != 0 and c != -1:
                     return True
@@ -1287,7 +1291,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
     def get_secondary_adc_calibrated(self, raw: float = None) -> SpectrometerResponse:
         response = SpectrometerResponse()
-        if not self._has_linearity_coeffs():
+        if not self.has_linearity_coeffs():
             log.debug("secondary_adc_calibrated: no calibration")
             return SpectrometerResponse(data=None, error_lvl=ErrorLevel.low, error_msg="secondary_adc_calibrated: no calibration")
 

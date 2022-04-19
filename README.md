@@ -26,8 +26,9 @@ This shared library exemplifies one of our core values: we're all about
 [dogfooding](https://en.wikipedia.org/wiki/Eating_your_own_dog_food)!
 
 Finally, the updated project name reflects the fact that this is specifically a
-Python binding and implementation; for other USB-capable interfaces, see our
-[Wasatch.NET](https://github.com/WasatchPhotonics/Wasatch.NET/tree/master/WasatchNET)
+Python binding and implementation; for other USB-capable interfaces, see 
+[Wasatch.NET](https://github.com/WasatchPhotonics/Wasatch.NET),
+[Wasatch.VCPP](https://github.com/WasatchPhotonics/Wasatch.VCPP)
 and other [software drivers](https://wasatchphotonics.com/software-support/software-drivers/)!
 
 # API
@@ -36,15 +37,16 @@ Rendered API documentation for classes and methods is available here:
 
 - https://wasatchphotonics.com/api/Wasatch.PY/annotated.html
 
-A significant portion of Wasatch.PY's command interface is provided through key-value
-settings, provided to simplify multi-process applications and summarized here:
+A significant portion of Wasatch.PY's command interface is exposed through key-value
+settings, originally provided to simplify multi-process applications and summarized here:
 
 - [Key-Value Settings](README_SETTINGS.md)
 
 # Dependencies
 
-Wasatch.PY uses the Python 3.x build of [Miniconda](https://conda.io/miniconda.html)
-for dependencies and package management.
+Wasatch.PY normally uses the Python 3.x build of [Miniconda](https://conda.io/miniconda.html)
+for dependencies and package management.  It should work under either 32-bit or 64-bit
+Python.
 
 # Running the Demo
 
@@ -265,37 +267,6 @@ The following was tested under MacOS 10.13.2 ("High Sierra"):
     2018-01-22 16:45:12,635 MainProcess __main__ INFO     Reading:    3  Detector: 66.00 degC  Min:   829.00  Max:  3909.00  Avg:   941.80
     2018-01-22 16:45:13,637 MainProcess __main__ INFO     Reading:    4  Detector: 66.00 degC  Min:   829.00  Max:  3878.00  Avg:   940.21
 
-# Notes on Multiprocess Logging
-
-A standalone example of the multiprocess logging mechanism is extracted here for clarity:
-
-- https://github.com/WasatchPhotonics/ApplogDemo
-
-# Known Issues
-
-## Non-Blocking doesn't work on MacOS
-
-MacOS doesn't allow usb.core.find() to be called from a forked background process.
-This is the error message you get:
-
-    "The process has forked and you cannot use this CoreFoundation functionality 
-     safely. You MUST exec()."
-
-It probably traces back to this:
-
-https://discussions.apple.com/message/5829688#message5829688
-
-Will investigate workarounds pending prioritization, but since the default
-blocking mode works, this shouldn't be a major problem until we port ENLIGHTEN 
-to MacOS.
-
-## applog leaks on Linux
-
-If you run demo.py with "--log-level DEBUG --delay-ms 0" for extended periods on
-Linux, you may see the memory size creeping up.  This has been observed under 
-Python 2.7 and 3.4 on Ubuntu 16, but not on Windows or MacOS.  Currently under 
-investigation.
-
 # Common Errors
 
 ## PyUSB usb.core error: No backend available (Windows)
@@ -316,29 +287,7 @@ Using [Homebrew](https://brew.sh/), type:
 # Backlog
 
 - update .inf files to deprecate "Stroker"
-- package as a PyPi (pip) module
-
-## PyPi 
-
-Simplify OEM interface to something more like:
-
-    import wasatchphotonics as wp
-    
-    # make everything more like Wasatch.NET
-    spec_count = wp.get_spectrometer_count()
-    if spec_count < 1:
-        raise("no spectrometers found")
-
-    # default to blocking (WasatchDevice), allow override to non-blocking (WasatchDeviceWrapper)
-    spec = wp.get_spectrometer(0, blocking=False) 
-
-    # support both "settings" and functional API either way
-    spec.change_setting("laser_enable", True) 
-    spec.set_integration_time_ms(1000)        
-
-    spectrum = spec.get_spectrum()            
 
 # Version History
 
 See [Changelog](README_CHANGELOG.md)
-
