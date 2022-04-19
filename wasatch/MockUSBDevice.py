@@ -103,7 +103,7 @@ class MockUSBDevice(AbstractUSBDevice):
         return [random.randint(0,255)]*2
 
     def cmd_get_detect_temp(self, *args):
-        return [0, random.randint(0,255)]
+        return [0, random.randint(1,255)] # 1-255, dont return a 0
 
     def cmd_get_raw_ambient_temp(self, *args):
         return [random.randint(0,255)]*2
@@ -323,6 +323,8 @@ class MockUSBDevice(AbstractUSBDevice):
             except:
                 log.error(f"Unable to set {key} on eeprom object")
         self.eeprom_obj.generate_write_buffers()
+        if self.eeprom.get("format", None):
+            self.eeprom_obj.write_buffers[0][63] = self.eeprom["format"]
 
     def get_default_data_dir(self):
         return os.getcwd()

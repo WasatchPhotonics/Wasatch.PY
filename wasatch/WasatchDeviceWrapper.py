@@ -12,6 +12,8 @@ from . import applog
 from . import utils
 
 from .SpectrometerSettings import SpectrometerSettings
+from .SpectrometerResponse import SpectrometerResponse
+from .SpectrometerResponse import ErrorLevel
 from .ControlObject        import ControlObject
 from .WrapperWorker        import WrapperWorker
 from .BLEDevice            import BLEDevice
@@ -129,7 +131,7 @@ log = logging.getLogger(__name__)
 # - Reading.copy() doesn't help
 # - exc_clear() doesn't help
 #
-class WasatchDeviceWrapper(object):
+class WasatchDeviceWrapper:
 
     ACQUISITION_MODE_KEEP_ALL      = 0 # don't drop frames
     ACQUISITION_MODE_LATEST        = 1 # only grab most-recent frame (allow dropping)
@@ -178,6 +180,7 @@ class WasatchDeviceWrapper(object):
         self.is_spi       = '0x0403' in str(device_id)
         self.mock         = 'test' in str(device_id)
         self.is_ble       = isinstance(device_id.device_type, BLEDevice)
+        self.connect_start_time = datetime.datetime(year=datetime.MAXYEAR, month=1, day=1)
 
         # this will contain a populated SpectrometerSettings object from the
         # WasatchDevice, for relay to the instantiating Controller
@@ -256,53 +259,25 @@ class WasatchDeviceWrapper(object):
         kill_myself = False
 
         # expect to read a single post-initialization SpectrometerSettings object off the queue
-        time_start = datetime.datetime.now()
-        settings_timeout_sec = 15
-        if self.is_ble:
-            settings_timeout_sec += 10
+        self.connect_start_time = datetime.datetime.now()
         self.settings = None
         log.debug("connect: blocking on settings_queue (waiting on child thread to send SpectrometerSettings)")
-        while True:
-            if not self.settings_queue.empty():
-                self.settings = self.settings_queue.get_nowait()
-                break
 
-            if (datetime.datetime.now() - time_start).total_seconds() > settings_timeout_sec:
-                log.error("connect: gave up waiting for SpectrometerSettings")
-                kill_myself = True
-                break
-            else:
-                log.debug("connect: still waiting for SpectrometerSettings")
-                time.sleep(0.1)
-
-        if self.settings is None:
-            log.error("connect: received poison-pill from child thread")
-            kill_myself = True
-
-        if kill_myself:
-            # Apparently something failed in initialization of the device, and it
-            # never succeeded in sending a SpectrometerSettings object. Do our best to
-            # kill the thread
-
-            # MZ: should this bit be merged with disconnect()?
-            self.settings = None
-            self.closing = True
-
-            log.warn("connect: releasing thread")
-            return False
-
-        # AttributeError: 'AutoProxy[Queue]' object has no attribute 'close'
-        del self.settings_queue
-
-        log.info("connect: received SpectrometerSettings from child")
-
-        # After we return True, the Controller will then take a handle to our received
-        # settings object, and will keep a reference to this Wrapper object for sending
-        # commands and reading spectra.
-        log.debug("connect: succeeded")
-        self.connected = True
+        log.debug("connect: setup connection, returning to controller for settings polling")
 
         return True
+
+    def poll_settings(self):
+        log.debug("polling device settings")
+        if not self.settings_queue.empty():
+            log.info(f"got spectrometer settings for device, returning settings to controller")
+            self.connected = True
+            self.settings = self.settings_queue.get_nowait()
+            self.connect_start_time = datetime.datetime(year=datetime.MAXYEAR, month=1, day=1)
+            return self.settings
+        else:
+            log.debug("settings still not obtained, returning")
+            return None
 
     def disconnect(self):
         # send poison pill to the child
@@ -312,14 +287,9 @@ class WasatchDeviceWrapper(object):
             self.command_queue.put(None) 
         except:
             pass
-        try:
-            self.wrapper_worker.join()
-        except Exception as exc:
-            log.critical("disconnect: Cannot terminate thread", exc_info=1)
-
         time.sleep(0.1)
         log.debug("disconnect: done")
-        self.thread = None
+        del self.thread
 
         self.connected = False
 
@@ -390,8 +360,8 @@ class WasatchDeviceWrapper(object):
     # In the currently implementation, it seems unlikely that a "True" will ever
     # be passed up (we're basically converting them to None here).
     def get_final_item(self, keep_averaged=False):
-        last_reading  = None
-        last_averaged = None
+        last_reading  = SpectrometerResponse()
+        last_averaged = SpectrometerResponse()
         dequeue_count = 0
 
         # kludge - memory profiling
@@ -402,31 +372,33 @@ class WasatchDeviceWrapper(object):
         while True:
             # without waiting (don't block), just get the first item off the
             # queue if there is one
-            reading = None
+            wrapper_reading = SpectrometerResponse()
             if not self.response_queue.empty():
-                reading = self.response_queue.get_nowait()
+                wrapper_reading = self.response_queue.get_nowait()
             else:
                 # If there is nothing more to read, then we've emptied the queue
+                log.debug("get_final has nothing more to read, sending up readings")
                 break
+
+            # If we come across a keep_alive, ignore it for the moment.
+            # for now continue cleaning-out the queue.
+            if wrapper_reading.keep_alive or wrapper_reading.data is None:
+                # If that keep alive is associated with an error though float it up
+                if wrapper_reading.keep_alive and wrapper_reading.error_msg:
+                    last_reading = wrapper_reading
+                    break
+                log.debug("get_final_item: ignoring keepalive")
+                continue
 
             # If we come across a poison-pill, flow that up immediately --
             # game-over, we're done
-            if isinstance(reading, bool) and reading == False:
+            if wrapper_reading.poison_pill:
                 log.critical("get_final_item: poison-pill!")
-                reading = None
-                return False
-
-            # If we come across a NONE or a True, ignore it for the moment.
-            # Returning "None" will always be the "default" action at the
-            # end, so for now continue cleaning-out the queue.
-            if reading is None or isinstance(reading, bool):
-                log.debug("get_final_item: ignoring keepalive")
-                reading = None
-                continue
+                return wrapper_reading
 
             # apparently we read a Reading
-            log.debug("get_final_item: read Reading %s", str(reading.session_count))
-            last_reading = reading
+            log.debug("get_final_item: read Reading %s", str(wrapper_reading.data.session_count))
+            last_reading = wrapper_reading
             dequeue_count += 1
 
             # Was this the final spectrum in an averaged sequence?
@@ -437,16 +409,16 @@ class WasatchDeviceWrapper(object):
             # It is the purpose of this function ("get FINAL item...")
             # to PURGE THE QUEUE -- we are not intending to leave any
             # values in the queue (None, bool, or Readings of any kind.
-            if keep_averaged and reading.averaged:
-                last_averaged = reading
+            if keep_averaged and wrapper_reading.data.averaged:
+                last_averaged = wrapper_reading
 
-            reading = None
-        reading = None
 
-        if last_reading is None:
+        if last_reading.data is None:
+            log.debug("wrapper worker floating up keep alive last reading")
             # apparently we didn't read anything...just pass up a keepalive
             last_averaged = None
-            return None
+            last_reading.keep_alive = True
+            return last_reading
 
         # apparently we read at least some readings.  For interest, how how many
         # readings did we throw away (not return up to ENLIGHTEN)?
@@ -455,7 +427,7 @@ class WasatchDeviceWrapper(object):
 
         # if we're doing averaging, and we found one or more averaged readings,
         # return the latest of those
-        if last_averaged is not None:
+        if last_averaged.data is not None:
             if WasatchDeviceWrapper.DISABLE_RESPONSE_QUEUE:
                 self.previous_reading = last_averaged
             last_reading = None
