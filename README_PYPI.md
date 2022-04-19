@@ -20,11 +20,7 @@
 
 # Uploading with FLIT
 
-We use flit to upload our package. You shouldn't need to run `flit init` since that
-has already setup the .toml and other initialization files are included.
-
-To make uploading easier, an example .pypirc has been included. This needs to be 
-moved to your $HOME or ~ directory in order to allow you to use it.
+We use flit to upload our package to PyPi repositories. 
 
 ## Initial FLIT configuration
 
@@ -33,14 +29,25 @@ You need to register accounts at both testpypi and pypi:
 - https://test.pypi.org/account/register/
 - https://pypi.org/account/register/
 
+You shouldn't need to run `flit init` since that has already setup the .toml and
+other initialization files are included.
+
+To make uploading easier, an example .pypirc has been included. This needs to be 
+moved to your $HOME or ~ directory in order to allow you to use it.
+
+    $ cp .example_pypirc ~/.pypirc
+    $ vi ~/.pypirc     (replace USERNAME with your registered username)
+
+You can also use `keyring set pip USERNAME` to store your pypi password.
+
 ## Publish to testpypi (beta testing)
 
-This lets you run `flit publish --repository testpypi` so you can upload to the 
-test index before uploading to pypi.
+Run `flit publish --repository testpypi` so you can upload to the test index 
+before uploading to the "public, global, default" pypi repository.
 
 ## Publish to pypi (standard pip repository)
 
-When you are ready to publish run `flit publish` or `flit publish --repository pypi`
+When you are ready to publish run `flit publish` or `flit publish --repository pypi`.
 
 # Installing 'wasatch' package from source
 
