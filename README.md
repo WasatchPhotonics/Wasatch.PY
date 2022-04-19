@@ -50,6 +50,12 @@ pip command:
 
     $ pip install wasatch
 
+Package info:
+
+- https://pypi.org/project/wasatch/
+
+For more information about PyPi package management, see [README_PYPI](README_PYPI.md).
+
 # Dependencies
 
 Wasatch.PY normally uses the Python 3.x build of [Miniconda](https://conda.io/miniconda.html)
