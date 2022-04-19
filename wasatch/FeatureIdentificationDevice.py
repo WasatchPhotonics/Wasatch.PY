@@ -254,6 +254,17 @@ class FeatureIdentificationDevice(InterfaceDevice):
             self.connecting = False
             return SpectrometerResponse(False)
 
+        # ######################################################################
+        # Laser
+        # ######################################################################
+
+        if self.settings.eeprom.has_laser:
+            self.set_laser_enable(False)
+
+        # ######################################################################
+        # Detector TEC
+        # ######################################################################
+
         degC = UNINITIALIZED_TEMPERATURE_DEG_C;
         eeprom = self.settings.eeprom
         if (eeprom.startup_temp_degC >= eeprom.min_temp_degC and 
@@ -271,8 +282,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
             self.set_detector_tec_setpoint_degC(self.detector_tec_setpoint_degC)
 
             log.debug("enabling detector TEC")
-            #detector_tec_enabled = true
             self.detector_tec_setpoint_has_been_set = True
+            self.set_tec_enable(True)
 
         # ######################################################################
         # FPGA
