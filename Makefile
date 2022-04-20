@@ -21,3 +21,12 @@ clean:
             doxygen.out \
             doxygen.err
 	@find . -name \*.pyc -exec rm {} \;
+
+################################################################################
+# The following are provided as convenience / documentation for people not 
+# familiar with building PyPi packages
+################################################################################
+
+pip-install-local:
+	pip install $$PWD
+
