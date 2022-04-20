@@ -3,10 +3,11 @@ import os
 import usb
 import time
 import json
-import queue
 import struct
 import logging
 import datetime
+from queue import Queue
+from typing import Callable, Any
 
 # Needed for Mac side
 # Device Finder should already have done this
@@ -56,8 +57,9 @@ class SPIDevice(InterfaceDevice):
 
     INTEGRATION_ADDRESS = 0x11
 
-    def __init__(self, device_id, message_queue):
+    def __init__(self, device_id: DeviceID, message_queue: Queue) -> None:
         # if passed a string representation of a DeviceID, deserialize it
+        super().__init__()
         try:
             import board
             import time
@@ -94,7 +96,6 @@ class SPIDevice(InterfaceDevice):
         self.last_memory_check = datetime.datetime.now()
         self.last_battery_percentage = 0
         self.lambdas = None
-        self.init_lambdas()
         self.spec_index = 0 
         self._scan_averaging = 1
         self.dark = None
@@ -118,14 +119,15 @@ class SPIDevice(InterfaceDevice):
 
         # Configure the SPI bus
         self.SPI.configure(baudrate=20000000, phase=0, polarity=0, bits=8)
+        self.process_f = self._init_process_funcs()
 
-    def connect(self):
+    def connect(self) -> SpectrometerResponse:
         eeprom_pages = []
         for i in range(EEPROM.MAX_PAGES):
             response = bytearray(2)
             while self.ready.value:
                 self.SPI.readinto(response,0,2)
-            page = self.EEPROMReadPage(i)
+            page = self._EEPROMReadPage(i)
             log.info(f"spi read page {i} with data {page}")
             eeprom_pages.append(page)
         eeprom_pages = [bytearray([val for val in page[9:74]]) for page in eeprom_pages]
@@ -135,11 +137,11 @@ class SPIDevice(InterfaceDevice):
         log.info("SPI connect done, returning True")
         return SpectrometerResponse(True)
 
-    def disconnect(self):
+    def disconnect(self) -> SpectrometerResponse:
         self.disconnect = True
-        return True
+        return SpectrometerResponse(True)
 
-    def acquire_data(self):
+    def acquire_data(self) -> SpectrometerResponse:
         log.debug("spi starts reading")
         if self.disconnect:
             log.debug("disconnecting, returning False for the spectrum")
@@ -152,7 +154,7 @@ class SPIDevice(InterfaceDevice):
             reading.laser_power_perc    = self.settings.state.laser_power_perc
             reading.laser_power_mW      = self.settings.state.laser_power_mW
             reading.laser_enabled       = self.settings.state.laser_enabled
-            reading.spectrum            = self.Acquire()
+            reading.spectrum            = self._Acquire()
             if reading.spectrum == False:
                 return False
         except usb.USBError:
@@ -170,13 +172,36 @@ class SPIDevice(InterfaceDevice):
                 self.sum_count += 1
                 log.debug("device.take_one_averaged_reading: summed_spectra : %s ...", self.summed_spectra[0:9])
 
+        if self.settings.eeprom.bin_2x2:
+            # perform the 2x2 bin software side
+            next_idx_values = reading.spectrum[1:]
+            # average all except the last value, which is just appended as is
+            binned = [(value + next_value)/2 for value, next_value in zip(reading.spectrum[:-1], next_idx_values)]
+            binned.append(reading.spectrum[-1])
+            reading.spectrum = binned
+                
+
         self.session_reading_count += 1
         reading.session_count = self.session_reading_count
         reading.sum_count = self.sum_count
 
+        if averaging_enabled:
+            if self.sum_count >= self.settings.state.scans_to_average:
+                reading.spectrum = [ x / self.sum_count for x in self.summed_spectra ]
+                log.debug("spi device acquire data: averaged_spectrum : %s ...", reading.spectrum[0:9])
+                reading.averaged = True
+
+                # reset for next average
+                self.summed_spectra = None
+                self.sum_count = 0
+        else:
+            # if averaging isn't enabled...then a single reading is the
+            # "averaged" final measurement (check reading.sum_count to confirm)
+            reading.averaged = True
+
         return SpectrometerResponse(reading)
 
-    def write_eeprom(self):
+    def write_eeprom(self) -> SpectrometerResponse:
         try:
             self.settings.eeprom.generate_write_buffers()
         except:
@@ -185,12 +210,12 @@ class SPIDevice(InterfaceDevice):
             return False
 
         for page in range(EEPROM.MAX_PAGES):
-            self.EEPROMWritePage(page,self.settings.eeprom.write_buffers[page])
+            self._EEPROMWritePage(page,self.settings.eeprom.write_buffers[page])
 
         #self.message_queue("marquee_info", "EEPROM successfully updated")
-        return True
+        return SpectrometerResponse(True)
 
-    def EEPROMReadPage(self, page):
+    def _EEPROMReadPage(self, page: int) -> list[bytes]:
         while True:
             EEPROMPage  = bytearray(74)
             command     = bytearray(7)
@@ -207,14 +232,15 @@ class SPIDevice(InterfaceDevice):
                 break
         return EEPROMPage
 
-    def set_integration_time_ms(self, value):
+    def set_integration_time_ms(self, value: int) -> SpectrometerResponse:
         while self.acquiring:
             time.sleep(0.01)
             continue
-        self.SPIWrite(value, self.INTEGRATION_ADDRESS)
+        self._SPIWrite(value, self.INTEGRATION_ADDRESS)
         self.settings.state.integration_time_ms = value
+        return SpectrometerResponse()
 
-    def SPIWrite(self, value, address):
+    def _SPIWrite(self, value: int, address: int) -> None:
         command = bytearray(8)
         # Convert the int into bytes.
         txData = bytearray(2)
@@ -228,7 +254,7 @@ class SPIDevice(InterfaceDevice):
         self.SPI.write(command, 0, 8)
         time.sleep(0.01)
 
-    def EEPROMWritePage(self, page, write_array):
+    def _EEPROMWritePage(self, page: int, write_array: list[bytes]) -> None:
         #write_array = [str(item) for item in write_array]
         command     = bytearray(7)
         EEPROMWrCmd = bytearray(70)
@@ -255,7 +281,7 @@ class SPIDevice(InterfaceDevice):
             f(value)
         return True
 
-    def Acquire(self):
+    def _Acquire(self) -> list[int]:
         if self.disconnect:
             return False
         self.acquiring = True
@@ -286,11 +312,20 @@ class SPIDevice(InterfaceDevice):
         self.acquiring = False
         return spectra
 
-    def init_lambdas(self):
-        f = {}
+    def _init_process_funcs(self) -> dict[str, Callable[..., Any]]:
+        process_f = {}
 
-        f["write_eeprom"]                       = lambda x: self.write_eeprom()
-        f["replace_eeprom"]                     = lambda x: self.write_eeprom()
-        f["integration_time_ms"]                = lambda x: self.set_integration_time_ms(x)
+        process_f["connect"] = self.connect
+        process_f["disconnect"] = self.disconnect
+        process_f["acquire_data"] = self.acquire_data
+        process_f["set_integration_time_ms"] = self.set_integration_time_ms
+        ##################################################################
+        # What follows is the old init-lambdas that are squashed into process_f
+        # Long term, the upstream requests should be changed to match the new format
+        # This is an easy fix for the time being to make things behave
+        ##################################################################
+        process_f["write_eeprom"]                       = lambda x: self.write_eeprom()
+        process_f["replace_eeprom"]                     = lambda x: self.write_eeprom()
+        process_f["integration_time_ms"]                = lambda x: self.set_integration_time_ms(x)
 
-        self.lambdas = f
+        return process_f 

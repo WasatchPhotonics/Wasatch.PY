@@ -97,7 +97,7 @@ class WrapperWorker(threading.Thread):
         elif self.is_andor:
             (ok,) = self.andor_device.handle_requests([req])
         elif self.is_spi:
-            ok = self.spi_device.connect()
+            (ok,) = self.spi_device.handle_requests([req])
         elif self.is_ble:
             (ok,) = self.ble_device.handle_requests([req])
         else:
@@ -167,7 +167,8 @@ class WrapperWorker(threading.Thread):
                             req = SpectrometerRequest(record.setting, args=[record.value])
                             self.andor_device.handle_requests([req])
                         elif self.is_spi:
-                            self.spi_device.change_setting(record.setting, record.value)
+                            req = SpectrometerRequest(record.setting, args=[record.value])
+                            self.spi_device.handle_requests([req])
                         elif self.is_ble:
                             req = SpectrometerRequest(record.setting, args=[record.value])
                             self.ble_device.handle_requests([req])
@@ -202,7 +203,7 @@ class WrapperWorker(threading.Thread):
                 elif self.is_andor:
                     (reading_response,) = self.andor_device.handle_requests([req])
                 elif self.is_spi:
-                    reading_response = self.spi_device.acquire_data()
+                    (reading_response,) = self.spi_device.handle_requests([req])
                 elif self.is_ble:
                     (reading_response,) = self.ble_device.handle_requests([req])
                 else:
