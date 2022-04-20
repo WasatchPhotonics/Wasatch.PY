@@ -2,13 +2,16 @@ import threading
 import datetime
 import logging
 import time
+from queue import Queue
 
 from .SpectrometerResponse import SpectrometerResponse
 from .SpectrometerRequest  import SpectrometerRequest
 from .SpectrometerResponse import ErrorLevel
 from .WasatchDevice        import WasatchDevice
+from .ControlObject        import ControlObject
 from .AndorDevice          import AndorDevice
 from .OceanDevice          import OceanDevice
+from .BLEDevice            import BLEDevice
 from .Reading              import Reading
 
 log = logging.getLogger(__name__)
@@ -58,44 +61,38 @@ class WrapperWorker(threading.Thread):
     # All communications with the parent thread are routed through
     # one of the three queues (cmd inputs, response outputs, and
     # a one-shot SpectrometerSettings).
-    def run(self):
-        if self.is_ocean:
-            self.ocean_device = OceanDevice(
-                device_id = self.device_id,
-                message_queue = self.message_queue)
-        elif self.is_andor:
-            self.andor_device = AndorDevice(
-                device_id = self.device_id,
-                message_queue = self.message_queue
-                )
-        elif self.is_ble:
-            self.ble_device = self.device_id.device_type
-            self.ble_device.disconnect = False
-        else:
-            try:
+    def run(self) -> None:
+        is_options = [self.is_ocean, self.is_andor, self.is_ble]
+        device_classes = [OceanDevice, AndorDevice, BLEDevice, WasatchDevice]
+        try:
+            log.debug(f"trying to instantiate device")
+            if any(is_options):
+                type_connection = is_options.index(True)
+                connecting_class = device_classes[type_connection]
+                if connecting_class == BLEDevice:
+                    self.connected_device = self.device_id.device_type
+                    self.connected_device.disconnect = False
+                else:
+                    self.connected_device = device_classes[3](
+                        device_id = self.device_id,
+                        message_queue = self.message_queue)
+            else:
                 log.debug("instantiating WasatchDevice")
-                self.wasatch_device = WasatchDevice(
+                self.connected_device = device_classes[3](
                     device_id = self.device_id,
                     message_queue = self.message_queue)
-            except:
-                log.critical("exception instantiating WasatchDevice", exc_info=1)
+        except:
+                log.critical("exception instantiating device", exc_info=1)
                 return self.settings_queue.put(None) 
 
         log.debug("calling connect")
         ok = False
         req = SpectrometerRequest("connect")
-        if self.is_ocean:
-            (ok,) = self.ocean_device.handle_requests([req])
-        elif self.is_andor:
-            (ok,) = self.andor_device.handle_requests([req])
-        elif self.is_ble:
-            (ok,) = self.ble_device.handle_requests([req])
-        else:
-            try:
-                ok = self.wasatch_device.connect()
-            except:
-                log.critical("exception connecting", exc_info=1)
-                return self.settings_queue.put(None) # put(None, timeout=2)
+        try:
+            (ok,) = self.connected_device.handle_requests([req])
+        except:
+            log.critical("exception connecting", exc_info=1)
+            return self.settings_queue.put(None) # put(None, timeout=2)
 
         if not ok.data:
             log.critical("failed to connect")
@@ -105,14 +102,7 @@ class WrapperWorker(threading.Thread):
 
         # send the SpectrometerSettings back to the GUI thread
         log.debug("returning SpectrometerSettings to parent")
-        if self.is_ocean:
-            self.settings_queue.put_nowait(self.ocean_device.settings)
-        elif self.is_andor:
-            self.settings_queue.put_nowait(self.andor_device.settings)
-        elif self.is_ble:
-            self.settings_queue.put_nowait(self.ble_device.settings)  
-        else:
-            self.settings_queue.put_nowait(self.wasatch_device.settings)
+        self.settings_queue.put_nowait(self.connected_device.settings)
 
         log.debug("entering loop")
         last_command = datetime.datetime.now()
@@ -148,18 +138,9 @@ class WrapperWorker(threading.Thread):
                         # WasatchDeviceWrapper.command_queue to WasatchDevice.command_queue,
                         # where it gets read during the next call to
                         # WasatchDevice.acquire_data.
-                        if self.is_ocean:
-                            req = SpectrometerRequest(record.setting, args=[record.value])
-                            self.ocean_device.handle_requests([req])
-                        elif self.is_andor:
-                            req = SpectrometerRequest(record.setting, args=[record.value])
-                            self.andor_device.handle_requests([req])
-                        elif self.is_ble:
-                            req = SpectrometerRequest(record.setting, args=[record.value])
-                            self.ble_device.handle_requests([req])
-                        else:
-                            self.wasatch_device.change_setting(record.setting, record.value)
-
+                        req = SpectrometerRequest(record.setting, args=[record.value])
+                        self.connected_device.handle_requests([req])
+ 
                         # peek in some settings locally
                         if record.setting == "num_connected_devices":
                             num_connected_devices = record.value
@@ -183,14 +164,7 @@ class WrapperWorker(threading.Thread):
                 # shutdown.
                 log.debug("acquiring data")
                 req = SpectrometerRequest("acquire_data")
-                if self.is_ocean:
-                    (reading_response,) = self.ocean_device.handle_requests([req])
-                elif self.is_andor:
-                    (reading_response,) = self.andor_device.handle_requests([req])
-                elif self.is_ble:
-                    (reading_response,) = self.ble_device.handle_requests([req])
-                else:
-                    reading_response = self.wasatch_device.acquire_data()
+                (reading_response,) = self.connected_device.handle_requests([req])
                 #log.debug("continuous_poll: acquire_data returned %s", str(reading))
             except Exception as exc:
                 log.critical("exception calling WasatchDevice.acquire_data", exc_info=1)
@@ -249,7 +223,7 @@ class WrapperWorker(threading.Thread):
 
         log.critical("done")
 
-    def dedupe(self, q):
+    def dedupe(self, q: Queue) -> list[ControlObject]:
         keep = [] # list, not a set, because we want to keep it ordered
         while True:
             if not q.empty():
