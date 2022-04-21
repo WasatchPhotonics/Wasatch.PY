@@ -141,7 +141,7 @@ class BLEDevice(InterfaceDevice):
             buf.append(laser_type)
             buf.append(value)
             buf.append(laser_watchdog)
-            await self.client.write_gatt_char(LASER_STATE_UUID, buf)
+            await self.client.write_gatt_char(LASER_STATE_UUID, buf, response = True)
         except Exception as e:
             log.error(f"Error trying to set laser {e}")
             return SpectrometerResponse(False,error_msg="error setting laser",error_lvl=ErrorLevel.high)
@@ -176,7 +176,7 @@ class BLEDevice(InterfaceDevice):
             buf.extend(b_start)
             buf.extend(b_end)
             log.debug(f"making BLE call to set vertical roi to {buf}")
-            await self.client.write_gatt_char(DETECTOR_ROI_UUID, buf)
+            await self.client.write_gatt_char(DETECTOR_ROI_UUID, buf, response = True)
         except Exception as e:
             log.error(f"error trying to set vertical over ble of {e} with values {start} and {end}")
             return SpectrometerResponse(False, error_msg="error trying to set roi", error_lvl=ErrorLevel.low)
@@ -186,7 +186,7 @@ class BLEDevice(InterfaceDevice):
         log.debug(f"BLE setting int time to {value}")
         try:
             value_bytes = value.to_bytes(2, byteorder='big')
-            await self.client.write_gatt_char(INT_UUID, value_bytes)
+            await self.client.write_gatt_char(INT_UUID, value_bytes, response = True)
         except Exception as e:
             log.error(f"Error trying to write int time {e}")
             return SpectrometerResponse(False, error_msg="error setting int time", error_lvl=ErrorLevel.low)
@@ -208,7 +208,7 @@ class BLEDevice(InterfaceDevice):
             msb = int(value)
             lsb = int((value - int(value)) * 256) & 0xff
             value_bytes = ((msb << 8) | lsb).to_bytes(2, byteorder='big')
-            await self.client.write_gatt_char(GAIN_UUID, value_bytes)
+            await self.client.write_gatt_char(GAIN_UUID, value_bytes, response = True)
         except Exception as e:
             log.error(f"Error trying to write gain {e}")
             return SpectrometerResponse(False, error_msg="error trying to write gain", error_lvl=ErrorLevel.medium)
@@ -218,7 +218,7 @@ class BLEDevice(InterfaceDevice):
         if self.disconnect:
             log.debug("ble spec is set to disconnect, returning False")
             return SpectrometerResponse(False)
-        request = await self.client.write_gatt_char(DEVICE_ACQUIRE_UUID, bytes(0))
+        request = await self.client.write_gatt_char(DEVICE_ACQUIRE_UUID, bytes(0), response = True)
         pixels = self.settings.eeprom.active_pixels_horizontal
         request_retry = False
         averaging_enabled = (self.settings.state.scans_to_average > 1)
@@ -269,7 +269,7 @@ class BLEDevice(InterfaceDevice):
 
             log.debug(f"requesting spectrum packet starting at pixel {self.pixels_read}")
             request = self.pixels_read.to_bytes(2, byteorder="big")
-            await self.client.write_gatt_char(SPECTRUM_PIXELS_UUID, request)
+            await self.client.write_gatt_char(SPECTRUM_PIXELS_UUID, request, response = True)
 
             log.debug(f"reading spectrumChar (pixelsRead {self.pixels_read})");
             response = await self.client.read_gatt_char(READ_SPECTRUM_UUID)
@@ -368,7 +368,7 @@ class BLEDevice(InterfaceDevice):
             for j in range(EEPROM.SUBPAGE_COUNT):
                 page_ids = bytearray([i, j])
                 log.debug(f"Writing to tell gateway to get page {i} ands subpage {j}")
-                request = await self.client.write_gatt_char(SELECT_EEPROM_PAGE_UUID, page_ids)
+                request = await self.client.write_gatt_char(SELECT_EEPROM_PAGE_UUID, page_ids, response = True)
                 log.debug("Attempting to read page data")
                 response = await self.client.read_gatt_char(READ_EEPROM_UUID)
                 for byte in response:
