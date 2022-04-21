@@ -1,5 +1,8 @@
 # Changelog
 
+- 2022-04-21 2.1.2
+    - fix brake in BLE functions
+    - refactor wrapper worker to not us if, elif, elif ... for each device type
 - 2022-04-19 2.1.1
     - restored automatic laser disable at connect
     - restored automatic TEC enable at connect
