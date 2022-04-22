@@ -1,7 +1,13 @@
 # Changelog
 
 - 2022-04-22 2.1.3
-    - search for Andor DLLs in various locations
+    - Andor updates
+        - search for DLL in various locations
+        - support startup\_integration\_time\_ms and startup\_temp\_degC in JSON 
+        - default startup\_temp\_degC to -55C if not specified in JSON
+        - added DeviceID.is_andor()
+        - populate SpectrometerState.shutter_enable
+    - respect array length in EEPROM.generate\_write\_buffers 
 - 2022-04-19 2.1.2
     - added NaN check to has\_linearity\_coeffs (and made public)
 - 2022-04-19 2.1.1

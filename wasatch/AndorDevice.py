@@ -116,6 +116,8 @@ class AndorDevice(InterfaceDevice):
         self.settings.eeprom.detector = "Andor" # Andor API doesn't have access to detector info
         self.settings.eeprom.wavelength_coeffs = [0,1,0,0]
         self.settings.eeprom.has_cooling = True
+        self.settings.eeprom.startup_integration_time_ms = 10
+        self.settings.eeprom.startup_temp_degC = -55
 
         self.process_f = self._init_process_funcs()
 
@@ -292,11 +294,13 @@ class AndorDevice(InterfaceDevice):
         return SpectrometerResponse(data=reading)
 
     def _close_ex_shutter(self) -> SpectrometerResponse:
-        assert(self.SUCCESS == self.driver.SetShutterEx(1, 1, self.SHUTTER_SPEED_MS, self.SHUTTER_SPEED_MS, 2)), "unable to set external shutter"
+        assert(self.SUCCESS == self.driver.SetShutterEx(1, 1, self.SHUTTER_SPEED_MS, self.SHUTTER_SPEED_MS, 2)), "unable to close external shutter"
+        self.settings.state.shutter_enabled = False
         return SpectrometerResponse(True)
 
     def _open_ex_shutter(self) -> SpectrometerResponse:
-        assert(self.SUCCESS == self.driver.SetShutterEx(1, 1, self.SHUTTER_SPEED_MS, self.SHUTTER_SPEED_MS, 1)), "unable to set external shutter"
+        assert(self.SUCCESS == self.driver.SetShutterEx(1, 1, self.SHUTTER_SPEED_MS, self.SHUTTER_SPEED_MS, 1)), "unable to open external shutter"
+        self.settings.state.shutter_enabled = True
         return SpectrometerResponse(True)
 
     ###############################################################
@@ -331,8 +335,17 @@ class AndorDevice(InterfaceDevice):
         else:
             f = open(self.config_file,)
             self.config_values = dict(json.load(f))
-            self.settings.eeprom.wavelength_coeffs = self.config_values['wavelength_coeffs']
-            self.settings.eeprom.excitation_nm_float = self.config_values['excitation_nm_float']
+
+            # optional overrides
+            if "wavelength_coeffs" in self.config_values:
+                self.settings.eeprom.wavelength_coeffs = self.config_values['wavelength_coeffs']
+            if "excitation_nm_float" in self.config_values:
+                self.settings.eeprom.excitation_nm_float = self.config_values['excitation_nm_float']
+            if 'startup_temp_degC' in self.config_values:
+                self.settings.eeprom.startup_temp_degC = self.config_values['startup_temp_degC']
+                self.set_tec_setpoint(self.settings.eeprom.startup_temp_degC)
+            if 'startup_integration_time_ms' in self.config_values:
+                self.settings.eeprom.startup_integration_time_ms = self.config_values['startup_integration_time_ms']
 
         assert(self.SUCCESS == self.driver.CoolerON()), "unable to enable TEC"
         log.debug("enabled TEC")
@@ -349,14 +362,13 @@ class AndorDevice(InterfaceDevice):
         self.init_detector_speed()
 
         assert(self.SUCCESS == self.driver.SetShutterEx(1, 1, self.SHUTTER_SPEED_MS, self.SHUTTER_SPEED_MS, 0)), "unable to set external shutter"
+        self.settings.state.shutter_enabled = True
         log.debug("set shutter to fully automatic external with internal always open")
 
-        self.set_integration_time_ms(10)
+        self.set_integration_time_ms(self.settings.eeprom.startup_integration_time_ms)
         self.connected = True
         self.settings.eeprom.active_pixels_horizontal = self.pixels 
         self.settings.eeprom.has_cooling = True
-        self.settings.eeprom.max_temp_degC = self.detector_temp_max
-        self.settings.eeprom.min_temp_degC = self.detector_temp_min
         return SpectrometerResponse(data=True)
 
     def acquire_data(self) -> SpectrometerResponse:
@@ -393,12 +405,20 @@ class AndorDevice(InterfaceDevice):
         minTemp = c_int()
         maxTemp = c_int()
         assert(self.SUCCESS == self.driver.GetTemperatureRange(byref(minTemp), byref(maxTemp))), "unable to read temperature range"
-        self.detector_temp_min = minTemp.value
-        self.detector_temp_max = maxTemp.value
 
-        self.setpoint_deg_c = self.detector_temp_min
-        #assert(self.SUCCESS == self.driver.SetTemperature(self.setpoint_deg_c)), "unable to set temperature midpoint"
-        log.debug(f"set TEC to {self.setpoint_deg_c} C (range {self.detector_temp_min}, {self.detector_temp_max})")
+        self.settings.eeprom.max_temp_degC = maxTemp.value
+        self.settings.eeprom.min_temp_degC = minTemp.value
+
+        # commenting-out because Andor camera is reporting -120C for a device 
+        # only rated at -55C...leaving hardcoded default for now
+        #
+        # self.settings.eeprom.startup_temp_degC = minTemp.value 
+
+        # however the startup temperature was set (hardcode, JSON, clamped to min)...apply it
+        self.setpoint_deg_c = self.settings.eeprom.startup_temp_degC
+        assert(self.SUCCESS == self.driver.SetTemperature(self.setpoint_deg_c)), f"unable to set temperature to {self.setpoint_deg_c}"
+        log.debug(f"set TEC to {self.setpoint_deg_c}°C (range {self.settings.eeprom.min_temp_degC}, {self.settings.eeprom.max_temp_degC})")
+
         return SpectrometerResponse(True)
 
     def toggle_tec(self, toggle_state):
@@ -412,8 +432,8 @@ class AndorDevice(InterfaceDevice):
         return SpectrometerResponse(True)
 
     def set_tec_setpoint(self, set_temp):
-        if set_temp < self.detector_temp_min or set_temp > self.detector_temp_max:
-            log.error(f"requested temp of {set_temp}, but it is outside range of min/max, {self.detector_temp_min}/{self.detector_temp_max}")
+        if set_temp < self.settings.eeprom.min_temp_degC or set_temp > self.settings.eeprom.max_temp_degC:
+            log.error(f"requested temp of {set_temp}, but it is outside range ({self.settings.eeprom.min_temp_degC}C, {self.settings.eeprom.max_temp_degC}C)")
             return
         if not self.toggle_state:
             log.error(f"returning beacuse toggle state is {self.toggle_state}")
@@ -423,7 +443,7 @@ class AndorDevice(InterfaceDevice):
         # when it is not present here.
         assert(self.SUCCESS == self.driver.CoolerON()), "unable to enable TEC"
         assert(self.SUCCESS == self.driver.SetTemperature(self.setpoint_deg_c)), "unable to set temperature"
-        log.debug(f"set TEC to {self.setpoint_deg_c} C (range {self.detector_temp_min}, {self.detector_temp_max})")
+        log.debug(f"set TEC to {self.setpoint_deg_c}C")
         return SpectrometerResponse(True)
 
     def init_detector_area(self) -> SpectrometerResponse:
