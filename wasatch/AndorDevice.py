@@ -73,8 +73,9 @@ class AndorDevice(InterfaceDevice):
         self.session_reading_count  = 0
         self.take_one               = False
         self.failure_count          = 0
-        self.dll_fail               = False
+        self.dll_fail               = True
         self.toggle_state           = True
+        self.driver                 = None
 
         self.process_id = os.getpid()
         self.last_memory_check = datetime.datetime.now()
@@ -84,15 +85,32 @@ class AndorDevice(InterfaceDevice):
         self.dark = None
         self.boxcar_half_width = 0
 
-        # select appropriate Andor library per architecture
-        try:
-            if 64 == struct.calcsize("P") * 8:
-                self.driver = cdll.LoadLibrary(r"C:\Program Files\Andor SDK\atmcd64d.dll")
-            else:
-                self.driver = cdll.LoadLibrary(r"C:\Program Files\Andor SDK\atmcd32d.dll")
-        except Exception as e:
-            log.error(f"Error while loading DLL library of {e}")
-            self.dll_fail = True
+        # decide appropriate DLL filename for architecture
+        arch = 64 if 64 == struct.calcsize("P") * 8 else 32
+        filename = f"atmcd{arch}d.dll"
+
+        # Andor libraries may be found in various locations
+        dll_paths = [ r"C:\Program Files\Andor Driver Pack 2",
+                      r"C:\Program Files\Andor SDK",
+                      r"dist\Andor",
+                      r"dist" ]
+
+        # try to find correct DLL in any known location
+        for path in dll_paths:
+            pathname = os.path.join(path, filename)
+            if os.path.exists(pathname):
+                try:
+                    log.debug(f"attempting to load {pathname}")
+                    self.driver = cdll.LoadLibrary(pathname)
+                    self.dll_fail = False
+                except Exception as e:
+                    log.error(f"Error loading {pathname}: {e}")
+
+                if self.driver is not None:
+                    break
+
+        if self.driver is None:
+            log.error(f"could not find {filename} in search path: {dll_paths}")
 
         self.settings.eeprom.model = "Andor"
         self.settings.eeprom.detector = "Andor" # Andor API doesn't have access to detector info
