@@ -51,6 +51,10 @@ def generate_wavenumbers(excitation, wavelengths, wavenumber_correction=0):
         wavenumbers.append(wavenumber + wavenumber_correction)
     return wavenumbers
 
+## convert a single wavelength to wavenumber
+def wavelength_to_wavenumber(wavelength, excitation):
+    return 1e7 / float(excitation) - 1e7 / wavelength
+
 ## convert a single (uncorrected) wavenumber to wavelength
 def wavenumber_to_wavelength(excitation, wavenumber):
     return 1.0 / ((1.0 / excitation) - (wavenumber * 1e-7)) 
