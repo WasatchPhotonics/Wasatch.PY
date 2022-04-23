@@ -112,8 +112,7 @@ class AndorDevice(InterfaceDevice):
         if self.driver is None:
             log.error(f"could not find {filename} in search path: {dll_paths}")
 
-        self.settings.eeprom.model = "Andor"
-        self.settings.eeprom.detector = "Andor" # Andor API doesn't have access to detector info
+        self.settings.eeprom.detector = "iDus" # Andor API doesn't have access to detector info
         self.settings.eeprom.wavelength_coeffs = [0,1,0,0]
         self.settings.eeprom.has_cooling = True
         self.settings.eeprom.startup_integration_time_ms = 10
@@ -333,19 +332,7 @@ class AndorDevice(InterfaceDevice):
             f = open(self.config_file, 'w')
             json.dump(self.config_values, f)
         else:
-            f = open(self.config_file,)
-            self.config_values = dict(json.load(f))
-
-            # optional overrides
-            if "wavelength_coeffs" in self.config_values:
-                self.settings.eeprom.wavelength_coeffs = self.config_values['wavelength_coeffs']
-            if "excitation_nm_float" in self.config_values:
-                self.settings.eeprom.excitation_nm_float = self.config_values['excitation_nm_float']
-            if 'startup_temp_degC' in self.config_values:
-                self.settings.eeprom.startup_temp_degC = self.config_values['startup_temp_degC']
-                self.set_tec_setpoint(self.settings.eeprom.startup_temp_degC)
-            if 'startup_integration_time_ms' in self.config_values:
-                self.settings.eeprom.startup_integration_time_ms = self.config_values['startup_integration_time_ms']
+            self._load_config_values()
 
         assert(self.SUCCESS == self.driver.CoolerON()), "unable to enable TEC"
         log.debug("enabled TEC")
@@ -370,6 +357,38 @@ class AndorDevice(InterfaceDevice):
         self.settings.eeprom.active_pixels_horizontal = self.pixels 
         self.settings.eeprom.has_cooling = True
         return SpectrometerResponse(data=True)
+
+    def _load_config_values(self):
+        f = open(self.config_file,)
+        self.config_values = dict(json.load(f))
+        log.debug(f"loaded {self.config_file}: {self.config_values}")
+
+        # serial
+        if "wp_serial_number" in self.config_values:
+            self.settings.eeprom.serial_number = self.config_values['wp_serial_number']
+
+        # model
+        if "model" in self.config_values:
+            self.settings.eeprom.model = self.config_values['model']
+        if "wp_model" in self.config_values:
+            self.settings.eeprom.model = self.config_values['wp_model']
+
+        # detector
+        if "detector" in self.config_values:
+            self.settings.eeprom.detector = self.config_values['detector']
+
+        # wavecal
+        if "wavelength_coeffs" in self.config_values:
+            self.settings.eeprom.wavelength_coeffs = self.config_values['wavelength_coeffs']
+        if "excitation_nm_float" in self.config_values:
+            self.settings.eeprom.excitation_nm_float = self.config_values['excitation_nm_float']
+
+        # startup parameters
+        if 'startup_temp_degC' in self.config_values:
+            self.settings.eeprom.startup_temp_degC = self.config_values['startup_temp_degC']
+            self.set_tec_setpoint(self.settings.eeprom.startup_temp_degC)
+        if 'startup_integration_time_ms' in self.config_values:
+            self.settings.eeprom.startup_integration_time_ms = self.config_values['startup_integration_time_ms']
 
     def acquire_data(self) -> SpectrometerResponse:
         reading = self._take_one_averaged_reading()
