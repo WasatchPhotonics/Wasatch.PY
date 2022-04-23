@@ -570,7 +570,7 @@ class EEPROM(object):
 
         if self.subformat == 0:
             pass
-        if self.subformat == 1:
+        elif self.subformat == 1:
             self.write_raman_intensity_calibration()
         elif self.subformat == 2:
             self.write_spline()
@@ -711,8 +711,8 @@ class EEPROM(object):
             struct.pack_into(data_type, buf, start_byte, value)
 
         extra = "" if label is None else (" (%s)" % label)
-        log.debug("Packed (%d, %2d, %2d) '%s' value %s -> %s%s", 
-            page, start_byte, length, data_type, value, buf[start_byte:end_byte], extra)
+        # log.debug("Packed (%d, %2d, %2d) '%s' value %s -> %s%s", 
+        #     page, start_byte, length, data_type, value, buf[start_byte:end_byte], extra)
 
     ##
     # If asked to regenerate, return a digest of the contents that WOULD BE 
