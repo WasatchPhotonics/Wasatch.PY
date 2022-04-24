@@ -1342,8 +1342,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
     #        C3 = 8.78e-8
     # \endverbatim
     #
-    # @param raw    the value read from the thermistor's 12-bit ADC (should be uint12)
+    # @param raw    the value read from the thermistor's 12-bit ADC (should be 
+    #               uint12, but apparently can be SpectrometerResponse?)
     def get_laser_temperature_degC(self, raw: int = None) -> SpectrometerResponse:
+        if not isinstance(raw, SpectrometerResponse):
+            raw = SpectrometerResponse(data=raw)
         if raw is None:
             raw = self.get_laser_temperature_raw()
 
@@ -1360,7 +1363,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         if raw.data == 0:
             msg = "get_laser_temperature_degC: can't take log of raw ADC value 0"
             log.error(msg)
-            return SpectrometerResponse(data=0) # not propogating error_msg for now
+            return SpectrometerResponse(data=None) # not propogating error_msg for now
 
         degC = 0
         try:
