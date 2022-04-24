@@ -1342,33 +1342,36 @@ class FeatureIdentificationDevice(InterfaceDevice):
     #        C3 = 8.78e-8
     # \endverbatim
     #
-    # @param raw    the value read from the thermistor's 12-bit ADC
-    def get_laser_temperature_degC(self, raw: float = None) -> SpectrometerResponse:
-        if not isinstance(raw, SpectrometerResponse):
-            raw = SpectrometerResponse(data=raw)
+    # @param raw    the value read from the thermistor's 12-bit ADC (should be uint12)
+    def get_laser_temperature_degC(self, raw: int = None) -> SpectrometerResponse:
         if raw is None:
             raw = self.get_laser_temperature_raw()
 
         if raw.data is None:
-            return SpectrometerResponse(error_lvl=ErrorLevel.low, error_msg="No raw temperature data")
+            msg="get_laser_temperature_degC: error reading raw laser temperature"
+            log.error(msg)
+            return SpectrometerResponse(error_lvl=ErrorLevel.low, error_msg=msg)
 
         if raw.data > 0xfff:
-            log.error("get_laser_temperature_degC: read raw value 0x%04x exceeds 12 bits", raw.data)
-            return SpectrometerResponse(data=None, error_lvl=ErrorLevel.low, error_msg=f"get_laser_temperature_degC: read raw value {raw.data:#4x} exceeds 12 bits")
+            msg = "get_laser_temperature_degC: raw value 0x%04x exceeds 12 bits" % raw.data
+            log.error(msg)
+            return SpectrometerResponse(data=None, error_lvl=ErrorLevel.low, error_msg=msg)
 
-        # can't take log of zero
         if raw.data == 0:
-            return SpectrometerResponse(data=None, error_msg="can't take log of 0", error_lvl=ErrorLevel.low)
+            msg = "get_laser_temperature_degC: can't take log of raw ADC value 0"
+            log.error(msg)
+            return SpectrometerResponse(data=None) # not propogating error_msg for now
 
         degC = 0
         try:
             voltage    = 2.5 * raw.data / 4096
-            resistance = 21450.0 * voltage / (2.5 - voltage) # LB confirms
+            resistance = 21450.0 * voltage / (2.5 - voltage) # LB confirmed
 
             if resistance < 0:
-                log.error("get_laser_temperature_degC: can't compute degC: raw = 0x%04x, voltage = %f, resistance = %f",
+                msg="get_laser_temperature_degC: can't compute degC: raw = 0x%04x, voltage = %f, resistance = %f" % (
                     raw.data, voltage, resistance)
-                return SpectrometerResponse(data=0, error_level=ErrorLevel.low, error_msg="Can't compute temperature")
+                log.error(msg)
+                return SpectrometerResponse(data=None, error_level=ErrorLevel.low, error_msg=msg)
 
             logVal     = math.log(resistance / 10000.0)
             insideMain = logVal + 3977.0 / (25 + 273.0)
@@ -1376,7 +1379,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
             log.debug("Laser temperature: %.2f deg C (0x%04x raw)" % (degC, raw.data))
         except:
-            log.error("exception computing laser temperature", exc_info=1)
+            msg = "exception computing laser temperature"
+            log.error(msg, exc_info=1)
+            return SpectrometerResponse(data=None, error_level=ErrorLevel.low, error_msg=msg)
 
         return SpectrometerResponse(data=degC)
 
