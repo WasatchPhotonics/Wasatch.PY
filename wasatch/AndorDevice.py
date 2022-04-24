@@ -116,7 +116,7 @@ class AndorDevice(InterfaceDevice):
         self.settings.eeprom.wavelength_coeffs = [0,1,0,0]
         self.settings.eeprom.has_cooling = True
         self.settings.eeprom.startup_integration_time_ms = 10
-        self.settings.eeprom.startup_temp_degC = -55
+        self.settings.eeprom.startup_temp_degC = -60
 
         self.process_f = self._init_process_funcs()
 
@@ -423,7 +423,7 @@ class AndorDevice(InterfaceDevice):
         self.settings.eeprom.min_temp_degC = minTemp.value
 
         # commenting-out because Andor camera is reporting -120C for a device 
-        # only rated at -55C...leaving hardcoded default for now
+        # only rated at -60C...leaving hardcoded default for now
         #
         # self.settings.eeprom.startup_temp_degC = minTemp.value 
 

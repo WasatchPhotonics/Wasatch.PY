@@ -4,7 +4,7 @@
     - Andor updates
         - search for DLL in various locations
         - support startup\_integration\_time\_ms and startup\_temp\_degC in JSON 
-        - default startup\_temp\_degC to -55C if not specified in JSON
+        - default startup\_temp\_degC to -60C if not specified in JSON
         - added DeviceID.is_andor()
         - populate SpectrometerState.shutter_enable
     - respect array length in EEPROM.generate\_write\_buffers 
