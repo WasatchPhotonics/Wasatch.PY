@@ -363,32 +363,26 @@ class AndorDevice(InterfaceDevice):
         self.config_values = dict(json.load(f))
         log.debug(f"loaded {self.config_file}: {self.config_values}")
 
-        # serial
+        # alternate spellings (deprecated)
         if "wp_serial_number" in self.config_values:
             self.settings.eeprom.serial_number = self.config_values['wp_serial_number']
-
-        # model
-        if "model" in self.config_values:
-            self.settings.eeprom.model = self.config_values['model']
         if "wp_model" in self.config_values:
             self.settings.eeprom.model = self.config_values['wp_model']
 
-        # detector
-        if "detector" in self.config_values:
-            self.settings.eeprom.detector = self.config_values['detector']
+        # same spelling
+        for k in [ 'detector', 
+                   'model', 
+                   'serial_number', 
+                   'wavelength_coeffs', 
+                   'excitation_nm_float',
+                   'startup_temp_degC', 
+                   'startup_integration_time_ms' ]:
+            if k in self.config_values:
+                setattr(self.settings.eeprom, k, self.config_values[k])
 
-        # wavecal
-        if "wavelength_coeffs" in self.config_values:
-            self.settings.eeprom.wavelength_coeffs = self.config_values['wavelength_coeffs']
-        if "excitation_nm_float" in self.config_values:
-            self.settings.eeprom.excitation_nm_float = self.config_values['excitation_nm_float']
-
-        # startup parameters
+        # post-load initialization
         if 'startup_temp_degC' in self.config_values:
-            self.settings.eeprom.startup_temp_degC = self.config_values['startup_temp_degC']
             self.set_tec_setpoint(self.settings.eeprom.startup_temp_degC)
-        if 'startup_integration_time_ms' in self.config_values:
-            self.settings.eeprom.startup_integration_time_ms = self.config_values['startup_integration_time_ms']
 
     def acquire_data(self) -> SpectrometerResponse:
         reading = self._take_one_averaged_reading()
