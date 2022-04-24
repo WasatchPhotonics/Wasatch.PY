@@ -1360,7 +1360,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         if raw.data == 0:
             msg = "get_laser_temperature_degC: can't take log of raw ADC value 0"
             log.error(msg)
-            return SpectrometerResponse(data=None) # not propogating error_msg for now
+            return SpectrometerResponse(data=0) # not propogating error_msg for now
 
         degC = 0
         try:
