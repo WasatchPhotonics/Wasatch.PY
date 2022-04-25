@@ -1,6 +1,6 @@
 # Changelog
 
-- 2022-04-22 2.1.3
+- 2022-04-22 2.1.4
     - Andor updates
         - search for DLL in various locations
         - support startup\_integration\_time\_ms and startup\_temp\_degC in JSON 
@@ -8,6 +8,9 @@
         - added DeviceID.is_andor()
         - populate SpectrometerState.shutter_enable
     - respect array length in EEPROM.generate\_write\_buffers 
+- 2022-04-21 2.1.3
+    - fix break in BLE functions
+    - refactor wrapper worker to not use if, elif, elif ... for each device type
 - 2022-04-19 2.1.2
     - added NaN check to has\_linearity\_coeffs (and made public)
 - 2022-04-19 2.1.1
