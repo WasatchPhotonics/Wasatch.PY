@@ -223,6 +223,7 @@ class SPIDevice(InterfaceDevice):
             command     = [0x3C, 0x00, 0x02, 0xB0, (0x40 + page), 0xFF, 0x3E]
             self.SPI.write(command, 0, 7)
             time.sleep(0.01)
+            self._SPIBusy()
             command = [0x3C, 0x00, 0x01, 0x31, 0xFF, 0x3E]
             self.SPI.write_readinto(command, EEPROMPage)
             log.debug(f"read eeprom page of {EEPROMPage}")
@@ -231,6 +232,7 @@ class SPIDevice(InterfaceDevice):
                 continue
             else:
                 break
+        self._SPIBusy()
         return EEPROMPage
 
     def set_integration_time_ms(self, value: int) -> SpectrometerResponse:
@@ -255,14 +257,23 @@ class SPIDevice(InterfaceDevice):
         self.SPI.write(command, 0, 8)
         time.sleep(0.01)
 
+    def _SPIBusy(self):
+        command  = bytearray(5)
+        response = bytearray(19)
+        response = [0x3]*19
+        while response == [0x3]*19:
+            command = [0x3C, 0x00, 0x01, 0x10, 0x3E] # check for the FPGA Rev num
+            self.SPI.write_readinto(command, response)
+
     def _EEPROMWritePage(self, page: int, write_array: list[bytes]) -> None:
+        if page > 0:
+            return
+        log.debug(f"attempting to write eeprom page {page}")
         read_cmd = bytearray(8)
         command     = bytearray(7)
         read_cmd = [0x3,0x3,0x3,0x3,0x3,0x3] # hard code to all 0x3 so it checks at least once
 
-        while read_cmd == [0x3,0x3,0x3,0x3,0x3,0x3]:
-            command  = [0x3C, 0x00, 0x01, (0x80 + page), 0x3E]
-            self.SPI.write_readinto(command, read_cmd)
+        self._SPIBusy()
         EEPROMWrCmd = bytearray(70)
         EEPROMWrCmd[0:3] = [0x3C, 0x00, 0x41, 0xB1]
         try:
@@ -276,6 +287,7 @@ class SPIDevice(InterfaceDevice):
         EEPROMWrCmd[68] = 0xFF
         EEPROMWrCmd[69] = 0x3E
         self.SPI.write(EEPROMWrCmd, 0, 70)
+        time.sleep(0.1)
         command = [0x3C, 0x00, 0x02, 0xB0, (0x80 + page), 0xFF, 0x3E]
         self.SPI.write(command, 0, 7)
         time.sleep(0.1)
