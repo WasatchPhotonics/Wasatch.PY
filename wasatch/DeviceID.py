@@ -166,6 +166,9 @@ class DeviceID(object):
     def is_usb(self):
         return self.type.upper() == "USB"
 
+    def is_andor(self):
+        return self.vid == 0x136e
+
     # Surely there is a better way to obtain the 'bus' and 'address' attributes 
     # than rendering the usb.device as a string and then parsing it.  I tried 
     # dumping the __dict__ and didn't see the address anywhere...must be in a 
