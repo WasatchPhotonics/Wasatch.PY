@@ -1,8 +1,13 @@
 # Changelog
 
+<<<<<<< HEAD
 - 2022-04-21 2.1.2
     - fix break in BLE functions
     - refactor wrapper worker to not use if, elif, elif ... for each device type
+=======
+- 2022-04-19 2.1.2
+    - added NaN check to has\_linearity\_coeffs (and made public)
+>>>>>>> b807f66b09690bfc0b78dffcf836fc09ed76c5de
 - 2022-04-19 2.1.1
     - restored automatic laser disable at connect
     - restored automatic TEC enable at connect
