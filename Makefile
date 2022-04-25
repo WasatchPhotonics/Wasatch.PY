@@ -24,9 +24,14 @@ clean:
 
 ################################################################################
 # The following are provided as convenience / documentation for people not 
-# familiar with building PyPi packages
+# familiar with building or publishing PyPi packages.
 ################################################################################
 
 pip-install-local:
 	pip install $$PWD
 
+publish-test:
+	flit publish --repository testpypi
+
+publish:
+	flit publish

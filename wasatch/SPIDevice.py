@@ -210,6 +210,7 @@ class SPIDevice(InterfaceDevice):
             return False
 
         for page in range(EEPROM.MAX_PAGES):
+            time.sleep(0.1) # for now a hard coded delay for the eeprom
             self._EEPROMWritePage(page,self.settings.eeprom.write_buffers[page])
 
         #self.message_queue("marquee_info", "EEPROM successfully updated")

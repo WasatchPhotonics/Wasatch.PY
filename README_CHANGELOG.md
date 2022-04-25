@@ -1,4 +1,6 @@
 # Changelog
+- 2022-04-19 2.1.2
+    - added NaN check to has\_linearity\_coeffs (and made public)
 - 2022-04-19 2.1.1
     - restored automatic laser disable at connect
     - restored automatic TEC enable at connect
