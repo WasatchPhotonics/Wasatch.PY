@@ -1,11 +1,12 @@
 import re
 import os
 import time
-import queue
 import psutil
 import logging
 import datetime
 import threading
+from queue import Queue
+from typing import TypeVar, Any, Callable
 
 from configparser import ConfigParser
 
@@ -16,6 +17,7 @@ from .SpectrometerSettings        import SpectrometerSettings
 from .SpectrometerResponse        import SpectrometerResponse
 from .SpectrometerRequest         import SpectrometerRequest
 from .SpectrometerResponse        import ErrorLevel
+from .InterfaceDevice             import InterfaceDevice
 from .BalanceAcquisition          import BalanceAcquisition
 from .SpectrometerState           import SpectrometerState
 from .ControlObject               import ControlObject
@@ -35,12 +37,17 @@ log = logging.getLogger(__name__)
 # a WasatchDeviceWrapper to access a single WasatchDevice in a dedicated child 
 # thread.  Other users of Wasatch.PY may of course instantiate a WasatchDevice 
 # directly.
-class WasatchDevice(object):
+class WasatchDevice(InterfaceDevice):
+
+    # While this is not the main interface device, it wraps FID
+    # It is also what is called by WrapperWorker and because of this
+    # I chose to implement the minimum formatting for interface device
+    # so that it can match the other calls in WrapperWorker
 
     ##
     # @param device_id      a DeviceID instance OR string label thereof
     # @param message_queue  if provided, used to send status back to caller
-    def __init__(self, device_id, message_queue=None):
+    def __init__(self, device_id: DeviceID, message_queue: Queue = None) -> None:
 
         # if passed a string representation of a DeviceID, deserialize it
         if type(device_id) is str:
@@ -73,6 +80,8 @@ class WasatchDevice(object):
         self.process_id = os.getpid()
         self.last_memory_check = datetime.datetime.now()
         self.last_battery_percentage = 0
+
+        self.process_f = self._init_process_funcs()
 
     # ######################################################################## #
     #                                                                          #
@@ -833,6 +842,14 @@ class WasatchDevice(object):
 
         return retval
 
+    def _init_process_funcs(self) -> dict[str, Callable[..., Any]]:
+        process_f = {}
+
+        process_f["connect"] = self.connect
+        process_f["acquire_data"] = self.acquire_data
+
+        return process_f
+
     # ######################################################################## #
     #                                                                          #
     #                             BalanceAcquisition                           #
@@ -887,7 +904,7 @@ class WasatchDevice(object):
     #                be None or "anything" for commands like "acquire" which
     #                don't use the argument).
     # @param allow_immediate
-    def change_setting(self, setting, value, allow_immediate=True):
+    def change_setting(self, setting: str, value: Any, allow_immediate: bool = True) -> None:
         control_object = ControlObject(setting, value)
         log.debug("WasatchDevice.change_setting: %s", control_object)
 
@@ -918,3 +935,25 @@ class WasatchDevice(object):
         if (allow_immediate and self.immediate_mode) or re.search(r"trigger|laser", setting):
             log.debug("immediately processing %s", control_object)
             self.process_commands()
+
+    # override handle_requests. I didn't see a good way to overwrite change_setting without
+    # having to redo that pass through.
+    def handle_requests(self, requests: list[SpectrometerRequest]) -> list[SpectrometerResponse]:
+        responses = []
+        for request in requests:
+            try:
+                cmd = request.cmd
+                proc_func = self.process_f.get(cmd, None)
+                if proc_func == None:
+                    try:
+                        self.change_setting(*requests.args, **requests.kwargs)
+                    except:
+                        return []
+                elif request.args == [] and request.kwargs == {}:
+                    responses.append(proc_func())
+                else:
+                    responses.append(proc_func(*request.args, **request.kwargs))
+            except Exception as e:
+                log.error(f"error in handling request {request} of {e}")
+                responses.append(SpectrometerResponse(error_msg="error processing cmd", error_lvl=ErrorLevel.medium))
+        return responses
