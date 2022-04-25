@@ -256,8 +256,13 @@ class SPIDevice(InterfaceDevice):
         time.sleep(0.01)
 
     def _EEPROMWritePage(self, page: int, write_array: list[bytes]) -> None:
-        #write_array = [str(item) for item in write_array]
+        read_cmd = bytearray(8)
         command     = bytearray(7)
+        read_cmd = [0x3,0x3,0x3,0x3,0x3,0x3] # hard code to all 0x3 so it checks at least once
+
+        while read_cmd == [0x3,0x3,0x3,0x3,0x3,0x3]:
+            command  = [0x3C, 0x00, 0x01, (0x80 + page), 0x3E]
+            self.SPI.write_readinto(command, read_cmd)
         EEPROMWrCmd = bytearray(70)
         EEPROMWrCmd[0:3] = [0x3C, 0x00, 0x41, 0xB1]
         try:
