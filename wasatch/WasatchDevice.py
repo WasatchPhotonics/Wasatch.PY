@@ -946,8 +946,9 @@ class WasatchDevice(InterfaceDevice):
                 proc_func = self.process_f.get(cmd, None)
                 if proc_func == None:
                     try:
-                        self.change_setting(*requests.args, **requests.kwargs)
-                    except:
+                        self.change_setting(cmd, *request.args, **request.kwargs)
+                    except Exception as e:
+                        log.error(f"error {e} with trying to set setting {cmd} with args and kwargs {request.args} and {request.kwargs}")
                         return []
                 elif request.args == [] and request.kwargs == {}:
                     responses.append(proc_func())
