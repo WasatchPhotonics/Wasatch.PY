@@ -242,16 +242,16 @@ class SPIDevice(InterfaceDevice):
             self._SPIBusy()
             command = [0x3C, 0x00, 0x01, 0x31, 0xFF, 0x3E]
             self.SPI.write_readinto(command, EEPROMPage)
-            log.debug(f"read eeprom page of {EEPROMPage}")
-            log.info(f"checking if busy")
-            log.info(f"EEPROMPage cmd is {EEPROMPage[5]}")
-            log.info(f"equals 5 0x3 is {EEPROMPage[5] == 0x3}")
-            if EEPROMPage[5] == 0x3:
-                log.info(f"trying to read page {page}, got response status of {EEPROMPage[:6]}")
+            log.debug(f"raw eeprom dump is {EEPROMPage}")
+            try:
+                EEPROMPage = EEPROMPage[EEPROMPage.index(b'<')+4:len(EEPROMPage)-1]
+            except:
+                log.error(f"SPI EEPROM read got a page without start byte, trying to re-read. Page was {EEPROMPage}")
+                continue
+            if EEPROMPage[3] == 0x3:
                 continue
             else:
-                EEPROMPage = EEPROMPage[EEPROMPage.index(b'<')+4:len(EEPROMPage)-1]
-                log.info(f"sliced page value is {EEPROMPage}")
+                log.debug(f"sliced page value is {EEPROMPage}")
                 break
         self._SPIBusy()
         log.info(f"for page {page} got values {EEPROMPage}")
@@ -288,8 +288,6 @@ class SPIDevice(InterfaceDevice):
             self.SPI.write_readinto(command, response)
 
     def _EEPROMWritePage(self, page: int, write_array: list[bytes]) -> None:
-        if page > 0:
-            return
         log.debug(f"attempting to write eeprom page {page}")
         read_cmd = bytearray(8)
         command     = bytearray(7)
