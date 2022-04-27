@@ -222,17 +222,20 @@ class SPIDevice(InterfaceDevice):
             command     = bytearray(7)
             command     = [0x3C, 0x00, 0x02, 0xB0, (0x40 + page), 0xFF, 0x3E]
             self.SPI.write(command, 0, 7)
-            time.sleep(0.01)
             self._SPIBusy()
             command = [0x3C, 0x00, 0x01, 0x31, 0xFF, 0x3E]
             self.SPI.write_readinto(command, EEPROMPage)
             log.debug(f"read eeprom page of {EEPROMPage}")
+            log.info(f"checking if busy")
+            log.info(f"EEPROMPage cmd is {EEPROMPage[:6]}")
+            log.info(f"equals 6 0x3 is {EEPROMPage[:6] == [0x3,0x3,0x3,0x3,0x3,0x3]}")
             if EEPROMPage[:6] == [0x3,0x3,0x3,0x3,0x3,0x3]:
                 log.info(f"trying to read page {page}, got response status of {EEPROMPage[:6]}")
                 continue
             else:
                 break
         self._SPIBusy()
+        log.info(f"for page {page} got values {EEPROMPage}")
         return EEPROMPage
 
     def set_integration_time_ms(self, value: int) -> SpectrometerResponse:
