@@ -73,7 +73,7 @@ class WrapperWorker(threading.Thread):
                     self.connected_device = self.device_id.device_type
                     self.connected_device.disconnect = False
                 else:
-                    self.connected_device = device_classes[3](
+                    self.connected_device = device_classes[type_connection](
                         device_id = self.device_id,
                         message_queue = self.message_queue)
             else:
