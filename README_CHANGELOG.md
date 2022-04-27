@@ -5,6 +5,7 @@
         - added error codes
         - support "detector" override from .json
         - increase shutter time per Newton testing
+    - fixed WrapperWorker bug
 - 2022-04-22 2.1.4
     - Andor updates
         - search for DLL in various locations
