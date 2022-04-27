@@ -48,7 +48,7 @@ class AndorDevice(InterfaceDevice):
     """
 
     SUCCESS = 20002             #!< see page 330 of Andor SDK documentation
-    SHUTTER_SPEED_MS = 35       #!< not sure where this comes from...ask Caleb - TS
+    SHUTTER_SPEED_MS = 50       #!< empirically determined
 
     def __init__(self, device_id, message_queue=None) -> None:
         # if passed a string representation of a DeviceID, deserialize it
@@ -112,7 +112,12 @@ class AndorDevice(InterfaceDevice):
         if self.driver is None:
             log.error(f"could not find {filename} in search path: {dll_paths}")
 
-        self.settings.eeprom.detector = "iDus" # Andor API doesn't have access to detector info
+        # set Andor defaults for important "EEPROM" settings
+        # (all but has_cooling can be overridden via config file)
+
+        # Andor API doesn't have access to detector info
+        # Note that we use non-iDus cameras, including the Newton
+        self.settings.eeprom.detector = "iDus" 
         self.settings.eeprom.wavelength_coeffs = [0,1,0,0]
         self.settings.eeprom.has_cooling = True
         self.settings.eeprom.startup_integration_time_ms = 10
@@ -309,18 +314,27 @@ class AndorDevice(InterfaceDevice):
     def connect(self) -> SpectrometerResponse:
         if self.dll_fail:
             return SpectrometerResponse(data=False,error_lvl=ErrorLevel.high,error_msg="couldn't load Andor dll")
+
+        log.debug("getting camera handle")
         cameraHandle = c_int()
         assert(self.SUCCESS == self.driver.GetCameraHandle(self.spec_index, byref(cameraHandle))), "unable to get camera handle"
+
+        log.debug("setting current camera")
         assert(self.SUCCESS == self.driver.SetCurrentCamera(cameraHandle.value)), "unable to set current camera"
-        log.info("initializing camera...")
 
         # not sure init_str is actually required
+        log.info("initializing camera...")
         init_str = create_string_buffer(b'\000' * 16)
         assert(self.SUCCESS == self.driver.Initialize(init_str)), "unable to initialize camera"
-        log.info("success")
+        log.info("initialization success")
 
+        log.debug("getting camera serial number")
         self.get_serial_number()
+
+        log.debug("initializing camera TEC")
         self.init_tec_setpoint()
+
+        log.debug("initializing detector area")
         self.init_detector_area()
 
         if not self._check_config_file():
@@ -334,25 +348,35 @@ class AndorDevice(InterfaceDevice):
         else:
             self._load_config_values()
 
+        log.debug("enabling TEC")
         assert(self.SUCCESS == self.driver.CoolerON()), "unable to enable TEC"
         log.debug("enabled TEC")
 
+        log.debug("setting acquisition mode")
         assert(self.SUCCESS == self.driver.SetAcquisitionMode(1)), "unable to set acquisition mode"
         log.debug("configured acquisition mode (single scan)")
 
+        log.debug("setting trigger mode")
         assert(self.SUCCESS == self.driver.SetTriggerMode(0)), "unable to set trigger mode"
         log.debug("set trigger mode")
 
+        log.debug("setting read mode")
         assert(self.SUCCESS == self.driver.SetReadMode(0)), "unable to set read mode"
         log.debug("set read mode (full vertical binning)")
 
+        log.debug("initializing detector speed")
         self.init_detector_speed()
 
+        log.debug("setting shutter speed")
         assert(self.SUCCESS == self.driver.SetShutterEx(1, 1, self.SHUTTER_SPEED_MS, self.SHUTTER_SPEED_MS, 0)), "unable to set external shutter"
         self.settings.state.shutter_enabled = True
         log.debug("set shutter to fully automatic external with internal always open")
 
+        log.debug("setting integration time")
         self.set_integration_time_ms(self.settings.eeprom.startup_integration_time_ms)
+
+        # success!
+
         self.connected = True
         self.settings.eeprom.active_pixels_horizontal = self.pixels 
         self.settings.eeprom.has_cooling = True
@@ -372,6 +396,7 @@ class AndorDevice(InterfaceDevice):
         # same spelling
         for k in [ 'detector', 
                    'model', 
+                   'detector', 
                    'serial_number', 
                    'wavelength_coeffs', 
                    'excitation_nm_float',
@@ -423,7 +448,7 @@ class AndorDevice(InterfaceDevice):
         self.settings.eeprom.min_temp_degC = minTemp.value
 
         # commenting-out because Andor camera is reporting -120C for a device 
-        # only rated at -60C...leaving hardcoded default for now
+        # only rated at -55C...leaving hardcoded default for now
         #
         # self.settings.eeprom.startup_temp_degC = minTemp.value 
 
