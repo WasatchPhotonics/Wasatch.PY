@@ -300,12 +300,12 @@ class AndorDevice(InterfaceDevice):
         return SpectrometerResponse(data=reading)
 
     def _close_ex_shutter(self) -> SpectrometerResponse:
-        self.check_response(self.driver.SetShutterEx(1, 1, self.SHUTTER_SPEED_MS, self.SHUTTER_SPEED_MS, 2), "SetShutterEx(2)")
+        self.check_result(self.driver.SetShutterEx(1, 1, self.SHUTTER_SPEED_MS, self.SHUTTER_SPEED_MS, 2), "SetShutterEx(2)")
         self.settings.state.shutter_enabled = False
         return SpectrometerResponse(True)
 
     def _open_ex_shutter(self) -> SpectrometerResponse:
-        self.check_response(self.driver.SetShutterEx(1, 1, self.SHUTTER_SPEED_MS, self.SHUTTER_SPEED_MS, 1), "SetShutterEx(1)")
+        self.check_result(self.driver.SetShutterEx(1, 1, self.SHUTTER_SPEED_MS, self.SHUTTER_SPEED_MS, 1), "SetShutterEx(1)")
         self.settings.state.shutter_enabled = True
         return SpectrometerResponse(True)
 
