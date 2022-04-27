@@ -149,7 +149,6 @@ class SPIDevice(InterfaceDevice):
             page = self._EEPROMReadPage(i)
             eeprom_pages.append(page)
         self.settings.eeprom.parse(eeprom_pages)
-        self.settings.eeprom.active_pixels_horizontal = 1952
         self.settings.state.integration_time_ms = 10
         log.info("SPI connect done, returning True")
         return SpectrometerResponse(True)
