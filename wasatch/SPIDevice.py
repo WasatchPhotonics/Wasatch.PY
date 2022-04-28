@@ -56,6 +56,7 @@ class SPIDevice(InterfaceDevice):
     """
 
     INTEGRATION_ADDRESS = 0x11
+    GAIN_DB_ADDRESS = 0x14
     CRC_8_TABLE = [
       0, 94,188,226, 97, 63,221,131,194,156,126, 32,163,253, 31, 65,
     157,195, 33,127,252,162, 64, 30, 95,  1,227,189, 62, 96,130,220,
@@ -264,6 +265,16 @@ class SPIDevice(InterfaceDevice):
         self.settings.state.integration_time_ms = value
         return SpectrometerResponse()
 
+    def set_gain(self, value: int) -> SpectrometerResponse:
+        if not isinstance(value,int):
+            value = int(value)
+        while self.acquiring:
+            time.sleep(0.01)
+            continue
+        self._SPIWrite(value, self.GAIN_DB_ADDRESS)
+        self.settings.state.gain_DB = value
+        return SpectrometerResponse()
+
     def _SPIWrite(self, value: int, address: int) -> None:
         command = bytearray(8)
         # Convert the int into bytes.
@@ -356,6 +367,7 @@ class SPIDevice(InterfaceDevice):
         process_f["disconnect"] = self.disconnect
         process_f["acquire_data"] = self.acquire_data
         process_f["set_integration_time_ms"] = self.set_integration_time_ms
+        process_f["detector_gain"] = self.set_gain
         ##################################################################
         # What follows is the old init-lambdas that are squashed into process_f
         # Long term, the upstream requests should be changed to match the new format
