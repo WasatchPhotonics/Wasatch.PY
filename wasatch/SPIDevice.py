@@ -254,7 +254,7 @@ class SPIDevice(InterfaceDevice):
                 log.debug(f"sliced page value is {EEPROMPage}")
                 break
         self._SPIBusy()
-        log.info(f"for page {page} got values {EEPROMPage}")
+        log.debug(f"for page {page} got values {EEPROMPage}")
         return EEPROMPage
 
     def set_integration_time_ms(self, value: int) -> SpectrometerResponse:

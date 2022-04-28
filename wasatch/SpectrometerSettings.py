@@ -388,7 +388,6 @@ class SpectrometerSettings(object):
         return self.hardware_info.pid == 0x6014
 
     def is_micro(self) -> bool:
-        log.debug(f"spi is {self.is_spi()}")
         return ( self.is_arm() and \
                ( self.is_imx() or \
                  "micro" in self.full_model().lower() or \
