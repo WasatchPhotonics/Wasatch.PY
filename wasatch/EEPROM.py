@@ -64,8 +64,8 @@ class EEPROM(object):
         self.wavelength_coeffs           = []
         self.degC_to_dac_coeffs          = []
         self.adc_to_degC_coeffs          = []
-        self.max_temp_degC               = 20 # interesting
-        self.min_temp_degC               = 10 #    defaults
+        self.max_temp_degC               = 20 
+        self.min_temp_degC               = 10
         self.tec_r298                    = 0
         self.tec_beta                    = 0
         self.calibration_date            = None
@@ -474,16 +474,18 @@ class EEPROM(object):
         # Page 1
         # ######################################################################
 
-        self.pack((1,  0,  4), "f", self.wavelength_coeffs[0])
-        self.pack((1,  4,  4), "f", self.wavelength_coeffs[1])
-        self.pack((1,  8,  4), "f", self.wavelength_coeffs[2])
-        self.pack((1, 12,  4), "f", self.wavelength_coeffs[3])
-        self.pack((1, 16,  4), "f", self.degC_to_dac_coeffs[0])
-        self.pack((1, 20,  4), "f", self.degC_to_dac_coeffs[1])
-        self.pack((1, 24,  4), "f", self.degC_to_dac_coeffs[2])
-        self.pack((1, 32,  4), "f", self.adc_to_degC_coeffs[0])
-        self.pack((1, 36,  4), "f", self.adc_to_degC_coeffs[1])
-        self.pack((1, 40,  4), "f", self.adc_to_degC_coeffs[2])
+        if self.wavelength_coeffs is not None:
+            for i in range(min(4, len(self.wavelength_coeffs))):
+                self.pack((1,  0 + i * 4,  4), "f", self.wavelength_coeffs[i])
+                
+        if self.degC_to_dac_coeffs is not None:
+            for i in range(min(3, len(self.degC_to_dac_coeffs))):
+                self.pack((1, 16 + i * 4,  4), "f", self.degC_to_dac_coeffs[i])
+
+        if self.adc_to_degC_coeffs is not None:
+            for i in range(min(3, len(self.adc_to_degC_coeffs))):
+                self.pack((1, 32 + i * 4,  4), "f", self.adc_to_degC_coeffs[i])
+
         self.pack((1, 28,  2), "h", self.max_temp_degC)
         self.pack((1, 30,  2), "h", self.min_temp_degC)
         self.pack((1, 44,  2), "h", self.tec_r298)
@@ -516,20 +518,19 @@ class EEPROM(object):
         self.pack((2, 37,  2), "H", self.roi_vertical_region_2_end)
         self.pack((2, 39,  2), "H", self.roi_vertical_region_3_start)
         self.pack((2, 41,  2), "H", self.roi_vertical_region_3_end)
-        self.pack((2, 43,  4), "f", self.linearity_coeffs[0])
-        self.pack((2, 47,  4), "f", self.linearity_coeffs[1])
-        self.pack((2, 51,  4), "f", self.linearity_coeffs[2])
-        self.pack((2, 55,  4), "f", self.linearity_coeffs[3])
-        self.pack((2, 59,  4), "f", self.linearity_coeffs[4])
+
+        if self.linearity_coeffs is not None:
+            for i in range(min(5, len(self.linearity_coeffs))):
+                self.pack((2, 43 + i * 4,  4), "f", self.linearity_coeffs[i])
 
         # ######################################################################
         # Page 3
         # ######################################################################
 
-        self.pack((3, 12,  4), "f", self.laser_power_coeffs[0])
-        self.pack((3, 16,  4), "f", self.laser_power_coeffs[1])
-        self.pack((3, 20,  4), "f", self.laser_power_coeffs[2])
-        self.pack((3, 24,  4), "f", self.laser_power_coeffs[3])
+        if self.laser_power_coeffs is not None:
+            for i in range(min(4, len(self.laser_power_coeffs))):
+                self.pack((3, 12 + i * 4,  4), "f", self.laser_power_coeffs[i])
+
         self.pack((3, 28,  4), "f", self.max_laser_power_mW)
         self.pack((3, 32,  4), "f", self.min_laser_power_mW)
         self.pack((3, 36,  4), "f", self.excitation_nm_float)
@@ -569,7 +570,7 @@ class EEPROM(object):
 
         if self.subformat == 0:
             pass
-        if self.subformat == 1:
+        elif self.subformat == 1:
             self.write_raman_intensity_calibration()
         elif self.subformat == 2:
             self.write_spline()
@@ -710,8 +711,8 @@ class EEPROM(object):
             struct.pack_into(data_type, buf, start_byte, value)
 
         extra = "" if label is None else (" (%s)" % label)
-        log.debug("Packed (%d, %2d, %2d) '%s' value %s -> %s%s", 
-            page, start_byte, length, data_type, value, buf[start_byte:end_byte], extra)
+        # log.debug("Packed (%d, %2d, %2d) '%s' value %s -> %s%s", 
+        #     page, start_byte, length, data_type, value, buf[start_byte:end_byte], extra)
 
     ##
     # If asked to regenerate, return a digest of the contents that WOULD BE 

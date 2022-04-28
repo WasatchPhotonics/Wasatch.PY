@@ -377,7 +377,7 @@ class WasatchDeviceWrapper:
                 wrapper_reading = self.response_queue.get_nowait()
             else:
                 # If there is nothing more to read, then we've emptied the queue
-                log.debug("get_final has nothing more to read, sending up readings")
+                # log.debug("get_final has nothing more to read, sending up readings")
                 break
 
             # If we come across a keep_alive, ignore it for the moment.
@@ -414,7 +414,7 @@ class WasatchDeviceWrapper:
 
 
         if last_reading.data is None:
-            log.debug("wrapper worker floating up keep alive last reading")
+            # log.debug("wrapper worker floating up keep alive last reading")
             # apparently we didn't read anything...just pass up a keepalive
             last_averaged = None
             last_reading.keep_alive = True

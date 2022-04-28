@@ -99,6 +99,9 @@ class MockUSBDevice(AbstractUSBDevice):
         for key,value in self.spec_readings.items():
             self.reading_cycles[key] = cycle(value)
 
+    def is_andor(self):
+        return False
+
     def cmd_get_laser_temp(self, *args):
         return [random.randint(0,255)]*2
 
