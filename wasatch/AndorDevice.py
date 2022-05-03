@@ -25,7 +25,7 @@ class AndorDevice(InterfaceDevice):
     """
     This is the basic implementation of our interface with Andor cameras     
 
-    @todo convert the different asserts to SpectrometerResponse returns
+    @todo have check_result return a SpectrometerResponse 
     ##########################################################################
     This class adopts the external device interface structure
     This involves receiving a request through the handle_request function
@@ -47,8 +47,8 @@ class AndorDevice(InterfaceDevice):
     ############################################################################
     """
 
-    SUCCESS = 20002             #!< see page 330 of Andor SDK documentation
-    SHUTTER_SPEED_MS = 35       #!< not sure where this comes from...ask Caleb - TS
+    SUCCESS = 20002             #!< see load_error_codes()
+    SHUTTER_SPEED_MS = 50       #!< empirically determined
 
     def __init__(self, device_id, message_queue=None) -> None:
         # if passed a string representation of a DeviceID, deserialize it
@@ -58,6 +58,8 @@ class AndorDevice(InterfaceDevice):
 
         self.device_id      = device_id
         self.message_queue  = message_queue
+
+        self.load_error_codes()
 
         self.connected = False
 
@@ -112,7 +114,12 @@ class AndorDevice(InterfaceDevice):
         if self.driver is None:
             log.error(f"could not find {filename} in search path: {dll_paths}")
 
-        self.settings.eeprom.detector = "iDus" # Andor API doesn't have access to detector info
+        # set Andor defaults for important "EEPROM" settings
+        # (all but has_cooling can be overridden via config file)
+
+        # Andor API doesn't have access to detector info
+        # Note that we use non-iDus cameras, including the Newton
+        self.settings.eeprom.detector = "iDus" 
         self.settings.eeprom.wavelength_coeffs = [0,1,0,0]
         self.settings.eeprom.has_cooling = True
         self.settings.eeprom.startup_integration_time_ms = 10
@@ -293,12 +300,12 @@ class AndorDevice(InterfaceDevice):
         return SpectrometerResponse(data=reading)
 
     def _close_ex_shutter(self) -> SpectrometerResponse:
-        assert(self.SUCCESS == self.driver.SetShutterEx(1, 1, self.SHUTTER_SPEED_MS, self.SHUTTER_SPEED_MS, 2)), "unable to close external shutter"
+        self.check_result(self.driver.SetShutterEx(1, 1, self.SHUTTER_SPEED_MS, self.SHUTTER_SPEED_MS, 2), "SetShutterEx(2)")
         self.settings.state.shutter_enabled = False
         return SpectrometerResponse(True)
 
     def _open_ex_shutter(self) -> SpectrometerResponse:
-        assert(self.SUCCESS == self.driver.SetShutterEx(1, 1, self.SHUTTER_SPEED_MS, self.SHUTTER_SPEED_MS, 1)), "unable to open external shutter"
+        self.check_result(self.driver.SetShutterEx(1, 1, self.SHUTTER_SPEED_MS, self.SHUTTER_SPEED_MS, 1), "SetShutterEx(1)")
         self.settings.state.shutter_enabled = True
         return SpectrometerResponse(True)
 
@@ -306,18 +313,28 @@ class AndorDevice(InterfaceDevice):
     # Public Methods
     ###############################################################
 
+    def check_result(self, result, func):
+        if result != self.SUCCESS:
+            name = self.get_error_code(result)
+            msg = f"error calling {func}: {result} ({name})"
+            log.error(msg)
+            raise RuntimeError(msg)
+        log.debug(f"successfully called {func}")
+
     def connect(self) -> SpectrometerResponse:
         if self.dll_fail:
             return SpectrometerResponse(data=False,error_lvl=ErrorLevel.high,error_msg="couldn't load Andor dll")
-        cameraHandle = c_int()
-        assert(self.SUCCESS == self.driver.GetCameraHandle(self.spec_index, byref(cameraHandle))), "unable to get camera handle"
-        assert(self.SUCCESS == self.driver.SetCurrentCamera(cameraHandle.value)), "unable to set current camera"
-        log.info("initializing camera...")
 
-        # not sure init_str is actually required
-        init_str = create_string_buffer(b'\000' * 16)
-        assert(self.SUCCESS == self.driver.Initialize(init_str)), "unable to initialize camera"
-        log.info("success")
+        cameraHandle = c_int()
+        self.check_result(self.driver.GetCameraHandle(self.spec_index, byref(cameraHandle)), "GetCameraHandle")
+        self.check_result(self.driver.SetCurrentCamera(cameraHandle.value), "SetCurrentCamera")
+
+        try:
+            path_to_ini = create_string_buffer(b'\000' * 256) 
+            self.check_result(self.driver.Initialize(path_to_ini), "Initialize")
+        except:
+            log.error("Andor.Initialize failed", exc_info=1)
+            return SpectrometerResponse(data=False, error_lvl=ErrorLevel.high, error_msg="Andor initialization failed")
 
         self.get_serial_number()
         self.init_tec_setpoint()
@@ -334,25 +351,21 @@ class AndorDevice(InterfaceDevice):
         else:
             self._load_config_values()
 
-        assert(self.SUCCESS == self.driver.CoolerON()), "unable to enable TEC"
-        log.debug("enabled TEC")
-
-        assert(self.SUCCESS == self.driver.SetAcquisitionMode(1)), "unable to set acquisition mode"
-        log.debug("configured acquisition mode (single scan)")
-
-        assert(self.SUCCESS == self.driver.SetTriggerMode(0)), "unable to set trigger mode"
-        log.debug("set trigger mode")
-
-        assert(self.SUCCESS == self.driver.SetReadMode(0)), "unable to set read mode"
-        log.debug("set read mode (full vertical binning)")
+        self.check_result(self.driver.CoolerON(), "CoolerON")
+        self.check_result(self.driver.SetAcquisitionMode(1), "SetAcquisitionMode(single_scan)") 
+        self.check_result(self.driver.SetTriggerMode(0), "SetTriggerMode")
+        self.check_result(self.driver.SetReadMode(0), "SetReadMode(full_vertical_binning)")
 
         self.init_detector_speed()
 
-        assert(self.SUCCESS == self.driver.SetShutterEx(1, 1, self.SHUTTER_SPEED_MS, self.SHUTTER_SPEED_MS, 0)), "unable to set external shutter"
+        self.check_result(self.driver.SetShutterEx(1, 1, self.SHUTTER_SPEED_MS, self.SHUTTER_SPEED_MS, 0), "SetShutterEx(fully automatic external with internal always open)")
         self.settings.state.shutter_enabled = True
-        log.debug("set shutter to fully automatic external with internal always open")
 
         self.set_integration_time_ms(self.settings.eeprom.startup_integration_time_ms)
+
+        # success!
+        log.info("AndorDevice successfully connected")
+
         self.connected = True
         self.settings.eeprom.active_pixels_horizontal = self.pixels 
         self.settings.eeprom.has_cooling = True
@@ -372,6 +385,7 @@ class AndorDevice(InterfaceDevice):
         # same spelling
         for k in [ 'detector', 
                    'model', 
+                   'detector', 
                    'serial_number', 
                    'wavelength_coeffs', 
                    'excitation_nm_float',
@@ -401,14 +415,16 @@ class AndorDevice(InterfaceDevice):
         exposure = c_float()
         accumulate = c_float()
         kinetic = c_float()
-        assert(self.SUCCESS == self.driver.SetExposureTime(c_float(ms / 1000.0))), "unable to set integration time"
-        assert(self.SUCCESS == self.driver.GetAcquisitionTimings(byref(exposure), byref(accumulate), byref(kinetic))), "unable to read acquisition timings"
+
+        sec = ms / 1000.0
+        self.check_result(self.driver.SetExposureTime(c_float(sec)), f"SetExposureTime({sec})")
+        self.check_result(self.driver.GetAcquisitionTimings(byref(exposure), byref(accumulate), byref(kinetic)), "GetAcquisitionTimings")
         log.debug(f"read integration time of {exposure.value:.3f}sec (expected {ms}ms)")
         return SpectrometerResponse(data=True)
 
     def get_serial_number(self) -> SpectrometerResponse:
         sn = c_int()
-        assert(self.SUCCESS == self.driver.GetCameraSerialNumber(byref(sn))), "can't get serial number"
+        self.check_result(self.driver.GetCameraSerialNumber(byref(sn)), "GetCameraSerialNumber")
         self.serial = f"CCD-{sn.value}"
         self.settings.eeprom.serial_number = self.serial
         log.debug(f"connected to {self.serial}")
@@ -417,7 +433,7 @@ class AndorDevice(InterfaceDevice):
     def init_tec_setpoint(self) -> SpectrometerResponse:
         minTemp = c_int()
         maxTemp = c_int()
-        assert(self.SUCCESS == self.driver.GetTemperatureRange(byref(minTemp), byref(maxTemp))), "unable to read temperature range"
+        self.check_result(self.driver.GetTemperatureRange(byref(minTemp), byref(maxTemp)), "GetTemperatureRange")
 
         self.settings.eeprom.max_temp_degC = maxTemp.value
         self.settings.eeprom.min_temp_degC = minTemp.value
@@ -429,7 +445,7 @@ class AndorDevice(InterfaceDevice):
 
         # however the startup temperature was set (hardcode, JSON, clamped to min)...apply it
         self.setpoint_deg_c = self.settings.eeprom.startup_temp_degC
-        assert(self.SUCCESS == self.driver.SetTemperature(self.setpoint_deg_c)), f"unable to set temperature to {self.setpoint_deg_c}"
+        self.check_result(self.driver.SetTemperature(self.setpoint_deg_c), f"SetTemperature({self.setpoint_deg_c})")
         log.debug(f"set TEC to {self.setpoint_deg_c}°C (range {self.settings.eeprom.min_temp_degC}, {self.settings.eeprom.max_temp_degC})")
 
         return SpectrometerResponse(True)
@@ -438,10 +454,9 @@ class AndorDevice(InterfaceDevice):
         c_toggle = c_int(toggle_state)
         self.toggle_state = c_toggle.value
         if toggle_state:
-            assert(self.SUCCESS == self.driver.CoolerON()), "unable to set temperature midpoint"
+            self.check_result(self.driver.CoolerON(), "CoolerON")
         else:
-            assert(self.SUCCESS == self.driver.CoolerOFF()), "unable to set temperature midpoint"
-        log.debug(f"Toggled TEC to state {c_toggle}")
+            self.check_result(self.driver.CoolerOFF(), "CoolerOFF")
         return SpectrometerResponse(True)
 
     def set_tec_setpoint(self, set_temp):
@@ -449,20 +464,19 @@ class AndorDevice(InterfaceDevice):
             log.error(f"requested temp of {set_temp}, but it is outside range ({self.settings.eeprom.min_temp_degC}C, {self.settings.eeprom.max_temp_degC}C)")
             return
         if not self.toggle_state:
-            log.error(f"returning beacuse toggle state is {self.toggle_state}")
+            log.error(f"returning because toggle state is {self.toggle_state}")
             return
         self.setpoint_deg_c = set_temp
         # I don't think CoolerON should need to be called, but I'm not seeing temperature changes
         # when it is not present here.
-        assert(self.SUCCESS == self.driver.CoolerON()), "unable to enable TEC"
-        assert(self.SUCCESS == self.driver.SetTemperature(self.setpoint_deg_c)), "unable to set temperature"
-        log.debug(f"set TEC to {self.setpoint_deg_c}C")
+        self.check_result(self.driver.CoolerON(), "CoolerON")
+        self.check_result(self.driver.SetTemperature(self.setpoint_deg_c), f"SetTemperature({self.setpoint_deg_c})")
         return SpectrometerResponse(True)
 
     def init_detector_area(self) -> SpectrometerResponse:
         xPixels = c_int()
         yPixels = c_int()
-        assert(self.SUCCESS == self.driver.GetDetector(byref(xPixels), byref(yPixels))), "unable to read detector dimensions"
+        self.check_result(self.driver.GetDetector(byref(xPixels), byref(yPixels)), "GetDetector(x, y)")
         log.debug(f"detector {xPixels.value} width x {yPixels.value} height")
         self.pixels = xPixels.value
         return SpectrometerResponse(True)
@@ -471,9 +485,8 @@ class AndorDevice(InterfaceDevice):
         # set vertical to recommended
         VSnumber = c_int()
         speed = c_float()
-        assert(self.SUCCESS == self.driver.GetFastestRecommendedVSSpeed(byref(VSnumber), byref(speed))), "unable to get fastest recommended VS speed"
-        assert(self.SUCCESS == self.driver.SetVSSpeed(VSnumber.value)), f"unable to set VS speed {VSnumber.value}"
-        log.debug(f"set vertical speed to {VSnumber.value}")
+        self.check_result(self.driver.GetFastestRecommendedVSSpeed(byref(VSnumber), byref(speed)), "GetFastestRecommendedVSSpeed")
+        self.check_result(self.driver.SetVSSpeed(VSnumber.value), f"SetVSSpeed({VSnumber.value})")
 
         # set horizontal to max
         nAD = c_int()
@@ -481,17 +494,17 @@ class AndorDevice(InterfaceDevice):
         STemp = 0.0
         HSnumber = 0
         ADnumber = 0
-        assert(self.SUCCESS == self.driver.GetNumberADChannels(byref(nAD))), "unable to get number of AD channels"
+        self.check_result(self.driver.GetNumberADChannels(byref(nAD)), "GetNumberADChannels")
         for iAD in range(nAD.value):
-            assert(self.SUCCESS == self.driver.GetNumberHSSpeeds(iAD, 0, byref(sIndex))), f"unable to get number of HS speeds for AD {iAD}"
+            self.check_result(self.driver.GetNumberHSSpeeds(iAD, 0, byref(sIndex)), f"GetNumberHSSpeeds({iAD})")
             for iSpeed in range(sIndex.value):
-                assert(self.SUCCESS == self.driver.GetHSSpeed(iAD, 0, iSpeed, byref(speed))), f"unable to get HS speed for iAD {iAD}, iSpeed {iSpeed}"
+                self.check_result(self.driver.GetHSSpeed(iAD, 0, iSpeed, byref(speed)), f"GetHSSpeed(iAD {iAD}, iSpeed {iSpeed})")
                 if speed.value > STemp:
                     STemp = speed.value
                     HSnumber = iSpeed
                     ADnumber = iAD
-        assert(self.SUCCESS == self.driver.SetADChannel(ADnumber)), "unable to set AD channel to {ADnumber}"
-        assert(self.SUCCESS == self.driver.SetHSSpeed(0, HSnumber)), "unable to set HS speed to {HSnumber}"
+        self.check_result(self.driver.SetADChannel(ADnumber), f"SetADChannel({ADnumber})")
+        self.check_result(self.driver.SetHSSpeed(0, HSnumber), f"SetHSSpeed({HSnumber})")
         log.debug(f"set AD channel {ADnumber} with horizontal speed {HSnumber} ({STemp})")
         return SpectrometerResponse(True)
 
@@ -499,3 +512,145 @@ class AndorDevice(InterfaceDevice):
         self.sum_count = 0
         self.settings.state.scans_to_average = int(value)
         return SpectrometerResponse(True)
+
+    def get_error_code(self, code):
+        if code in self.error_codes:
+            return self.error_codes[code]
+        return "UNKNOWN_ANDOR_ERROR"
+
+    ## @see ATMCD32D.H
+    def load_error_codes(self):
+        self.error_codes = {
+            20001: "DRV_ERROR_CODES",
+            20002: "DRV_SUCCESS",
+            20003: "DRV_VXDNOTINSTALLED",
+            20004: "DRV_ERROR_SCAN",
+            20005: "DRV_ERROR_CHECK_SUM",
+            20006: "DRV_ERROR_FILELOAD",
+            20007: "DRV_UNKNOWN_FUNCTION",
+            20008: "DRV_ERROR_VXD_INIT",
+            20009: "DRV_ERROR_ADDRESS",
+            20010: "DRV_ERROR_PAGELOCK",
+            20011: "DRV_ERROR_PAGEUNLOCK",
+            20012: "DRV_ERROR_BOARDTEST",
+            20013: "DRV_ERROR_ACK",
+            20014: "DRV_ERROR_UP_FIFO",
+            20015: "DRV_ERROR_PATTERN",
+            20017: "DRV_ACQUISITION_ERRORS",
+            20018: "DRV_ACQ_BUFFER",
+            20019: "DRV_ACQ_DOWNFIFO_FULL",
+            20020: "DRV_PROC_UNKONWN_INSTRUCTION",
+            20021: "DRV_ILLEGAL_OP_CODE",
+            20022: "DRV_KINETIC_TIME_NOT_MET",
+            20023: "DRV_ACCUM_TIME_NOT_MET",
+            20024: "DRV_NO_NEW_DATA",
+            20025: "DRV_PCI_DMA_FAIL",
+            20026: "DRV_SPOOLERROR",
+            20027: "DRV_SPOOLSETUPERROR",
+            20028: "DRV_FILESIZELIMITERROR",
+            20029: "DRV_ERROR_FILESAVE",
+            20033: "DRV_TEMPERATURE_CODES",
+            20034: "DRV_TEMPERATURE_OFF",
+            20035: "DRV_TEMPERATURE_NOT_STABILIZED",
+            20036: "DRV_TEMPERATURE_STABILIZED",
+            20037: "DRV_TEMPERATURE_NOT_REACHED",
+            20038: "DRV_TEMPERATURE_OUT_RANGE",
+            20039: "DRV_TEMPERATURE_NOT_SUPPORTED",
+            20040: "DRV_TEMPERATURE_DRIFT",
+            20033: "DRV_TEMP_CODES",
+            20034: "DRV_TEMP_OFF",
+            20035: "DRV_TEMP_NOT_STABILIZED",
+            20036: "DRV_TEMP_STABILIZED",
+            20037: "DRV_TEMP_NOT_REACHED",
+            20038: "DRV_TEMP_OUT_RANGE",
+            20039: "DRV_TEMP_NOT_SUPPORTED",
+            20040: "DRV_TEMP_DRIFT",
+            20049: "DRV_GENERAL_ERRORS",
+            20050: "DRV_INVALID_AUX",
+            20051: "DRV_COF_NOTLOADED",
+            20052: "DRV_FPGAPROG",
+            20053: "DRV_FLEXERROR",
+            20054: "DRV_GPIBERROR",
+            20055: "DRV_EEPROMVERSIONERROR",
+            20064: "DRV_DATATYPE",
+            20065: "DRV_DRIVER_ERRORS",
+            20066: "DRV_P1INVALID",
+            20067: "DRV_P2INVALID",
+            20068: "DRV_P3INVALID",
+            20069: "DRV_P4INVALID",
+            20070: "DRV_INIERROR",
+            20071: "DRV_COFERROR",
+            20072: "DRV_ACQUIRING",
+            20073: "DRV_IDLE",
+            20074: "DRV_TEMPCYCLE",
+            20075: "DRV_NOT_INITIALIZED",
+            20076: "DRV_P5INVALID",
+            20077: "DRV_P6INVALID",
+            20078: "DRV_INVALID_MODE",
+            20079: "DRV_INVALID_FILTER",
+            20080: "DRV_I2CERRORS",
+            20081: "DRV_I2CDEVNOTFOUND",
+            20082: "DRV_I2CTIMEOUT",
+            20083: "DRV_P7INVALID",
+            20084: "DRV_P8INVALID",
+            20085: "DRV_P9INVALID",
+            20086: "DRV_P10INVALID",
+            20087: "DRV_P11INVALID",
+            20089: "DRV_USBERROR",
+            20090: "DRV_IOCERROR",
+            20091: "DRV_VRMVERSIONERROR",
+            20092: "DRV_GATESTEPERROR",
+            20093: "DRV_USB_INTERRUPT_ENDPOINT_ERROR",
+            20094: "DRV_RANDOM_TRACK_ERROR",
+            20095: "DRV_INVALID_TRIGGER_MODE",
+            20096: "DRV_LOAD_FIRMWARE_ERROR",
+            20097: "DRV_DIVIDE_BY_ZERO_ERROR",
+            20098: "DRV_INVALID_RINGEXPOSURES",
+            20099: "DRV_BINNING_ERROR",
+            20100: "DRV_INVALID_AMPLIFIER",
+            20101: "DRV_INVALID_COUNTCONVERT_MODE",
+            20102: "DRV_USB_INTERRUPT_ENDPOINT_TIMEOUT",
+            20990: "DRV_ERROR_NOCAMERA",
+            20991: "DRV_NOT_SUPPORTED",
+            20992: "DRV_NOT_AVAILABLE",
+            20115: "DRV_ERROR_MAP",
+            20116: "DRV_ERROR_UNMAP",
+            20117: "DRV_ERROR_MDL",
+            20118: "DRV_ERROR_UNMDL",
+            20119: "DRV_ERROR_BUFFSIZE",
+            20121: "DRV_ERROR_NOHANDLE",
+            20130: "DRV_GATING_NOT_AVAILABLE",
+            20131: "DRV_FPGA_VOLTAGE_ERROR",
+            20150: "DRV_OW_CMD_FAIL",
+            20151: "DRV_OWMEMORY_BAD_ADDR",
+            20152: "DRV_OWCMD_NOT_AVAILABLE",
+            20153: "DRV_OW_NO_SLAVES",
+            20154: "DRV_OW_NOT_INITIALIZED",
+            20155: "DRV_OW_ERROR_SLAVE_NUM",
+            20156: "DRV_MSTIMINGS_ERROR",
+            20173: "DRV_OA_NULL_ERROR",
+            20174: "DRV_OA_PARSE_DTD_ERROR",
+            20175: "DRV_OA_DTD_VALIDATE_ERROR",
+            20176: "DRV_OA_FILE_ACCESS_ERROR",
+            20177: "DRV_OA_FILE_DOES_NOT_EXIST",
+            20178: "DRV_OA_XML_INVALID_OR_NOT_FOUND_ERROR",
+            20179: "DRV_OA_PRESET_FILE_NOT_LOADED",
+            20180: "DRV_OA_USER_FILE_NOT_LOADED",
+            20181: "DRV_OA_PRESET_AND_USER_FILE_NOT_LOADED",
+            20182: "DRV_OA_INVALID_FILE",
+            20183: "DRV_OA_FILE_HAS_BEEN_MODIFIED",
+            20184: "DRV_OA_BUFFER_FULL",
+            20185: "DRV_OA_INVALID_STRING_LENGTH",
+            20186: "DRV_OA_INVALID_CHARS_IN_NAME",
+            20187: "DRV_OA_INVALID_NAMING",
+            20188: "DRV_OA_GET_CAMERA_ERROR",
+            20189: "DRV_OA_MODE_ALREADY_EXISTS",
+            20190: "DRV_OA_STRINGS_NOT_EQUAL",
+            20191: "DRV_OA_NO_USER_DATA",
+            20192: "DRV_OA_VALUE_NOT_SUPPORTED",
+            20193: "DRV_OA_MODE_DOES_NOT_EXIST",
+            20194: "DRV_OA_CAMERA_NOT_SUPPORTED",
+            20195: "DRV_OA_FAILED_TO_GET_MODE",
+            20196: "DRV_OA_CAMERA_NOT_AVAILABLE",
+            20211: "DRV_PROCESSING_FAILED"
+        }

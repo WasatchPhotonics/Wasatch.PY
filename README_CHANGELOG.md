@@ -1,6 +1,12 @@
 # Changelog
-- 2022-04-28 2.1.5
+- 2022-04-28 2.1.6
     - Resolve SPI eeprom read and write issues
+- 2022-04-27 2.1.5
+    - Andor updates
+        - added error codes
+        - support "detector" override from .json
+        - increase shutter time per Newton testing
+    - fixed WrapperWorker bug
 - 2022-04-22 2.1.4
     - Andor updates
         - search for DLL in various locations

@@ -31,6 +31,17 @@ log = logging.getLogger(__name__)
 
 class SPIDevice(InterfaceDevice):
     """
+    @todo that we still need to add:
+
+    CRC validation
+    set_gain_db
+    set_pixel_mode (i.e. detector resolution)
+    set_start_line
+    set_stop_line
+    set_start_column
+    set_stop_column
+    set_trigger_mode (not currently documented in ENG-0150)
+
     This implements SPI communication via the FT232H usb converter.     
 
     @todo convert the different asserts to SpectrometerResponse returns
@@ -51,7 +62,7 @@ class SPIDevice(InterfaceDevice):
                                 \   \  |  /  /
                                  ------------
                                        |
-                         {self.driver.some_andor_sdk_call}
+                         {self.driver.some_spi_call}
     ############################################################################
     """
 
@@ -348,7 +359,7 @@ class SPIDevice(InterfaceDevice):
             pass
         log.debug("data is ready")
 
-        # Relase the trigger
+        # Release the trigger
         self.trigger.value = False
 
         # Read in the spectra
