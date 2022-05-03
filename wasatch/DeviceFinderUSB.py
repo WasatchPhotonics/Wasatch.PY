@@ -11,6 +11,14 @@ from .DeviceID import DeviceID
 # spectrometers.
 class DeviceFinderUSB(object):
 
+    WASATCH_VID = 0x24aa
+    OCEAN_VID = 0x2457
+    ANDOR_VID = 0x136e
+    FT232_SPI_VID = 0x0403
+    WP_HAMA_SILICON_PID = 0x1000
+    WP_HAMA_INGAAS_PID = 0x2000
+    WP_ARM_PID = 0x4000
+
     def __init__(self):
         pass
 
@@ -49,10 +57,10 @@ class DeviceFinderUSB(object):
             pid = int(device.idProduct)
             log.debug("DeviceListFID: discovered vid 0x%04x, pid 0x%04x (count %d)", vid, pid, count)
 
-            if vid not in [0x24aa, 0x2457, 0x136e]:
+            if vid not in [self.WASATCH_VID, self.OCEAN_VID, self.ANDOR_VID, self.FT232_SPI_VID]:
                 continue
 
-            if vid == 0x24aa and pid not in [ 0x1000, 0x2000, 0x4000 ]:
+            if vid == self.WWASATCH_VID and pid not in [ self.WP_HAMA_SILICON_PID, self.WP_HAMA_INGAAS_PID, self.WP_ARM_PID ]:
                 continue
 
             device_id = DeviceID(device=device)

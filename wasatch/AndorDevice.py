@@ -28,10 +28,10 @@ class AndorDevice(InterfaceDevice):
     @todo have check_result return a SpectrometerResponse 
     ##########################################################################
     This class adopts the external device interface structure
-    This invlovles receiving a request through the handle_request function
+    This involves receiving a request through the handle_request function
     A request is processed based on the key in the request
     The processing function passes the commands to the requested device
-    Once it recevies a response from the connected device it then passes that
+    Once it receives a response from the connected device it then passes that
     back up the chain
                                Enlighten Request
                                        |

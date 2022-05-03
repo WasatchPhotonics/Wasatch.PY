@@ -11,6 +11,7 @@ from .WasatchDevice        import WasatchDevice
 from .ControlObject        import ControlObject
 from .AndorDevice          import AndorDevice
 from .OceanDevice          import OceanDevice
+from .SPIDevice            import SPIDevice
 from .BLEDevice            import BLEDevice
 from .Reading              import Reading
 
@@ -40,6 +41,7 @@ class WrapperWorker(threading.Thread):
             message_queue,
             is_ocean,
             is_andor,
+            is_spi,
             is_ble,
             parent=None):
 
@@ -48,6 +50,7 @@ class WrapperWorker(threading.Thread):
         self.device_id      = device_id
         self.is_ocean       = is_ocean
         self.is_andor       = is_andor
+        self.is_spi         = is_spi
         self.is_ble         = is_ble
         self.command_queue  = command_queue
         self.response_queue = response_queue
@@ -62,8 +65,8 @@ class WrapperWorker(threading.Thread):
     # one of the three queues (cmd inputs, response outputs, and
     # a one-shot SpectrometerSettings).
     def run(self) -> None:
-        is_options = [self.is_ocean, self.is_andor, self.is_ble]
-        device_classes = [OceanDevice, AndorDevice, BLEDevice, WasatchDevice]
+        is_options = (self.is_ocean, self.is_andor, self.is_ble, self.is_spi)
+        device_classes = (OceanDevice, AndorDevice, BLEDevice, SPIDevice, WasatchDevice)
         try:
             log.debug(f"trying to instantiate device")
             if any(is_options):
@@ -169,8 +172,8 @@ class WrapperWorker(threading.Thread):
             except Exception as exc:
                 log.critical("exception calling WasatchDevice.acquire_data", exc_info=1)
                 continue
-            if reading_response == None:
-                log.error(f"Got None reading response. Should not get naked response. Happened with request {req}")
+            if not isinstance(reading_response, SpectrometerResponse):
+                log.error(f"Reading is not type ReadingResponse. Should not get naked responses. Happened with request {req}")
                 continue
             log.debug(f"response {reading_response} data is {reading_response.data}")
 

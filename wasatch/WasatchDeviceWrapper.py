@@ -177,6 +177,7 @@ class WasatchDeviceWrapper:
         self.thread       = False
         self.is_ocean     = '0x2457' in str(device_id)
         self.is_andor     = '0x136e' in str(device_id)
+        self.is_spi       = '0x0403' in str(device_id)
         self.mock         = 'test' in str(device_id)
         self.is_ble       = isinstance(device_id.device_type, BLEDevice)
         self.connect_start_time = datetime.datetime(year=datetime.MAXYEAR, month=1, day=1)
@@ -241,6 +242,7 @@ class WasatchDeviceWrapper:
             message_queue  = self.message_queue,
             is_ocean       = self.is_ocean,
             is_andor       = self.is_andor,
+            is_spi         = self.is_spi,
             is_ble         = self.is_ble)
         log.debug("device wrapper: Instance created for worker")
 

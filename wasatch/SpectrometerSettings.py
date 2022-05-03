@@ -378,35 +378,39 @@ class SpectrometerSettings(object):
         # log.debug("is_ingaas FALSE by default")
         return False
 
-    def is_imx(self):
+    def is_imx(self) -> bool:
         return "imx" in self.eeprom.detector.lower()
 
-    def is_imx392(self):
+    def is_imx392(self) -> bool:
         return "imx392" in self.eeprom.detector.lower()
 
-    def is_micro(self):
-        return self.is_arm() and \
+    def is_spi(self) -> bool:
+        return self.hardware_info.pid == 0x6014
+
+    def is_micro(self) -> bool:
+        return ( self.is_arm() and \
                ( self.is_imx() or \
                  "micro" in self.full_model().lower() or \
-                 "sig"   in self.full_model().lower() )
+                 "sig"   in self.full_model().lower() )) \
+                 or self.is_spi()
 
-    def is_non_raman(self):
+    def is_non_raman(self) -> bool:
         return not self.has_excitation()
 
-    def is_gen15(self):
+    def is_gen15(self) -> bool:
         return self.eeprom.gen15
 
-    def is_gen2(self):
+    def is_gen2(self) -> bool:
         return False
 
     ## @todo add this to EEPROM.feature_mask if we decide to keep the feature
-    def has_marker(self):
+    def has_marker(self) -> bool:
         return self.eeprom.model == "WPX-8CHANNEL"
 
-    def is_andor(self):
+    def is_andor(self) -> bool:
         return '0x136e' in str(self.device_id)
 
-    def is_sig(self):
+    def is_sig(self) -> bool:
         return self.is_micro()
 
     # probably a simpler way to do this...

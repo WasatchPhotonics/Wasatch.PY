@@ -1,5 +1,6 @@
 # Changelog
-
+- 2022-04-28 2.1.6
+    - Resolve SPI eeprom read and write issues
 - 2022-04-27 2.1.5
     - Andor updates
         - added error codes
@@ -24,6 +25,7 @@
     - restored automatic TEC enable at connect
     - added demo-workflow.py
     - added 'make pip-install-local'
+    - Setup SPI device
 - 2022-04-06 2.1.0
     - Setup interface devices in new architecture
 - 2022-03-21 2.0.3
