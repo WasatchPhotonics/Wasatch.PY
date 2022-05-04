@@ -606,10 +606,9 @@ class WasatchDevice(InterfaceDevice):
                         while True:
                             log.debug(f"trying to read fast area scan row")
                             req = SpectrometerRequest("get_line",kwargs={"trigger":first})
-                            res = self.hardware.handle_requests([req])[0]
-                            if res.error_msg != '':
-                                return res
-                            response = res.data
+                            response = self.hardware.handle_requests([req])[0]
+                            if response.error_msg != '':
+                                return response
                             spectrum_and_row = response.data
                             first = False
                             if response.poison_pill:
