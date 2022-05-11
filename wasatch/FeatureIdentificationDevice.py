@@ -2012,7 +2012,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.debug("CAN_LASER_FIRE requires has_interlock_feedback (defaulting True)")
             return SpectrometerResponse(data=True)
 
-        return SpectrometerResponse(data=0 != self._get_code(0xef, label="CAN_LASER_FIRE", msb_len=1))
+        res = self._get_code(0xef, label="CAN_LASER_FIRE", msb_len=1)
+        res.data = 0 != res.data
+        return res
 
     def is_laser_firing(self) -> SpectrometerResponse:
         """
