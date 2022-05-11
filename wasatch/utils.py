@@ -20,6 +20,13 @@ def remove_unicode(s):
         return s.encode('ascii', 'ignore')
     return s
 
+def pixel_to_wavelength(x: int, coeffs: list[float]) -> float:
+    wavelength = 0.0
+    log.debug(f"converting pixel {x} to wavelen with coeffs {coeffs}")
+    for i in range(len(coeffs)):
+        wavelength += coeffs[i] * pow(x, i)
+    return wavelength
+
 ## expand 3rd-order wavelength polynomial into array of wavelengths
 def generate_wavelengths(pixels, coeffs):
     if coeffs is None or pixels == 0:
@@ -53,7 +60,7 @@ def generate_wavenumbers(excitation, wavelengths, wavenumber_correction=0):
 
 ## convert a single wavelength to wavenumber
 def wavelength_to_wavenumber(wavelength, excitation):
-    return 1e7 / float(excitation) - 1e7 / wavelength
+    return (1e7 / float(excitation)) - (1e7 / wavelength)
 
 ## convert a single (uncorrected) wavenumber to wavelength
 def wavenumber_to_wavelength(excitation, wavenumber):
