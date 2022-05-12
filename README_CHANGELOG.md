@@ -1,4 +1,7 @@
 # Changelog
+- 2022-05-11 2.1.7
+    - populate laser attributes on Readings
+    - fixed bug in can\_laser\_fire
 - 2022-04-28 2.1.6
     - Resolve SPI eeprom read and write issues
 - 2022-04-27 2.1.5
