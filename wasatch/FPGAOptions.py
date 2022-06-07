@@ -50,6 +50,10 @@ class FPGAOptions(object):
     # bit   15: 1000 0000 0000 0000 Reserved
     # @endcode
     def parse(self, word):
+        if word is None:
+            log.error("can't parse NULL word")
+            return
+
         self.integration_time_resolution = (word & 0x0007)
         self.data_header                 = (word & 0x0038) >> 3
         self.has_cf_select               = (word & 0x0040) != 0
