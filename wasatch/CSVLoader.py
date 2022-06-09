@@ -21,9 +21,10 @@ log = logging.getLogger(__name__)
 # data, as no wavecal coefficients or excitation are available.
 class CSVLoader(object):
 
-    def __init__(self, pathname, save_options=None):
+    def __init__(self, pathname, save_options=None, encoding="utf-8"):
         self.pathname = pathname
         self.save_options = save_options
+        self.encoding = encoding
 
         # default
         self.timestamp = datetime.datetime.now()
@@ -62,7 +63,7 @@ class CSVLoader(object):
     def load_data(self):
         state = "reading_metadata"
         data_rows_read = 0
-        with open(self.pathname, "r") as infile:
+        with open(self.pathname, "r", encoding=self.encoding) as infile:
             for line in infile:
 
                 # skip comments and blanks

@@ -164,7 +164,7 @@ class AndorDevice(InterfaceDevice):
         json.dump(self.config_values, f)
 
     def set_fan_enable(self, x: bool) -> SpectrometerResponse:
-        self.check_result(self.driver.setFanMode(int(x)), f"Andor Fan On {x}")
+        self.check_result(self.driver.SetFanMode(int(x)), f"Andor Fan On {x}")
         return SpectrometerResponse()
 
     def _get_default_data_dir(self) -> str:

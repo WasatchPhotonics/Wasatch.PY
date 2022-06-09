@@ -23,7 +23,7 @@ class RealUSBDevice(AbstractUSBDevice):
     def reset(self, dev):
         dev.reset()
 
-    def claim_interface(self):
+    def claim_interface(self, *args, **kwargs):
         return usb.util.claim_interface(*args, **kwargs)
 
     def release_interface(self, *args, **kwargs):
