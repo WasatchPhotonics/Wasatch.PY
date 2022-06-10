@@ -1,5 +1,7 @@
 # Changelog
 
+- 2022-06-10 2.1.9
+    - add check to prevent vertical binning for legacy sig vis
 - 2022-06-06 2.1.8
     - support encoding in CSVLoader
     - fix Andor fan control
