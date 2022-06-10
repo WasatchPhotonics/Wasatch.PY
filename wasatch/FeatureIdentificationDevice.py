@@ -2137,6 +2137,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return self.set_laser_watchdog_sec(watchdog_sec)
 
     def set_vertical_binning(self, lines: tuple[int, int]) -> SpectrometerResponse:
+        # check for legacy vis since they don't like vertical binning
+        if self.settings.fpga_firmware_version == "000-008" and self.settings.microcontroller_firmware_version == "0.1.0.7":
+            return SpectrometerResponse(data=False)
         if not self.settings.is_micro():
             log.debug("Vertical Binning only configurable on microRaman")
             return SpectrometerResponse(data=False,error_msg="vertical binning not supported")
