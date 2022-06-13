@@ -72,6 +72,7 @@ class EEPROM(object):
         self.calibrated_by               = None
                                          
         self.detector                    = None
+        self.detector_serial_number      = None
         self.active_pixels_horizontal    = 1024
         self.active_pixels_vertical      = 0
         self.min_integration_time_ms     = 10
