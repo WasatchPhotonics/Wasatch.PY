@@ -151,6 +151,7 @@ class AndorDevice(InterfaceDevice):
         # This is an easy fix for the time being to make things behave
         ##################################################################
         process_f["integration_time_ms"] = lambda x: self.set_integration_time_ms(x) # conversion from millisec to microsec
+        process_f["fan_enable"] = lambda x: self.set_fan_enable(bool(x))
         process_f["shutter_enable"] = lambda x: self.set_shutter_enable(bool(x))
         process_f["detector_tec_enable"]                = lambda x: self.toggle_tec(bool(x))
         process_f["detector_tec_setpoint_degC"]         = lambda x: self.set_tec_setpoint(int(round(x)))
@@ -175,6 +176,10 @@ class AndorDevice(InterfaceDevice):
         self.config_values['wavelength_coeffs'] = coeffs
         f = open(self.config_file, 'w')
         json.dump(self.config_values, f)
+
+    def set_fan_enable(self, x: bool) -> SpectrometerResponse:
+        self.check_result(self.driver.SetFanMode(int(x)), f"Andor Fan On {x}")
+        return SpectrometerResponse()
 
     def _get_default_data_dir(self) -> str:
         if os.name == "nt":

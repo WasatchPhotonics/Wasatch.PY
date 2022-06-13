@@ -1,4 +1,13 @@
 # Changelog
+
+- 2022-06-10 2.1.9
+    - add check to prevent vertical binning for legacy sig vis
+- 2022-06-06 2.1.8
+    - support encoding in CSVLoader
+    - fix Andor fan control
+- 2022-05-11 2.1.7
+    - populate laser attributes on Readings
+    - fixed bug in can\_laser\_fire
 - 2022-04-28 2.1.6
     - Resolve SPI eeprom read and write issues
 - 2022-04-27 2.1.5

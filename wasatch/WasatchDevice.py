@@ -373,11 +373,14 @@ class WasatchDevice(InterfaceDevice):
                     return disable_laser(force=True)
 
                 if not auto_enable_laser:
-                    req_en = SpectrometerRequest("get_laser_enabled")
-                    req_can = SpectrometerRequest("can_laser_fire")
-                    req_is = SpectrometerRequest("is_laser_firing")
-                    reqs = [req_en, req_can, req_is]
-                    self.hardware.handle_requests(reqs)
+                    for (func, attr) in [ ('get_laser_enabled', 'laser_enabled'),
+                                          ('can_laser_fire',    'laser_can_fire'),
+                                          ('is_laser_firing',   'laser_is_firing') ]:
+                        req = SpectrometerRequest(func)
+                        res = self.hardware.handle_requests([req])[0]
+                        if res.error_msg != '':
+                            return res
+                        setattr(reading, attr, res.data)
 
                 if self.hardware.shutdown_requested:
                     return disable_laser(force=True)

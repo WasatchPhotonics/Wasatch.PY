@@ -130,6 +130,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.process_f = self._init_process_funcs()
 
     def handle_requests(self, requests: list[SpectrometerRequest]) -> list[SpectrometerResponse]:
+        """
+        @todo consider making 'requests' an object, and dynamically checking to 
+              see if it is a single SpectrometerRequest or a list[SpectrometerRequest];
+              if the former, only return a single SpectrometerResponse.
+        """
         responses = []
         for request in requests:
             try:
@@ -1988,8 +1993,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         log.debug("Send laser temperature setpoint raw: %d", value)
         return self._send_code(0xe7, value, label="SET_LASER_TEC_SETPOINT")
 
-    ## legacy wrapper over can_laser_fire
     def get_laser_interlock(self) -> SpectrometerResponse:
+        """ Legacy wrapper over can_laser_fire. """
         return self.can_laser_fire()
 
     def can_laser_fire(self) -> SpectrometerResponse:
@@ -2007,7 +2012,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.debug("CAN_LASER_FIRE requires has_interlock_feedback (defaulting True)")
             return SpectrometerResponse(data=True)
 
-        return SpectrometerResponse(data=0 != self._get_code(0xef, label="CAN_LASER_FIRE", msb_len=1))
+        res = self._get_code(0xef, label="CAN_LASER_FIRE", msb_len=1)
+        res.data = 0 != res.data
+        return res
 
     def is_laser_firing(self) -> SpectrometerResponse:
         """
@@ -2130,6 +2137,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return self.set_laser_watchdog_sec(watchdog_sec)
 
     def set_vertical_binning(self, lines: tuple[int, int]) -> SpectrometerResponse:
+        # check for legacy vis since they don't like vertical binning
+        if self.settings.fpga_firmware_version == "000-008" and self.settings.microcontroller_firmware_version == "0.1.0.7":
+            return SpectrometerResponse(data=False)
         if not self.settings.is_micro():
             log.debug("Vertical Binning only configurable on microRaman")
             return SpectrometerResponse(data=False,error_msg="vertical binning not supported")
@@ -2858,129 +2868,127 @@ class FeatureIdentificationDevice(InterfaceDevice):
     def _init_process_funcs(self) -> dict[str, Callable[..., Any]]:
         process_f = {}
 
-        process_f["connect"] = self.connect
-        process_f["disconnect"] = self.disconnect
-        process_f["get_battery_register"] = self.get_battery_register
-        process_f["get_battery_state_raw"] = self.get_battery_state_raw
-        process_f["get_battery_percentage"] = self.get_battery_percentage
-        process_f["get_battery_charging"] = self.get_battery_charging
-        process_f["get_integration_time_ms"] = self.get_integration_time_ms
-        process_f["set_dfu_enable"] = self.set_dfu_enable
-        process_f["set_detector_offset"] = self.set_detector_offset
-        process_f["set_detector_offset_odd"] = self.set_detector_offset_odd
-        process_f["get_detector_gain"] = self.get_detector_gain
-        process_f["get_detector_gain_odd"] = self.get_detector_gain_odd
-        process_f["set_detector_gain"] = self.set_detector_gain
-        process_f["set_detector_gain_odd"] = self.set_detector_gain_odd
-        process_f["set_area_scan_enable"] = self.set_area_scan_enable
-        process_f["get_sensor_line_length"] = self.get_sensor_line_length
-        process_f["get_microcontroller_firmware_version"] = self.get_microcontroller_firmware_version
-        process_f["get_fpga_firmware_version"] = self.get_fpga_firmware_version
-        process_f["get_line"] = self.get_line
-        process_f["set_integration_time_ms"] = self.set_integration_time_ms
-        process_f["select_adc"] = self.select_adc
-        process_f["get_secondary_adc_calibrated"] = self.get_secondary_adc_calibrated
-        process_f["get_secondary_adc_raw"] = self.get_secondary_adc_raw
-        process_f["get_laser_temperature_raw"] = self.get_laser_temperature_raw
-        process_f["get_laser_temperature_degC"] = self.get_laser_temperature_degC
-        process_f["get_detector_temperature_raw"] = self.get_detector_temperature_raw
-        process_f["get_detector_temperature_degC"] = self.get_detector_temperature_degC
-        process_f["get_detector_tec_setpoint_degC"] = self.get_detector_tec_setpoint_degC
-        process_f["get_dac"] = self.get_dac
-        process_f["set_tec_enable"] = self.set_tec_enable
-        process_f["set_trigger_source"] = self.set_trigger_source
-        process_f["set_high_gain_mode_enable"] = self.set_high_gain_mode_enable
-        process_f["get_high_gain_mode_enabled"] = self.get_high_gain_mode_enabled
-        process_f["get_opt_laser_control"] = self.get_opt_laser_control
-        process_f["get_opt_has_laser"] = self.get_opt_has_laser
-        process_f["set_detector_tec_setpoint_degC"] = self.set_detector_tec_setpoint_degC
-        process_f["get_detector_tec_setpoint_raw"] = self.get_detector_tec_setpoint_raw
-        process_f["set_selected_laser"] = self.set_selected_laser
-        process_f["get_selected_laser"] = self.get_selected_laser
-        process_f["get_laser_enabled"] = self.get_laser_enabled
-        process_f["set_laser_enable"] = self.set_laser_enable
-        process_f["set_laser_power_ramping_enable"] = self.set_laser_power_ramping_enable
-        process_f["get_laser_power_ramping_enabled"] = self.get_laser_power_ramping_enabled
-        process_f["has_laser_power_calibration"] = self.has_laser_power_calibration
-        process_f["set_laser_power_mW"] = self.set_laser_power_mW
-        process_f["set_laser_power_high_resolution"] = self.set_laser_power_high_resolution
-        process_f["set_laser_power_require_modulation"] = self.set_laser_power_require_modulation
-        process_f["set_laser_power_perc"] = self.set_laser_power_perc
-        process_f["set_laser_power_perc_immediate"] = self.set_laser_power_perc_immediate
-        process_f["get_laser_temperature_setpoint_raw"] = self.get_laser_temperature_setpoint_raw
-        process_f["set_laser_temperature_setpoint_raw"] = self.set_laser_temperature_setpoint_raw
-        process_f["update_laser_watchdog"] = self.update_laser_watchdog
-        process_f["get_laser_interlock"] = self.get_laser_interlock
-        process_f["can_laser_fire"] = self.can_laser_fire
-        process_f["reset_fpga"] = self.reset_fpga
-        process_f["get_trigger_source"] = self.get_trigger_source
-        #process_f["get_raman_mode_enabled_NOT_USED"] = self.get_raman_mode_enabled_NOT_USED
-        #process_f["set_raman_mode_enable_NOT_USED"] = self.set_raman_mode_enable_NOT_USED
-        process_f["get_raman_delay_ms"] = self.get_raman_delay_ms
-        process_f["set_raman_delay_ms"] = self.set_raman_delay_ms
-        process_f["get_laser_watchdog_sec"] = self.get_laser_watchdog_sec
-        process_f["set_laser_watchdog_sec"] = self.set_laser_watchdog_sec
-        process_f["set_vertical_binning"] = self.set_vertical_binning
-        process_f["set_pixel_mode"] = self.set_pixel_mode
-        process_f["clear_regions"] = self.clear_regions
-        process_f["set_single_region"] = self.set_single_region
-        process_f["set_detector_roi"] = self.set_detector_roi
-        process_f["get_fpga_configuration_register"] = self.get_fpga_configuration_register
-        process_f["set_accessory_enable"] = self.set_accessory_enable
-        process_f["get_discretes_enabled"] = self.get_discretes_enabled
-        process_f["set_fan_enable"] = self.set_fan_enable
-        process_f["get_fan_enabled"] = self.get_fan_enabled
-        process_f["set_lamp_enable"] = self.set_lamp_enable
-        process_f["get_lamp_enabled"] = self.get_lamp_enabled
-        process_f["set_shutter_enable"] = self.set_shutter_enable
-        process_f["get_shutter_enabled"] = self.get_shutter_enabled
-        process_f["set_mod_enable"] = self.set_mod_enable
-        process_f["get_mod_enabled"] = self.get_mod_enabled
-        process_f["set_mod_period_us"] = self.set_mod_period_us
-        process_f["get_mod_period_us"] = self.get_mod_period_us
-        process_f["set_mod_width_us"] = self.set_mod_width_us
-        process_f["get_mod_width_us"] = self.get_mod_width_us
-        process_f["set_mod_delay_us"] = self.set_mod_delay_us
-        process_f["get_mod_delay_us"] = self.get_mod_delay_us
-        #process_f["set_mod_duration_us_NOT_USED"] = self.set_mod_duration_us_NOT_USED
-        process_f["get_mod_duration_us"] = self.get_mod_duration_us
-        process_f["set_strobe_enable"] = self.set_strobe_enable
-        process_f["get_strobe_enabled"] = self.get_strobe_enabled
-        process_f["get_ambient_temperature_degC"] = self.get_ambient_temperature_degC
-        process_f["get_tec_enabled"] = self.get_tec_enabled
-        process_f["get_actual_frames"] = self.get_actual_frames
-        process_f["get_actual_integration_time_us"] = self.get_actual_integration_time_us
-        process_f["get_detector_offset"] = self.get_detector_offset
-        process_f["get_detector_offset_odd"] = self.get_detector_offset_odd
-        process_f["get_ccd_sensing_threshold"] = self.get_ccd_sensing_threshold
-        process_f["get_ccd_threshold_sensing_mode"] = self.get_ccd_threshold_sensing_mode
-        process_f["get_external_trigger_output"] = self.get_external_trigger_output
-        process_f["get_laser_interlock"] = self.get_laser_interlock
-        process_f["can_laser_fire"] = self.can_laser_fire
-        process_f["is_laser_firing"] = self.is_laser_firing
-        process_f["get_laser_enabled"] = self.get_laser_enabled
-        process_f["set_mod_linked_to_integration"] = self.set_mod_linked_to_integration
-        process_f["get_selected_adc"] = self.get_selected_adc
-        process_f["set_trigger_delay"] = self.set_trigger_delay
-        process_f["get_trigger_delay"] = self.get_trigger_delay
-        process_f["get_vr_continuous_ccd"] = self.get_vr_continuous_ccd
-        process_f["get_vr_num_frames"] = self.get_vr_num_frames
-        process_f["get_opt_actual_integration_time"] = self.get_opt_actual_integration_time
-        process_f["get_opt_area_scan"] = self.get_opt_area_scan
-        process_f["get_opt_cf_select"] = self.get_opt_cf_select
-        process_f["get_opt_data_header_tab"] = self.get_opt_data_header_tab
-        process_f["get_opt_horizontal_binning"] = self.get_opt_horizontal_binning
-        process_f["get_opt_integration_time_resolution"] = self.get_opt_integration_time_resolution
-        process_f["set_analog_output_mode"] = self.set_analog_output_mode
-        process_f["set_analog_output_value"] = self.set_analog_output_value
-        process_f["get_analog_output_state"] = self.get_analog_output_state
-        process_f["get_analog_input_value"] = self.get_analog_input_value
-        process_f["update_session_eeprom"] = self.update_session_eeprom
-        process_f["replace_session_eeprom"] = self.replace_session_eeprom
-        process_f["write_eeprom"] = self.write_eeprom
-        process_f["set_log_level"] = self.set_log_level
-        process_f["queue_message"] = self.queue_message
-
+        for foo in [ "connect",
+                     "disconnect",
+                     "get_battery_register",
+                     "get_battery_state_raw",
+                     "get_battery_percentage",
+                     "get_battery_charging",
+                     "get_integration_time_ms",
+                     "set_dfu_enable",
+                     "set_detector_offset",
+                     "set_detector_offset_odd",
+                     "get_detector_gain",
+                     "get_detector_gain_odd",
+                     "set_detector_gain",
+                     "set_detector_gain_odd",
+                     "set_area_scan_enable",
+                     "get_sensor_line_length",
+                     "get_microcontroller_firmware_version",
+                     "get_fpga_firmware_version",
+                     "get_line",
+                     "set_integration_time_ms",
+                     "select_adc",
+                     "get_secondary_adc_calibrated",
+                     "get_secondary_adc_raw",
+                     "get_laser_temperature_raw",
+                     "get_laser_temperature_degC",
+                     "get_detector_temperature_raw",
+                     "get_detector_temperature_degC",
+                     "get_detector_tec_setpoint_degC",
+                     "get_dac",
+                     "set_tec_enable",
+                     "set_trigger_source",
+                     "set_high_gain_mode_enable",
+                     "get_high_gain_mode_enabled",
+                     "get_opt_laser_control",
+                     "get_opt_has_laser",
+                     "set_detector_tec_setpoint_degC",
+                     "get_detector_tec_setpoint_raw",
+                     "set_selected_laser",
+                     "get_selected_laser",
+                     "get_laser_enabled",
+                     "set_laser_enable",
+                     "set_laser_power_ramping_enable",
+                     "get_laser_power_ramping_enabled",
+                     "has_laser_power_calibration",
+                     "set_laser_power_mW",
+                     "set_laser_power_high_resolution",
+                     "set_laser_power_require_modulation",
+                     "set_laser_power_perc",
+                     "set_laser_power_perc_immediate",
+                     "get_laser_temperature_setpoint_raw",
+                     "set_laser_temperature_setpoint_raw",
+                     "update_laser_watchdog",
+                     "get_laser_interlock",
+                     "can_laser_fire",
+                     "reset_fpga",
+                     "get_trigger_source",
+                     "get_raman_delay_ms",
+                     "set_raman_delay_ms",
+                     "get_laser_watchdog_sec",
+                     "set_laser_watchdog_sec",
+                     "set_vertical_binning",
+                     "set_pixel_mode",
+                     "clear_regions",
+                     "set_single_region",
+                     "set_detector_roi",
+                     "get_fpga_configuration_register",
+                     "set_accessory_enable",
+                     "get_discretes_enabled",
+                     "set_fan_enable",
+                     "get_fan_enabled",
+                     "set_lamp_enable",
+                     "get_lamp_enabled",
+                     "set_shutter_enable",
+                     "get_shutter_enabled",
+                     "set_mod_enable",
+                     "get_mod_enabled",
+                     "set_mod_period_us",
+                     "get_mod_period_us",
+                     "set_mod_width_us",
+                     "get_mod_width_us",
+                     "set_mod_delay_us",
+                     "get_mod_delay_us",
+                     "get_mod_duration_us",
+                     "set_strobe_enable",
+                     "get_strobe_enabled",
+                     "get_ambient_temperature_degC",
+                     "get_tec_enabled",
+                     "get_actual_frames",
+                     "get_actual_integration_time_us",
+                     "get_detector_offset",
+                     "get_detector_offset_odd",
+                     "get_ccd_sensing_threshold",
+                     "get_ccd_threshold_sensing_mode",
+                     "get_external_trigger_output",
+                     "get_laser_interlock",
+                     "can_laser_fire",
+                     "is_laser_firing",
+                     "get_laser_enabled",
+                     "set_mod_linked_to_integration",
+                     "get_selected_adc",
+                     "set_trigger_delay",
+                     "get_trigger_delay",
+                     "get_vr_continuous_ccd",
+                     "get_vr_num_frames",
+                     "get_opt_actual_integration_time",
+                     "get_opt_area_scan",
+                     "get_opt_cf_select",
+                     "get_opt_data_header_tab",
+                     "get_opt_horizontal_binning",
+                     "get_opt_integration_time_resolution",
+                     "set_analog_output_mode",
+                     "set_analog_output_value",
+                     "get_analog_output_state",
+                     "get_analog_input_value",
+                     "update_session_eeprom",
+                     "replace_session_eeprom",
+                     "write_eeprom",
+                     "set_log_level",
+                     "queue_message" ]:
+            process_f[foo] = getattr(self, foo)
+    
         ##################################################################
         # What follows is the old init-lambdas that are squashed into process_f
         # Long term, the upstream requests should be changed to match the new format
