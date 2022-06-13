@@ -143,6 +143,7 @@ class AndorDevice(InterfaceDevice):
         process_f["set_tec_setpoint"] = self.set_tec_setpoint
         process_f["init_detector_area"] = self.init_detector_area
         process_f["scans_to_average"] = self.scans_to_average
+        process_f["high_gain_mode_enable"] = self.high_gain_mode_enable
 
         ##################################################################
         # What follows is the old init-lambdas that are squashed into process_f
@@ -155,6 +156,19 @@ class AndorDevice(InterfaceDevice):
         process_f["detector_tec_setpoint_degC"]         = lambda x: self.set_tec_setpoint(int(round(x)))
 
         return process_f
+
+    def high_gain_mode_enable(self, enabled: bool) -> SpectrometerResponse:
+        if enabled:
+            result = self.driver.SetPreAmpGain(self.gain_idx[-1])
+            assert(self.SUCCESS == result), f"unable to set detector gain, got value of {result}"
+            log.debug(f"for {enabled} setting gain to {self.gain_options[-1]}")
+            return
+        else:
+            result = self.driver.SetPreAmpGain(self.gain_idx[0])
+            assert(self.SUCCESS == result), f"unable to set detector gain, got value of {result}"
+            log.debug(f"for {enabled} setting gain to {self.gain_options[0]}")
+            return
+
 
     def _update_wavelength_coeffs(self, coeffs: list[float]) -> None:
         self.settings.eeprom.wavelength_coeffs = coeffs
@@ -362,6 +376,7 @@ class AndorDevice(InterfaceDevice):
         self.settings.state.shutter_enabled = True
 
         self.set_integration_time_ms(self.settings.eeprom.startup_integration_time_ms)
+        self.obtain_gain_info()
 
         # success!
         log.info("AndorDevice successfully connected")
@@ -480,6 +495,23 @@ class AndorDevice(InterfaceDevice):
         log.debug(f"detector {xPixels.value} width x {yPixels.value} height")
         self.pixels = xPixels.value
         return SpectrometerResponse(True)
+
+    def _obtain_gain_info(self):
+        num_gains = c_int()
+        result = self.driver.GetNumberPreAmpGains(byref(num_gains))
+        assert(self.SUCCESS == result), f"unable to get number of gains. Got result {result}"
+        log.debug(f"got number of gains is {num_gains.value}")
+        self.gain_options = []
+        self.gain_idx = []
+        spec_gain_opt = c_float()
+        for i in range(num_gains.value):
+            result = self.driver.GetPreAmpGain(i, byref(spec_gain_opt))
+            assert(self.SUCCESS == result), f"unable to get gains index {i}. Got result {result}"
+            self.gain_options.append(spec_gain_opt.value)
+            self.gain_idx.append(i)
+        self.gain_idx = self.gain_idx[::-1]
+        self.gain_options = self.gain_options[::-1]
+        log.debug(f"obtained gain options for spec, values were {self.gain_options}")
 
     def init_detector_speed(self) -> SpectrometerResponse:
         # set vertical to recommended
