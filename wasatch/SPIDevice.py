@@ -135,12 +135,12 @@ class SPIDevice(InterfaceDevice):
         # Initialize the SPI bus on the FT232H
         self.SPI  = busio.SPI(clock=board.SCK, MISO=board.MISO, MOSI=board.MOSI)
 
-        # Initialize D5 as the ready signal
-        self.ready = digitalio.DigitalInOut(board.D5)
+        # Initialize D5 as the ready signal (allow override)
+        self.ready = digitalio.DigitalInOut(getattr(board, os.getenv("SPI_PIN_READY", default="D5")))
         self.ready.direction = digitalio.Direction.INPUT
 
-        # Initialize D6 as the trigger
-        self.trigger = digitalio.DigitalInOut(board.D6)
+        # Initialize D6 as the trigger (allow override)
+        self.trigger = digitalio.DigitalInOut(getattr(board, os.getenv("SPI_PIN_TRIGGER", default="D6")))
         self.trigger.direction = digitalio.Direction.OUTPUT
         self.trigger.value = False
 

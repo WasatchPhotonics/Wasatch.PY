@@ -26,7 +26,7 @@ log = logging.getLogger(__name__)
 # @see 24LC128 for FX2 (16KB, https://www.microchip.com/en-us/product/24LC128)
 class EEPROM(object):
     
-    LATEST_REV = 13
+    LATEST_REV = 14
     MAX_PAGES = 8
     PAGE_LENGTH = 64
     SUBPAGE_COUNT = 4
