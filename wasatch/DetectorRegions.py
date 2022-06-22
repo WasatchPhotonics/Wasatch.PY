@@ -63,7 +63,6 @@ class DetectorRegions:
             roi = self.regions[region]
             if roi.enabled:
                 pixels += self.regions[region].width()
-        log.debug(f"DetectorRegions.total_pixels = {pixels} ({self})")
         return pixels
 
     ##
