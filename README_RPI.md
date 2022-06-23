@@ -59,57 +59,7 @@ packages for PySide2), so you might just use pip3 for ARM at this time.
 
 ## Pip3 Process
 
-    $ pip3 install numpy py six psutil future pygtail pyusb requests pexpect
-
-## Miniconda3 Process
-
-Follow the instructions posted here:
-
-- https://gist.github.com/simoncos/a7ce35babeaf73f512be24135c0fbafb
-
-Change the installation directory to /home/pi/miniconda3 when prompted:
-
-    $ wget http://repo.continuum.io/miniconda/Miniconda3-latest-Linux-armv7l.sh
-    $ sudo /bin/bash Miniconda3-latest-Linux-armv7l.sh
-
-    Miniconda3 will now be installed into this location: /root/miniconda3
-      - Press ENTER to confirm the location
-      - Press CTRL-C to abort the installation
-      - Or specify a different location below
-    [/root/miniconda3] >>> /home/pi/miniconda3
-
-Post-Install Miniconda3 cleanup:
-
-    $ echo 'export PATH=/home/pi/miniconda3/bin:$PATH' >> ~/.bashrc
-    $ sudo chown -R pi.pi /home/pi/miniconda3
-
-Add Conda "channels" providing pre-built Raspberry Pi binaries of popular Python packages:
-
-    $ conda update --all
-    $ conda config --add channels raspberrypi
-    $ conda config --add channels rpi
-
-Select Raspberry Pi Conda environment:
-
-    $ cd ~/work/code/Wasatch.PY
-    $ cp environments/conda-rpi.yml environment.yml
-
-Create Conda environment:
-
-    $ cd ~/work/code/Wasatch.PY
-    $ conda env create -n wasatch3
-    #
-    # To activate this environment, use:
-    # $ source activate wasatch3
-    #
-    # To deactivate this environment, use:
-    # $ source deactivate
-
-    $ cd ~/work/code/Wasatch.PY
-    $ source activate wasatch3
-
-    $ python --version
-    Python 3.6.6
+    $ pip3 install numpy py six psutil future pygtail pyusb requests pexpect seabreeze bleak
 
 # Test Demo.py
 
