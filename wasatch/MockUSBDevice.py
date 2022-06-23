@@ -264,7 +264,8 @@ class MockUSBDevice(AbstractUSBDevice):
         for key, value in eeprom.items():
             k = re.sub(self.re_pattern_1,r'\1_\2',key)
             camel_key = re.sub(self.re_pattern_2,r'\1_\2',k).lower()
-            if translation := self.wpsc_translate.get(camel_key,None):
+            translation = self.wpsc_translate.get(camel_key,None)
+            if translation is not None:
                 camel_key = translation
             if camel_key == "excitation_nm":
                 translated_eeprom["excitation_nm_float"] = value

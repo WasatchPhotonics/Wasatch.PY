@@ -1,5 +1,7 @@
 # Changelog
 
+- 2022-06-23 2.1.11
+    - remove := to allow more backwards compatibility
 - 2022-06-13 2.1.10
     - add high gain mode for andor
 - 2022-06-10 2.1.9
