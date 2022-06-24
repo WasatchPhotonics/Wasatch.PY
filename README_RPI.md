@@ -8,31 +8,32 @@ Following is a quick-start guide for configuring Wasatch.PY on a brand-new or fr
 
 If desired, flash a fresh MicroSD card with a clean copy of Raspbian OS from:
 
-- https://www.raspberrypi.org/downloads/raspbian/
+- https://www.raspberrypi.com/software/
 
 Test log:
 
 - This process was tested with 2019-09-26-raspbian-buster-full.zip
 - This process was re-tested on 2020-08-04 using Raspberry Pi OS Imager 1.4 for MacOS
-    - PRETTY\_NAME = Raspbian GNU/Linux 10 "buster" 
-    - uname -a = Linux raspberrypi 5.4.51-v7l+ #1327 SMP Th Jul 23 11:04:39 BST 2020 armv7l GNU/Linux
+- This process was most recently tested on 2022-06-24 using Raspberry Pi OS Imager 1.7.2 for MacOS
+    - PRETTY_NAME="Raspbian GNU/Linux 11 (bullseye)"
+    - uname -a = Linux mzieg-rpi 5.15.32-v7l+ #1538 SMP Thu Mar 31 19:39:41 BST 2022 armv7l GNU/Linux
 
 ## Confirm RPi boots up with default Python version
 
     $ python3 --version
-    Python 3.7.3
+    Python 3.9.2
 
 ## Confirm RPi can see Wasatch Photonics spectrometer on USB bus
 
     $ sudo lsusb
-    Bus 001 Device 005: ID 413c:301a Dell Computer Corp. 
-    Bus 001 Device 004: ID 413c:2113 Dell Computer Corp. 
-    Bus 001 Device 006: ID 24aa:1000  
-    Bus 001 Device 003: ID 0424:ec00 Standard Microsystems Corp. SMSC9512/9514 Fast Ethernet Adapter
-    Bus 001 Device 002: ID 0424:9514 Standard Microsystems Corp. SMC9514 Hub
+    Bus 002 Device 001: ID 1d6b:0003 Linux Foundation 3.0 root hub
+    Bus 001 Device 005: ID 24aa:1000 Wasatch Photonics Stroker FX2
+    Bus 001 Device 004: ID 17ef:602e Lenovo USB Optical Mouse
+    Bus 001 Device 003: ID 04f2:0833 Chicony Electronics Co., Ltd KU-0833 Keyboard
+    Bus 001 Device 002: ID 2109:3431 VIA Labs, Inc. Hub
     Bus 001 Device 001: ID 1d6b:0002 Linux Foundation 2.0 root hub
 
-(The third device is a WP-785...all WP USB devices use the VID 0x24aa.)
+(The 2nd device is a WP-785...all WP USB devices use the VID 0x24aa.)
 
 # Install Wasatch.PY
 
@@ -67,7 +68,6 @@ Run demo.py with "--help" for command-line options.  Note that you need to run "
 *each time you reboot* (or open a new Terminal window, depending on how your shell is configured), in
 order to tell Linux and Miniconda "which version" of Python, and which set of package dependencies,
 you want to use.
-
 
     $ python3 -u demo.py
     2019-05-06 14:25:32,498 MainProcess root WARNING  Top level log configuration (1 handlers)
@@ -129,5 +129,22 @@ See [WasatchShell README](WasatchShell/README.md) for documentation, or type "he
     wp> set_laser_enable off
     1
     wp> quit
+
+# Troubleshooting
+
+## Numpy runtime errors 
+
+If you get something like this:
+
+    libcblas.so.3: cannot open shared object file: No such file or directory
+    IMPORTANT: PLEASE READ THIS FOR ADVICE ON HOW TO SOLVE THIS ISSUE!
+
+We recommend following the advice here:
+
+    https://numpy.org/devdocs/user/troubleshooting-importerror.html
+
+In our case, this was sufficient to fix the issue:
+
+    $ sudo apt-get install libatlas-base-dev
 
 ![RPI Logo](https://www.raspberrypi.org/app/uploads/2018/03/RPi-Logo-Reg-SCREEN-199x250.png)
