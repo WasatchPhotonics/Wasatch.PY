@@ -141,7 +141,7 @@ If you get something like this:
 
 We recommend following the advice here:
 
-- https://numpy.org/devdocs/user/troubleshooting-importerror.html
+- https://numpy.org/devdocs/user/troubleshooting-importerror.html#raspberry-pi
 
 In our case, this was sufficient to fix the issue:
 
