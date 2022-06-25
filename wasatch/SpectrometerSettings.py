@@ -3,6 +3,7 @@ import numpy as np
 import json
 import math
 import re
+import os
 
 from datetime import datetime
 from . import utils
@@ -398,6 +399,8 @@ class SpectrometerSettings(object):
         return not self.has_excitation()
 
     def is_gen15(self) -> bool:
+        if "DISABLE_GEN15" in os.environ:
+            return False
         return self.eeprom.gen15
 
     def is_gen2(self) -> bool:

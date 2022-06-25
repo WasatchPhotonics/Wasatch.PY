@@ -76,7 +76,19 @@ class DetectorRegions:
     # input values may appear in multiple output arrays.
     #
     # Ignores disabled regions.
-    def chop(self, a, flatten=False):
+    #
+    # Example: 
+    # - passed 1920 wavelengths (based on active_pixels_horizontal)
+    # - configured region 0 is from (300, 1932) (pixel space)
+    # - function doesn't know that 1920 was defined as 1932 - 12 (the physical 
+    #   pixel range to which the wavelengths actually correspond)
+    # - all function knows is that new range is 1632 pixels wide -- not where
+    #   those 1632 pixels fall within the 1920 (in this case, they SHOULD
+    #   start at 300 - 12 = 288
+    # - basically, DetectorRegions needs to know the (x, y) in pixel
+    #   space corresponding to 'a' -- (12, 1932) in this case
+    # - that is what orig_roi now provides
+    def chop(self, a, flatten=False, orig_roi=None):
         log.debug(f"chopping array of {len(a)} pixels into {self.count()} subarrays")
         subarrays = []
         for region in sorted(self.regions):
@@ -84,11 +96,15 @@ class DetectorRegions:
             if not roi.enabled:
                 continue
 
-            if roi.x1 > len(a):
-                log.error(f"x1 {roi.x1} of region {roi.region} overran input array")
+            if roi.width() > len(a):
+                log.error(f"width ({roi.width}) of {roi.region} exceeds input array")
                 return None
-            subarray = a[roi.x0:roi.x1]
-            log.debug(f"chop: region {roi.region} of width {roi.width()}: {subarray[:3]} .. {subarray[-3:]}")
+
+            start = roi.x0 if orig_roi is None else orig_roi.start - roi.x0
+            log.debug(f"chop: region {roi.region} of width {roi.width()} from orig {orig_roi}")
+            subarray = a[start : start + roi.width() + 1]
+            log.debug(f"chop: subarray = {subarray[:3]} .. {subarray[-3:]}")
+
             if flatten:
                 subarrays.extend(subarray)
             else:

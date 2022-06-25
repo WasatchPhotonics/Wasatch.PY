@@ -281,6 +281,17 @@ The following was tested under MacOS 10.13.2 ("High Sierra"):
     2018-01-22 16:45:12,635 MainProcess __main__ INFO     Reading:    3  Detector: 66.00 degC  Min:   829.00  Max:  3909.00  Avg:   941.80
     2018-01-22 16:45:13,637 MainProcess __main__ INFO     Reading:    4  Detector: 66.00 degC  Min:   829.00  Max:  3878.00  Avg:   940.21
 
+# Environment Variables
+
+The following environment variables affect the operation of Wasatch.PY:
+
+- DISABLE_GEN15
+    - if defined, SpectrometerSettings.is_gen15() always returns False
+- SPI_PIN_READY
+    - if defined, remaps the FT232H pin for the SPI "DATA_READY" signal from the default D5 to the specified pin (e.g. "C1")
+- SPI_PIN_TRIGGER
+    - if defined, remaps the FT232H pin for the SPI "TRIGGER" signal from the default D6 to the specified pin (e.g. "C0")
+
 # Common Errors
 
 ## PyUSB usb.core error: No backend available (Windows)
