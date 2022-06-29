@@ -53,6 +53,7 @@ class WasatchShell(object):
 
         self.configure_logging()
         self.input_tokens = None
+        self.dark_spectra = None
 
         # pass-through calls to any of these gettors (note names are lowercased)
         self.gettors = {}
@@ -162,6 +163,8 @@ class WasatchShell(object):
                                                     max_tries, x, unit [px, nm, cm]
                                                
         get_spectrum                           - print received spectrum
+        get_dark                               - captures spectrum and stores as dark
+        clear_dark                             - clears a stored dark spectrum
         get_spectrum_pretty                    - graph received spectrum
         get_spectrum_save                      - save spectrum to filename as CSV
         get_config_json                        - return EEPROM as JSON string
@@ -266,6 +269,14 @@ class WasatchShell(object):
                         # special processing for these
                         elif command == "get_spectrum":
                             self.get_spectrum(quiet=False)
+
+                        elif command == "get_dark":
+                            self.get_dark()
+                            self.display(1)
+
+                        elif command == "clear_dark":
+                            self.clear_dark()
+                            self.display(1)
 
                         elif command == "get_spectrum_pretty":
                             self.get_spectrum_pretty()
@@ -530,6 +541,13 @@ class WasatchShell(object):
         else:
             self.display(value)
 
+    def get_dark(self):
+        spectrum = self.get_spectrum(quiet=True)
+        self.dark_spectra = spectrum
+
+    def clear_dark(self):
+        self.dark_spectra = None
+
     ##
     # This calls WasatchDevice.acquire_data, rather than FID.get_line, because 
     # scan averaging, bad-pixel correction, acquisition laser trigger and other
@@ -546,6 +564,8 @@ class WasatchShell(object):
             self.display("ERROR: get_spectrum failed")
             return
         spectrum = reading.spectrum
+        if self.dark_spectra is not None:
+            spectrum = [spec-dark for spec, dark in zip(spectrum, self.dark_spectra)]
         log.debug("received %d pixels", len(spectrum))
 
         if self.interpolated_x_axis_cm and self.device.settings.wavenumbers:
