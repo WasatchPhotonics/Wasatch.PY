@@ -309,7 +309,7 @@ class WasatchShell(object):
                                                             incr  = self.read_float())
 
                         elif command == "set_raman_intensity_correction_enable":
-                            self.set_raman_intensity_correction_enable(self.read_bool())
+                            self.set_raman_intensity_correction_enable(self.device, self.read_bool())
 
                         elif command == "clear":
                             self.clear()
