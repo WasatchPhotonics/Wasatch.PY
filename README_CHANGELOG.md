@@ -1,5 +1,7 @@
 # Changelog
 
+- 2022-07-11 2.1.12
+    - added get_dark and set_raman_intensity_correction_enable in WasatchShell
 - 2022-06-23 2.1.11
     - remove := to allow more backwards compatibility
 - 2022-06-13 2.1.10
