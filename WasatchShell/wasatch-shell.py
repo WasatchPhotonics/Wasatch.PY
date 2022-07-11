@@ -555,17 +555,18 @@ class WasatchShell(object):
 
     def set_raman_intensity_correction_enable(self, device: WasatchDevice, status: bool) -> int:
         if not device.settings.eeprom.has_raman_intensity_calibration():
-            self.display("Device has no srm")
+            self.display("Device has no Raman Intensity Calibration")
+            self.srm = False
             return
         else:
-            self.srm = True
+            self.srm = status
             self.display(1)
             return
 
-    def srm_process(self, spectra: list[float], device: WasatchDevice) -> list[float]:
+    def srm_process(self, spectrum: list[float], device: WasatchDevice) -> list[float]:
 
         factors = device.settings.raman_intensity_factors
-        if factors is None or len(factors) != len(pr.raw):
+        if factors is None or len(factors) != len(spectrum):
             return 
 
         spectrum = [px*fac for px, fac in zip(spectrum,factors)]
@@ -587,7 +588,7 @@ class WasatchShell(object):
             self.display("ERROR: get_spectrum failed")
             return
         spectrum = reading.spectrum
-        if self.dark_spectra is not None:
+        if self.dark_spectra is not None and len(self.dark_spectra) == len(spectrum):
             spectrum = [spec-dark for spec, dark in zip(spectrum, self.dark_spectra)]
         log.debug("received %d pixels", len(spectrum))
 
