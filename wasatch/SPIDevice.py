@@ -583,20 +583,20 @@ class SPIDevice(InterfaceDevice):
             pixels = self.settings.pixels()
             bytes_remaining = pixels * 2
 
-            log.debug(f"getSpectrum: reading spectrum of {pixels} pixels")
+            log.debug(f"get_spectrum: reading spectrum of {pixels} pixels")
             raw = []
             while self.ready.value:
                 if bytes_remaining > 0:
                     bytes_this_read = min(self.block_size, bytes_remaining)
 
-                    log.debug(f"getSpectrum: reading block of {bytes_this_read} bytes")
+                    log.debug(f"get_spectrum: reading block of {bytes_this_read} bytes")
                     buf = bytearray(bytes_this_read)
 
                     # there is latency associated with this call, so call it as
                     # few times as possible (with the largest possible block size)
                     self.SPI.readinto(buf)
 
-                    log.debug(f"getSpectrum: read block of {len(buf)} bytes")
+                    log.debug(f"get_spectrum: read block of {len(buf)} bytes")
                     raw.extend(list(buf))
 
                     bytes_remaining -= len(buf)
@@ -608,6 +608,6 @@ class SPIDevice(InterfaceDevice):
         # demarshall big-endian
         for i in range(0, len(raw)-1, 2):
             spectrum.append((raw[i] << 8) | raw[i+1])
-        log.debug(f"getSpectrum: {len(spectrum)} pixels read")
+        log.debug(f"get_spectrum: {len(spectrum)} pixels read")
 
         return spectrum
