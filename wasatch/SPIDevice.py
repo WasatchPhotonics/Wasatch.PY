@@ -2,10 +2,10 @@ import re
 import os
 import usb
 import time
-import json
-import struct
 import logging
 import datetime
+import threading
+
 from queue import Queue
 from typing import Callable, Any
 
@@ -27,79 +27,101 @@ from .InterfaceDevice             import InterfaceDevice
 from .Reading                     import Reading
 from .EEPROM                      import EEPROM
 
+import crcmod.predefined
+
 log = logging.getLogger(__name__)
+
+class CommandTuple:
+    def __init__(self, address, value, write_len, name):
+        self.address   = address
+        self.value     = value
+        self.write_len = write_len
+        self.name      = name
+
+    def __str__(self):
+        return f"CommandTuple <name {self.name}, address 0x{self.address:02x}, value {self.value}, write_len {self.write_len}>"
 
 class SPIDevice(InterfaceDevice):
     """
-    @todo that we still need to add:
-
-    CRC validation
-    set_gain_db
-    set_pixel_mode (i.e. detector resolution)
-    set_start_line
-    set_stop_line
-    set_start_column
-    set_stop_column
-    set_trigger_mode (not currently documented in ENG-0150)
-
     This implements SPI communication via the FT232H usb converter.     
 
-    @todo convert the different asserts to SpectrometerResponse returns
-    ##########################################################################
-    This class adopts the external device interface structure
-    This involves receiving a request through the handle_request function
-    A request is processed based on the key in the request
-    The processing function passes the commands to the requested device
+    This class adopts the external device interface structure.
+    This involves receiving a request through the handle_request function.
+    A request is processed based on the key in the request.
+    The processing function passes the commands to the requested device.
     Once it receives a response from the connected device it then passes that
-    back up the chain
+    back up the chain.
+
+    @verbatim
                                Enlighten Request
                                        |
                                 handle_requests
                                        |
                                  ------------
-                                /   /  |  \  \
+                                /   /  |  \  \ 
              { get_laser status, acquire, set_laser_watchdog, etc....}
                                 \   \  |  /  /
                                  ------------
                                        |
                          {self.driver.some_spi_call}
-    ############################################################################
+    @endverbatim
+
+    Updates in this version:
+
+    - imported latest updates from spi_console.py
+    - 24-bit integration time
+    - floating-point gain
+    - stop "searching" for start bytes in SPI stream
+    - populate and validate CRC
     """
 
-    INTEGRATION_ADDRESS = 0x11
-    GAIN_DB_ADDRESS = 0x14
-    CRC_8_TABLE = [
-      0, 94,188,226, 97, 63,221,131,194,156,126, 32,163,253, 31, 65,
-    157,195, 33,127,252,162, 64, 30, 95,  1,227,189, 62, 96,130,220,
-     35,125,159,193, 66, 28,254,160,225,191, 93,  3,128,222, 60, 98,
-    190,224,  2, 92,223,129, 99, 61,124, 34,192,158, 29, 67,161,255,
-     70, 24,250,164, 39,121,155,197,132,218, 56,102,229,187, 89,  7,
-    219,133,103, 57,186,228,  6, 88, 25, 71,165,251,120, 38,196,154,
-    101, 59,217,135,  4, 90,184,230,167,249, 27, 69,198,152,122, 36,
-    248,166, 68, 26,153,199, 37,123, 58,100,134,216, 91,  5,231,185,
-    140,210, 48,110,237,179, 81, 15, 78, 16,242,172, 47,113,147,205,
-     17, 79,173,243,112, 46,204,146,211,141,111, 49,178,236, 14, 80,
-    175,241, 19, 77,206,144,114, 44,109, 51,209,143, 12, 82,176,238,
-     50,108,142,208, 83, 13,239,177,240,174, 76, 18,145,207, 45,115,
-    202,148,118, 40,171,245, 23, 73,  8, 86,180,234,105, 55,213,139,
-     87,  9,235,181, 54,104,138,212,149,203, 41,119,244,170, 72, 22,
-    233,183, 85, 11,136,214, 52,106, 43,117,151,201, 74, 20,246,168,
-    116, 42,200,150, 21, 75,169,247,182,232, 10, 84,215,137,107, 53
-    ]
+    READ_RESPONSE_OVERHEAD  = 5 # <, LEN_MSB, LEN_LSB, CRC, >  # does NOT include ADDR
+    WRITE_RESPONSE_OVERHEAD = 2 # <, >
+    READY_POLL_LEN = 2          # 1 seems to work
+    START = 0x3c                # <
+    END   = 0x3e                # >
+    WRITE = 0x80                # bit changing opcodes from 'getter' to 'setter'
+    CRC   = 0xff                # for readability
 
+    lock = threading.Lock()
 
     def __init__(self, device_id: DeviceID, message_queue: Queue) -> None:
-        # if passed a string representation of a DeviceID, deserialize it
         super().__init__()
+
+        ########################################################################
+        # Attempt to import dependencies (connects to FT232H)
+        ########################################################################
+
+        import_successful = False
         try:
-            import board
-            import time
+            os.environ["BLINKA_FT232H"] = "1"
             import board
             import digitalio
             import busio
-        except Exception as e:
-            log.error(f"Problem importing board for SPI device of {e}")
+            import_successful = True
+        except RuntimeError as ex:
+            log.error("No FT232H connected.", exc_info=1)
+            if platform.system() == "Windows":
+                log.error("Ensure you've followed the Zadig process in README_SPI.md")
+        except ValueError as ex:
+            log.error("If you are receiving 'no backend available' errors, try the following:")
+            log.error("MacOS:  $ export DYLD_LIBRARY_PATH=/usr/local/lib")
+            log.error("Linux:  $ export LD_LIBRARY_PATH=/usr/local/lib")
+        except FtdiError as ex:
+            log.error("No FT232H connected.", exc_info=1)
+            if platform.system() == "Windows":
+                log.error("Ensure you've followed the Zadig process in README_SPI.md")
+            log.error("SPIDevice is not usable")
+        if not import_successful:
+            return
 
+        self.crc8 = crcmod.predefined.mkPredefinedCrcFun('crc-8-maxim')
+
+        ########################################################################
+        # Proceed with initialization
+        ########################################################################
+
+        # if passed a string representation of a DeviceID, deserialize it
         if type(device_id) is str:
             device_id = DeviceID(label=device_id)
 
@@ -133,7 +155,7 @@ class SPIDevice(InterfaceDevice):
         self.boxcar_half_width = 0
 
         # Initialize the SPI bus on the FT232H
-        self.SPI  = busio.SPI(clock=board.SCK, MISO=board.MISO, MOSI=board.MOSI)
+        self.SPI = busio.SPI(clock=board.SCK, MISO=board.MISO, MOSI=board.MOSI)
 
         # Initialize D5 as the ready signal (allow override)
         self.ready = digitalio.DigitalInOut(getattr(board, os.getenv("SPI_PIN_READY", default="D5")))
@@ -148,24 +170,75 @@ class SPIDevice(InterfaceDevice):
         while not self.SPI.try_lock():
             pass
 
-        # Configure the SPI bus
-        self.SPI.configure(baudrate=20000000, phase=0, polarity=0, bits=8)
+        # Configure the SPI bus (allow override)
+        self.baud_mhz = int(os.getenv("SPI_BAUD_MHZ", default="10")) 
+        log.debug(f"using baud rate {self.baud_mhz}MHz")
+        self.SPI.configure(baudrate=self.baud_mhz * 1e6, phase=0, polarity=0, bits=8)
+
         self.process_f = self._init_process_funcs()
 
+        ########################################################################
+        # Store SPI command table in a lookup
+        ########################################################################
+
+        self.cmds = {}
+        for  addr, value, _len, name in [
+           # ---- ------ ----- -----------
+            (0x11,    3,     4, "Integration Time"),
+            (0x13,    0,     3, "Black Level"),
+            (0x14,   24,     3, "Gain dB"),
+            (0x2B,    3,     2, "Pixel Mode"),
+            (0x50,  250,     2, "Start Line 0"),     
+            (0x51,  750,     2, "Stop Line 0"),     
+            (0x52,   12,     3, "Start Column 0"),     
+            (0x53, 1932,     3, "Stop Column 0"),
+            (0x54,    0,     3, "Start Line 1"),
+            (0x55,    0,     3, "Stop Line 1"),
+            (0x56,    0,     3, "Start Column 1"),
+            (0x57,    0,     3, "Stop Column 1"),
+            (0x58,    0,     3, "Desmile") ]:
+            self.cmds[name] = CommandTuple(addr, value, _len, name)
+
+        # patch gain
+        cmd = self.cmds["Gain dB"]
+        cmd.value = self.gain_to_ff(cmd.value)
+
     def connect(self) -> SpectrometerResponse:
-        eeprom_pages = []
-        for i in range(EEPROM.MAX_PAGES):
-            response = bytearray(2)
-            while self.ready.value:
-                self.SPI.readinto(response,0,2)
-            page = self._EEPROMReadPage(i)
-            eeprom_pages.append(page)
-        self.settings.eeprom.parse(eeprom_pages)
-        self.settings.update_wavecal()
-        self.settings.update_raman_intensity_factors()
-        self.settings.state.integration_time_ms = 10
+        self.init_eeprom()
+
+        # initialize all settings -- this ensures no setting is uninitialized
+        for key in self.cmds:
+            cmd = self.cmds[key]
+            log.debug(f"initializing {cmd}")
+            self.send_command(cmd)
+
+        self.settings.state.integration_time_ms = self.settings.eeprom.startup_integration_time_ms
+        self.settings.state.gain_db = self.settings.eeprom.detector_gain
+
         log.info("SPI connect done, returning True")
         return SpectrometerResponse(True)
+
+    def init_eeprom(self):
+        eeprom = self.settings.eeprom
+
+        pages = []
+        for i in range(EEPROM.MAX_PAGES):
+            self.flush_input_buffer()
+            pages.append(self.read_page(i))
+        eeprom.parse(pages)
+
+        self.settings.update_wavecal()
+        self.settings.update_raman_intensity_factors()
+
+        # copy startup values from EEPROM into our local command table so they 
+        # get initialized properly
+
+        self.cmds["Integration Time"].value = eeprom.startup_integration_time_ms
+        self.cmds["Gain dB"         ].value = self.gain_to_ff(eeprom.detector_gain)
+        self.cmds["Start Line 0"    ].value = eeprom.roi_vertical_region_1_start
+        self.cmds["Stop Line 0"     ].value = eeprom.roi_vertical_region_1_end
+        self.cmds["Start Column 0"  ].value = eeprom.roi_horizontal_start
+        self.cmds["Stop Column 0"   ].value = eeprom.roi_horizontal_end
 
     def disconnect(self) -> SpectrometerResponse:
         self.disconnect = True
@@ -231,109 +304,19 @@ class SPIDevice(InterfaceDevice):
 
         return SpectrometerResponse(reading)
 
-    def write_eeprom(self) -> SpectrometerResponse:
-        try:
-            self.settings.eeprom.generate_write_buffers()
-        except:
-            log.critical("failed to render EEPROM write buffers", exc_info=1)
-            #self.message_queue("marquee_error", "Failed to write EEPROM")
-            return False
-
-        for page in range(EEPROM.MAX_PAGES):
-            time.sleep(0.1) # for now a hard coded delay for the eeprom
-            self._EEPROMWritePage(page,self.settings.eeprom.write_buffers[page])
-
-        #self.message_queue("marquee_info", "EEPROM successfully updated")
-        return SpectrometerResponse(True)
-
-    def _EEPROMReadPage(self, page: int) -> list[bytes]:
-        while True:
-            EEPROMPage  = bytearray(75)
-            command     = bytearray(7)
-            command     = [0x3C, 0x00, 0x02, 0xB0, (0x40 + page), 0xFF, 0x3E]
-            self.SPI.write(command, 0, 7)
-            self._SPIBusy()
-            command = [0x3C, 0x00, 0x01, 0x31, 0xFF, 0x3E]
-            self.SPI.write_readinto(command, EEPROMPage)
-            log.debug(f"raw eeprom dump is {EEPROMPage}")
-            try:
-                EEPROMPage = EEPROMPage[EEPROMPage.index(b'<')+4:len(EEPROMPage)-1]
-            except:
-                log.error(f"SPI EEPROM read got a page without start byte, trying to re-read. Page was {EEPROMPage}")
-                continue
-            if EEPROMPage[3] == 0x3:
-                continue
-            else:
-                log.debug(f"sliced page value is {EEPROMPage}")
-                break
-        self._SPIBusy()
-        log.debug(f"for page {page} got values {EEPROMPage}")
-        return EEPROMPage
-
     def set_integration_time_ms(self, value: int) -> SpectrometerResponse:
-        while self.acquiring:
-            time.sleep(0.01)
-            continue
-        self._SPIWrite(value, self.INTEGRATION_ADDRESS)
+        cmd = self.cmds["Integration Time"]
+        cmd.value = value
+        self.send_command(cmd)
         self.settings.state.integration_time_ms = value
         return SpectrometerResponse()
 
-    def set_gain(self, value: int) -> SpectrometerResponse:
-        if not isinstance(value,int):
-            value = int(value)
-        while self.acquiring:
-            time.sleep(0.01)
-            continue
-        self._SPIWrite(value, self.GAIN_DB_ADDRESS)
-        self.settings.state.gain_DB = value
+    def set_gain(self, value: float) -> SpectrometerResponse:
+        cmd = self.cmds["Gain dB"]
+        cmd.value = self.gain_to_ff(value)
+        self.send_command(cmd)
+        self.settings.state.gain_db = value
         return SpectrometerResponse()
-
-    def _SPIWrite(self, value: int, address: int) -> None:
-        command = bytearray(8)
-        # Convert the int into bytes.
-        txData = bytearray(2)
-        txData[1]   = value >> 8
-        txData[0]   = value - (txData[1] << 8)
-        # A write command consists of opening and closing delimeters, the payload size which is data + 1 (for the command byte),
-        # the command/address with the MSB set for a write operation, the payload data, and the CRC. This function does not 
-        # caluculate the CRC nor read back the status.
-        # Refer to ENG-150 for additional information
-        command = [0x3C, 0x00, 0x03, (address+0x80), txData[0], txData[1], 0xFF, 0x3E]
-        self.SPI.write(command, 0, 8)
-        time.sleep(0.01)
-
-    def _SPIBusy(self):
-        command  = bytearray(5)
-        response = bytearray(19)
-        response = [0x3]*19
-        while response == [0x3]*19:
-            command = [0x3C, 0x00, 0x01, 0x10, 0x3E] # check for the FPGA Rev num
-            self.SPI.write_readinto(command, response)
-
-    def _EEPROMWritePage(self, page: int, write_array: list[bytes]) -> None:
-        log.debug(f"attempting to write eeprom page {page}")
-        read_cmd = bytearray(8)
-        command     = bytearray(7)
-        read_cmd = [0x3,0x3,0x3,0x3,0x3,0x3] # hard code to all 0x3 so it checks at least once
-
-        self._SPIBusy()
-        EEPROMWrCmd = bytearray(70)
-        EEPROMWrCmd[0:3] = [0x3C, 0x00, 0x41, 0xB1]
-        try:
-            for x in range(0, 64):
-                log.info(f"spi writing to page {page} with value {write_array[x]}")
-                EEPROMWrCmd[x+4] = write_array[x]
-        except Exception as e:
-            log.error(f"spi failed to write value of {write_array[x]} to page {page}. had exception {e}")
-            raise e
-
-        EEPROMWrCmd[68] = 0xFF
-        EEPROMWrCmd[69] = 0x3E
-        self.SPI.write(EEPROMWrCmd, 0, 70)
-        time.sleep(0.1)
-        command = [0x3C, 0x00, 0x02, 0xB0, (0x80 + page), 0xFF, 0x3E]
-        self.SPI.write(command, 0, 7)
-        time.sleep(0.1)
 
     def change_setting(self,setting,value):
         log.info(f"spi being told to change setting {setting} to {value}")
@@ -386,8 +369,227 @@ class SPIDevice(InterfaceDevice):
         # Long term, the upstream requests should be changed to match the new format
         # This is an easy fix for the time being to make things behave
         ##################################################################
-        process_f["write_eeprom"]                       = lambda x: self.write_eeprom()
-        process_f["replace_eeprom"]                     = lambda x: self.write_eeprom()
+       #process_f["write_eeprom"]                       = lambda x: self.write_eeprom()
+       #process_f["replace_eeprom"]                     = lambda x: self.write_eeprom()
         process_f["integration_time_ms"]                = lambda x: self.set_integration_time_ms(x)
 
         return process_f 
+
+    ############################################################################
+    #                                                                          #
+    #                               Utility Methods                            #
+    #                                                                          #
+    ############################################################################
+
+    ## format a list or bytearray as "[ 0x00, 0x0a, 0xff ]"
+    def to_hex(self, values):
+        return "[ " + ", ".join([ f"0x{v:02x}" for v in values ]) + " ]"
+
+    ## confirm the received CRC matches our computed CRC for the list or bytearray "data"
+    def check_crc(self, crc_received, data):
+        crc_computed = self.crc8(data)
+        if crc_computed != crc_received:
+            print(f"\nERROR *** CRC mismatch: received 0x{crc_received:02x}, computed 0x{crc_computed:02x}\n")
+
+    ## given a list or bytearray of data elements, return the checksum
+    def compute_crc(self, data):
+        return self.crc8(bytearray(data))
+
+    ##
+    # given a formatted SPI command of the form [START, L0, L1, ADDR, ...DATA..., CRC, END],
+    # return command with CRC replaced with the computed checksum of [L0..DATA] as bytearray
+    def fix_crc(self, cmd):
+        if cmd is None or len(cmd) < 6 or cmd[0] != self.START or cmd[-1] != self.END:
+            log.error(f"fix_crc expects well-formatted SPI 'write' command: {cmd}")
+            return
+
+        index = len(cmd) - 2
+        checksum = self.compute_crc(bytearray(cmd[1:index]))
+        result = cmd[:index]
+        result.extend([checksum, cmd[-1]])
+        # log.debug(f"fix_crc: cmd {self.to_hex(cmd)} -> result {self.to_hex(result)}")
+        return bytearray(result)
+
+    ## @see ENG-0150-C section 3.2, "Configuration Set Response Packet"
+    def errorcode_to_string(self, code) -> str:
+        if   code == 0: return "SUCCESS"
+        elif code == 1: return "ERROR_LENGTH"
+        elif code == 2: return "ERROR_CRC"
+        elif code == 3: return "ERROR_UNRECOGNIZED_COMMAND"
+        else          : return "ERROR_UNDEFINED"
+
+    ## @param response (Input): the last 3 bytes of the device's response to a SPI write command
+    def validate_write_response(self, response) -> str:
+        if len(response) != 3:
+            return f"invalid response length: {response}"
+        if response[0] != self.START:
+            return f"invalid response START marker: {response}"
+        if response[2] != self.END:
+            return f"invalid response END marker: {response}"
+        return self.errorcode_to_string(response[1])
+
+    ##
+    # Given an existing list or bytearray, copy the contents into a new bytearray of
+    # the specified size. This is used to generate the "command" argument of a
+    # SPI.write_readinto(cmd, response) call, as both buffers are expected to be of
+    # the same size.
+    #
+    # @see https://docs.circuitpython.org/en/latest/shared-bindings/busio/#busio.SPI.write_readinto
+    def buffer_bytearray(self, orig, size):
+        new = bytearray(size)
+        new[:len(orig)] = orig[:]
+        return new
+
+    ##
+    # Given an unbuffered "read" command (just the bytes we wanted to write, without
+    # trailing zeros for the read response), and the complete (buffered) response
+    # read back (including leading junk from the command/write phase), parse out the
+    # actual response data and validate checksum.
+    #
+    # @para Example (reading FPGA version number)
+    # @verbatim
+    #              offset:    0     1     2     3     4     5     6     7     8     9    10    11    12    13    14    15    16    17
+    #         explanation:    <    (_length_)  ADDR   >     <    (_length_)  ADDR  '0'   '2'   '.'   '1'   '.'   '2'   '3'   CRC    >
+    #  unbuffered_command: [ 0x3c, 0x00, 0x01, 0x10, 0x3e ]
+    #    buffered_command: [ 0x3c, 0x00, 0x01, 0x10, 0x3e, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 ]
+    #   buffered_response: [  ?? ,  ?? ,  ?? ,  ?? ,  ?? , 0x3c, 0x00, 0x08, 0x10, 0x30, 0x32, 0x2e, 0x31, 0x2e, 0x32, 0x33, 0x83, 0x3e ]
+    # unbuffered_response:                               [ 0x3c, 0x00, 0x08, 0x10, 0x30, 0x32, 0x2e, 0x31, 0x2e, 0x32, 0x33, 0x83, 0x3e ]
+    #            crc_data:                                     [ 0x00, 0x08, 0x10, 0x30, 0x32, 0x2e, 0x31, 0x2e, 0x32, 0x33 ]
+    #       response_data:                                                       [ 0x30, 0x32, 0x2e, 0x31, 0x2e, 0x32, 0x33 ]
+    # @endverbatim
+    #
+    # @returns array of response payload bytes (everything after ADDR but before CRC)
+    # @note only used for SPI "read" commands ("write" commands are much simpler)
+    def decode_read_response(self, unbuffered_cmd, buffered_response, name=None, missing_echo_len=0):
+        cmd_len = len(unbuffered_cmd)
+        unbuffered_response = buffered_response[len(unbuffered_cmd) - missing_echo_len:]
+        response_data_len = (unbuffered_response[1] << 8) | unbuffered_response[2]
+        response_data = unbuffered_response[4 : 4 + response_data_len - 1]
+        crc_received = unbuffered_response[-2]
+        crc_data = unbuffered_response[1 : -2]
+        self.check_crc(crc_received, crc_data)
+
+        if True:
+            log.debug(f"decode_read_response({name}, missing={missing_echo_len}):")
+            log.debug(f"  unbuffered_cmd:      {self.to_hex(unbuffered_cmd)}")
+            log.debug(f"  buffered_response:   {self.to_hex(buffered_response)}")
+            log.debug(f"  cmd_len:             {cmd_len}")
+            log.debug(f"  unbuffered_response: {self.to_hex(unbuffered_response)}")
+            log.debug(f"  response_data_len:   {response_data_len}")
+            log.debug(f"  response_data:       {self.to_hex(response_data)}")
+            log.debug(f"  crc_received:        {hex(crc_received)}")
+            log.debug(f"  crc_data:            {self.to_hex(crc_data)}")
+
+        return response_data
+
+    ## @returns response payload as string
+    def decode_read_response_str(self, unbuffered_cmd, buffered_response, name=None, missing_echo_len=0) -> str:
+        return self.decode_read_response(unbuffered_cmd, buffered_response, name, missing_echo_len).decode()
+
+    ## @returns little-endian response payload as uint16
+    def decode_read_response_int(self, unbuffered_cmd, buffered_response, name=None, missing_echo_len=0) -> int:
+        response_data = self.decode_read_response(unbuffered_cmd, buffered_response, name, missing_echo_len)
+        result = (response_data[1] << 8) | response_data[0]
+        log.debug(f"  result:              {result}")
+        return result
+
+    def decode_write_response_UNUSED(self, unbuffered_cmd, buffered_response, name=None, missing_echo_len=0):
+        cmd_len = len(unbuffered_cmd)
+        unbuffered_response = buffered_response[len(unbuffered_cmd) - missing_echo_len:]
+        response_data_len = (unbuffered_response[1] << 8) | unbuffered_response[2]
+        response_data = unbuffered_response[4 : 4 + response_data_len - 1]
+        crc_received = unbuffered_response[-2]
+        crc_data = unbuffered_response[1 : -2]
+        self.chec_crc(crc_received, crc_data)
+
+        if True:
+            log.debug(f"decode_read_response({name}, missing={missing_echo_len}):")
+            log.debug(f"  unbuffered_cmd:      {self.to_hex(unbuffered_cmd)}")
+            log.debug(f"  buffered_response:   {self.to_hex(buffered_response)}")
+            log.debug(f"  cmd_len:             {cmd_len}")
+            log.debug(f"  unbuffered_response: {self.to_hex(unbuffered_response)}")
+            log.debug(f"  response_data_len:   {response_data_len}")
+            log.debug(f"  response_data:       {self.to_hex(response_data)}")
+            log.debug(f"  crc_received:        {hex(crc_received)}")
+            log.debug(f"  crc_data:            {self.to_hex(crc_data)}")
+
+        return response_data
+
+    def send_command(self, cmd):
+        txData = []
+        txData      .append( cmd.value        & 0xff) # LSB
+        if cmd.write_len > 2:
+            txData  .append((cmd.value >>  8) & 0xff)
+        if cmd.write_len > 3:
+            txData  .append((cmd.value >> 16) & 0xff) # MSB
+
+        unbuffered_cmd = [self.START, 0x00, cmd.write_len, cmd.address | self.WRITE]
+        unbuffered_cmd.extend(txData)
+        unbuffered_cmd.extend([ self.compute_crc(unbuffered_cmd[1:]), self.END])
+
+        # MZ: the -1 at the end was added as a kludge, because otherwise we find
+        #     a redundant '>' in the last byte.  This seems a bug, due to the
+        #     fact that only 7 of the 8 unbuffered_cmd bytes are echoed back into
+        #     the read buffer.
+        buffered_response = bytearray(len(unbuffered_cmd) + self.WRITE_RESPONSE_OVERHEAD + 1 - 1)
+        buffered_cmd = self.buffer_bytearray(unbuffered_cmd, len(buffered_response))
+
+        with self.lock:
+            self.flush_input_buffer()
+            self.SPI.write_readinto(buffered_cmd, buffered_response)
+
+        error_msg = self.validate_write_response(buffered_response[-3:])
+        log.debug(f"send_command[{cmd.name}]: {self.to_hex(buffered_cmd)} -> {self.to_hex(buffered_response)} ({error_msg})")
+
+    def flush_input_buffer(self):
+        count = 0
+        junk = bytearray(self.READY_POLL_LEN)
+        while self.ready.value:
+            self.SPI.readinto(junk)
+            count += 1
+        if count > 0:
+            log.debug(f"flushed {count} bytes from input buffer")
+
+    def waitForDataReady(self):
+        while not self.ready.value:
+            pass
+
+    ##
+    # Convert a (potentially) floating-point value into the big-endian 16-bit "Funky
+    # Float" used for detector gain in the FPGA on both Hamamatsu and IMX sensors.
+    #
+    # @see https://wasatchphotonics.com/api/Wasatch.NET/class_wasatch_n_e_t_1_1_funky_float.html
+    def gain_to_ff(self, gain):
+        msb = int(round(gain, 5)) & 0xff
+        lsb = int((gain - msb) * 256) & 0xff
+        raw = (msb << 8) | lsb
+        log.debug(f"gain_to_ff: {gain:0.3f} -> dec {raw} (0x{raw:04x})")
+        return raw
+
+    def read_page(self, page: int) -> list[bytes]:
+        with self.lock:
+            # send 0xb0 command to tell FPGA to load EEPROM page into FPGA buffer
+            unbuffered_cmd = self.fix_crc([self.START, 0, 2, 0xB0, 0x40 + page, self.CRC, self.END])
+            buffered_response = bytearray(len(unbuffered_cmd) + self.READ_RESPONSE_OVERHEAD + 1)
+            buffered_cmd = self.buffer_bytearray(unbuffered_cmd, len(buffered_response))
+            self.SPI.write_readinto(buffered_cmd, buffered_response)
+            log.debug(f">> read_page: {self.to_hex(buffered_cmd)} -> {self.to_hex(buffered_response)}")
+
+            # MZ: API says "wait for SPEC_BUSY to be deasserted...why aren't we doing that?
+            self.sleep_ms(10) # empirically determined 10ms delay
+
+            # send 0x31 command to read the buffered page from the FPGA
+            unbuffered_cmd = self.fix_crc([self.START, 0, 65, 0x31, self.CRC, self.END])
+            buffered_response = bytearray(len(unbuffered_cmd) + self.READ_RESPONSE_OVERHEAD + 64) # MZ: including kludged -1
+            buffered_cmd = self.buffer_bytearray(unbuffered_cmd, len(buffered_response))
+            self.SPI.write_readinto(buffered_cmd, buffered_response)
+
+        buf = self.decode_read_response(unbuffered_cmd, buffered_response, "read_eeprom_page", missing_echo_len=1)
+        log.debug(f"decoded {len(buf)} values from EEPROM")
+        return buf
+
+    def sleep_ms(self, ms):
+        ms = int(round(ms))
+        sec = ms / 1000.0
+        log.debug(f"sleeping {ms} ms")
+        time.sleep(sec)
