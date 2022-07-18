@@ -288,9 +288,13 @@ The following environment variables affect the operation of Wasatch.PY:
 - DISABLE_GEN15
     - if defined, SpectrometerSettings.is_gen15() always returns False
 - SPI_PIN_READY
-    - if defined, remaps the FT232H pin for the SPI "DATA_READY" signal from the default D5 to the specified pin (e.g. "C1")
+    - if defined, remaps the FT232H pin for the SPI "DATA_READY" signal (default "D5")
 - SPI_PIN_TRIGGER
-    - if defined, remaps the FT232H pin for the SPI "TRIGGER" signal from the default D6 to the specified pin (e.g. "C0")
+    - if defined, remaps the FT232H pin for the SPI "TRIGGER" signal (default "D6")
+- SPI_BLOCK_SIZE
+    - if defined, set the number of bytes read in a block over USB during SPI acquisitions (default 256)
+- SPI_BAUD_MHZ
+    - if defined, set the SPI baud rate in MHz (default 10 MHz)
 
 # Common Errors
 
