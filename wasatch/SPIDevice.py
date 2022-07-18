@@ -175,6 +175,10 @@ class SPIDevice(InterfaceDevice):
         log.debug(f"using baud rate {self.baud_mhz}MHz")
         self.SPI.configure(baudrate=self.baud_mhz * 1e6, phase=0, polarity=0, bits=8)
 
+        # for kicks, let block size be overridden by the environment
+        self.block_size = int(os.getenv("SPI_BLOCK_SIZE", default="256"))
+        log.debug(f"using SPI block size {self.block_size}")
+
         self.process_f = self._init_process_funcs()
 
         ########################################################################
@@ -257,7 +261,7 @@ class SPIDevice(InterfaceDevice):
             reading.laser_power_perc    = self.settings.state.laser_power_perc
             reading.laser_power_mW      = self.settings.state.laser_power_mW
             reading.laser_enabled       = self.settings.state.laser_enabled
-            reading.spectrum            = self._Acquire()
+            reading.spectrum            = self.get_spectrum() 
             if reading.spectrum == False:
                 return False
         except usb.USBError:
@@ -324,37 +328,6 @@ class SPIDevice(InterfaceDevice):
         if f is not None:
             f(value)
         return True
-
-    def _Acquire(self) -> list[int]:
-        if self.disconnect:
-            return False
-        self.acquiring = True
-        log.debug("calling acquire")
-        SPIBuf  = bytearray(2)
-        spectra = []
-        # Send and acquire trigger
-        self.trigger.value = True
-
-        # Wait until the data is ready
-        log.debug("waiting for data to be ready")
-        while not self.ready.value:
-            #log.debug("spi waiting")
-            pass
-        log.debug("data is ready")
-
-        # Release the trigger
-        self.trigger.value = False
-
-        # Read in the spectra
-        log.debug("reading spectra pixels")
-        while self.ready.value:
-            self.SPI.readinto(SPIBuf, 0, 2)
-            pixel = (SPIBuf[0] << 8) + SPIBuf[1]
-            spectra.append(pixel)
-
-        log.debug(f"returning spectra of length ({len(spectra)})")
-        self.acquiring = False
-        return spectra
 
     def _init_process_funcs(self) -> dict[str, Callable[..., Any]]:
         process_f = {}
@@ -593,3 +566,56 @@ class SPIDevice(InterfaceDevice):
         sec = ms / 1000.0
         log.debug(f"sleeping {ms} ms")
         time.sleep(sec)
+
+    def get_spectrum(self) -> list[int]:
+        with self.lock:
+
+            ####################################################################
+            # Trigger Acquisition
+            ####################################################################
+
+            if self.settings.state.trigger_source == SpectrometerState.TRIGGER_SOURCE_EXTERNAL:
+                log.debug("waiting on external trigger...")
+                self.waitForDataReady()
+            else:
+                # send trigger via the FT232H
+                self.trigger.value = True
+                self.waitForDataReady()
+                self.trigger.value = False
+
+            ####################################################################
+            # Read the spectrum (MZ: big-endian, seriously?)
+            ####################################################################
+
+            spectrum = []
+            pixels = self.settings.pixels()
+            bytes_remaining = pixels * 2
+
+            log.debug(f"getSpectrum: reading spectrum of {pixels} pixels")
+            raw = []
+            while self.ready.value:
+                if bytes_remaining > 0:
+                    bytes_this_read = min(self.block_size, bytes_remaining)
+
+                    log.debug(f"getSpectrum: reading block of {bytes_this_read} bytes")
+                    buf = bytearray(bytes_this_read)
+
+                    # there is latency associated with this call, so call it as
+                    # few times as possible (with the largest possible block size)
+                    self.SPI.readinto(buf)
+
+                    log.debug(f"getSpectrum: read block of {len(buf)} bytes")
+                    raw.extend(list(buf))
+
+                    bytes_remaining -= len(buf)
+
+        ########################################################################
+        # post-process spectrum
+        ########################################################################
+
+        # demarshall big-endian
+        for i in range(0, len(raw)-1, 2):
+            spectrum.append((raw[i] << 8) | raw[i+1])
+        log.debug(f"getSpectrum: {len(spectrum)} pixels read")
+
+        return spectrum
