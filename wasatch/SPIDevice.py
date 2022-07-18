@@ -65,14 +65,6 @@ class SPIDevice(InterfaceDevice):
                                        |
                          {self.driver.some_spi_call}
     @endverbatim
-
-    Updates in this version:
-
-    - imported latest updates from spi_console.py
-    - 24-bit integration time
-    - floating-point gain
-    - stop "searching" for start bytes in SPI stream
-    - populate and validate CRC
     """
 
     READ_RESPONSE_OVERHEAD  = 5 # <, LEN_MSB, LEN_LSB, CRC, >  # does NOT include ADDR
