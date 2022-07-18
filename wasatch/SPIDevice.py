@@ -515,7 +515,7 @@ class SPIDevice(InterfaceDevice):
         if count > 0:
             log.debug(f"flushed {count} bytes from input buffer")
 
-    def waitForDataReady(self):
+    def wait_for_data_ready(self):
         while not self.ready.value:
             pass
 
@@ -568,11 +568,11 @@ class SPIDevice(InterfaceDevice):
 
             if self.settings.state.trigger_source == SpectrometerState.TRIGGER_SOURCE_EXTERNAL:
                 log.debug("waiting on external trigger...")
-                self.waitForDataReady()
+                self.wait_for_data_ready()
             else:
                 # send trigger via the FT232H
                 self.trigger.value = True
-                self.waitForDataReady()
+                self.wait_for_data_ready()
                 self.trigger.value = False
 
             ####################################################################
