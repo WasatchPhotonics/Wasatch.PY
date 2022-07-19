@@ -32,8 +32,8 @@ import crcmod.predefined
 log = logging.getLogger(__name__)
 
 ##
-# @note write_len includes the opcode (address) itself, so a 1-byte value like 
-#       PixelMode has write_len 2, and a 24-bit value like Integration Time has 
+# @note write_len includes the opcode (address) itself, so a 1-byte value like
+#       PixelMode has write_len 2, and a 24-bit value like Integration Time has
 #       write_len 4.
 class CommandTuple:
     def __init__(self, address, value, write_len, name):
@@ -47,7 +47,7 @@ class CommandTuple:
 
 class SPIDevice(InterfaceDevice):
     """
-    This implements SPI communication via the FT232H usb converter.     
+    This implements SPI communication via the FT232H usb converter.
 
     This class adopts the external device interface structure.
     This involves receiving a request through the handle_request function.
@@ -62,7 +62,7 @@ class SPIDevice(InterfaceDevice):
                                 handle_requests
                                        |
                                  ------------
-                                /   /  |  \  \ 
+                                /   /  |  \  \
              { get_laser status, acquire, set_laser_watchdog, etc....}
                                 \   \  |  /  /
                                  ------------
@@ -147,7 +147,7 @@ class SPIDevice(InterfaceDevice):
         self.last_memory_check = datetime.datetime.now()
         self.last_battery_percentage = 0
         self.lambdas = None
-        self.spec_index = 0 
+        self.spec_index = 0
         self._scan_averaging = 1
         self.dark = None
         self.boxcar_half_width = 0
@@ -169,7 +169,7 @@ class SPIDevice(InterfaceDevice):
             pass
 
         # Configure the SPI bus (allow override)
-        self.baud_mhz = int(os.getenv("SPI_BAUD_MHZ", default="10")) 
+        self.baud_mhz = int(os.getenv("SPI_BAUD_MHZ", default="10"))
         log.debug(f"using baud rate {self.baud_mhz}MHz")
         self.SPI.configure(baudrate=self.baud_mhz * 1e6, phase=0, polarity=0, bits=8)
 
@@ -190,9 +190,9 @@ class SPIDevice(InterfaceDevice):
             (0x13,    0,     3, "Black Level"),
             (0x14,   24,     3, "Gain dB"),
             (0x2B,    3,     2, "Pixel Mode"),
-            (0x50,  250,     2, "Start Line 0"),     
-            (0x51,  750,     2, "Stop Line 0"),     
-            (0x52,   12,     3, "Start Column 0"),     
+            (0x50,  250,     3, "Start Line 0"),
+            (0x51,  750,     3, "Stop Line 0"),
+            (0x52,   12,     3, "Start Column 0"),
             (0x53, 1932,     3, "Stop Column 0"),
             (0x54,    0,     3, "Start Line 1"),
             (0x55,    0,     3, "Stop Line 1"),
@@ -243,7 +243,7 @@ class SPIDevice(InterfaceDevice):
         self.settings.update_wavecal()
         self.settings.update_raman_intensity_factors()
 
-        # copy startup values from EEPROM into our local command table so they 
+        # copy startup values from EEPROM into our local command table so they
         # get initialized properly
 
         self.cmds["Integration Time"].value = eeprom.startup_integration_time_ms
@@ -272,7 +272,7 @@ class SPIDevice(InterfaceDevice):
             reading.laser_power_perc    = self.settings.state.laser_power_perc
             reading.laser_power_mW      = self.settings.state.laser_power_mW
             reading.laser_enabled       = self.settings.state.laser_enabled
-            reading.spectrum            = self.get_spectrum() 
+            reading.spectrum            = self.get_spectrum()
             if reading.spectrum == False:
                 return False
         except usb.USBError:
@@ -297,7 +297,7 @@ class SPIDevice(InterfaceDevice):
             binned = [(value + next_value)/2 for value, next_value in zip(reading.spectrum[:-1], next_idx_values)]
             binned.append(reading.spectrum[-1])
             reading.spectrum = binned
-                
+
         self.session_reading_count += 1
         reading.session_count = self.session_reading_count
         reading.sum_count = self.sum_count
@@ -356,7 +356,7 @@ class SPIDevice(InterfaceDevice):
        #process_f["replace_eeprom"]                     = lambda x: self.write_eeprom()
         process_f["integration_time_ms"]                = lambda x: self.set_integration_time_ms(x)
 
-        return process_f 
+        return process_f
 
     ############################################################################
     #                                                                          #
@@ -446,12 +446,12 @@ class SPIDevice(InterfaceDevice):
     #
     # @param unbuffered_cmd: the START..END read command sent to the device (but
     #        not the empty "buffer" bytes at the end, written while reading the response)
-    # @param buffered_response: the complete sequence of bytes read from the 
+    # @param buffered_response: the complete sequence of bytes read from the
     #        device, including the echoed unbuffered command
     # @param name: for debugging
-    # @param missing_echo_len: in proper SPI, if I write 5 bytes, with an 
+    # @param missing_echo_len: in proper SPI, if I write 5 bytes, with an
     #        expected response of 13 bytes, then I should actually read 18 bytes:
-    #        the "echoes" of the 5 written bytes, then the 13 actual response 
+    #        the "echoes" of the 5 written bytes, then the 13 actual response
     #        bytes. Buggy FW may lead to some "echo" bytes missing from the
     #        response stream; this value can allow the client to stay in sync.
     #        In the current design, this occurs when reading EEPROM pages.
@@ -602,7 +602,7 @@ class SPIDevice(InterfaceDevice):
                     buf = bytearray(bytes_this_read)
 
                     # There is latency associated with this call, so call it as
-                    # few times as possible (with the largest possible block 
+                    # few times as possible (with the largest possible block
                     # size).  Basically, I'm assuming each call requires a full
                     # 64-byte USB control packet to the FT232H (and response).
                     self.SPI.readinto(buf)
