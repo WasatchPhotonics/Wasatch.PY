@@ -76,6 +76,7 @@ class WasatchDevice(InterfaceDevice):
         self.sum_count              = 0
         self.session_reading_count  = 0
         self.take_one               = False
+        self.last_complete_acquisition = None
 
         self.process_id = os.getpid()
         self.last_memory_check = datetime.datetime.now()
@@ -264,7 +265,6 @@ class WasatchDevice(InterfaceDevice):
     def acquire_spectrum(self):
         averaging_enabled = (self.settings.state.scans_to_average > 1)
         acquire_response = SpectrometerResponse()
-
 
         ########################################################################
         # Batch Collection silliness
@@ -506,6 +506,7 @@ class WasatchDevice(InterfaceDevice):
 
         # log.debug("device.acquire_spectrum: returning %s", reading)
         acquire_response.data = reading
+        self.last_complete_acquisition = datetime.datetime.now()
         return acquire_response
 
     ##
@@ -515,12 +516,25 @@ class WasatchDevice(InterfaceDevice):
     #
     # Optimal would probably be something like "As many integrations as it takes to span 2sec, but not
     # fewer than two."
+    #
+    # @todo This shouldn't be required at all if we're in free-running mode, or 
+    #       if it's been less than a second since the last acquisition.
     def perform_optional_throwaways(self):
         if self.settings.is_micro() and self.take_one:
             count = 2
             readout_ms = 5
-            while count * (self.settings.state.integration_time_ms + readout_ms) < 2000:
-                count += 1
+
+            # MZ: this was forcing me to take 250 throwaways for each 3ms measurement 
+            #     in BatchCollection with a SiG :-(
+            #
+            # For now, assume that if we FINISHED the last measurement less than
+            # a second ago, the sensor probably has not gone to sleep and doesn't
+            # need SW-driven warmups.
+            if self.last_complete_acquisition is None or \
+                    (datetime.datetime.now() - self.last_complete_acquisition).total_seconds() > 1.0:
+                while count * (self.settings.state.integration_time_ms + readout_ms) < 2000:
+                    count += 1
+
             for i in range(count):
                 log.debug("performing optional throwaway %d of %d before ramanMicro TakeOne", i, count)
                 req = SpectrometerRequest("get_line")
