@@ -1,5 +1,7 @@
 # Changelog
 
+- 2022-07-19 2.1.11
+    - SPIDevice upgrades
 - 2022-06-13 2.1.10
     - add high gain mode for andor
 - 2022-06-10 2.1.9
