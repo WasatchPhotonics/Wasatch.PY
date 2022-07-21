@@ -22,8 +22,6 @@ SETTINGS = {
     "laser_enable":                    { "datatype": "bool" },
     "laser_power_perc":                { "datatype": "float" },
     "laser_power_mW":                  { "datatype": "float" },
-    "laser_power_ramp_increments":     { "datatype": "int" },
-    "laser_power_ramping_enabled":     { "datatype": "bool" },
     "laser_temperature_setpoint_raw":  { "datatype": "int" },
 
     # Processing Modes
