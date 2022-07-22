@@ -457,7 +457,7 @@ class WasatchDeviceWrapper:
     #
     # @see \ref README_SETTINGS.md for a list of valid settings you can
     #      pass, as well as any parameters expected by each
-    def change_setting(self, setting, value):
+    def change_setting(self, setting, value=None):
         try:
             if not self.connected:
                 return

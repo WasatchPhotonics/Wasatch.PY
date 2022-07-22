@@ -144,6 +144,7 @@ class AndorDevice(InterfaceDevice):
         process_f["init_detector_area"] = self.init_detector_area
         process_f["scans_to_average"] = self.scans_to_average
         process_f["high_gain_mode_enable"] = self.high_gain_mode_enable
+        process_f["save_config"] = self.save_config
 
         ##################################################################
         # What follows is the old init-lambdas that are squashed into process_f
@@ -174,8 +175,7 @@ class AndorDevice(InterfaceDevice):
     def _update_wavelength_coeffs(self, coeffs: list[float]) -> None:
         self.settings.eeprom.wavelength_coeffs = coeffs
         self.config_values['wavelength_coeffs'] = coeffs
-        f = open(self.config_file, 'w')
-        json.dump(self.config_values, f)
+        self.save_config()
 
     def set_fan_enable(self, x: bool) -> SpectrometerResponse:
         self.check_result(self.driver.SetFanMode(int(x)), f"Andor Fan On {x}")
@@ -365,8 +365,7 @@ class AndorDevice(InterfaceDevice):
                 'wavelength_coeffs': [0,1,0,0],
                 'excitation_nm_float': 0,
                 }
-            f = open(self.config_file, 'w')
-            json.dump(self.config_values, f)
+            self.save_config()
         else:
             self._load_config_values()
 
@@ -381,7 +380,7 @@ class AndorDevice(InterfaceDevice):
         self.settings.state.shutter_enabled = True
 
         self.set_integration_time_ms(self.settings.eeprom.startup_integration_time_ms)
-        self.obtain_gain_info()
+        self._obtain_gain_info()
 
         # success!
         log.info("AndorDevice successfully connected")
@@ -390,6 +389,11 @@ class AndorDevice(InterfaceDevice):
         self.settings.eeprom.active_pixels_horizontal = self.pixels 
         self.settings.eeprom.has_cooling = True
         return SpectrometerResponse(data=True)
+
+    def save_config(self):
+        f = open(self.config_file, 'w')
+        json.dump(self.config_values, f)
+        log.debug(f"saved {self.config_file}")
 
     def _load_config_values(self):
         f = open(self.config_file,)
@@ -446,7 +450,8 @@ class AndorDevice(InterfaceDevice):
         sn = c_int()
         self.check_result(self.driver.GetCameraSerialNumber(byref(sn)), "GetCameraSerialNumber")
         self.serial = f"CCD-{sn.value}"
-        self.settings.eeprom.serial_number = self.serial
+        self.settings.eeprom.serial_number = self.serial # temporary
+        self.settings.eeprom.detector_serial_number = self.serial
         log.debug(f"connected to {self.serial}")
         return SpectrometerResponse(True)
 

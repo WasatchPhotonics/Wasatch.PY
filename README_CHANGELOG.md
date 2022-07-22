@@ -4,6 +4,7 @@
     - SPIDevice upgrades
     - deprecated laser power ramping
     - ignore laser PWM return codes
+    - Andor fixes
 - 2022-06-13 2.1.10
     - add high gain mode for andor
 - 2022-06-10 2.1.9
