@@ -124,6 +124,8 @@ class AndorDevice(InterfaceDevice):
         self.settings.eeprom.has_cooling = True
         self.settings.eeprom.startup_integration_time_ms = 10
         self.settings.eeprom.startup_temp_degC = -60
+        self.settings.eeprom.detector_gain = 1
+        self.settings.eeprom.detector_gain_odd = 1
 
         self.process_f = self._init_process_funcs()
 
