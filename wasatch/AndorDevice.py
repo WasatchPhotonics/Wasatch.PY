@@ -114,6 +114,15 @@ class AndorDevice(InterfaceDevice):
         if self.driver is None:
             log.error(f"could not find {filename} in search path: {dll_paths}")
 
+        # "serial_number", "model" etc are ambiguous in an Andor configuration 
+        # file -- do they refer to the camera (Andor), or the spectrometer 
+        # (Wasatch)?  Therefore, some Wasatch EEPROM fields get extra "wp_" 
+        # prefixes in Andor configuration files to be clear.
+        self.config_names_to_eeprom = {
+            'wp_serial_number': 'serial_number',
+            'wp_model': 'model' 
+        }
+
         # set Andor defaults for important "EEPROM" settings
         # (all but has_cooling can be overridden via config file)
 
@@ -367,9 +376,11 @@ class AndorDevice(InterfaceDevice):
                 'wavelength_coeffs': [0,1,0,0],
                 'excitation_nm_float': 0,
                 }
+            log.debug(f"connect: config file not found, so defaulting to these: {self.config_values}")
             self.save_config()
         else:
             self._load_config_values()
+            log.debug(f"connect: loaded config file: {self.config_values}")
 
         self.check_result(self.driver.CoolerON(), "CoolerON")
         self.check_result(self.driver.SetAcquisitionMode(1), "SetAcquisitionMode(single_scan)") 
@@ -392,25 +403,38 @@ class AndorDevice(InterfaceDevice):
         self.settings.eeprom.has_cooling = True
         return SpectrometerResponse(data=True)
 
-    def save_config(self):
+    ##
+    # @param eeprom: if provided, overwrite current settings with those in the 
+    #        passed dict before writing to disk
+    def save_config(self, eeprom=None):
+        log.debug("save_config: here")
+        if eeprom is not None:
+            self.update_config_from_eeprom(eeprom)
+
         f = open(self.config_file, 'w')
-        json.dump(self.config_values, f)
-        log.debug(f"saved {self.config_file}")
+        json.dump(self.config_values, f, indent=2, sort_keys=True)
+        log.debug(f"saved {self.config_file}: {self.config_values}")
+
+    def update_config_from_eeprom(self, eeprom):
+        for k, v in self.config_names_to_eeprom.items():
+            self.config_values[k] = getattr(eeprom, v)
+
+        for k, v in eeprom.__dict__.items():
+            if k in self.config_values:
+                self.config_values[k] = v
 
     def _load_config_values(self):
         f = open(self.config_file,)
         self.config_values = dict(json.load(f))
         log.debug(f"loaded {self.config_file}: {self.config_values}")
 
-        # alternate spellings (deprecated)
-        if "wp_serial_number" in self.config_values:
-            self.settings.eeprom.serial_number = self.config_values['wp_serial_number']
-        if "wp_model" in self.config_values:
-            self.settings.eeprom.model = self.config_values['wp_model']
+        # handle wp_ prefixes
+        for k, v in self.config_names_to_eeprom.items():
+            if k in self.config_values:
+                setattr(self.settings.eeprom, v, self.config_values[k])
 
         # same spelling
-        for k in [ 'detector', 
-                   'model', 
+        for k in [ 'model', 
                    'detector', 
                    'serial_number', 
                    'wavelength_coeffs', 
@@ -454,7 +478,7 @@ class AndorDevice(InterfaceDevice):
         self.serial = f"CCD-{sn.value}"
         self.settings.eeprom.serial_number = self.serial # temporary
         self.settings.eeprom.detector_serial_number = self.serial
-        log.debug(f"connected to {self.serial}")
+        log.debug(f"get_serial_number: connected to {self.serial}")
         return SpectrometerResponse(True)
 
     def init_tec_setpoint(self) -> SpectrometerResponse:
