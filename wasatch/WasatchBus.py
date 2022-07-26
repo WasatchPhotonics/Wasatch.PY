@@ -24,7 +24,6 @@ class WasatchBus(object):
 
     ## called by Controller.update_connections
     def update(self):
-        self.device_ids = []
         if self.usb_bus:
             self.device_ids.extend(self.usb_bus.update())
 

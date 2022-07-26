@@ -1,4 +1,8 @@
+import re
 import logging
+import platform
+import win32com.client
+
 import usb
 import usb.backend.libusb0 as libusb0
 
@@ -20,7 +24,19 @@ class DeviceFinderUSB(object):
     WP_ARM_PID = 0x4000
 
     def __init__(self):
-        pass
+        self.system = platform.system()
+        self.startup_scan = True
+        if self.system == "Windows":
+            # see https://docs.microsoft.com/en-us/windows/win32/wmisdk/creating-a-wmi-script
+            obj_WMI_service = win32com.client.GetObject("winmgmts:")
+            # see https://docs.microsoft.com/en-us/windows/win32/wmisdk/querying-with-wql
+            raw_wql = "SELECT * FROM __InstanceCreationEvent WITHIN 1 WHERE TargetInstance ISA \'Win32_PnPEntity\'"
+            # see https://docs.microsoft.com/en-us/windows/win32/wmisdk/monitoring-events
+            # while it removes polling the usb bus
+            # the polling now shifts to WMI events as the query is a polling operation
+            self.obj_events = obj_WMI_service.ExecNotificationQuery(raw_wql)
+        else:
+            pass
 
     ##
     # Iterates over each supported PID, searching for any Wasatch devices
@@ -48,7 +64,7 @@ class DeviceFinderUSB(object):
     # DeviceID for each.  
     #
     # Note that DeviceID internally pulls more attributes from the Device object.
-    def find_usb_devices(self):
+    def bus_polling(self) -> list[DeviceID]:
         device_ids = []
         count = 0
         for device in usb.core.find(find_all=True, backend=libusb0.get_backend()):
@@ -65,4 +81,45 @@ class DeviceFinderUSB(object):
 
             device_id = DeviceID(device=device)
             device_ids.append(device_id)
+        return device_ids
+
+    def windows_monitoring(self) -> bool:
+        log.debug(f"scaning for WMI events")
+        device_ids = []
+        try:
+            # the next event raises an error on timeout
+            # so if a connection has occured then add it to device ids
+            # when we stop seeing devices then pass on to the processing
+            while True:
+                obj_received = self.obj_events.NextEvent(10)
+                device_id = obj_received.Properties_("TargetInstance").Value.DeviceID
+                log.debug(f"found a WMI usb event for a device {device_id}")
+                device_ids.append(device_id)
+        except:
+            pass
+        device_ids = list(filter(lambda dev_id: "24aa" in dev_id.lower(), device_ids))
+        log.debug(f"filtered wasatch devices are {device_ids}")
+        pids = [re.findall(r'PID_(....)', dev) for dev in device_ids]
+        log.debug(f"regex pids are {pids}")
+        pids = [id_num[0] for id_num in pids if id_num is not []]
+        log.debug(f"found pids of {pids}")
+        # end by querying just the desired Wasatch Devices via pyusb
+        # this provides an easy meshing with our current setup using pyusb devices
+        device_ids = [usb.core.find(idVendor=0x24aa, idProduct=int(pid, 16)) for pid in pids]
+        log.debug(f"pyusb devices found are {device_ids}")
+        return device_ids
+
+    def find_usb_devices(self):
+        device_ids = []
+        if self.startup_scan:
+            # our first scan should always be a bus poll
+            # this is because no events will be registered
+            device_ids = self.bus_polling()
+            self.startup_scan = False
+        elif self.system == "Windows":
+            device_ids = self.windows_monitoring()
+        else:
+            device_ids = self.bus_polling()
+        if device_ids != []:
+            log.debug(f"returning non empty device list of {device_ids}")
         return device_ids
