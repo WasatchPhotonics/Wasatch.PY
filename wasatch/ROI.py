@@ -15,3 +15,6 @@ class ROI:
 
     def contains(self, value):
         return self.start <= value <= self.end
+
+    def __str__(self):
+        return f"({self.start}, {self.end})"

@@ -26,7 +26,7 @@ log = logging.getLogger(__name__)
 # @see 24LC128 for FX2 (16KB, https://www.microchip.com/en-us/product/24LC128)
 class EEPROM(object):
     
-    LATEST_REV = 13
+    LATEST_REV = 15
     MAX_PAGES = 8
     PAGE_LENGTH = 64
     SUBPAGE_COUNT = 4
@@ -175,7 +175,7 @@ class EEPROM(object):
     ## 
     # given a set of the 8 buffers read from a spectrometer via USB,
     # parse those into the approrpriate fields and datatypes
-    def parse(self, buffers):
+    def parse(self, buffers) -> bool:
         if len(buffers) < EEPROM.MAX_PAGES:
             log.error("EEPROM.parse expects at least %d buffers", EEPROM.MAX_PAGES)
             return False

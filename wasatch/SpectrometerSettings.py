@@ -3,6 +3,7 @@ import numpy as np
 import json
 import math
 import re
+import os
 
 from datetime import datetime
 from . import utils
@@ -237,6 +238,7 @@ class SpectrometerSettings(object):
     def init_regions(self):
         ee = self.eeprom
         if ee.region_count == 0 or ee.region_count > 4:
+            log.debug(f"detector regions not configured (subformat {ee.subformat}, region_count {ee.region_count})")
             return
 
         log.debug("initializing detector regions")
@@ -312,6 +314,41 @@ class SpectrometerSettings(object):
         log.debug(f"stored new coeffs for region {n}: {coeffs}")
 
     ##
+    # @par Discussion re: SPI models
+    #
+    # (We don't currently have any software issues in this respect, but 
+    # retaining this discussion in case it again becomes useful.)
+    #
+    # All of our silicon-based spectrometers output a cropped set of "active"
+    # pixels, omitting any "optically-masked / dark" pixels at the ends.
+    # (Theoretically we could output those as well, allowing an EDC feature,
+    # but that's another discussion).  
+    # 
+    # The point is, it's not "unusual" that our new SiG spectrometer is only
+    # outputting 1920 active of 1952 physical pixels, nor is it unusual that
+    # the wavecal is based on all active output pixels.  That's in fact the
+    # norm.
+    #
+    # What's unusual is that this spectrometer uses the horizontal ROI fields
+    # on the EEPROM to TELL the spectrometer where the active region (or
+    # ROI of interest) lies.  
+    #
+    # Therefore, while most of our spectrometers assume the horizontal ROI is
+    # zero-indexed at the beginning of the ACTIVE region, and therefore used
+    # to crop/vignette the array of ACTIVE pixels being output, in this case
+    # the horizontal ROI is zero-indexed at the beginning of the PHYSICAL 
+    # region, and therefore HAS ALREADY been used to crop/vignette the 
+    # spectrum down to the active region.
+    #
+    # (The current unit uses EEPROM subformat 1, meaning region_count remains
+    # 0 and pixels() will always return active_pixels_horizontal (1920).
+    # Even if we were in subformat 4, detector_regions.total_pixels() should
+    # still sum to 1920.)
+    #
+    # Conclusion: testing confirms the wavecal is correctly generated and
+    # applied in both wavelength and wavenumber space on both USB and SPI 
+    # interfaces.
+    #
     # @todo update for DetectorRegions
     def update_wavecal(self, coeffs=None):
         log.debug(f"updating wavecal")
@@ -331,6 +368,7 @@ class SpectrometerSettings(object):
         else:
             log.debug("update_wavecal: passed coeffs, so storing to region {self.state.region}")
             self.set_wavecal_coeffs(coeffs)
+
 
         self.wavelengths = utils.generate_wavelengths(self.pixels(), coeffs)
 
@@ -398,6 +436,8 @@ class SpectrometerSettings(object):
         return not self.has_excitation()
 
     def is_gen15(self) -> bool:
+        if "DISABLE_GEN15" in os.environ:
+            return False
         return self.eeprom.gen15
 
     def is_gen2(self) -> bool:
