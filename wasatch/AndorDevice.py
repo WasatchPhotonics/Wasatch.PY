@@ -353,7 +353,7 @@ class AndorDevice(InterfaceDevice):
 
     def connect(self) -> SpectrometerResponse:
         if self.dll_fail:
-            return SpectrometerResponse(data=False,error_lvl=ErrorLevel.high,error_msg="couldn't load Andor dll")
+            return SpectrometerResponse(False, error_msg="can't find Andor DLL; please confirm Andor Driver Pack 2 installed")
 
         cameraHandle = c_int()
         self.check_result(self.driver.GetCameraHandle(self.spec_index, byref(cameraHandle)), "GetCameraHandle")
@@ -364,7 +364,7 @@ class AndorDevice(InterfaceDevice):
             self.check_result(self.driver.Initialize(path_to_ini), "Initialize")
         except:
             log.error("Andor.Initialize failed", exc_info=1)
-            return SpectrometerResponse(data=False, error_lvl=ErrorLevel.high, error_msg="Andor initialization failed")
+            return SpectrometerResponse(False, error_msg="Andor initialization failed")
 
         self.get_serial_number()
         self.init_tec_setpoint()

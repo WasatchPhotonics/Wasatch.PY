@@ -267,14 +267,24 @@ class WasatchDeviceWrapper:
 
         return True
 
-    def poll_settings(self):
+    def poll_settings(self) -> SpectrometerResponse:
+        """ @returns SpectrometerResponse(True) on success, (False) otherwise """
         log.debug("polling device settings")
         if not self.settings_queue.empty():
-            log.info(f"got spectrometer settings for device, returning settings to controller")
-            self.connected = True
-            self.settings = self.settings_queue.get_nowait()
-            self.connect_start_time = datetime.datetime(year=datetime.MAXYEAR, month=1, day=1)
-            return self.settings
+            result = self.settings_queue.get_nowait()
+            if result is None: # shouldn't happen
+                log.critical("failed to retrieve device settings")
+                return SpectrometerResponse(False, error_msg="Failed to retrieve device settings")
+
+            if result.data:
+                log.info(f"got spectrometer settings for device, returning settings to controller")
+                self.connected = True
+                self.settings = result.data
+                self.connect_start_time = datetime.datetime(year=datetime.MAXYEAR, month=1, day=1)
+                return SpectrometerResponse(True)
+            else:
+                log.critical("got error response instead of settings from connection request")
+                return result
         else:
             log.debug("settings still not obtained, returning")
             return None

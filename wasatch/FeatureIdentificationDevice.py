@@ -186,9 +186,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 break
 
         if device is None:
-            log.debug("FID.connect: unable to find DeviceID %s", str(self.device_id))
+            log.debug(f"FID.connect: unable to find DeviceID {self.device_id}")
             self.connecting = False
-            return False
+            return SpectrometerResponse(data=False, poison_pill=True, error_msg=f"unable to find DeviceID {self.device_id}")
         else:
             log.debug("FID.connect: matched DeviceID %s", str(self.device_id))
 
@@ -209,8 +209,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 if "Resource busy" in str(exc):
                     log.warn("Hardware Failure in setConfiguration. Resource busy error. Attempting to reattach driver by reset.")
                     self.device_type.reset(dev)
-                    connect()
-                    return self.connected
+                    connect() # MZ: I don't see how this could work?  What is connect()?
+                    return SpectrometerResponse(data=self.connected)
                 log.warn("Hardware Failure in setConfiguration", exc_info=1)
                 self.connecting = False
                 raise
@@ -257,7 +257,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         if not self._read_eeprom():
             log.error("failed to read EEPROM")
             self.connecting = False
-            return SpectrometerResponse(False)
+            return SpectrometerResponse(False, error_msg="Failed to read EEPROM")
 
         # ######################################################################
         # Laser
