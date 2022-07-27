@@ -188,7 +188,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         if device is None:
             log.debug(f"FID.connect: unable to find DeviceID {self.device_id}")
             self.connecting = False
-            return SpectrometerResponse(data=False, poison_pill=True, error_msg=f"unable to find DeviceID {self.device_id}")
+            return SpectrometerResponse(data=False, error_msg=f"unable to find DeviceID {self.device_id}")
         else:
             log.debug("FID.connect: matched DeviceID %s", str(self.device_id))
 
