@@ -53,6 +53,8 @@ class WasatchShell(object):
 
         self.configure_logging()
         self.input_tokens = None
+        self.dark_spectra = None
+        self.srm = False
 
         # pass-through calls to any of these gettors (note names are lowercased)
         self.gettors = {}
@@ -160,6 +162,9 @@ class WasatchShell(object):
                                                     max_tries, x, unit [px, nm, cm]
                                                
         get_spectrum                           - print received spectrum
+        set_raman_intensity_correction_enable  - takes bool argument
+        get_dark                               - captures spectrum and stores as dark
+        clear_dark                             - clears a stored dark spectrum
         get_spectrum_pretty                    - graph received spectrum
         get_spectrum_save                      - save spectrum to filename as CSV
         get_config_json                        - return EEPROM as JSON string
@@ -265,6 +270,14 @@ class WasatchShell(object):
                         elif command == "get_spectrum":
                             self.get_spectrum(quiet=False)
 
+                        elif command == "get_dark":
+                            self.get_dark()
+                            self.display(1)
+
+                        elif command == "clear_dark":
+                            self.clear_dark()
+                            self.display(1)
+
                         elif command == "get_spectrum_pretty":
                             self.get_spectrum_pretty()
 
@@ -292,6 +305,9 @@ class WasatchShell(object):
                             self.set_interpolated_x_axis_nm(start = self.read_float(),
                                                             end   = self.read_float(),
                                                             incr  = self.read_float())
+
+                        elif command == "set_raman_intensity_correction_enable":
+                            self.set_raman_intensity_correction_enable(self.device, self.read_bool())
 
                         elif command == "clear":
                             self.clear()
@@ -524,6 +540,32 @@ class WasatchShell(object):
         else:
             self.display(value)
 
+    def get_dark(self):
+        spectrum = self.get_spectrum(quiet=True)
+        self.dark_spectra = spectrum
+
+    def clear_dark(self):
+        self.dark_spectra = None
+
+    def set_raman_intensity_correction_enable(self, device: WasatchDevice, status: bool) -> int:
+        if not device.settings.eeprom.has_raman_intensity_calibration():
+            self.display("Device has no Raman Intensity Calibration")
+            self.srm = False
+            return
+        else:
+            self.srm = status
+            self.display(1)
+            return
+
+    def srm_process(self, spectrum: list[float], device: WasatchDevice) -> list[float]:
+
+        factors = device.settings.raman_intensity_factors
+        if factors is None or len(factors) != len(spectrum):
+            return 
+
+        spectrum = [px*fac for px, fac in zip(spectrum,factors)]
+        return spectrum
+
     ##
     # This calls WasatchDevice.acquire_data, rather than FID.get_line, because 
     # scan averaging, bad-pixel correction, acquisition laser trigger and other
@@ -540,7 +582,12 @@ class WasatchShell(object):
             self.display("ERROR: get_spectrum failed")
             return
         spectrum = reading.spectrum
+        if self.dark_spectra is not None and len(self.dark_spectra) == len(spectrum):
+            spectrum = [spec-dark for spec, dark in zip(spectrum, self.dark_spectra)]
         log.debug("received %d pixels", len(spectrum))
+
+        if self.srm:
+            spectrum = self.srm_process(spectrum, self.device)
 
         if self.interpolated_x_axis_cm and self.device.settings.wavenumbers:
             spectrum = utils.interpolate_array(spectrum, 
