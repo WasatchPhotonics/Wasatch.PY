@@ -214,7 +214,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 if "Resource busy" in str(exc) and retries <= 3:
                     log.warn("Hardware Failure in setConfiguration. Resource busy error. Attempting to reattach driver by reset.")
                     self.device_type.reset(dev)
-                    sleep(10 ** retries) # 10^3 ms = 1sec max delay
+                    sleep_ms = 10 ** retries # 10^3 ms = 1sec max delay
+                    sleep(sleep_ms / 1.0) 
                     return self.connect(retries=retries+1) 
 
                 self.connecting = False
