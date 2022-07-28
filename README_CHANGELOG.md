@@ -1,5 +1,8 @@
 # Changelog
 
+- 2022-07-28 2.1.14
+    - change all Device.connect() methods to return SpectrometerResponse so 
+      caller can display appropriate error message
 - 2022-07-21 2.1.13
     - SPIDevice upgrades
     - deprecated laser power ramping
