@@ -36,7 +36,7 @@ class DeviceFinderUSB(object):
             # see https://docs.microsoft.com/en-us/windows/win32/wmisdk/creating-a-wmi-script
             obj_WMI_service = win32com.client.GetObject("winmgmts:")
             # see https://docs.microsoft.com/en-us/windows/win32/wmisdk/querying-with-wql
-            raw_wql = "SELECT * FROM __InstanceCreationEvent WITHIN 0.1 WHERE TargetInstance ISA \'Win32_PnPEntity\'"
+            raw_wql = "SELECT * FROM __InstanceCreationEvent WITHIN 1 WHERE TargetInstance ISA \'Win32_PnPEntity\'"
             # see https://docs.microsoft.com/en-us/windows/win32/wmisdk/monitoring-events
             # while it removes polling the usb bus
             # the polling now shifts to WMI events as the query is a polling operation
@@ -113,11 +113,13 @@ class DeviceFinderUSB(object):
             # so if a connection has occured then add it to device ids
             # when we stop seeing devices then pass on to the processing
             while True:
-                obj_received = self.obj_events.NextEvent(1)
+                obj_received = self.obj_events.NextEvent(0.001)
                 device_id = obj_received.Properties_("TargetInstance").Value.DeviceID
                 device_ids.append(device_id)
         except:
             pass
+        if device_ids != []:
+            log.debug(f"found a WMI event of {device_ids}")
         device_ids = list(filter(lambda dev_id: "24aa" in dev_id.lower(), device_ids))
         pids = [re.findall(r'PID_(....)', dev) for dev in device_ids]
         pids = [id_num[0] for id_num in pids if id_num is not []]
