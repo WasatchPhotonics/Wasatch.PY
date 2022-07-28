@@ -27,6 +27,8 @@ class DeviceFinderUSB(object):
     WP_HAMA_SILICON_PID = 0x1000
     WP_HAMA_INGAAS_PID = 0x2000
     WP_ARM_PID = 0x4000
+    VALID_ID_LIST = [WASATCH_VID, OCEAN_VID, ANDOR_VID, FT232_SPI_VID]
+    STR_VALID_IDS = [hex(id)[2:] for id in VALID_ID_LIST]
 
     def __init__(self):
         self.system = platform.system()
@@ -95,16 +97,28 @@ class DeviceFinderUSB(object):
 
     def linux_monitoring(self) -> list[DeviceID]:
         device_ids = []
-        log.debug("polling pyudev")
         for device in iter(partial(self.monitor.poll, 0.001), None):
-            if device is not None and device.action == "add":
+            # sometimes I see events with None for the vendor id, those should be skipped
+            if device is not None and device.action == "add" and device.get('ID_VENDOR_ID') is not None:
                 device_ids.append(device)
-        wp_devices = [dev for dev in device_ids if dev.get('ID_VENDOR_ID') == "24aa"]
-        pyusb_devices = [usb.core.find(idVendor=0x24aa, idProduct=int(dev.get('ID_MODEL_ID'), 16)) for dev in wp_devices]
+                log.debug(f"got a udev device add event")
+        valid_devices = [dev for dev in device_ids if dev.get('ID_VENDOR_ID').lower() in self.STR_VALID_IDS]
+        pyusb_devices = [usb.core.find(idVendor=int(dev.get('ID_VENDOR_ID'), 16), idProduct=int(dev.get('ID_MODEL_ID'), 16)) for dev in valid_devices]
+        # if there is an error/can't find pyusb returns none
+        # filter those out
+        if None in pyusb_devices:
+            log.error(f"pyudev notified of a matching device, but error when doing pyusb query")
+            pyusb_devices = [dev for dev in pyusb_devices if dev is not None] 
         if pyusb_devices != []:
             log.debug(f"pyudev returned devices of {pyusb_devices}")
         return [DeviceID(device) for device in pyusb_devices]
 
+    # I like this line but think it deserves a comment
+    # map across the STR_VALID_IDS checking if it is in current id string, resulting in a bool array
+    # if any true in that bool array then any() is true and thus it will be in the list
+    def id_in_valid_ids(self, dev_id):
+        valid_id_present = map(lambda valid: valid in dev_id, self.STR_VALID_IDS)
+        return any(valid_id_present)
 
     def windows_monitoring(self) -> list[DeviceID]:
         device_ids = []
@@ -115,17 +129,24 @@ class DeviceFinderUSB(object):
             while True:
                 obj_received = self.obj_events.NextEvent(0.001)
                 device_id = obj_received.Properties_("TargetInstance").Value.DeviceID
-                device_ids.append(device_id)
+                device_ids.append(device_id.lower())
         except:
             pass
         if device_ids != []:
             log.debug(f"found a WMI event of {device_ids}")
-        device_ids = list(filter(lambda dev_id: "24aa" in dev_id.lower(), device_ids))
-        pids = [re.findall(r'PID_(....)', dev) for dev in device_ids]
+        valid_ids = [dev_id for dev_id in device_ids if self.id_in_valid_ids(dev_id)] 
+        pids = [re.findall(r'pid_(....)', dev) for dev in valid_ids]
         pids = [id_num[0] for id_num in pids if id_num is not []]
+        vids = [re.findall(r'vid_(....)', dev) for dev in valid_ids]
+        vids = [id_num[0] for id_num in vids if id_num is not []]
         # end by querying just the desired Wasatch Devices via pyusb
         # this provides an easy meshing with our current setup using pyusb devices
-        pyusb_devices = [usb.core.find(idVendor=0x24aa, idProduct=int(pid, 16)) for pid in pids]
+        pyusb_devices = [usb.core.find(idVendor=int(vid, 16), idProduct=int(pid, 16)) for vid, pid in zip(vids, pids)]
+        # if there is an error/can't find pyusb returns none
+        # filter those out
+        if None in pyusb_devices:
+            log.error(f"WMI notified of a matching device, but error when doing pyusb query")
+            pyusb_devices = [dev for dev in pyusb_devices if dev is not None] 
         if pyusb_devices != []:
             log.debug(f"WMI returned devices of {pyusb_devices}")
         return [DeviceID(device) for device in pyusb_devices]
