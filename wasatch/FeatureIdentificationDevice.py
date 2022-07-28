@@ -151,7 +151,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 responses.append(SpectrometerResponse(error_msg="error processing cmd", error_lvl=ErrorLevel.medium))
         return responses
 
-    def connect(self) -> SpectrometerResponse:
+    def connect(self, retries=0) -> SpectrometerResponse:
         """
         Connect to the device and initialize basic settings.
         @warning this causes a problem in non-blocking mode (WasatchDeviceWrapper)
@@ -186,9 +186,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 break
 
         if device is None:
-            log.debug("FID.connect: unable to find DeviceID %s", str(self.device_id))
+            log.debug(f"FID.connect: unable to find DeviceID {self.device_id}")
             self.connecting = False
-            return False
+            return SpectrometerResponse(data=False, error_msg=f"unable to find DeviceID {self.device_id}")
         else:
             log.debug("FID.connect: matched DeviceID %s", str(self.device_id))
 
@@ -198,6 +198,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.debug("on MacOS, so NOT setting configuration and claiming interface")
         else:
             log.debug("on posix, so setting configuration and claiming interface")
+
+            # in the following, return SpectrometerResponse objects rather than 
+            # raising exceptions so the user will have a more-useful error 
+            # message to report or use in troubleshooting (exception still gets
+            # logged)
             try:
                 log.debug("setting configuration")
                 result = self.device_type.set_configuration(device)
@@ -206,22 +211,26 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 # This additional if statement is present for the Raspberry Pi. There is an issue with resource busy errors.
                 # Adding dev.reset() solves this. See https://stackoverflow.com/questions/29345325/raspberry-pyusb-gets-resource-busy
                 #####################################################################################################################
-                if "Resource busy" in str(exc):
+                if "Resource busy" in str(exc) and retries <= 3:
                     log.warn("Hardware Failure in setConfiguration. Resource busy error. Attempting to reattach driver by reset.")
                     self.device_type.reset(dev)
-                    connect()
-                    return self.connected
-                log.warn("Hardware Failure in setConfiguration", exc_info=1)
+                    sleep_ms = 10 ** retries # 10^3 ms = 1sec max delay
+                    sleep(sleep_ms / 1000.0) 
+                    return self.connect(retries=retries+1) 
+
                 self.connecting = False
-                raise
+                msg = f"Hardware Failure in setConfiguration, giving up after {retries} retries"
+                log.critical(msg, exc_info=1)
+                return SpectrometerResponse(False, error_msg=msg)
 
             try:
                 log.debug("claiming interface")
                 result = self.device_type.claim_interface(device, 0)
             except Exception as exc:
-                log.warn("Hardware Failure in claimInterface", exc_info=1)
                 self.connecting = False
-                raise
+                msg = "Hardware Failure in claimInterface"
+                log.critical(msg, exc_info=1)
+                return SpectrometerResponse(False, error_msg=msg)
 
         self.device = device
 
@@ -257,7 +266,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         if not self._read_eeprom():
             log.error("failed to read EEPROM")
             self.connecting = False
-            return SpectrometerResponse(False)
+            return SpectrometerResponse(False, error_msg="Failed to read EEPROM")
 
         # ######################################################################
         # Laser

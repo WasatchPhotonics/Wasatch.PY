@@ -95,17 +95,17 @@ class WrapperWorker(threading.Thread):
             (ok,) = self.connected_device.handle_requests([req])
         except:
             log.critical("exception connecting", exc_info=1)
-            return self.settings_queue.put(None) # put(None, timeout=2)
+            return self.settings_queue.put_nowait(SpectrometerResponse(error_msg="exception while connecting"))
 
         if not ok.data:
             log.critical("failed to connect")
-            return self.settings_queue.put(None) # put(None, timeout=2)
+            return self.settings_queue.put_nowait(ok) 
 
         log.debug("successfully connected")
 
         # send the SpectrometerSettings back to the GUI thread
-        log.debug("returning SpectrometerSettings to parent")
-        self.settings_queue.put_nowait(self.connected_device.settings)
+        log.debug("returning SpectrometerSettings to parent via SpectrometerResponse")
+        self.settings_queue.put_nowait(SpectrometerResponse(self.connected_device.settings))
 
         log.debug("entering loop")
         last_command = datetime.datetime.now()
