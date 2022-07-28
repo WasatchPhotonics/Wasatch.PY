@@ -35,6 +35,10 @@ class DeviceFinderUSB(object):
             # while it removes polling the usb bus
             # the polling now shifts to WMI events as the query is a polling operation
             self.obj_events = obj_WMI_service.ExecNotificationQuery(raw_wql)
+        elif self.system == "Linux":
+            import pyudev
+            self.context = pyudev.Context()
+            self.monitor = pyudev.Monitor.from_netlink(self.context)
         else:
             pass
 
@@ -83,7 +87,17 @@ class DeviceFinderUSB(object):
             device_ids.append(device_id)
         return device_ids
 
-    def windows_monitoring(self) -> bool:
+    def linux_monitoring(self) -> list[DeviceID]:
+        device_ids = []
+        for device in iter(self.monitor.poll, None):
+            if device is not None and device.action == "add":
+                device_ids.append(device)
+        wp_devices = [dev for dev in device_ids if dev.get('ID_VENDOR_ID') == "24aa"]
+        pyusb_devices = [usb.core.find(idVendor=0x24aa, idProduct=int(dev.get('ID_MODEL_ID'), 16)) for dev in wp_devices]
+        return [DeviceID(device) for device in pyusb_devices]
+
+
+    def windows_monitoring(self) -> list[DeviceID]:
         log.debug(f"scaning for WMI events")
         device_ids = []
         try:
@@ -101,8 +115,8 @@ class DeviceFinderUSB(object):
         pids = [id_num[0] for id_num in pids if id_num is not []]
         # end by querying just the desired Wasatch Devices via pyusb
         # this provides an easy meshing with our current setup using pyusb devices
-        device_ids = [usb.core.find(idVendor=0x24aa, idProduct=int(pid, 16)) for pid in pids]
-        return [DeviceID(device) for device in device_ids]
+        pyusb_devices = [usb.core.find(idVendor=0x24aa, idProduct=int(pid, 16)) for pid in pids]
+        return [DeviceID(device) for device in pyusb_devices]
 
     def find_usb_devices(self):
         device_ids = []
@@ -113,6 +127,61 @@ class DeviceFinderUSB(object):
             self.startup_scan += 1
         elif self.system == "Windows":
             device_ids = self.windows_monitoring()
+        elif self.system == "Linux":
+            self.linux_monitoring()
         else:
             device_ids = self.bus_polling()
         return device_ids
+
+    def mac_monitoring(self):
+        """
+        The challenge of implementing Mac usb events was decided not to be worth it
+        since it is such a small porition of users. I've included my code below the not implemented error
+        for reference in case we decide to implement later. This is incomplete and shouldn't be called.
+        """
+        raise NotImplementedError
+
+        from ctypes import cdll, util
+        from ctypes import *
+        from CoreFoundation import *
+
+        #iokit = cdll.LoadLibrary(util.find_library('IOKit'))
+
+        # See ctypes for what these calls are doing
+        # For where iokit info is coming from
+        # Apple docs, which imo are bad with clear examples, if any, 
+        # so I'm structuring this 
+        # in a how to actually create and do way
+        # IO notifications in python using ctypes
+        # https://developer.apple.com/library/archive/documentation/DeviceDrivers/Conceptual/IOKitFundamentals/Introduction/Introduction.html
+        # AddMatchingNotification is our goal since that provides the iterator of devices
+        # https://developer.apple.com/documentation/iokit/1514362-ioserviceaddmatchingnotification?language=objc
+        # So our requirements are to create the following args
+        # IONotificationPortRef, io_name_t, CFDictionaryRef, IOServiceMatchingCallback, io_iterator_t
+
+        # For the IONotificationPortRef we call IONotificationPortCreate, which requires a mach_port_t
+        # the primary port comes from a constant used in the dylib
+        # https://developer.apple.com/documentation/iokit/1514480-ionotificationportcreate?language=objc
+        kIOMasterPortDefault = c_void_p.in_dll(iokit, 'kIOMasterPortDefault')
+        res = iokit.IONotificationPortCreate(kIOMasterPortDefault)
+
+        # For the io_name_t that comes from a constant in the dll
+        # See the parameter description in the AddMatchinServiceNotification link at the top
+        # We want publish because it means whenever a connection occurs
+        kIOPublishNotification = c_int.in_dll(iokit, 'kIOPublishNotification') # this throws an error that it doesn't have this symbol, idk why. It should export that
+
+        # CFDictionary creation call info, along with args to pass, can be found here
+        # https://developer.apple.com/documentation/corefoundation/1516791-cfdictionarycreatemutable?language=objc
+        # the pyobjc docs weren't helpful and just say this call exists but not how to call it
+        # we choose mutable when it could just be CFDictionaryCreate because it's easier to work with
+        # after creation this can be interacted with like a python dict
+        # the nonmutable requires passing c arrays for keys, values, which why bother when we can use python syntax
+        # expected keys example can be seen in xml doc in 
+        # Figure 4-2 I found more helpful since it is for USB
+        # https://developer.apple.com/library/archive/documentation/DeviceDrivers/Conceptual/IOKitFundamentals/Matching/Matching.html
+        # XML docs say every dict requires IOProviderClass
+        # The value for the key can be found in the appendix of the driver docs
+        matching_dict = CFDictionaryCreateMutable(None, 0,  kCFTypeDictionaryKeyCallBacks, kCFTypeDictionaryValueCallBacks)
+        matching_dict["IOProviderClass"] = "IOUSBDevice"
+        matching_dict["idVendor"] = 0x24aa # we can have the driver pre filter for wasatch, so I'm utilizing that
+
