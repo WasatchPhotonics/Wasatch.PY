@@ -1,8 +1,12 @@
 import re
 import logging
 import platform
-from ctypes import *
-from CoreFoundation import *
+from functools import partial
+if platform.system() == "Darwin":
+    # would like to include in Mac stub
+    # * imports must be at the module level though
+    from ctypes import *
+    from CoreFoundation import *
 
 import usb
 import usb.backend.libusb0 as libusb0
@@ -91,16 +95,18 @@ class DeviceFinderUSB(object):
 
     def linux_monitoring(self) -> list[DeviceID]:
         device_ids = []
-        for device in iter(self.monitor.poll, None):
+        log.debug("polling pyudev")
+        for device in iter(partial(self.monitor.poll, 0.001), None):
             if device is not None and device.action == "add":
                 device_ids.append(device)
         wp_devices = [dev for dev in device_ids if dev.get('ID_VENDOR_ID') == "24aa"]
         pyusb_devices = [usb.core.find(idVendor=0x24aa, idProduct=int(dev.get('ID_MODEL_ID'), 16)) for dev in wp_devices]
+        if pyusb_devices != []:
+            log.debug(f"pyudev returned devices of {pyusb_devices}")
         return [DeviceID(device) for device in pyusb_devices]
 
 
     def windows_monitoring(self) -> list[DeviceID]:
-        log.debug(f"scaning for WMI events")
         device_ids = []
         try:
             # the next event raises an error on timeout
@@ -118,6 +124,8 @@ class DeviceFinderUSB(object):
         # end by querying just the desired Wasatch Devices via pyusb
         # this provides an easy meshing with our current setup using pyusb devices
         pyusb_devices = [usb.core.find(idVendor=0x24aa, idProduct=int(pid, 16)) for pid in pids]
+        if pyusb_devices != []:
+            log.debug(f"WMI returned devices of {pyusb_devices}")
         return [DeviceID(device) for device in pyusb_devices]
 
     def find_usb_devices(self):
@@ -130,7 +138,7 @@ class DeviceFinderUSB(object):
         elif self.system == "Windows":
             device_ids = self.windows_monitoring()
         elif self.system == "Linux":
-            self.linux_monitoring()
+            device_ids = self.linux_monitoring()
         else:
             device_ids = self.bus_polling()
         return device_ids
