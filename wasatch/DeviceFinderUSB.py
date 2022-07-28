@@ -1,6 +1,8 @@
 import re
 import logging
 import platform
+from ctypes import *
+from CoreFoundation import *
 
 import usb
 import usb.backend.libusb0 as libusb0
@@ -142,8 +144,6 @@ class DeviceFinderUSB(object):
         raise NotImplementedError
 
         from ctypes import cdll, util
-        from ctypes import *
-        from CoreFoundation import *
 
         #iokit = cdll.LoadLibrary(util.find_library('IOKit'))
 
