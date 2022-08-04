@@ -141,7 +141,7 @@ class DeviceFinderUSB(object):
         vids = [id_num[0] for id_num in vids if id_num is not []]
         # end by querying just the desired Wasatch Devices via pyusb
         # this provides an easy meshing with our current setup using pyusb devices
-        pyusb_devices = [usb.core.find(idVendor=int(vid, 16), idProduct=int(pid, 16)) for vid, pid in zip(vids, pids)]
+        pyusb_devices = [usb.core.find(idVendor=int(vid, 16), idProduct=int(pid, 16), backend=libusb0.get_backend()) for vid, pid in zip(vids, pids)]
         # if there is an error/can't find pyusb returns none
         # filter those out
         if None in pyusb_devices:
