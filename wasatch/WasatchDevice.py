@@ -136,14 +136,14 @@ class WasatchDevice(InterfaceDevice):
             log.debug("connect_fid: instantiated")
 
             try:
-                log.debug("connect_fid: connecting")
+                log.debug("connect_fid: calling dev.connect")
                 ok = dev.connect()
-                log.debug("connect_fid: connected")
+                log.debug("connect_fid: back from dev.connect")
             except Exception as exc:
                 log.critical("connect_feature_identification: %s", exc, exc_info=1)
                 return False
 
-            if not ok:
+            if not ok.data:
                 log.critical("Low level failure in device connect")
                 return False
 

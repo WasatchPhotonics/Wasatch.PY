@@ -417,10 +417,12 @@ class SpectrometerSettings(object):
         return False
 
     def is_imx(self) -> bool:
-        return "imx" in self.eeprom.detector.lower()
+        return self.eeprom is not None and \
+               self.eeprom.detector is not None and \
+               "imx" in self.eeprom.detector.lower()
 
     def is_imx392(self) -> bool:
-        return "imx392" in self.eeprom.detector.lower()
+        return self.is_imx() and "imx392" in self.eeprom.detector.lower()
 
     def is_spi(self) -> bool:
         return self.hardware_info is not None and \
