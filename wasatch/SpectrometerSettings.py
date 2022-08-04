@@ -423,14 +423,17 @@ class SpectrometerSettings(object):
         return "imx392" in self.eeprom.detector.lower()
 
     def is_spi(self) -> bool:
-        return self.hardware_info.pid == 0x6014
+        return self.hardware_info is not None and \
+               self.hardware_info.pid == 0x6014
 
     def is_micro(self) -> bool:
-        return ( self.is_arm() and \
-               ( self.is_imx() or \
-                 "micro" in self.full_model().lower() or \
-                 "sig"   in self.full_model().lower() )) \
-                 or self.is_spi()
+        return ( self.is_arm() and ( \
+                   self.is_imx() or \
+                   "micro" in self.full_model().lower() or \
+                   "sig"   in self.full_model().lower() \
+                 ) \
+               ) \
+               or self.is_spi()
 
     def is_non_raman(self) -> bool:
         return not self.has_excitation()
