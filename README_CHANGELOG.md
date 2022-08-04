@@ -1,5 +1,7 @@
 # Changelog
 
+- 2022-08-04 2.1.15
+    - fixed bug affecting spectra loaded from file and thus missing SpectrometerSettings.hardware_info
 - 2022-07-28 2.1.14
     - change all Device.connect() methods to return SpectrometerResponse so 
       caller can display appropriate error message
