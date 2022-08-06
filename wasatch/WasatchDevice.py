@@ -201,7 +201,7 @@ class WasatchDevice(InterfaceDevice):
 
         if self.hardware.shutdown_requested:
             log.critical("acquire_data: hardware shutdown requested")
-            return SpectrometerResponse(False)
+            return SpectrometerResponse(False, poison_pill=True)
 
         # process queued commands, and find out if we've been asked to read a
         # spectrum
