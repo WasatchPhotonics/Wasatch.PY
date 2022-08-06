@@ -72,6 +72,17 @@ class DeviceID(object):
     ##
     # Instantiates a DeviceID object from either a usb.device or an
     # existing device_id string representation.
+    #
+    # Note that historically this was a simple "ID" field which could be 
+    # serialized to and from a string.  It was just an identifier with some 
+    # marshalled data about protocol, bus, address etc.  These could be copied,
+    # cloned, used as hash keys etc freely, because they were lightweight
+    # throwaway objects.
+    #
+    # It seems to now contain a device_type which can be a full RealUSBDevice or
+    # BLEDevice etc, containing the code to actually communicate over the specific
+    # protocol.  So this is no longer a lightweight "ID" class, it's a somewhat
+    # heavy and complex object.
     def __init__(self, device=None, label=None, directory=None, device_type=None):
 
         self.type      = None
