@@ -152,10 +152,12 @@ class DeviceFinderUSB(object):
         return [DeviceID(device) for device in pyusb_devices]
 
     def find_usb_devices(self):
+        log.debug("DeviceFinderUSB.find_usb_devices: starting")
         device_ids = []
-        if self.startup_scan < 2:
+        if True or self.startup_scan < 2:
             # our first few scans should always be a bus poll
             # this is because no events will be registered
+            log.debug(f"DeviceFinderUSB.find_usb_devices: just doing a bus poll for startup_scan {self.startup_scan}")
             device_ids = self.bus_polling()
             self.startup_scan += 1
         elif self.system == "Windows":
@@ -164,6 +166,7 @@ class DeviceFinderUSB(object):
             device_ids = self.linux_monitoring()
         else:
             device_ids = self.bus_polling()
+        log.debug(f"DeviceFinderUSB.find_usb_devices: returning {len(device_ids)} devices")
         return device_ids
 
     def mac_monitoring(self):
