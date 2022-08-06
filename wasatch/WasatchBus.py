@@ -56,4 +56,5 @@ class USBBus:
         except Exception:
             log.critical("LIBUSB error", exc_info=1)
 
+        log.debug(f"USBBus.update: found {len(device_ids)} devices")
         return device_ids
