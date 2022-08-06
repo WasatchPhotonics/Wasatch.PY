@@ -21,6 +21,11 @@ log = logging.getLogger(__name__)
 # Continuously process in background thread. While waiting forever for the None 
 # poison pill on the command queue, continuously read from the device and post 
 # the results on the response queue.
+#
+# Consider moving this class, and WasatchDeviceWrapper, our of Wasatch.PY and
+# into ENLIGHTEN.  Let Wasatch.PY be a simple single-spectrometer blocking
+# driver, similar to Wasatch.NET and Wasatch.VCPP.  No need to have Wasatch.PY
+# handle the threads.
 class WrapperWorker(threading.Thread):
 
     # TODO: make this dynamic:
@@ -115,7 +120,6 @@ class WrapperWorker(threading.Thread):
         received_poison_pill_command  = False # from ENLIGHTEN
         received_poison_pill_response = False # from WasatchDevice
 
-        sent_good = False
         num_connected_devices = 1
         while True:
             now = datetime.datetime.now()
@@ -125,13 +129,18 @@ class WrapperWorker(threading.Thread):
             if dedupped:
                 for record in dedupped:
                     if record is None:
-                        # reminder, the DOWNSTREAM poison_pill is a None, while the UPSTREAM
-                        # poison_pill is False...need to straighten that out.
+                        # We have received a "poison pill" (shutdown command) 
+                        # from ENLIGHTEN.
+                        #
+                        # Reminder, poison_pills moving DOWNSTREAM from ENLIGHTEN
+                        # are None, while poison_pills moving UPSTREAM from WasatchDevice
+                        # are indicated with SpectrometerResponse.poison_pill.
                         received_poison_pill_command = True
-
-                        # do NOT put a 'break' here -- if caller is in process of
+                        #
+                        # Do NOT put a 'break' here just yet -- if caller is in process of
                         # cleaning shutting things down, let them switch off the
-                        # laser etc in due sequence
+                        # laser etc in due sequence.  We can break AFTER relaying
+                        # applying the queued settings.
                     else:
                         log.debug("processing command queue: %s", record.setting)
 
@@ -154,6 +163,7 @@ class WrapperWorker(threading.Thread):
                 log.debug("command queue empty")
 
             if received_poison_pill_command:
+                # ...NOW we can break
                 log.critical("exiting per command queue (poison pill received)")
                 break
 
@@ -178,14 +188,8 @@ class WrapperWorker(threading.Thread):
             log.debug(f"response {reading_response} data is {reading_response.data}")
 
             if reading_response.keep_alive == True:
-                # just pass it upstream and move on
-                log.debug("worker is flowing up keep alive")
-                try:
-                    self.response_queue.put(reading_response) # put(reading, timeout=2)
-                    sent_good = True
-                except:
-                    log.error("unable to push Reading %d to GUI", reading.session_count, exc_info=1)
-                continue
+                log.debug("worker is flowing up keep_alive")
+                self.response_queue.put(reading_response) 
 
             elif reading_response.error_msg != "":
                 if reading_response.data == None:
@@ -193,25 +197,33 @@ class WrapperWorker(threading.Thread):
                 self.response_queue.put(reading_response)
 
             elif reading_response.data is None:
-                log.debug("no worker saw no reading")
+                log.debug("worker saw no reading (but not error, either)")
 
-            elif reading_response.data == False or reading_response.data.failure is not None:
-                # reading was a failure, maintain connection, but pass up the failure
-                log.critical(f"hardware level error...exiting because reading_response.data is {reading_response.data} or reading_response.data.failure")
+            elif reading_response.data == False:
+                log.critical(f"hardware level error...exiting because data False")
                 reading_response.poison_pill = True
+                self.response_queue.put(reading_response)
+
+            elif reading_response.data.failure is not None:
+                log.critical(f"hardware level error...exiting because failure {reading_response.data.failure}")
+                reading_response.poison_pill = True
+                self.response_queue.put(reading_response)
+
+            elif reading_response.poison_pill:
+                log.critical(f"hardware level error...exiting because poison-pill")
                 self.response_queue.put(reading_response)
 
             elif reading_response.data.spectrum is not None:
                 log.debug("sending Reading %d back to GUI thread (%s)", reading_response.data.session_count, reading_response.data.spectrum[0:5])
                 try:
-                    self.response_queue.put_nowait(reading_response) # put(reading, timeout=2)
+                    self.response_queue.put_nowait(reading_response) 
                 except:
                     log.error("unable to push Reading %d to GUI", reading_response.data.session_count, exc_info=1)
 
             else:
                 log.error("received non-failure Reading without spectrum...ignoring?")
 
-            # only poll hardware at 20Hz
+            # only poll hardware buses at 20Hz
             sleep_sec = WrapperWorker.POLLER_WAIT_SEC * num_connected_devices
             log.debug("sleeping %.2f sec", sleep_sec)
             time.sleep(sleep_sec)
@@ -219,8 +231,9 @@ class WrapperWorker(threading.Thread):
         ########################################################################
         # we have exited the loop
         ########################################################################
+
         if received_poison_pill_command:
-            log.critical("exiting because of downstream poison-pill command")
+            log.critical("exiting because of downstream poison-pill command from ENLIGHTEN")
         else:
             log.critical("exiting for no reason?!")
 
