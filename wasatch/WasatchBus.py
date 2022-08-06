@@ -35,7 +35,7 @@ class WasatchBus(object):
         log.debug("WasatchBus.dump: %s", self.device_ids)
 
 class USBBus:
-    finder = DeviceFinderUSB() 
+    finder = DeviceFinderUSB() # note: static attribute
 
     def __init__(self):
         self.backend_error_raised = False

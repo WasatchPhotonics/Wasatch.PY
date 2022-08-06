@@ -30,6 +30,8 @@ class DeviceFinderUSB(object):
     VALID_ID_LIST = [WASATCH_VID, OCEAN_VID, ANDOR_VID, FT232_SPI_VID]
     STR_VALID_IDS = [hex(id)[2:] for id in VALID_ID_LIST]
 
+    MIN_POLLING_SCANS = 10
+
     def __init__(self):
         self.system = platform.system()
         self.startup_scan = 0
@@ -154,7 +156,7 @@ class DeviceFinderUSB(object):
     def find_usb_devices(self):
         log.debug("DeviceFinderUSB.find_usb_devices: starting")
         device_ids = []
-        if True or self.startup_scan < 2:
+        if self.startup_scan < self.MIN_POLLING_SCANS or True:
             # our first few scans should always be a bus poll
             # this is because no events will be registered
             log.debug(f"DeviceFinderUSB.find_usb_devices: just doing a bus poll for startup_scan {self.startup_scan}")
