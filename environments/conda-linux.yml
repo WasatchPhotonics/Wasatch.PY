@@ -16,3 +16,4 @@ dependencies:
   - requests
   - pexpect
   - seabreeze
+  - pyudev
