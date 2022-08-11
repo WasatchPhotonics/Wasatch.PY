@@ -1,5 +1,6 @@
 import datetime
 import logging
+import copy
 import csv
 import re
 
@@ -41,18 +42,15 @@ class CSVLoader(object):
         self.processed_reading.reading = Reading(device_id = "LOAD:" + pathname)
 
     def parse_metadata(self, line):
-        m = re.match(r'^([^,]+),([^,]+)', line)
-        if m:
-            key   = m.group(1).strip()
-            value = m.group(2).strip()
+        line = list(line)
+        key   = line[0]
+        value = line[1:] # for lists with only one element this will give []
+                         # Useful for cases like Declared Match,,,,,,,,
 
-            # trim any trailing commas and spaces; even in EU, this should be okay
-            value = value.rstrip(", ") 
-
-            self.metadata[key] = value
+        self.metadata[key] = value
 
     def parse_header(self, line):
-        self.headers = [ x.strip() for x in line.lower().split(",") ] # force lowercase
+        self.headers = [ x.lower().strip() for x in line ] # force lowercase
         if "processed" in self.headers: self.processed_reading.processed = []
         if "raw"       in self.headers: self.processed_reading.raw       = []
         if "dark"      in self.headers: self.processed_reading.dark      = []
@@ -64,19 +62,25 @@ class CSVLoader(object):
         state = "reading_metadata"
         data_rows_read = 0
         with open(self.pathname, "r", encoding=self.encoding) as infile:
-            for line in infile:
-
+            csv_lines = csv.reader(infile)
+            for line in csv_lines:
                 # skip comments and blanks
-                line = line.strip()
-                if line.startswith('#') or len(line) == 0:
+                log.debug(line)
+                if len(line) == 0 or line[0].startswith('#'):
                     continue
 
                 # log.debug("load_data[%s]: %s", state, line)
 
+                line[-1] = line[-1].strip() # remove the \n
                 if state == "reading_metadata":
                     
                     # check for end of metadata (note trailing comma!)
-                    if re.match(r"^(pixel|wavelength|wavenumber|processed)(,|$)", line.lower()):
+                    cleanup_line = lambda x: x.strip().lower()
+                    line = [cleanup_line(part) for part in line]
+                    check_present = lambda x: x in line
+                    contains_header = [check_present(header) 
+                                       for header in ["pixel", "wavelength", "wavenumber", "processed"]]
+                    if any(contains_header):
                         self.parse_header(line)
                         state = "reading_data"
                     else:
@@ -87,7 +91,7 @@ class CSVLoader(object):
                     self.parse_metadata(line)
                 
                 elif state == "reading_data":
-                    values = [x.strip() for x in line.split(",")]
+                    values = [x.strip() for x in line]
 
                     # if we find more metadata after data ended, store it but 
                     # do not transition back
