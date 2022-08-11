@@ -29,6 +29,7 @@ class DeviceFinderUSB(object):
     WP_ARM_PID = 0x4000
     VALID_ID_LIST = [WASATCH_VID, OCEAN_VID, ANDOR_VID, FT232_SPI_VID]
     STR_VALID_IDS = [hex(id)[2:] for id in VALID_ID_LIST]
+    USE_MONITORING = True
 
     MIN_POLLING_SCANS = 10
 
@@ -156,7 +157,9 @@ class DeviceFinderUSB(object):
     def find_usb_devices(self):
         log.debug("DeviceFinderUSB.find_usb_devices: starting")
         device_ids = []
-        if self.startup_scan < self.MIN_POLLING_SCANS or True:
+
+        # MZ/ED: If USE_MONITORING is True, I had to disable the call to remove_all in enlighten.Controller
+        if self.startup_scan < self.MIN_POLLING_SCANS or not self.USE_MONITORING:
             # our first few scans should always be a bus poll
             # this is because no events will be registered
             log.debug(f"DeviceFinderUSB.find_usb_devices: just doing a bus poll for startup_scan {self.startup_scan}")
