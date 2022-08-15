@@ -75,6 +75,7 @@ class BLEDevice(InterfaceDevice):
         self.pid = self.device_id.pid
         self.device_type = self
         self.is_ble = True
+        self.is_andor = lambda : False
         self.loop = loop
         self.sum_count = 0
         self.performing_acquire = False

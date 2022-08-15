@@ -72,7 +72,7 @@ class DeviceID(object):
     ##
     # Instantiates a DeviceID object from either a usb.device or an
     # existing device_id string representation.
-    def __init__(self, device=None, label=None, directory=None, device_type=None):
+    def __init__(self, device=None, label=None, directory=None, device_type=None, overrides = None, spectra_options = None):
 
         self.type      = None
         self.vid       = None
@@ -80,7 +80,10 @@ class DeviceID(object):
         self.bus       = None
         self.address   = None
         self.directory = None
+        self.name      = None
+        self.overrides = overrides
         self.device_type = device_type
+        self.spectra_options = spectra_options
 
         if label is not None:
             # instantiate from an existing string id
@@ -95,6 +98,15 @@ class DeviceID(object):
                 tok = label.split(":")
                 self.type = "FILE"
                 self.directory = tok[1]
+            elif label.startswith("BLE:"):
+                tok = label.split(":")
+                self.type = "BLE"
+                self.address = tok[1]
+                self.name = tok[2]
+            elif label.startswith("MOCK:"):
+                tok = label.split(":")
+                self.name = tok[1]
+                self.directory = tok[2]
             else:
                 raise Exception("DeviceID: invalid device_id label %s" % label)
 
@@ -166,6 +178,9 @@ class DeviceID(object):
     def is_usb(self):
         return self.type.upper() == "USB"
 
+    def is_ble(self):
+        return self.type.upper() == "BLE"
+
     def is_andor(self):
         return self.vid == 0x136e
 
@@ -207,9 +222,13 @@ class DeviceID(object):
     #     return (bus, address)
 
     def get_pid_hex(self):
+        if self.type == "BLE":
+            return None
         return "%04x" % self.pid
 
     def get_vid_hex(self):
+        if self.type == "BLE":
+            return None
         return "%04x" % self.vid
 
     ##
@@ -219,9 +238,13 @@ class DeviceID(object):
     # and hashable unique key.
     def __str__(self):
         if self.type.upper() == "USB":
-            return "<DeviceID %s:0x%04x:0x%04x:%d:%d>" % (self.type.upper(), self.vid, self.pid, self.bus, self.address)
+            return "<DeviceID USB %s:0x%04x:0x%04x:%d:%d>" % (self.type.upper(), self.vid, self.pid, self.bus, self.address)
         elif self.type.upper() == "FILE":
-            return "<Device ID %s:%s>" % (self.type.upper(), self.directory)
+            return "<Device ID FILE %s:%s>" % (self.type.upper(), self.directory)
+        elif self.type.upper() == "MOCK":
+            return f"<Device ID MOCK {self.directory}>"
+        elif self.type.upper() == "BLE":
+            return f"<Device ID BLE {self.name}:{self.address}>"
         else:
             raise Exception("unsupported DeviceID type %s" % self.type)
 

@@ -24,6 +24,8 @@ from .SpectrometerState    import SpectrometerState
 from .InterfaceDevice      import InterfaceDevice
 from .DetectorRegions      import DetectorRegions
 from .StatusMessage        import StatusMessage
+from .RealUSBDevice        import RealUSBDevice
+from .MockUSBDevice        import MockUSBDevice
 from .DetectorROI          import DetectorROI
 from .EEPROM               import EEPROM
 
@@ -87,10 +89,14 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.message_queue = message_queue
 
         self.device = None
-        if device_id.vid != 111111 and device_id.pid != 4000:
-            self.device_type = device_id.device_type
+        if "MOCK" in str(device_id):
+            self.device_type = MockUSBDevice(device_id.name, \
+                device_id.directory.split(',')[0], \
+                device_id.directory.split(',')[1],
+                device_id.overrides,
+                device_id.spectra_options)
         else:
-            self.device_type = device_id
+            self.device_type = RealUSBDevice(device_id)
 
         self.last_usb_timestamp = None
 
