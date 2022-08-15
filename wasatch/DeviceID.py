@@ -105,8 +105,13 @@ class DeviceID(object):
                 self.name = tok[2]
             elif label.startswith("MOCK:"):
                 tok = label.split(":")
+                self.type = "MOCK"
                 self.name = tok[1]
                 self.directory = tok[2]
+                self.vid = str(hash(self.name))
+                self.pid = 0x4000
+                self.bus = 111111
+                self.address = 111111
             else:
                 raise Exception("DeviceID: invalid device_id label %s" % label)
 
@@ -178,6 +183,9 @@ class DeviceID(object):
     def is_usb(self):
         return self.type.upper() == "USB"
 
+    def is_mock(self):
+        return self.type.upper() == "MOCK"
+
     def is_ble(self):
         return self.type.upper() == "BLE"
 
@@ -242,7 +250,7 @@ class DeviceID(object):
         elif self.type.upper() == "FILE":
             return "<Device ID FILE %s:%s>" % (self.type.upper(), self.directory)
         elif self.type.upper() == "MOCK":
-            return f"<Device ID MOCK {self.directory}>"
+            return f"<Device ID MOCK {self.name} {self.directory}>"
         elif self.type.upper() == "BLE":
             return f"<Device ID BLE {self.name}:{self.address}>"
         else:

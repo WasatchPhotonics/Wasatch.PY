@@ -91,8 +91,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.device = None
         if "MOCK" in str(device_id):
             self.device_type = MockUSBDevice(device_id.name, \
-                device_id.directory.split(',')[0], \
-                device_id.directory.split(',')[1],
+                device_id.directory,
                 device_id.overrides,
                 device_id.spectra_options)
         else:
