@@ -150,6 +150,10 @@ class WrapperWorker(threading.Thread):
 
             if received_poison_pill_command:
                 log.critical("exiting per command queue (poison pill received)")
+                req = SpectrometerRequest("disconnect")
+                # I don't see this called. I think it should. 
+                # At minimum it's required for the BLE devices
+                self.connected_device.handle_requests([req]) 
                 break
 
             # ##################################################################

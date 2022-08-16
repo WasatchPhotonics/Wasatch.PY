@@ -114,6 +114,7 @@ class BLEDevice(InterfaceDevice):
         process_f = {}
 
         process_f["connect"] = self.connect
+        process_f["disconnect"] = self.close
         process_f["close"] = self.close
         process_f["acquire_data"] = self.acquire_data
         process_f["scans_to_average"] = self.scans_to_average
