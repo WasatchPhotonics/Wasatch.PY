@@ -197,14 +197,7 @@ class BLEDevice(InterfaceDevice):
         return SpectrometerResponse(True)
 
     async def _connect_spec(self) -> SpectrometerResponse:
-        # a rescan shouldn't be needed. You should be able to used device_id.address string 
-        # to connect via that UUID, but that was throwing errors for me
-        devices = await discover()
-        selected_device = [dev for dev in devices if dev.address == self.device_id.address]
-        if selected_device == []:
-            log.error(f"Couldn't find selected device in BLEDevice scan.")
-            return SpectrometerResponse(False)
-        self.client = BleakClient(selected_device[0])
+        self.client = BleakClient(self.device_id.address)
         await self.client.connect()
         log.debug(f"Connected: {self.client.is_connected}")
         log.debug(f"Chars are {[str(c) for c in self.client.services.characteristics.values()]}")
