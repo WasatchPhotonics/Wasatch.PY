@@ -1,5 +1,9 @@
 # Changelog
 
+- 2022-08-16 2.1.16
+    - Restructure DeviceID to no longer carry other classes
+    - Move control logic for BLE from ENLIGHTEN to here
+    - Change Mock spec creation so that it can be done by info in DeviceID
 - 2022-08-04 2.1.15
     - fixed bug affecting spectra loaded from file and thus missing SpectrometerSettings.hardware_info
 - 2022-07-28 2.1.14
