@@ -29,6 +29,9 @@ class DeviceFinderUSB(object):
     WP_ARM_PID = 0x4000
     VALID_ID_LIST = [WASATCH_VID, OCEAN_VID, ANDOR_VID, FT232_SPI_VID]
     STR_VALID_IDS = [hex(id)[2:] for id in VALID_ID_LIST]
+    USE_MONITORING = True
+
+    MIN_POLLING_SCANS = 10
 
     def __init__(self):
         self.system = platform.system()
@@ -141,7 +144,7 @@ class DeviceFinderUSB(object):
         vids = [id_num[0] for id_num in vids if id_num is not []]
         # end by querying just the desired Wasatch Devices via pyusb
         # this provides an easy meshing with our current setup using pyusb devices
-        pyusb_devices = [usb.core.find(idVendor=int(vid, 16), idProduct=int(pid, 16)) for vid, pid in zip(vids, pids)]
+        pyusb_devices = [usb.core.find(idVendor=int(vid, 16), idProduct=int(pid, 16), backend=libusb0.get_backend()) for vid, pid in zip(vids, pids)]
         # if there is an error/can't find pyusb returns none
         # filter those out
         if None in pyusb_devices:
@@ -152,10 +155,14 @@ class DeviceFinderUSB(object):
         return [DeviceID(device) for device in pyusb_devices]
 
     def find_usb_devices(self):
+        log.debug("DeviceFinderUSB.find_usb_devices: starting")
         device_ids = []
-        if self.startup_scan < 2:
+
+        # MZ/ED: If USE_MONITORING is True, I had to disable the call to remove_all in enlighten.Controller
+        if self.startup_scan < self.MIN_POLLING_SCANS or not self.USE_MONITORING:
             # our first few scans should always be a bus poll
             # this is because no events will be registered
+            log.debug(f"DeviceFinderUSB.find_usb_devices: just doing a bus poll for startup_scan {self.startup_scan}")
             device_ids = self.bus_polling()
             self.startup_scan += 1
         elif self.system == "Windows":
@@ -164,6 +171,7 @@ class DeviceFinderUSB(object):
             device_ids = self.linux_monitoring()
         else:
             device_ids = self.bus_polling()
+        log.debug(f"DeviceFinderUSB.find_usb_devices: returning {len(device_ids)} devices")
         return device_ids
 
     def mac_monitoring(self):

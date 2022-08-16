@@ -19,7 +19,6 @@ from wasatch.DeviceID import DeviceID
 from .ControlObject import ControlObject
 from .InterfaceDevice import InterfaceDevice
 from .SpectrometerResponse import ErrorLevel
-from .AbstractUSBDevice import AbstractUSBDevice
 from .SpectrometerSettings import SpectrometerSettings
 from .SpectrometerResponse import SpectrometerResponse
 from .SpectrometerRequest  import SpectrometerRequest
@@ -65,15 +64,26 @@ class BLEDevice(InterfaceDevice):
 
     def __init__(self, device, loop):
         super().__init__()
+
+        # MZ: what is a PID in the context of BLE?
         self.ble_pid = str(hash(device.address))
+
+        # MZ: why does the ID of a BLE device start with "USB" and not "BLE"?
         self.device_id = DeviceID(label=f"USB:{self.ble_pid[:8]}:0x16384:111111:111111", device_type=self)
-        self.device_id = self.device_id
+
+        self.device_id = self.device_id # MZ: ???
         self.label = "BLE Device"
+
+        # MZ: what do bus and address represent in the BLE protocol?
         self.bus = self.device_id.bus
         self.address = self.device_id.address
-        self.vid = self.device_id.vid
+
+        # MZ: why does this class have a VID and PID?
+        self.vid = self.device_id.vid 
         self.pid = self.device_id.pid
-        self.device_type = self
+
+        self.device_type = self # MZ: why?
+
         self.is_ble = True
         self.loop = loop
         self.sum_count = 0
