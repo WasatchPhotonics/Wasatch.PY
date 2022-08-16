@@ -6,6 +6,7 @@ import random
 import struct
 import logging
 import asyncio
+import threading
 
 from typing import TypeVar, Any, Callable
 from bleak import discover, BleakClient, BleakScanner
@@ -63,24 +64,19 @@ class BLEDevice(InterfaceDevice):
     ############################################################################
     """
 
-    def __init__(self, device, loop):
+    def __init__(self, device_id, message_queue = None):
         super().__init__()
-        self.ble_pid = str(hash(device.address))
-        self.device_id = DeviceID(label=f"USB:{self.ble_pid[:8]}:0x16384:111111:111111", device_type=self)
-        self.device_id = self.device_id
+        self.device_id = device_id
+        self.ble_pid = str(hash(device_id.address))
         self.label = "BLE Device"
         self.bus = self.device_id.bus
         self.address = self.device_id.address
-        self.vid = self.device_id.vid
-        self.pid = self.device_id.pid
-        self.device_type = self
         self.is_ble = True
         self.is_andor = lambda : False
-        self.loop = loop
+        self.loop = asyncio.new_event_loop() #loop
         self.sum_count = 0
         self.performing_acquire = False
         self.disconnect = False
-        self.client = BleakClient(device)
         self.total_pixels_read = 0
         self.session_reading_count = 0
         self.settings = SpectrometerSettings(self.device_id)
@@ -90,8 +86,10 @@ class BLEDevice(InterfaceDevice):
 
         self.process_f = self._init_process_funcs()
 
+
+
     def __str__(self):
-        return "<BLEDevice 0x%04x:0x%04x:%d:%d>" % (self.vid, self.pid, self.bus, self.address)
+        return f"<BLEDevice {self.device_id.name} {self.device_id.address}>"
 
     def __hash__(self):
         return hash(str(self))
@@ -198,8 +196,17 @@ class BLEDevice(InterfaceDevice):
         return SpectrometerResponse(True)
 
     async def _connect_spec(self) -> SpectrometerResponse:
+        # a rescan shouldn't be needed. You should be able to used device_id.address string 
+        # to connect via that UUID, but that was throwing errors for me
+        devices = await discover()
+        selected_device = [dev for dev in devices if dev.address == self.device_id.address]
+        if selected_device == []:
+            log.error(f"Couldn't find selected device in BLEDevice scan.")
+            return SpectrometerResponse(False)
+        self.client = BleakClient(selected_device[0])
         await self.client.connect()
         log.debug(f"Connected: {self.client.is_connected}")
+        log.debug(f"Chars are {[str(c) for c in self.client.services.characteristics.values()]}")
         return SpectrometerResponse(True)
 
     async def _set_gain(self, value: int) -> SpectrometerResponse:
@@ -236,7 +243,7 @@ class BLEDevice(InterfaceDevice):
             loop_count = 1
         reading = None
         for loop_index in range(0, loop_count):
-            reading = Reading(self)
+            reading = Reading(self.device_id)
             reading.integration_time_ms = self.settings.state.integration_time_ms
             reading.laser_power_perc    = self.settings.state.laser_power_perc
             reading.laser_power_mW      = self.settings.state.laser_power_mW
@@ -386,12 +393,15 @@ class BLEDevice(InterfaceDevice):
     ###############################################################
 
     def connect(self) -> SpectrometerResponse:
+        self.thread = threading.Thread(target=self.loop.run_forever, daemon=True)
+        self.thread.start()
         fut = asyncio.run_coroutine_threadsafe(self._connect_spec(), self.loop)
-        log.debug("asyncio connected to device")
+        log.debug("asyncio performing connection to device")
         fut.result()
+        log.debug("BLEDevice succeeded in connection")
         fut = asyncio.run_coroutine_threadsafe(self._get_eeprom(), self.loop)
-        self.settings.eeprom.buffers = fut.result()
-        self.settings.eeprom.read_eeprom()
+        self.settings.eeprom.parse(fut.result())
+        self.settings.update_wavecal()
         self.label = f"{self.settings.eeprom.serial_number} ({self.settings.eeprom.model})"
         return SpectrometerResponse(True)
 
@@ -431,7 +441,7 @@ class BLEDevice(InterfaceDevice):
     def get_vid_hex(self) -> str:
         return str(self.vid)
 
-    def to_dict() -> str:
+    def to_dict(self) -> str:
         return str(self)
 
     def scans_to_average(self, value: int) -> None:
@@ -443,4 +453,4 @@ class BLEDevice(InterfaceDevice):
         self.disconnect = True
         fut = asyncio.run_coroutine_threadsafe(self._disconnect_spec(), self.loop)
         result = fut.result()
-
+        self.loop.stop()

@@ -68,19 +68,14 @@ class WrapperWorker(threading.Thread):
         is_options = (self.is_ocean, self.is_andor, self.is_ble, self.is_spi)
         device_classes = (OceanDevice, AndorDevice, BLEDevice, SPIDevice, WasatchDevice)
         try:
-            log.debug(f"trying to instantiate device")
             if any(is_options):
                 type_connection = is_options.index(True)
-                connecting_class = device_classes[type_connection]
-                if connecting_class == BLEDevice:
-                    self.connected_device = self.device_id.device_type
-                    self.connected_device.disconnect = False
-                else:
-                    self.connected_device = device_classes[type_connection](
-                        device_id = self.device_id,
-                        message_queue = self.message_queue)
+                log.debug(f"trying to instantiate device of type {device_classes[type_connection]}")
+                self.connected_device = device_classes[type_connection](
+                    device_id = self.device_id,
+                    message_queue = self.message_queue)
             else:
-                log.debug("instantiating WasatchDevice")
+                log.debug("Couldn't recognize device, trying to instantiate as WasatchDevice")
                 self.connected_device = device_classes[device_classes.index(WasatchDevice)](
                     device_id = self.device_id,
                     message_queue = self.message_queue)
