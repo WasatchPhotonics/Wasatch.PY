@@ -67,7 +67,6 @@ class BLEDevice(InterfaceDevice):
     def __init__(self, device_id, message_queue = None):
         super().__init__()
         self.device_id = device_id
-        self.ble_pid = str(hash(device_id.address))
         self.label = "BLE Device"
         self.bus = self.device_id.bus
         self.address = self.device_id.address
@@ -200,7 +199,6 @@ class BLEDevice(InterfaceDevice):
         self.client = BleakClient(self.device_id.address)
         await self.client.connect()
         log.debug(f"Connected: {self.client.is_connected}")
-        log.debug(f"Chars are {[str(c) for c in self.client.services.characteristics.values()]}")
         return SpectrometerResponse(True)
 
     async def _set_gain(self, value: int) -> SpectrometerResponse:
