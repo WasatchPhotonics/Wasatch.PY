@@ -178,8 +178,8 @@ class WasatchDeviceWrapper:
         self.is_ocean     = '0x2457' in str(device_id)
         self.is_andor     = '0x136e' in str(device_id)
         self.is_spi       = '0x0403' in str(device_id)
-        self.mock         = 'test' in str(device_id)
-        self.is_ble       = isinstance(device_id.device_type, BLEDevice)
+        self.mock         = 'MOCK' in str(device_id)
+        self.is_ble       = 'BLE' in str(device_id)
         self.connect_start_time = datetime.datetime(year=datetime.MAXYEAR, month=1, day=1)
 
         # this will contain a populated SpectrometerSettings object from the
