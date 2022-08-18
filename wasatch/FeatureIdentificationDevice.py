@@ -174,13 +174,14 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # it doesn't know what PIDs it might be looking for.  We know, so just
         # narrow down the search to those devices.
 
-        log.info(self.device_type)
+        log.info(f"FID.connect: asked to connect to device_type {self.device_type}")
+        log.info(f"FID.connect: calling device_type.find, looking for VID 0x{self.device_id.vid:04x} and PID 0x{self.device_id.pid:04x}")
         devices = self.device_type.find(find_all=True, idVendor=self.device_id.vid, idProduct=self.device_id.pid)
-        log.info(devices)
+        log.info(f"FID.connect: found devices {devices}")
         dev_list = list(devices) # convert from array
 
         device = None
-        log.info(dev_list)
+        log.info(f"searching for specified device in dev_list {dev_list}")
         for dev in dev_list:
             if dev.bus != self.device_id.bus:
                 log.debug("FID.connect: rejecting device (bus %d != requested %d)", dev.bus, self.device_id.bus)
@@ -1058,16 +1059,21 @@ class FeatureIdentificationDevice(InterfaceDevice):
                     data = self.device_type.read(self.device, endpoint, block_len_bytes, timeout=timeout_ms)
                     log.debug("read %d bytes", len(data))
                 except Exception as exc:
-                    if self.settings.state.trigger_source == SpectrometerState.TRIGGER_SOURCE_EXTERNAL:
+                    if self.device_type is None:
+                        log.error(f"No device_type")
+                        response.error_msg = f"Encountered error on read"
+                        response.error_lvl = ErrorLevel.high
+                        response.poison_pill = True # unrecoverable
+                    elif self.settings.state.trigger_source == SpectrometerState.TRIGGER_SOURCE_EXTERNAL:
                         # we don't know how long we'll have to wait for the trigger, so
                         # just loop and hope
                         # log.debug("still waiting for external trigger")
-                        return response
+                        pass
                     else:
                         log.error(f"Encountered error on read of {exc}")
                         response.error_msg = f"Encountered error on read"
                         response.error_lvl = ErrorLevel.high
-                        return response
+                    return response
 
             # This is a convoluted way to iterate across the received bytes in 'data' as
             # two interleaved arrays, both only processing alternating bytes, but one (i)

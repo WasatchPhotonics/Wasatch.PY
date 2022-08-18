@@ -21,5 +21,6 @@ dependencies:
   - pexpect
   - pyreadline
   - seabreeze
+  - pywin32
 
 prefix: !!python/unicode 'C:\Miniconda\envs\wasatch'

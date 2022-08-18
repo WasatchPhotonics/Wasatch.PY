@@ -20,7 +20,6 @@ from wasatch.DeviceID import DeviceID
 from .ControlObject import ControlObject
 from .InterfaceDevice import InterfaceDevice
 from .SpectrometerResponse import ErrorLevel
-from .AbstractUSBDevice import AbstractUSBDevice
 from .SpectrometerSettings import SpectrometerSettings
 from .SpectrometerResponse import SpectrometerResponse
 from .SpectrometerRequest  import SpectrometerRequest
@@ -68,8 +67,11 @@ class BLEDevice(InterfaceDevice):
         super().__init__()
         self.device_id = device_id
         self.label = "BLE Device"
+
+        # MZ: what do bus and address represent in the BLE protocol?
         self.bus = self.device_id.bus
         self.address = self.device_id.address
+
         self.is_ble = True
         self.is_andor = lambda : False
         self.loop = asyncio.new_event_loop() #loop
