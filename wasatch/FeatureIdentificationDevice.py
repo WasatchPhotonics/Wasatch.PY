@@ -1,3 +1,4 @@
+import subprocess
 import platform
 import datetime
 import logging
@@ -397,6 +398,26 @@ class FeatureIdentificationDevice(InterfaceDevice):
         else:
             log.critical("requesting shutdown due to exception %s", exc)
             self.shutdown_requested = True
+
+    def reset(self, *args) -> None:
+        log.debug("FID performing device reset")
+        self.device_type.release_interface(self.device, 0)
+        log.debug(f"freed interface")
+        pyusb_devices = list(self.device_type.find(find_all=True, 
+                                              idVendor=self.device_id.vid, 
+                                              idProduct=self.device_id.pid,
+                                              custom_match = lambda d: d.address == self.device_id.address and d.bus == self.device_id.bus))
+        # a couple notes,
+        # When you search how to do a reset by enable/disable on windows what comes up is devcon
+        # devcon links to pnputil as the recommended tool to use and comes preinstalled on windows
+        # pnputil needs the instance ID, which is pretty well hidden in pyusb
+        # I had to look at the full configuration string and saw that the way to get the instance id was the following
+        # using _try_get_string https://github.com/pyusb/pyusb/blob/master/usb/core.py#L1221
+        # so techincally we shouldn't do this by the _ meaning it should be private, but it's the only way I see
+        device_instance_id = f'USB\VID_{self.device_id.vid:04X}&PID_{self.device_id.pid:04X}\{usb.core._try_get_string(pyusb_devices[0], pyusb_devices[0].iSerialNumber)}'
+        log.debug(f"In reset trying to reset instance id {device_instance_id}")
+        subprocess.run(["pnputil", r"/disable-device", device_instance_id])
+        subprocess.run(["pnputil", r"/enable-device", device_instance_id])
 
     # ##########################################################################
     # Utility Methods
@@ -2938,5 +2959,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
         process_f["num_connected_devices"]              = lambda x: self.settings.set_num_connected_devices(int(x))
         process_f["subprocess_timeout_sec"]             = lambda x: None
         process_f["heartbeat"]                          = lambda x: None
+        process_f["reset"]                              = self.reset
 
         return process_f

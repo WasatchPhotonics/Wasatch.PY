@@ -145,6 +145,8 @@ class WrapperWorker(threading.Thread):
                         # WasatchDeviceWrapper.command_queue to WasatchDevice.command_queue,
                         # where it gets read during the next call to
                         # WasatchDevice.acquire_data.
+                        if record.setting == "reset":
+                            log.debug(f"calling reset from command queue")
                         req = SpectrometerRequest(record.setting, args=[record.value])
                         self.connected_device.handle_requests([req])
  

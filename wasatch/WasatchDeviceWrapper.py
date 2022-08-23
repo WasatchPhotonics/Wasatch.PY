@@ -289,6 +289,10 @@ class WasatchDeviceWrapper:
             log.debug("settings still not obtained, returning")
             return None
 
+    def reset(self):
+        if "USB" in str(self.device_id):
+            self.command_queue.put(ControlObject("reset", None))
+
     def disconnect(self):
         # send poison pill to the child
         self.closing = True
