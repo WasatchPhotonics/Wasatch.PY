@@ -415,9 +415,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # using _try_get_string https://github.com/pyusb/pyusb/blob/master/usb/core.py#L1221
         # so techincally we shouldn't do this by the _ meaning it should be private, but it's the only way I see
         device_instance_id = f'USB\VID_{self.device_id.vid:04X}&PID_{self.device_id.pid:04X}\{usb.core._try_get_string(pyusb_devices[0], pyusb_devices[0].iSerialNumber)}'
-        log.debug(f"In reset trying to reset instance id {device_instance_id}")
-        subprocess.run(["pnputil", r"/disable-device", device_instance_id])
-        subprocess.run(["pnputil", r"/enable-device", device_instance_id])
+        log.debug(f"In reset and restart, trying to reset instance id {device_instance_id} by calling restart")
+        subprocess.run(["pnputil", r"/reboot", r"/restart-device", device_instance_id])
 
     # ##########################################################################
     # Utility Methods
