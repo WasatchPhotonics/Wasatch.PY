@@ -80,7 +80,7 @@ class WrapperWorker(threading.Thread):
                     device_id = self.device_id,
                     message_queue = self.message_queue)
             else:
-                log.debug("Couldn't recognize device, trying to instantiate as WasatchDevice")
+                log.debug(f"Couldn't recognize device of {self.device_id} {is_options}, trying to instantiate as WasatchDevice")
                 self.connected_device = device_classes[device_classes.index(WasatchDevice)](
                     device_id = self.device_id,
                     message_queue = self.message_queue)
