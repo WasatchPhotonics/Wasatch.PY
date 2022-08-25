@@ -377,7 +377,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         log.critical("fid.disconnect: releasing interface")
         try:
-            result = self.device_type.release_interface(self.device, 0)
+            #result = self.device_type.release_interface(self.device, 0)
+            try:
+                self.device_type.reset(self.device)
+            except:
+                log.error("Couldn't reset device")
         except Exception as exc:
             log.warn("Failure in release interface", exc_info=1)
             raise
@@ -401,8 +405,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
     def reset(self, *args) -> None:
         log.debug("FID performing device reset")
-        self.device_type.release_interface(self.device, 0)
+        #self.device_type.release_interface(self.device, 0)
+        self.device_type.reset(self.device)
         log.debug(f"freed interface")
+        '''
         pyusb_devices = list(self.device_type.find(find_all=True, 
                                               idVendor=self.device_id.vid, 
                                               idProduct=self.device_id.pid,
@@ -418,7 +424,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         log.debug(f"In reset and restart trying to reset instance id {device_instance_id}")
         subprocess.run(["pnputil", r"/reboot", r"/disable-device", device_instance_id])
         subprocess.run(["pnputil", r"/reboot", r"/enable-device", device_instance_id])
-
+'''
     # ##########################################################################
     # Utility Methods
     # ##########################################################################

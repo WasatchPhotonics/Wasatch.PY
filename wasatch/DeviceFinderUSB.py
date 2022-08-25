@@ -86,7 +86,7 @@ class DeviceFinderUSB(object):
             count += 1
             vid = int(device.idVendor)
             pid = int(device.idProduct)
-            log.debug("DeviceListFID: discovered vid 0x%04x, pid 0x%04x (count %d)", vid, pid, count)
+            log.debug("DeviceListFID: discovered vid 0x%04x, pid 0x%04x (count %d), address %s", vid, pid, count, device.address)
 
             if vid not in [self.WASATCH_VID, self.OCEAN_VID, self.ANDOR_VID, self.FT232_SPI_VID]:
                 continue
@@ -154,12 +154,12 @@ class DeviceFinderUSB(object):
             log.debug(f"WMI returned devices of {pyusb_devices}")
         return [DeviceID(device) for device in pyusb_devices]
 
-    def find_usb_devices(self):
+    def find_usb_devices(self, poll = False):
         log.debug("DeviceFinderUSB.find_usb_devices: starting")
         device_ids = []
 
         # MZ/ED: If USE_MONITORING is True, I had to disable the call to remove_all in enlighten.Controller
-        if self.startup_scan < self.MIN_POLLING_SCANS or not self.USE_MONITORING:
+        if self.startup_scan < self.MIN_POLLING_SCANS or not self.USE_MONITORING or poll:
             # our first few scans should always be a bus poll
             # this is because no events will be registered
             log.debug(f"DeviceFinderUSB.find_usb_devices: just doing a bus poll for startup_scan {self.startup_scan}")

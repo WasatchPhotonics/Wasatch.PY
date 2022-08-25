@@ -23,9 +23,9 @@ class WasatchBus(object):
         self.update()
 
     ## called by Controller.update_connections
-    def update(self):
+    def update(self, poll = False):
         if self.usb_bus:
-            self.device_ids.extend(self.usb_bus.update())
+            self.device_ids.extend(self.usb_bus.update(poll))
 
     def is_empty(self):
         return 0 == len(self.device_ids)
@@ -42,11 +42,11 @@ class USBBus:
         self.update()
 
     ## Return a list of DeviceIDs on the USB bus
-    def update(self):
+    def update(self, poll = False):
         device_ids = []
         try:
             log.debug("USBBus.update: instantiating DeviceFinderUSB")
-            device_ids = self.finder.find_usb_devices()
+            device_ids = self.finder.find_usb_devices(poll=True)
         except USBError:
             # MZ: this seems to happen when I run from Git Bash shell
             #     (resolved on MacOS with 'brew install libusb')
