@@ -270,7 +270,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         log.debug("reading EEPROM")
 
-        if not self._read_eeprom():
+        if self._read_eeprom().data == False:
             log.error("failed to read EEPROM")
             self.connecting = False
             return SpectrometerResponse(False, error_msg="Failed to read EEPROM")
@@ -769,7 +769,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
             if buf is None or len(buf) < 64:
                 msg = "unable to read EEPROM received buf of {buf} and len {len(buf)}"
                 log.error(msg)
-                return SpectrometerResponse(error_lvl=ErrorLevel.medium,error_msg=msg)
+                return SpectrometerResponse(False, error_lvl=ErrorLevel.medium,error_msg=msg)
             buffers.append(buf)
         return SpectrometerResponse(data=self.settings.eeprom.parse(buffers))
 
