@@ -687,11 +687,11 @@ class WasatchDevice(InterfaceDevice):
                         spectrum_and_row = res.data
                         if res.poison_pill:
                             # float up poison
-                            take_one_response.transfer_response(response)
+                            take_one_response.transfer_response(res)
                             return take_one_response
                         if res.keep_alive:
                             # float up keep alive
-                            take_one_response.transfer_response(response)
+                            take_one_response.transfer_response(res)
                             return take_one_response
                         if isinstance(spectrum_and_row, bool):
                             # get_line returned a poison-pill, so flow it upstream
@@ -706,7 +706,7 @@ class WasatchDevice(InterfaceDevice):
                             # FeatureIdentificationDevice can return None when waiting
                             # on an external trigger.  
                             log.debug("device.take_one_averaged_spectrum: get_line None, sending keepalive for now")
-                            take_one_response.transfer_response(response)
+                            take_one_response.transfer_response(res)
                             return take_one_response
                         else:
                             break
