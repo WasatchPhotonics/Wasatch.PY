@@ -1,5 +1,8 @@
 # Changelog
 
+- 2022-09-19 2.1.18
+    - added WasatchDevice.reset()
+    - added utils.check_admin()
 - 2022-08-31 2.1.17
     - fix name error in external trigger control flow
     - Add pyusb reset for disconnect on error robustness
