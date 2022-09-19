@@ -188,6 +188,8 @@ class WasatchDeviceWrapper:
 
         self.previous_reading = None
 
+        self.reset_tries = 0
+
     ##
     # Create a low level device object with the specified identifier, kick off
     # the child thread to attempt to read from it.
@@ -278,7 +280,7 @@ class WasatchDeviceWrapper:
                 return SpectrometerResponse(False, error_msg="Failed to retrieve device settings")
 
             if result.data:
-                log.info(f"got spectrometer settings for device, returning settings to controller")
+                log.info(f"got spectrometer settings for device")
                 self.connected = True
                 self.settings = result.data
                 self.connect_start_time = datetime.datetime(year=datetime.MAXYEAR, month=1, day=1)
@@ -292,6 +294,7 @@ class WasatchDeviceWrapper:
 
     def reset(self):
         if "USB" in str(self.device_id):
+            self.reset_tries += 1
             self.command_queue.put(ControlObject("reset", None))
 
     def disconnect(self):
@@ -332,31 +335,19 @@ class WasatchDeviceWrapper:
     # the response_queue it shares with the child thread to see if any
     # Reading objects have been queued from the spectrometer to the GUI.
     #
-    # Don't use 'if queue.empty()' for flow control on python 2.7 on
-    # windows, as it will hang. Catch the Queue.Empty exception as
-    # shown below instead.
-    #
     # It is the upstream interface's job to decide how to process the
     # potentially voluminous amount of data returned from the device.
     # get_last by default will make sure the queue is cleared, then
     # return the most recent reading from the device.
     #
-    # See WasatchDevice.acquire_data for a full discussion of return
-    # codes, or Controller.acquire_reading to see how they're handled,
-    # but in short:
-    #
-    # - False = Poison pill (shutdown child)
-    # - None or True = Keepalive (no-op)
-    # - Reading = measured data
-    #
     # @note it is not clear that measurement modes other than
     #       ACQUISITION_MODE_KEEP_COMPLETE have been well-tested,
     #       especially in the context of multiple spectrometers,
     #       BatchCollection etc.
-    def acquire_data(self, mode=None):
+    def acquire_data(self, mode=None) -> SpectrometerResponse:
         if self.closing or not self.connected:
             log.critical(f"acquire_data: closing {self.closing} (sending poison-pill upstream) and connected {self.connected}")
-            return False
+            return SpectrometerResponse(False, poison_pill=True)
 
         # ENLIGHTEN "default" - if we're doing scan averaging, take either
         #
@@ -374,7 +365,7 @@ class WasatchDeviceWrapper:
     #
     # In the currently implementation, it seems unlikely that a "True" will ever
     # be passed up (we're basically converting them to None here).
-    def get_final_item(self, keep_averaged=False):
+    def get_final_item(self, keep_averaged=False) -> SpectrometerResponse:
         last_reading  = SpectrometerResponse()
         last_averaged = SpectrometerResponse()
         dequeue_count = 0
