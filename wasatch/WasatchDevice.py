@@ -862,6 +862,7 @@ class WasatchDevice(InterfaceDevice):
         process_f = {}
 
         process_f["connect"] = self.connect
+        process_f["disconnect"] = self.disconnect
         process_f["acquire_data"] = self.acquire_data
 
         return process_f

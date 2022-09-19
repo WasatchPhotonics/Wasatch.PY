@@ -80,7 +80,7 @@ class WrapperWorker(threading.Thread):
                     device_id = self.device_id,
                     message_queue = self.message_queue)
             else:
-                log.debug("Couldn't recognize device, trying to instantiate as WasatchDevice")
+                log.debug(f"Couldn't recognize device of {self.device_id} {is_options}, trying to instantiate as WasatchDevice")
                 self.connected_device = device_classes[device_classes.index(WasatchDevice)](
                     device_id = self.device_id,
                     message_queue = self.message_queue)
@@ -145,6 +145,8 @@ class WrapperWorker(threading.Thread):
                         # WasatchDeviceWrapper.command_queue to WasatchDevice.command_queue,
                         # where it gets read during the next call to
                         # WasatchDevice.acquire_data.
+                        if record.setting == "reset":
+                            log.debug(f"calling reset from command queue")
                         req = SpectrometerRequest(record.setting, args=[record.value])
                         self.connected_device.handle_requests([req])
  

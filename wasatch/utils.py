@@ -6,6 +6,7 @@
 
 import datetime
 import logging
+import ctypes
 import numpy
 import json
 import math
@@ -13,6 +14,14 @@ import os
 import re
 
 log = logging.getLogger(__name__)
+
+# see https://stackoverflow.com/questions/1026431/cross-platform-way-to-check-admin-rights-in-a-python-script-under-windows
+def check_admin():
+    try:
+        is_admin = os.getuid() == 0
+    except AttributeError:
+        is_admin = ctypes.windll.shell32.IsUserAnAdmin() != 0
+    return is_admin
 
 ## convert unicode string to ascii
 def remove_unicode(s):

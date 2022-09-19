@@ -174,12 +174,12 @@ class WasatchDeviceWrapper:
         self.connected    = False
         self.closing      = False   # Don't permit new acquires during close
         self.poller       = None    # a handle to the child thread
-        self.thread       = False
         self.is_ocean     = '0x2457' in str(device_id)
         self.is_andor     = '0x136e' in str(device_id)
         self.is_spi       = '0x0403' in str(device_id)
         self.mock         = 'MOCK' in str(device_id)
         self.is_ble       = 'BLE' in str(device_id)
+        self.wrapper_worker = None
         self.connect_start_time = datetime.datetime(year=datetime.MAXYEAR, month=1, day=1)
 
         # this will contain a populated SpectrometerSettings object from the
@@ -234,6 +234,7 @@ class WasatchDeviceWrapper:
     def connect(self):
 
         # instantiate thread
+        self.closing = False # needed if doing reset and closing previously was True
         self.wrapper_worker = WrapperWorker(
             device_id      = self.device_id,
             command_queue  = self.command_queue,  # Main --> child
@@ -289,6 +290,10 @@ class WasatchDeviceWrapper:
             log.debug("settings still not obtained, returning")
             return None
 
+    def reset(self):
+        if "USB" in str(self.device_id):
+            self.command_queue.put(ControlObject("reset", None))
+
     def disconnect(self):
         # send poison pill to the child
         self.closing = True
@@ -299,7 +304,7 @@ class WasatchDeviceWrapper:
             pass
         time.sleep(0.1)
         log.debug("disconnect: done")
-        del self.thread
+        del self.wrapper_worker
 
         self.connected = False
 
@@ -350,7 +355,7 @@ class WasatchDeviceWrapper:
     #       BatchCollection etc.
     def acquire_data(self, mode=None):
         if self.closing or not self.connected:
-            log.critical("acquire_data: closing (sending poison-pill upstream)")
+            log.critical(f"acquire_data: closing {self.closing} (sending poison-pill upstream) and connected {self.connected}")
             return False
 
         # ENLIGHTEN "default" - if we're doing scan averaging, take either

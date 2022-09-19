@@ -2,6 +2,7 @@
 
 - 2022-08-31 2.1.7
     - fix name error in external trigger control flow
+    - Add pyusb reset for disconnect on error robustness
 - 2022-08-16 2.1.16
     - Restructure DeviceID to no longer carry other classes
     - Move control logic for BLE from ENLIGHTEN to here
