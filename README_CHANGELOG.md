@@ -1,5 +1,8 @@
 # Changelog
 
+- 2022-09-19 2.1.19
+    - track reset tries within WasatchDeviceWrapper
+    - stop sending bools upstream from WasatchDeviceWrapper.acquire_data
 - 2022-09-19 2.1.18
     - added WasatchDevice.reset()
     - added utils.check_admin()
