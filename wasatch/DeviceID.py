@@ -108,7 +108,7 @@ class DeviceID(object):
                 self.type = "MOCK"
                 self.name = tok[1]
                 self.directory = tok[2]
-                self.vid = str(hash(self.name))
+                self.vid = int(str(hash(self.name)))
                 self.pid = 0x4000
                 self.bus = 111111
                 self.address = 111111
