@@ -277,7 +277,7 @@ class MockUSBDevice(AbstractUSBDevice):
         for compound, int_time in measurements.items():
             for int_time, spectra in int_time.items():
                 self.spec_readings[str(compound) + '_' + str(int_time)] = []
-                byte_array = [struct.pack('e' * len(spectra),*spectra)]
+                byte_array = [struct.pack('<'+'e' * len(spectra),*spectra)]
                 self.spec_readings[str(compound) + '_' + str(int_time)].extend(byte_array)
                 self.spec_readings["default"].extend(byte_array)
 
