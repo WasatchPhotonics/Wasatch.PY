@@ -4,7 +4,7 @@ Example virtual spectrometers can be found in the [ENLIGHTEN repository](https:/
 
 ## Running demo_virtual.py
 
-Copy the [testSpectrometers](https://github.com/WasatchPhotonics/ENLIGHTEN/tree/main/testSpectrometers/) folder to the program working direcotry.
+Copy the [testSpectrometers](https://github.com/WasatchPhotonics/ENLIGHTEN/tree/main/testSpectrometers/) folder to the program working directory.
 
 This should already be done if you cloned the repo.
 
