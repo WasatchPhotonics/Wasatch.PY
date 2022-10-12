@@ -154,6 +154,22 @@ class SpectrometerSettings(object):
 
         return old
 
+    def is_mml(self):
+        if not self.eeprom.has_laser:
+            return False
+        if self.eeprom.has_laser and not self.is_sml():
+            return True
+        
+    def is_sml(self):
+        if not self.eeprom.has_laser:
+            return False
+        elif self.eeprom.has_laser and \
+            self.eeprom.max_laser_power_mW >= 95 and \
+            self.eeprom.max_laser_power_mW <= 120:
+            return True
+        else:
+            return False
+
     def has_excitation(self):
         return self.excitation() > 0
 
