@@ -555,7 +555,7 @@ def parabolic_approximation(pixel, x, y):
         return (0, 0)
 
     if vertex_x == x2:
-        return (x[vertex_x], vertex_y)
+        return (x[x2], vertex_y)
     elif vertex_x < x2:
         left = x1
         right = x2
