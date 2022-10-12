@@ -93,12 +93,14 @@ class WasatchDevice(InterfaceDevice):
     ## Attempt low level connection to the specified DeviceID
     def connect(self) -> SpectrometerResponse:
         if self.device_id.is_usb() or self.device_id.is_mock():
-            log.debug("trying to connect to USB device")
+            log.debug("trying to connect to %s device" % ("USB" if self.device_id.is_usb() else "Mock"))
             if self.connect_feature_identification():
                 log.debug("Connected to FeatureIdentificationDevice")
                 self.connected = True
                 self.initialize_settings()
                 return SpectrometerResponse(True)
+            else:
+                log.debug("Failed to connect to FeatureIdentificationDevice")
         else:
             log.critical("unsupported DeviceID protocol: %s", self.device_id)
 

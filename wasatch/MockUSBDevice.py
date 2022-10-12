@@ -23,8 +23,7 @@ class MockUSBDevice(AbstractUSBDevice):
         self.eeprom_overrides = eeprom_overrides
         self.spectra_option = spectra_option
         self.fake_pid = str(hash(spec_name))
-        self.device_id = DeviceID(label=f"USB:{self.fake_pid[:8]}:0x16384:111111:111111")
-        self.device_id = self.device_id
+        self.device_id = DeviceID(label=f"USB:{self.fake_pid[:8]}:0x16384:111111:111111") # MZ: should this really start with USB?
         self.bus = self.device_id.bus
         self.address = self.device_id.address
         self.vid = self.device_id.vid
@@ -35,6 +34,13 @@ class MockUSBDevice(AbstractUSBDevice):
         self.spectrometer_folder = self.get_spec_folder()
         self.test_spec_readings = os.path.join(self.test_spec_dir, self.spectrometer_folder,'readings')
         self.test_spec_eeprom = os.path.join(self.test_spec_dir, self.spectrometer_folder,'eeprom')
+
+        # MZ testing -- YOU ARE HERE -- just trying to get unit-tests to pass
+        self.name = self.spec_name
+        self.directory = self.eeprom_name
+        self.overrides = self.eeprom_overrides
+        self.spectra_options = self.spectra_option
+        log.info(f"MockUSBDevice.ctor: name {self.name}, directory {self.directory}, overrides {self.overrides}, spectra_options {self.spectra_options}, eeprom_name {self.eeprom_name}")
 
         #init attributes
         self.spec_readings = {}
@@ -70,6 +76,7 @@ class MockUSBDevice(AbstractUSBDevice):
             }
 
         self.load_readings()
+        log.info("MockUSBDevice: loading EEPROM")
         self.load_eeprom(self.test_spec_eeprom)
         self.convert_eeprom()
         self.reading_len = len(self.spec_readings)
@@ -78,6 +85,7 @@ class MockUSBDevice(AbstractUSBDevice):
             self.override_eeprom()
         # style is (bRequest,wValue) to allow for second tier op codes
         # if first tier, where wValue matters then wValue should be given as None
+        log.info("MockUSBDevice: creating cmd_dict")
         self.cmd_dict = {
             (0xb2,None): self.cmd_set_int_time,
             (0xb6,None): self.cmd_set_offset,
@@ -98,6 +106,7 @@ class MockUSBDevice(AbstractUSBDevice):
         # we have an infinite loop of spectra to go through
         for key,value in self.spec_readings.items():
             self.reading_cycles[key] = cycle(value)
+        log.info("MockUSBDevice: done")
 
     def is_andor(self):
         return False
@@ -241,12 +250,18 @@ class MockUSBDevice(AbstractUSBDevice):
         return str(self.vid)
 
     def load_eeprom(self, eeprom_file_loc):
+        log.info(f"eeprom_file_loc is {eeprom_file_loc}")
         dir_items = os.walk(eeprom_file_loc)
         files = [os.path.join(path,file) for path,dir,files in dir_items for file in files]
         log.info(f"files is {files}, looking for {self.eeprom_name}")
+        eeprom_file = None
         for file in files:
             if os.path.basename(file) == self.eeprom_name:
                 eeprom_file = file
+        if eeprom_file is None:
+            log.critical("unable to find EEPROM file!")
+            return False
+
         with open(eeprom_file,'r') as file:
             eeprom_json = json.load(file)
 
@@ -257,6 +272,7 @@ class MockUSBDevice(AbstractUSBDevice):
             self.eeprom = eeprom
         log.debug("Mock USB EEPROM results are the following:")
         log.debug(self.eeprom)
+        return True
 
     def parse_wpsc_eeprom(self,eeprom_file):
         translated_eeprom = {}

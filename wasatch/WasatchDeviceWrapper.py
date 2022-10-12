@@ -276,7 +276,7 @@ class WasatchDeviceWrapper:
         if not self.settings_queue.empty():
             result = self.settings_queue.get_nowait()
             if result is None: # shouldn't happen
-                log.critical("failed to retrieve device settings")
+                log.critical("poll_settings: failed to retrieve device settings (got None, shouldn't happen)")
                 return SpectrometerResponse(False, error_msg="Failed to retrieve device settings")
 
             if result.data:
