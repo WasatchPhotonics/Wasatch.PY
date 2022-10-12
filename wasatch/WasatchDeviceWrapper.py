@@ -177,7 +177,7 @@ class WasatchDeviceWrapper:
         self.is_ocean     = '0x2457' in str(device_id)
         self.is_andor     = '0x136e' in str(device_id)
         self.is_spi       = '0x0403' in str(device_id)
-        self.mock         = 'MOCK' in str(device_id)
+        self.mock         = 'MOCK' in str(device_id).upper()
         self.is_ble       = 'BLE' in str(device_id)
         self.wrapper_worker = None
         self.connect_start_time = datetime.datetime(year=datetime.MAXYEAR, month=1, day=1)

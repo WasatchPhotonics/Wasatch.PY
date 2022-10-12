@@ -168,7 +168,9 @@ class MockUSBDevice(AbstractUSBDevice):
     def cmd_set_int_time(self, *args):
         device, host, bRequest, wValue, wIndex, wLength = args
         if not self.got_start_int: self.got_start_int = True
-        self.set_int_time(wIndex << 8 | wValue)
+        ms = wIndex << 8 | wValue
+        self.set_int_time(ms)
+        log.info(f"MockUSBDevice.cmd_set_int_time: setting {ms}")
         return [1]
 
     def cmd_get_laser_enabled(self, *args):
@@ -224,7 +226,10 @@ class MockUSBDevice(AbstractUSBDevice):
         return self.int_time
 
     def set_int_time(self, value):
+        # MZ: YOU ARE HERE -- this function writes to MockUSBDevice.int_time, but 
+        # test_usb.test_set_int_time.check is looking in sim_spec_obj.device.device_id.int_time 
         self.int_time = value
+        log.info(f"MockUSBDevice.set_int_time: value now {value}")
         return True
 
     def read(self, *args, **kwargs):
