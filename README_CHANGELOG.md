@@ -1,5 +1,7 @@
 # Changelog
 
+- 2022-10-12 2.1.21
+    - fix floating-point array index lookup
 - 2022-10-11 2.1.20
     - added demo-virtual and readme for virtual spectrometers
 - 2022-09-19 2.1.19
