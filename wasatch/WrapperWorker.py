@@ -61,7 +61,10 @@ class WrapperWorker(threading.Thread):
         self.response_queue = response_queue
         self.settings_queue = settings_queue
         self.message_queue  = message_queue
-        self.wasatch_device = False
+        self.connected_device = None
+
+        # MZ: are these used?
+        self.wasatch_device = False 
         self.sum_count = 0
 
     ##

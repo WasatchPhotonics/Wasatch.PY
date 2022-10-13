@@ -118,19 +118,6 @@ log = logging.getLogger(__name__)
 # EXCLUSIVELY read by the secondary thread.  That just leaves open the question
 # of synchronization on WasatchDevice's USBDevice.
 #
-# @par Memory Leak
-#
-# This class appears to leak memory under Linux, but only when debug logging
-# is enabled (ergo, the real leak is likely in applog).
-#
-# - occurs under Python 2.7 and 3.4
-# - correlated to response_queue and get_final_item()
-#   - DISABLE_RESPONSE_QUEUE reduced ENLIGHTEN leak by 66% (18MB -> 6MB over 60sec @ 10ms)
-#     (while obviously blocking core functionality)
-# - doesn't show up under memory_profiler
-# - Reading.copy() doesn't help
-# - exc_clear() doesn't help
-#
 class WasatchDeviceWrapper:
 
     ACQUISITION_MODE_KEEP_ALL      = 0 # don't drop frames

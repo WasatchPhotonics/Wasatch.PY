@@ -59,6 +59,7 @@ class WasatchDevice(InterfaceDevice):
         self.lock = threading.Lock()
 
         self.connected = False
+        self.hardware = None
 
         # Receives ENLIGHTEN's 'change settings' commands in the spectrometer
         # process. Although a logical queue, has nothing to do with multiprocessing.

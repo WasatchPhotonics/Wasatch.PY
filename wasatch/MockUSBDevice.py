@@ -187,8 +187,10 @@ class MockUSBDevice(AbstractUSBDevice):
 
     def cmd_toggle_laser(self, *args):
         device, host, bRequest, wValue, wIndex, wLength = args
-        self.laser_enable = bool(wValue)
-        return [int(self.laser_enable)]
+        flag = bool(wValue)
+        log.info(f"MockUSBDevice.cmd_toggle_laser: setting {flag}")
+        self.laser_enable = flag
+        return [1] # MZ: I think
 
     def cmd_set_gain(self, *args):
         device, host, bRequest, wValue, wIndex, wLength = args
