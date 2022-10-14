@@ -236,7 +236,7 @@ class WasatchDeviceWrapper:
             is_ble         = self.is_ble)
         log.debug("device wrapper: Instance created for worker")
 
-        self.wrapper_worker.setDaemon(True)
+        self.wrapper_worker.daemon = True
         log.debug("deivce wrapper: Initiating wrapper thread")
 
         self.wrapper_worker.start()

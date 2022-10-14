@@ -90,8 +90,8 @@ class MockUSBDevice(AbstractUSBDevice):
             (0xb2,None): self.cmd_set_int_time,
             (0xb6,None): self.cmd_set_offset,
             (0xb7,None): self.cmd_set_gain,
-            (0xbe,None): self.cmd_toggle_laser,
-            (0xd6,None): self.cmd_toggle_tec,
+            (0xbe,None): self.cmd_set_laser_enable,
+            (0xd6,None): self.cmd_set_detector_tec_enable,
             (0xd7,None): self.cmd_get_detector_temp,
             (0xd8,None): self.cmd_set_setpoint,
             (0xda,None): self.cmd_get_tec_enable,
@@ -184,13 +184,11 @@ class MockUSBDevice(AbstractUSBDevice):
         log.info(f"sending temp value of {value}")
         return value.to_bytes(2, byteorder='big')
 
-
-    def cmd_toggle_laser(self, *args):
+    def cmd_set_laser_enable(self, *args):
         device, host, bRequest, wValue, wIndex, wLength = args
-        flag = bool(wValue)
-        log.info(f"MockUSBDevice.cmd_toggle_laser: setting {flag}")
-        self.laser_enable = flag
-        return [1] # MZ: I think
+        self.laser_enable = bool(wValue)
+        log.info(f"MockUSBDevice.cmd_set_laser_enable: setting {self.laser_enable}")
+        return [1] 
 
     def cmd_set_gain(self, *args):
         device, host, bRequest, wValue, wIndex, wLength = args
@@ -216,9 +214,11 @@ class MockUSBDevice(AbstractUSBDevice):
         self.detector_setpoint = wValue
         return [1]
 
-    def cmd_toggle_tec(self, *args):
+    def cmd_set_detector_tec_enable(self, *args):
         device, host, bRequest, wValue, wIndex, wLength = args
         self.detector_tec_enable = bool(wValue)
+        log.info(f"MockUSBDevice.cmd_set_detector_tec_enable: value now {self.detector_tec_enable}")
+        return [1]
 
     def cmd_get_tec_enable(self, *args):
         device, host, bRequest, wValue, wIndex, wLength = args
