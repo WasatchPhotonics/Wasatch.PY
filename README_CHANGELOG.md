@@ -1,5 +1,7 @@
 # Changelog
 
+- 2022-10-17 2.1.22
+    - updates to MockUSBDevice to support ENLIGHTEN regression tests
 - 2022-10-12 2.1.21
     - add is_sml and is_mml functions
     - fix floating-point array index lookup
