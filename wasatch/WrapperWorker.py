@@ -63,10 +63,6 @@ class WrapperWorker(threading.Thread):
         self.message_queue  = message_queue
         self.connected_device = None
 
-        # MZ: are these used?
-        self.wasatch_device = False 
-        self.sum_count = 0
-
     ##
     # This is essentially the main() loop in a thread.
     # All communications with the parent thread are routed through
