@@ -35,7 +35,6 @@ class MockUSBDevice(AbstractUSBDevice):
         self.test_spec_readings = os.path.join(self.test_spec_dir, self.spectrometer_folder,'readings')
         self.test_spec_eeprom = os.path.join(self.test_spec_dir, self.spectrometer_folder,'eeprom')
 
-        # MZ testing -- YOU ARE HERE -- just trying to get unit-tests to pass
         self.name = self.spec_name
         self.directory = self.eeprom_name
         self.overrides = self.eeprom_overrides
@@ -228,8 +227,6 @@ class MockUSBDevice(AbstractUSBDevice):
         return self.int_time
 
     def set_int_time(self, value):
-        # MZ: YOU ARE HERE -- this function writes to MockUSBDevice.int_time, but 
-        # test_usb.test_set_int_time.check is looking in sim_spec_obj.device.device_id.int_time 
         self.int_time = value
         log.info(f"MockUSBDevice.set_int_time: value now {value}")
         return True
