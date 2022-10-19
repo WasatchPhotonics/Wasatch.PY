@@ -270,10 +270,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         log.debug("reading EEPROM")
 
-        if self._read_eeprom().data == False:
-            log.error("failed to read EEPROM")
+        result = self._read_eeprom()
+        if result.data == False:
+            log.error(f"failed to read EEPROM, got error message of {result.error_msg}")
             self.connecting = False
-            return SpectrometerResponse(False, error_msg="Failed to read EEPROM")
+            return result
 
         # ######################################################################
         # Laser
@@ -767,10 +768,13 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 log.error("exception reading upper_code 0x01 with page %d", page, exc_info=1)
             buf_len = 0 if buf is None else len(buf)
             if buf is None or len(buf) < 64:
-                msg = "unable to read EEPROM received buf of {buf} and len {len(buf)}"
+                msg = f"unable to read EEPROM received buf of {buf} and len {len(buf)}"
                 log.error(msg)
                 return SpectrometerResponse(False, error_lvl=ErrorLevel.medium,error_msg=msg)
             buffers.append(buf)
+        flat_buffers_all_ones = [byte == 0xff for page in buffers for byte in page]
+        if all(flat_buffers_all_ones):
+            return SpectrometerResponse(data=False,error_msg="Saw all Fs for EEPROM. Check EEPROM Programmed.",error_lvl=ErrorLevel.low)
         return SpectrometerResponse(data=self.settings.eeprom.parse(buffers))
 
     def has_linearity_coeffs(self) -> bool:

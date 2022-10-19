@@ -94,11 +94,15 @@ class WasatchDevice(InterfaceDevice):
     def connect(self) -> SpectrometerResponse:
         if self.device_id.is_usb() or self.device_id.is_mock():
             log.debug("trying to connect to USB device")
-            if self.connect_feature_identification():
+            result = self.connect_feature_identification()
+            if result.data:
                 log.debug("Connected to FeatureIdentificationDevice")
                 self.connected = True
                 self.initialize_settings()
                 return SpectrometerResponse(True)
+            else:
+                log.debug(f"failed fid connect, returning fid result")
+                return result
         else:
             log.critical("unsupported DeviceID protocol: %s", self.device_id)
 
@@ -120,7 +124,7 @@ class WasatchDevice(InterfaceDevice):
 
     ## Given a specified universal identifier, attempt to connect to the device using FID protocol.
     # @todo merge with the hardcoded list in DeviceFinderUSB
-    def connect_feature_identification(self):
+    def connect_feature_identification(self) -> SpectrometerResponse:
         FID_list = ["1000", "2000", "4000"] # hex
 
         # check to see if valid FID PID
@@ -137,24 +141,24 @@ class WasatchDevice(InterfaceDevice):
 
             try:
                 log.debug("connect_fid: calling dev.connect")
-                ok = dev.connect()
+                response = dev.connect()
                 log.debug("connect_fid: back from dev.connect")
             except Exception as exc:
                 log.critical("connect_feature_identification: %s", exc, exc_info=1)
-                return False
+                return SpectrometerResponse(False)
 
-            if not ok.data:
+            if not response.data:
                 log.critical("Low level failure in device connect")
-                return False
+                return response
 
             self.hardware = dev
 
         except Exception as exc:
             log.critical("Problem connecting to: %s", self.device_id, exc_info=1)
-            return False
+            return SpectrometerResponse(False)
 
         log.debug("Connected to FeatureIdentificationDevice %s", self.device_id)
-        return True
+        return SpectrometerResponse(True)
 
     def initialize_settings(self):
         if not self.connected:

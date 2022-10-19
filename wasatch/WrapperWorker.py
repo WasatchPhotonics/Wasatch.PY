@@ -97,6 +97,8 @@ class WrapperWorker(threading.Thread):
             log.critical("exception connecting", exc_info=1)
             return self.settings_queue.put_nowait(SpectrometerResponse(error_msg="exception while connecting"))
 
+        log.debug(f"on connect request got results of {ok}")
+
         if not ok.data:
             log.critical("failed to connect")
             return self.settings_queue.put_nowait(ok) 
