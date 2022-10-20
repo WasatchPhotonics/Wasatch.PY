@@ -1,5 +1,7 @@
 import os
 import re
+import math
+import copy
 import json
 import time
 import random
@@ -7,6 +9,9 @@ import struct
 import logging
 from itertools import cycle
 
+import numpy as np
+
+from . import utils
 from wasatch.DeviceID import DeviceID
 from .AbstractUSBDevice import AbstractUSBDevice
 from .CSVLoader import CSVLoader
@@ -17,12 +22,17 @@ log = logging.getLogger(__name__)
 class MockUSBDevice(AbstractUSBDevice):
 
     def __init__(self, spec_name, eeprom_name, eeprom_overrides=None, spectra_option=None):
-        self.spec_name = spec_name
+        if spec_name == "":
+            self.rasa_virtual = True # From Tabula Rasa, want to distinguish file virtual from pure virtual
+            self.spec_name = "WP-MOCK"
+        else:
+            self.rasa_virtual = False
+            self.spec_name = spec_name
         self.device_type = self
         self.eeprom_name = eeprom_name
         self.eeprom_overrides = eeprom_overrides
         self.spectra_option = spectra_option
-        self.fake_pid = str(hash(spec_name))
+        self.fake_pid = str(hash(self.spec_name))
         self.device_id = DeviceID(label=f"USB:{self.fake_pid[:8]}:0x16384:111111:111111")
         self.device_id = self.device_id
         self.bus = self.device_id.bus
@@ -31,10 +41,11 @@ class MockUSBDevice(AbstractUSBDevice):
         self.pid = self.device_id.pid
 
         #path attributes
-        self.test_spec_dir = os.path.join(self.get_default_data_dir(), 'testSpectrometers')
-        self.spectrometer_folder = self.get_spec_folder()
-        self.test_spec_readings = os.path.join(self.test_spec_dir, self.spectrometer_folder,'readings')
-        self.test_spec_eeprom = os.path.join(self.test_spec_dir, self.spectrometer_folder,'eeprom')
+        if not self.rasa_virtual:
+            self.test_spec_dir = os.path.join(self.get_default_data_dir(), 'testSpectrometers')
+            self.spectrometer_folder = self.get_spec_folder()
+            self.test_spec_readings = os.path.join(self.test_spec_dir, self.spectrometer_folder,'readings')
+            self.test_spec_eeprom = os.path.join(self.test_spec_dir, self.spectrometer_folder,'eeprom')
 
         #init attributes
         self.spec_readings = {}
@@ -69,10 +80,15 @@ class MockUSBDevice(AbstractUSBDevice):
             "flip_x_axis": "invert_x_axis",
             }
 
-        self.load_readings()
-        self.load_eeprom(self.test_spec_eeprom)
-        self.convert_eeprom()
-        self.reading_len = len(self.spec_readings)
+        if not self.rasa_virtual:
+            self.load_readings()
+            self.load_eeprom(self.test_spec_eeprom)
+            self.convert_eeprom()
+            self.reading_len = len(self.spec_readings)
+        else:
+            self.eeprom_obj = EEPROM()
+            self.mock_eeprom()
+            self.generate_readings()
         self.default_ctrl_return = [1 for i in range(64)]
         if self.eeprom_overrides:
             self.override_eeprom()
@@ -224,7 +240,10 @@ class MockUSBDevice(AbstractUSBDevice):
         if self.spectra_option is None:
             if self.single_reading:
                 return self.spec_readings["default"][0]
-            ret_reading = next(self.reading_cycles["default"])
+            if not self.laser_enable:
+                ret_reading = next(self.reading_cycles["default"])
+            else:
+                ret_reading = next(self.reading_cycles["cyclohexane"])
             time.sleep(self.int_time*10**-3)
         return ret_reading
 
@@ -332,3 +351,50 @@ class MockUSBDevice(AbstractUSBDevice):
 
     def get_default_data_dir(self):
         return os.getcwd()
+
+    def generate_readings(self):
+        num_px = self.eeprom_obj.active_pixels_horizontal
+        wavelengths = utils.generate_wavelengths(num_px, self.eeprom_obj.wavelength_coeffs)
+        wavenumbers = utils.generate_wavenumbers(self.eeprom_obj.excitation_nm, wavelengths)
+        cm_min = wavenumbers[0]
+        cm_max = wavenumbers[len(wavenumbers)-1]
+        darks = [np.random.randint(0, 690, size=num_px) for _ in range(3)]
+        self.spec_readings["default"] = [struct.pack('H' * num_px, *d) for d in darks]
+        self.create_cyclohexane(wavenumbers, darks, cm_min, cm_max)
+
+    def create_cyclohexane(self, wavenumbers, darks, cm_min, cm_max):
+        num_px = self.eeprom_obj.active_pixels_horizontal
+        peaks = [(392,711, 7), (437,974, 7), (804, 22422, 10), (1031,8303, 10), (1165,2151, 10), (1273,7607, 20), (1358,1792, 20), (1453, 7073, 20)] # (cm loc, height)
+        cyclo = copy.deepcopy(darks)
+
+        counter = 0
+        for loc, height, width in peaks:
+            gauss_c = width/2.35482
+            if loc < cm_min or loc > cm_max:
+                continue
+            while loc > wavenumbers[counter]:
+                counter += 1
+            for c in cyclo:
+                for i in range(width):
+                    try:
+                        #pass
+                        c[counter-i] = height * math.exp(-(i)**2/(2*((gauss_c)**2))) + c[counter-i]
+                        c[counter+i] = height * math.exp(-(i)**2/(2*((gauss_c)**2))) + c[counter+i]
+                    except:
+                        # ignore out of bounds
+                        pass
+                c[counter] = height
+
+        self.spec_readings["cyclohexane"] =[ struct.pack('H' * num_px, *utils.apply_boxcar(c, 2).astype(int)) for c in cyclo]
+
+    def mock_eeprom(self):
+        self.eeprom_obj.model = "WP-MOCK"
+        self.eeprom_obj.serial_number = "0000"
+        self.eeprom_obj.has_laser = True
+        self.eeprom_obj.excitation_nm = 785
+        self.eeprom_obj.excitation_nm_float = 785.0
+        self.eeprom_obj.wavelength_coeffs = [772.25, 0.20039179921150208,
+                                             -1.0060509794129757e-06, -2.3662950709990582e-08,
+                                              0]
+        self.eeprom_obj.generate_write_buffers()
+

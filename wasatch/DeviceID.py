@@ -89,6 +89,7 @@ class DeviceID(object):
             # instantiate from an existing string id
             if label.startswith("USB:"):
                 tok = label.split(":")
+                log.debug(f"with label {label}, split to tok {tok}")
                 self.type = "USB"
                 self.vid = int(tok[1][2:])
                 self.pid = int(tok[2][2:])
