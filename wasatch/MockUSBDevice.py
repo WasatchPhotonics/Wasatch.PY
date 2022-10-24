@@ -358,7 +358,7 @@ class MockUSBDevice(AbstractUSBDevice):
         wavenumbers = utils.generate_wavenumbers(self.eeprom_obj.excitation_nm, wavelengths)
         cm_min = wavenumbers[0]
         cm_max = wavenumbers[len(wavenumbers)-1]
-        darks = [np.random.randint(0, 690, size=num_px) for _ in range(3)]
+        darks = [np.random.randint(0, 390, size=num_px) for _ in range(3)]
         self.spec_readings["default"] = [struct.pack('H' * num_px, *d) for d in darks]
         self.create_cyclohexane(wavenumbers, darks, cm_min, cm_max)
 
@@ -377,15 +377,14 @@ class MockUSBDevice(AbstractUSBDevice):
             for c in cyclo:
                 for i in range(width):
                     try:
-                        #pass
-                        c[counter-i] = height * math.exp(-(i)**2/(2*((gauss_c)**2))) + c[counter-i]
+                        c[counter-i] = height * math.exp(-(i)**2/(2*((gauss_c)**2))) + c[counter-i] # gauss function to fwhm
                         c[counter+i] = height * math.exp(-(i)**2/(2*((gauss_c)**2))) + c[counter+i]
                     except:
                         # ignore out of bounds
                         pass
                 c[counter] = height
 
-        self.spec_readings["cyclohexane"] =[ struct.pack('H' * num_px, *utils.apply_boxcar(c, 2).astype(int)) for c in cyclo]
+        self.spec_readings["cyclohexane"] =[struct.pack('H' * num_px, *utils.apply_boxcar(c, 2).astype(int)) for c in cyclo]
 
     def mock_eeprom(self):
         self.eeprom_obj.model = "WP-MOCK"
