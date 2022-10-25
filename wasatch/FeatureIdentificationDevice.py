@@ -91,7 +91,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.message_queue = message_queue
 
         self.device = None
-        if "MOCK" in str(device_id):
+        if "MOCK" in str(device_id).upper():
             self.device_type = MockUSBDevice(device_id.name, \
                 device_id.directory,
                 device_id.overrides,

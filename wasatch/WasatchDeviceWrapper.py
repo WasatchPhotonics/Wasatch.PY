@@ -118,19 +118,6 @@ log = logging.getLogger(__name__)
 # EXCLUSIVELY read by the secondary thread.  That just leaves open the question
 # of synchronization on WasatchDevice's USBDevice.
 #
-# @par Memory Leak
-#
-# This class appears to leak memory under Linux, but only when debug logging
-# is enabled (ergo, the real leak is likely in applog).
-#
-# - occurs under Python 2.7 and 3.4
-# - correlated to response_queue and get_final_item()
-#   - DISABLE_RESPONSE_QUEUE reduced ENLIGHTEN leak by 66% (18MB -> 6MB over 60sec @ 10ms)
-#     (while obviously blocking core functionality)
-# - doesn't show up under memory_profiler
-# - Reading.copy() doesn't help
-# - exc_clear() doesn't help
-#
 class WasatchDeviceWrapper:
 
     ACQUISITION_MODE_KEEP_ALL      = 0 # don't drop frames
@@ -177,7 +164,7 @@ class WasatchDeviceWrapper:
         self.is_ocean     = '0x2457' in str(device_id)
         self.is_andor     = '0x136e' in str(device_id)
         self.is_spi       = '0x0403' in str(device_id)
-        self.mock         = 'MOCK' in str(device_id)
+        self.mock         = 'MOCK' in str(device_id).upper()
         self.is_ble       = 'BLE' in str(device_id)
         self.wrapper_worker = None
         self.connect_start_time = datetime.datetime(year=datetime.MAXYEAR, month=1, day=1)
@@ -249,7 +236,7 @@ class WasatchDeviceWrapper:
             is_ble         = self.is_ble)
         log.debug("device wrapper: Instance created for worker")
 
-        self.wrapper_worker.setDaemon(True)
+        self.wrapper_worker.daemon = True
         log.debug("deivce wrapper: Initiating wrapper thread")
 
         self.wrapper_worker.start()
@@ -276,7 +263,7 @@ class WasatchDeviceWrapper:
         if not self.settings_queue.empty():
             result = self.settings_queue.get_nowait()
             if result is None: # shouldn't happen
-                log.critical("failed to retrieve device settings")
+                log.critical("poll_settings: failed to retrieve device settings (got None, shouldn't happen)")
                 return SpectrometerResponse(False, error_msg="Failed to retrieve device settings")
 
             if result.data:
