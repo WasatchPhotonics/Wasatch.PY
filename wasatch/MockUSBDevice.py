@@ -39,6 +39,7 @@ class MockUSBDevice(AbstractUSBDevice):
         self.address = self.device_id.address
         self.vid = self.device_id.vid
         self.pid = self.device_id.pid
+        self.active_readings = "default"
 
         #path attributes
         if not self.rasa_virtual:
@@ -241,9 +242,13 @@ class MockUSBDevice(AbstractUSBDevice):
             if self.single_reading:
                 return self.spec_readings["default"][0]
             if not self.laser_enable:
-                ret_reading = next(self.reading_cycles["default"])
+                has_dark = self.reading_cycles.get("dark", None)
+                if has_dark is None:
+                    ret_reading = next(self.reading_cycles["default"])
+                else:
+                    ret_reading = next(self.reading_cycles["dark"])
             else:
-                ret_reading = next(self.reading_cycles["cyclohexane"])
+                ret_reading = next(self.reading_cycles[self.active_readings])
             time.sleep(self.int_time*10**-3)
         return ret_reading
 
@@ -360,6 +365,7 @@ class MockUSBDevice(AbstractUSBDevice):
         cm_max = wavenumbers[len(wavenumbers)-1]
         darks = [np.random.randint(0, 390, size=num_px) for _ in range(3)]
         self.spec_readings["default"] = [struct.pack('H' * num_px, *d) for d in darks]
+        self.spec_readings["dark"] = [struct.pack('H' * num_px, *d) for d in darks]
         self.create_cyclohexane(wavenumbers, darks, cm_min, cm_max)
 
     def create_cyclohexane(self, wavenumbers, darks, cm_min, cm_max):
@@ -386,6 +392,9 @@ class MockUSBDevice(AbstractUSBDevice):
 
         self.spec_readings["cyclohexane"] =[struct.pack('H' * num_px, *utils.apply_boxcar(c, 2).astype(int)) for c in cyclo]
 
+    def get_available_spectra(self) -> list[str]:
+        return self.spec_readings.keys()
+
     def mock_eeprom(self):
         self.eeprom_obj.model = "WP-MOCK"
         self.eeprom_obj.serial_number = "0000"
@@ -396,4 +405,7 @@ class MockUSBDevice(AbstractUSBDevice):
                                              -1.0060509794129757e-06, -2.3662950709990582e-08,
                                               0]
         self.eeprom_obj.generate_write_buffers()
+
+    def set_active_readings(self, reading_name: str) -> None:
+        self.active_readings = reading_name
 
