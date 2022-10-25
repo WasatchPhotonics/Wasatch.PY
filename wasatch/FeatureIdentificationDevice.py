@@ -1,4 +1,3 @@
-from functools import reduce
 import subprocess
 import platform
 import datetime
