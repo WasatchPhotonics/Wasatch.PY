@@ -1,3 +1,4 @@
+from functools import reduce
 import subprocess
 import platform
 import datetime
@@ -772,8 +773,13 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 log.error(msg)
                 return SpectrometerResponse(False, error_lvl=ErrorLevel.medium,error_msg=msg)
             buffers.append(buf)
-        flat_buffers_all_ones = [byte == 0xff for page in buffers for byte in page]
-        if all(flat_buffers_all_ones):
+
+        flat_buffers_all_ones = True
+        for page in buffers:
+            for byte in page:
+                flat_buffers_all_ones = flat_buffers_all_ones and (byte == 0xFF)
+
+        if flat_buffers_all_ones:
             return SpectrometerResponse(data=False,error_msg="Saw all Fs for EEPROM. Check EEPROM Programmed.",error_lvl=ErrorLevel.low)
         return SpectrometerResponse(data=self.settings.eeprom.parse(buffers))
 
