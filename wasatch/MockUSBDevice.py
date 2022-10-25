@@ -248,6 +248,7 @@ class MockUSBDevice(AbstractUSBDevice):
                 else:
                     ret_reading = next(self.reading_cycles["dark"])
             else:
+                log.debug(f"active reading is {self.active_readings} while possible is {self.reading_cycles}")
                 ret_reading = next(self.reading_cycles[self.active_readings])
             time.sleep(self.int_time*10**-3)
         return ret_reading
@@ -357,7 +358,7 @@ class MockUSBDevice(AbstractUSBDevice):
     def get_default_data_dir(self):
         return os.getcwd()
 
-    def generate_readings(self):
+    def generate_readings(self, data = None):
         num_px = self.eeprom_obj.active_pixels_horizontal
         wavelengths = utils.generate_wavelengths(num_px, self.eeprom_obj.wavelength_coeffs)
         wavenumbers = utils.generate_wavenumbers(self.eeprom_obj.excitation_nm, wavelengths)
@@ -366,12 +367,20 @@ class MockUSBDevice(AbstractUSBDevice):
         darks = [np.random.randint(0, 390, size=num_px) for _ in range(3)]
         self.spec_readings["default"] = [struct.pack('H' * num_px, *d) for d in darks]
         self.spec_readings["dark"] = [struct.pack('H' * num_px, *d) for d in darks]
-        self.create_cyclohexane(wavenumbers, darks, cm_min, cm_max)
+        if data is None:
+            return
+        log.debug(f"data was not none, was {data} so generating readings")
+        for sample in data.keys():
+            self.create_sample(sample, data, wavenumbers, darks, cm_min, cm_max)
 
-    def create_cyclohexane(self, wavenumbers, darks, cm_min, cm_max):
+    def create_sample(self, sample_name, spectra, wavenumbers, darks, cm_min, cm_max):
+        log.debug(f"creating sample with name {sample_name}")
         num_px = self.eeprom_obj.active_pixels_horizontal
-        peaks = [(392,711, 7), (437,974, 7), (804, 22422, 10), (1031,8303, 10), (1165,2151, 10), (1273,7607, 20), (1358,1792, 20), (1453, 7073, 20)] # (cm loc, height)
-        cyclo = copy.deepcopy(darks)
+        peaks = zip(spectra[sample_name]["peak_location_cm"], 
+                    spectra[sample_name]["peak_intensity"], 
+                    spectra[sample_name]["peak_width"])
+
+        sample = copy.deepcopy(darks)
 
         counter = 0
         for loc, height, width in peaks:
@@ -380,17 +389,20 @@ class MockUSBDevice(AbstractUSBDevice):
                 continue
             while loc > wavenumbers[counter]:
                 counter += 1
-            for c in cyclo:
+            for s in sample:
                 for i in range(width):
                     try:
-                        c[counter-i] = height * math.exp(-(i)**2/(2*((gauss_c)**2))) + c[counter-i] # gauss function to fwhm
-                        c[counter+i] = height * math.exp(-(i)**2/(2*((gauss_c)**2))) + c[counter+i]
+                        s[counter-i] = height * math.exp(-(i)**2/(2*((gauss_c)**2))) + s[counter-i] # gauss function to fwhm
+                        s[counter+i] = height * math.exp(-(i)**2/(2*((gauss_c)**2))) + s[counter+i]
                     except:
                         # ignore out of bounds
                         pass
-                c[counter] = height
+                s[counter] = height
+        log.debug(f"adding sample to spec_readings")
+        self.spec_readings[sample_name.lower()] = [struct.pack('H' * num_px, *utils.apply_boxcar(s, 2).astype(int)) for s in sample]
+        self.reading_cycles[sample_name.lower()] = cycle(self.spec_readings[sample_name.lower()])
+        log.debug(f"spec readings is {self.spec_readings.keys()}")
 
-        self.spec_readings["cyclohexane"] =[struct.pack('H' * num_px, *utils.apply_boxcar(c, 2).astype(int)) for c in cyclo]
 
     def get_available_spectra(self) -> list[str]:
         return self.spec_readings.keys()
