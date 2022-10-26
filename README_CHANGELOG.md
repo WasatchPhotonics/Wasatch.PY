@@ -1,5 +1,8 @@
 # Changelog
 
+- 2022-10-26 2.1.23
+    - fix connect bug
+    - added scripts/dark-vs-integ.py
 - 2022-10-17 2.1.22
     - updates to MockUSBDevice to support ENLIGHTEN regression tests
 - 2022-10-12 2.1.21
