@@ -321,10 +321,15 @@ class MockUSBDevice(AbstractUSBDevice):
         reading_files = [os.path.join(path,file) for path,dir,files in dir_items for file in files]
         parse_objects = [CSVLoader(file) for file in reading_files]
         self.spec_readings["default"] = []
-        for object in parse_objects:
+        for idx, object in enumerate(parse_objects):
             object.load_data()
             object.processed_reading.processed = [int(val) if val > 0 else 0 for val in object.processed_reading.processed]
-        self.spec_readings["default"].extend([struct.pack('H' * len(object.processed_reading.processed),*object.processed_reading.processed) for object in parse_objects])
+            reading_bytes = [struct.pack('H' * len(object.processed_reading.processed),*object.processed_reading.processed)]
+            self.spec_readings["default"].extend(reading_bytes)
+            if self.spec_readings.get(os.path.basename(reading_files[idx])[:10], None) != None:
+                self.spec_readings[os.path.basename(reading_files[idx])[:10]].extend(reading_bytes)
+            else:
+                self.spec_readings[os.path.basename(reading_files[idx])[:10]] = reading_bytes
 
     def to_dict():
         return str(self)
