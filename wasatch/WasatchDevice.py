@@ -134,7 +134,7 @@ class WasatchDevice(InterfaceDevice):
         pid_hex = self.device_id.get_pid_hex()
         if not pid_hex in FID_list:
             log.debug("connect_feature_identification: device_id %s PID %s not in FID list %s", self.device_id, pid_hex, FID_list)
-            return False
+            return SpectrometerResponse(False)
 
         dev = None
         try:
