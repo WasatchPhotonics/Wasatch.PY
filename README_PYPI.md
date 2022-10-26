@@ -47,7 +47,8 @@ before uploading to the "public, global, default" pypi repository.
 
 ## Publish to pypi (standard pip repository)
 
-When you are ready to publish run `flit publish` or `flit publish --repository pypi`.
+When you are ready to publish run `flit publish` or `flit publish --repository pypi`
+(or just "make publish").
 
 # Installing 'wasatch' package from source
 
