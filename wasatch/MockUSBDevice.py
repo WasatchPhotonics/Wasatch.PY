@@ -86,6 +86,10 @@ class MockUSBDevice(AbstractUSBDevice):
             self.load_eeprom(self.test_spec_eeprom)
             self.convert_eeprom()
             self.reading_len = len(self.spec_readings)
+            if len(self.spec_readings["default"]):
+                num_px = self.eeprom_obj.active_pixels_horizontal # other instance uses eeprom_obj but that hasnt been instantiated yet
+                darks = [np.random.randint(0, 390, size=num_px) for _ in range(3)]
+                self.spec_readings["default"] = [struct.pack('H' * num_px, *d) for d in darks]
         else:
             self.eeprom_obj = EEPROM()
             self.mock_eeprom()
@@ -301,10 +305,12 @@ class MockUSBDevice(AbstractUSBDevice):
     def parse_measurements(self, measurements):
         for compound, int_time in measurements.items():
             for int_time, spectra in int_time.items():
-                self.spec_readings[str(compound) + '_' + str(int_time)] = []
+                spec_name = (str(compound) + '_' + str(int_time)).lower()
+                self.spec_readings[spec_name] = []
                 byte_array = [struct.pack('<'+'e' * len(spectra),*spectra)]
-                self.spec_readings[str(compound) + '_' + str(int_time)].extend(byte_array)
-                self.spec_readings["default"].extend(byte_array)
+                self.spec_readings[spec_name].extend(byte_array)
+                if "dark" in spec_name:
+                    self.spec_readings["default"].extend(byte_array)
 
     def override_eeprom(self):
         for key,value in self.eeprom_overrides.items():
@@ -419,5 +425,6 @@ class MockUSBDevice(AbstractUSBDevice):
         self.eeprom_obj.generate_write_buffers()
 
     def set_active_readings(self, reading_name: str) -> None:
+        log.debug(f"setting active reading name to {reading_name}")
         self.active_readings = reading_name
 
