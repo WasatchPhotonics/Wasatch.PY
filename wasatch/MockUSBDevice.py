@@ -403,8 +403,10 @@ class MockUSBDevice(AbstractUSBDevice):
             for s in sample:
                 for i in range(width):
                     try:
-                        s[counter-i] = height * math.exp(-(i)**2/(2*((gauss_c)**2))) + s[counter-i] # gauss function to fwhm
-                        s[counter+i] = height * math.exp(-(i)**2/(2*((gauss_c)**2))) + s[counter+i]
+                        lower_val = height * math.exp(-(i)**2/(2*((gauss_c)**2))) + s[counter-i] # gauss function to fwhm
+                        s[counter-i] = lower_val if lower_val > s[counter-i] else s[counter-i]
+                        higher_val = height * math.exp(-(i)**2/(2*((gauss_c)**2))) + s[counter+i]
+                        s[counter+i] = higher_val if higher_val > s[counter+i] else s[counter+i] 
                     except:
                         # ignore out of bounds
                         pass
