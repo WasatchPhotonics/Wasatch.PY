@@ -255,7 +255,10 @@ class MockUSBDevice(AbstractUSBDevice):
                 log.debug(f"active reading is {self.active_readings} while possible is {self.reading_cycles}")
                 ret_reading = next(self.reading_cycles[self.active_readings])
             time.sleep(self.int_time*10**-3)
-        return ret_reading
+        if self.eeprom_obj.active_pixels_horizontal == 2048:
+            return ret_reading[:len(ret_reading)//2] if args[1] == 0x82 else ret_reading[len(ret_reading)//2:]
+        else:
+            return ret_reading
 
     def send_code(self):
         pass
@@ -373,8 +376,6 @@ class MockUSBDevice(AbstractUSBDevice):
         num_px = self.eeprom_obj.active_pixels_horizontal
         wavelengths = utils.generate_wavelengths(num_px, self.eeprom_obj.wavelength_coeffs)
         wavenumbers = utils.generate_wavenumbers(self.eeprom_obj.excitation_nm, wavelengths)
-        cm_min = wavenumbers[0]
-        cm_max = wavenumbers[len(wavenumbers)-1]
         darks = [np.random.randint(0, 390, size=num_px) for _ in range(3)]
         self.spec_readings["default"] = [struct.pack('H' * num_px, *d) for d in darks]
         self.spec_readings["dark"] = [struct.pack('H' * num_px, *d) for d in darks]
@@ -382,23 +383,34 @@ class MockUSBDevice(AbstractUSBDevice):
             return
         log.debug(f"data was not none, was {data} so generating readings")
         for sample in data.keys():
-            self.create_sample(sample, data, wavenumbers, darks, cm_min, cm_max)
+            self.create_sample(sample, data, wavenumbers, darks)
 
-    def create_sample(self, sample_name, spectra, wavenumbers, darks, cm_min, cm_max):
+    def create_sample(self, sample_name, spectra, wavenumbers, darks):
         log.debug(f"creating sample with name {sample_name}")
         num_px = self.eeprom_obj.active_pixels_horizontal
-        peaks = zip(spectra[sample_name]["peak_location_cm"], 
+        wavelengths = utils.generate_wavelengths(num_px, self.eeprom_obj.wavelength_coeffs)
+        if "peak_location_cm" in spectra[sample_name].keys():
+            axis = wavenumbers
+            peaks = zip(spectra[sample_name]["peak_location_cm"], 
+                    spectra[sample_name]["peak_intensity"], 
+                    spectra[sample_name]["peak_width"])
+        elif "peak_location_nm" in spectra[sample_name].keys():
+            axis = wavelengths
+            peaks = zip(spectra[sample_name]["peak_location_nm"], 
                     spectra[sample_name]["peak_intensity"], 
                     spectra[sample_name]["peak_width"])
 
         sample = copy.deepcopy(darks)
+        x_min = axis[0]
+        x_max = axis[len(axis)-1]
+        log.debug(f"FOR SAMPLE {sample_name} min is {x_min} and max is {x_max}")
 
         counter = 0
         for loc, height, width in peaks:
             gauss_c = width/2.35482
-            if loc < cm_min or loc > cm_max:
+            if loc < x_min or loc > x_max:
                 continue
-            while loc > wavenumbers[counter]:
+            while loc > axis[counter]:
                 counter += 1
             for s in sample:
                 for i in range(width):
@@ -411,8 +423,9 @@ class MockUSBDevice(AbstractUSBDevice):
                         # ignore out of bounds
                         pass
                 s[counter] = height
-        log.debug(f"adding sample to spec_readings")
+        log.debug(f"adding sample to spec_readings number of pixels is {num_px}")
         self.spec_readings[sample_name.lower()] = [struct.pack('H' * num_px, *utils.apply_boxcar(s, 2).astype(int)) for s in sample]
+        log.debug(f"reading len is {len(self.spec_readings[sample_name.lower()][0])}")
         self.reading_cycles[sample_name.lower()] = cycle(self.spec_readings[sample_name.lower()])
         log.debug(f"spec readings is {self.spec_readings.keys()}")
 
@@ -424,9 +437,14 @@ class MockUSBDevice(AbstractUSBDevice):
         self.eeprom_obj.model = "WP-MOCK"
         self.eeprom_obj.serial_number = "0000"
         self.eeprom_obj.has_laser = True
+        # Important note, for our 2048 spectrometers the data is read across 2 endpoints
+        # Virtual spectrometers don't recognize that so if the px is set to 2048
+        # it reads the same array twice. I've fixed this in the read func but it was enough of a 
+        # gotcha I felt it deserved a note
+        self.eeprom_obj.active_pixels_horizontal = 2048
         self.eeprom_obj.excitation_nm = 785
         self.eeprom_obj.excitation_nm_float = 785.0
-        self.eeprom_obj.wavelength_coeffs = [772.25, 0.20039179921150208,
+        self.eeprom_obj.wavelength_coeffs = [650.25, 0.20039179921150208,
                                              -1.0060509794129757e-06, -2.3662950709990582e-08,
                                               0]
         self.eeprom_obj.generate_write_buffers()
