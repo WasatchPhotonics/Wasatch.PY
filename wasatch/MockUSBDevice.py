@@ -444,7 +444,7 @@ class MockUSBDevice(AbstractUSBDevice):
         self.eeprom_obj.active_pixels_horizontal = 2048
         self.eeprom_obj.excitation_nm = 785
         self.eeprom_obj.excitation_nm_float = 785.0
-        self.eeprom_obj.wavelength_coeffs = [650.25, 0.20039179921150208,
+        self.eeprom_obj.wavelength_coeffs = [700.25, 0.20039179921150208,
                                              -1.0060509794129757e-06, -2.3662950709990582e-08,
                                               0]
         self.eeprom_obj.generate_write_buffers()
