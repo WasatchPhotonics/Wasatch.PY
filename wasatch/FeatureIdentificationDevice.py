@@ -1097,6 +1097,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                         # log.debug("still waiting for external trigger")
                         pass
                     else:
+                        log.debug(f"error catch occured during device read usb call")
                         log.error(f"Encountered error on read of {exc}")
                         response.error_msg = f"Encountered error on read"
                         response.error_lvl = ErrorLevel.high

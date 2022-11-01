@@ -21,6 +21,8 @@ log = logging.getLogger(__name__)
 
 class MockUSBDevice(AbstractUSBDevice):
 
+    DEFAULT_CYCLE_LENGTH = 3
+
     def __init__(self, spec_name, eeprom_name, eeprom_overrides=None, spectra_option=None):
         if spec_name == "":
             self.rasa_virtual = True # From Tabula Rasa, want to distinguish file virtual from pure virtual
@@ -51,6 +53,7 @@ class MockUSBDevice(AbstractUSBDevice):
         #init attributes
         self.spec_readings = {}
         self.int_time = 1000
+        self.laser_power = 1.0 
         self.detector_gain = 1
         self.detector_offset = 1
         self.detector_setpoint = 1
@@ -88,12 +91,11 @@ class MockUSBDevice(AbstractUSBDevice):
             self.reading_len = len(self.spec_readings)
             if len(self.spec_readings["default"]):
                 num_px = self.eeprom_obj.active_pixels_horizontal # other instance uses eeprom_obj but that hasnt been instantiated yet
-                darks = [np.random.randint(0, 390, size=num_px) for _ in range(3)]
+                darks = [np.random.randint(0, 390, size=num_px) for _ in range(self.DEFAULT_CYCLE_LENGTH)]
                 self.spec_readings["default"] = [struct.pack('H' * num_px, *d) for d in darks]
         else:
             self.eeprom_obj = EEPROM()
             self.mock_eeprom()
-            self.generate_readings()
         self.default_ctrl_return = [1 for i in range(64)]
         if self.eeprom_overrides:
             self.override_eeprom()
@@ -115,9 +117,13 @@ class MockUSBDevice(AbstractUSBDevice):
             (0xff,1): self.cmd_read_eeprom,
             }
         self.reading_cycles = {}
+        self.read_count = cycle(range(self.DEFAULT_CYCLE_LENGTH))
+        self.generate_readings()
+        log.debug(f"After generate reading call spec readings is {self.spec_readings.keys()}")
         # turn readings arrays into cycles so 
         # we have an infinite loop of spectra to go through
-        for key,value in self.spec_readings.items():
+        for key, value in self.spec_readings.items():
+            log.debug(f"MOCK CYCLES ADDING KEY {key}")
             self.reading_cycles[key] = cycle(value)
 
     def is_andor(self):
@@ -244,7 +250,9 @@ class MockUSBDevice(AbstractUSBDevice):
             return False
         if self.spectra_option is None:
             if self.single_reading:
-                return self.spec_readings["default"][0]
+                ret_reading = self.spec_readings["default"][0]
+                return struct.pack("H"*len(ret_reading), *ret_reading)
+            count = next(self.read_count)
             if not self.laser_enable:
                 has_dark = self.reading_cycles.get("dark", None)
                 if has_dark is None:
@@ -255,10 +263,12 @@ class MockUSBDevice(AbstractUSBDevice):
                 log.debug(f"active reading is {self.active_readings} while possible is {self.reading_cycles}")
                 ret_reading = next(self.reading_cycles[self.active_readings])
             time.sleep(self.int_time*10**-3)
-        if self.eeprom_obj.active_pixels_horizontal == 2048:
-            return ret_reading[:len(ret_reading)//2] if args[1] == 0x82 else ret_reading[len(ret_reading)//2:]
-        else:
-            return ret_reading
+            log.debug(f"calling generate a reading for data {ret_reading}")
+            ret_reading = self.generate_a_reading(self.active_readings, ret_reading, self.int_time, self.laser_power, count)
+            if self.eeprom_obj.active_pixels_horizontal == 2048:
+                return ret_reading[:len(ret_reading)//2] if args[1] == 0x82 else ret_reading[len(ret_reading)//2:]
+            else:
+                return ret_reading
 
     def send_code(self):
         pass
@@ -308,15 +318,15 @@ class MockUSBDevice(AbstractUSBDevice):
     def parse_measurements(self, measurements):
         for compound, int_time in measurements.items():
             for int_time, spectra in int_time.items():
-                spec_name = (str(compound) + '_' + str(int_time)).lower()
-                self.spec_readings[spec_name] = []
-                byte_array = [struct.pack('<'+'e' * len(spectra),*spectra)]
-                self.spec_readings[spec_name].extend(byte_array)
-                if "dark" in spec_name:
-                    self.spec_readings["default"].extend(byte_array)
+                spectra_name = (str(compound) + '_' + str(int_time)).lower()
+                log.debug(f"MOCK PARSE MEASUER SAMPLE {spectra_name} data is {spectra}")
+                self.spec_readings[spectra_name] = []
+                self.spec_readings[spectra_name].append([int(val) if val > 0 else 0 for val in spectra]) # append here else cycle will return first element and not list
+                if "dark" in spectra_name:
+                    self.spec_readings["default"].extend(spectra)
 
     def override_eeprom(self):
-        for key,value in self.eeprom_overrides.items():
+        for key, value in self.eeprom_overrides.items():
             self.eeprom[key] = value
 
     def load_readings(self):
@@ -327,12 +337,12 @@ class MockUSBDevice(AbstractUSBDevice):
         for idx, object in enumerate(parse_objects):
             object.load_data()
             object.processed_reading.processed = [int(val) if val > 0 else 0 for val in object.processed_reading.processed]
-            reading_bytes = [struct.pack('H' * len(object.processed_reading.processed),*object.processed_reading.processed)]
-            self.spec_readings["default"].extend(reading_bytes)
+            pr = object.processed_reading.processed
+            self.spec_readings["default"].extend(pr)
             if self.spec_readings.get(os.path.basename(reading_files[idx])[:10], None) != None:
-                self.spec_readings[os.path.basename(reading_files[idx])[:10]].extend(reading_bytes)
+                self.spec_readings[os.path.basename(reading_files[idx])[:10]].extend(pr)
             else:
-                self.spec_readings[os.path.basename(reading_files[idx])[:10]] = reading_bytes
+                self.spec_readings[os.path.basename(reading_files[idx])[:10]] = pr
 
     def to_dict():
         return str(self)
@@ -372,13 +382,30 @@ class MockUSBDevice(AbstractUSBDevice):
     def get_default_data_dir(self):
         return os.getcwd()
 
+    def generate_a_reading(self, sample_name, data, int_time, laser_pow, count):
+        if sample_name.lower() == "dark":
+            return struct.pack("H"*len(data), *data)
+        if sample_name.lower() == "default":
+            return struct.pack("H"*len(data), *data)
+        if data == []:
+            return
+        dark = self.spec_readings["default"][count]
+        data = copy.deepcopy(data)
+        '''
+        for idx, val in enumerate(data): # only scale peaks, noise shouldn't scale
+            if data[idx] != dark[idx]:
+                data[idx]  = min(data[idx] * ((int_time/1000)/self.eeprom_obj.startup_integration_time_ms) * laser_pow, 0xffff)
+                '''
+        
+        return struct.pack('H'*len(data), *data)
+
     def generate_readings(self, data = None):
         num_px = self.eeprom_obj.active_pixels_horizontal
         wavelengths = utils.generate_wavelengths(num_px, self.eeprom_obj.wavelength_coeffs)
         wavenumbers = utils.generate_wavenumbers(self.eeprom_obj.excitation_nm, wavelengths)
-        darks = [np.random.randint(0, 390, size=num_px) for _ in range(3)]
-        self.spec_readings["default"] = [struct.pack('H' * num_px, *d) for d in darks]
-        self.spec_readings["dark"] = [struct.pack('H' * num_px, *d) for d in darks]
+        darks = [np.random.randint(0, 390, size=num_px) for _ in range(self.DEFAULT_CYCLE_LENGTH)]
+        self.spec_readings["default"] = darks
+        self.spec_readings["dark"] = darks
         if data is None:
             return
         log.debug(f"data was not none, was {data} so generating readings")
@@ -407,7 +434,7 @@ class MockUSBDevice(AbstractUSBDevice):
 
         counter = 0
         for loc, height, width in peaks:
-            gauss_c = width/2.35482
+            gauss_c = width/2.35482 # gauss function to fwhm see gauss function wikipedia page
             if loc < x_min or loc > x_max:
                 continue
             while loc > axis[counter]:
@@ -424,11 +451,9 @@ class MockUSBDevice(AbstractUSBDevice):
                         pass
                 s[counter] = height
         log.debug(f"adding sample to spec_readings number of pixels is {num_px}")
-        self.spec_readings[sample_name.lower()] = [struct.pack('H' * num_px, *utils.apply_boxcar(s, 2).astype(int)) for s in sample]
-        log.debug(f"reading len is {len(self.spec_readings[sample_name.lower()][0])}")
-        self.reading_cycles[sample_name.lower()] = cycle(self.spec_readings[sample_name.lower()])
-        log.debug(f"spec readings is {self.spec_readings.keys()}")
-
+        self.spec_readings[sample_name.lower()] = sample
+        self.reading_cycles[sample_name.lower()] = cycle(sample)
+        self.active_readings = "default"
 
     def get_available_spectra(self) -> list[str]:
         return self.spec_readings.keys()
