@@ -416,16 +416,17 @@ class MockUSBDevice(AbstractUSBDevice):
         log.debug(f"creating sample with name {sample_name}")
         num_px = self.eeprom_obj.active_pixels_horizontal
         wavelengths = utils.generate_wavelengths(num_px, self.eeprom_obj.wavelength_coeffs)
+        width = int(self.eeprom_obj.avg_resolution/2)
         if "peak_location_cm" in spectra[sample_name].keys():
             axis = wavenumbers
             peaks = zip(spectra[sample_name]["peak_location_cm"], 
                     spectra[sample_name]["peak_intensity"], 
-                    spectra[sample_name]["peak_width"])
+                    [width]*len(spectra[sample_name]["peak_intensity"]))
         elif "peak_location_nm" in spectra[sample_name].keys():
             axis = wavelengths
             peaks = zip(spectra[sample_name]["peak_location_nm"], 
                     spectra[sample_name]["peak_intensity"], 
-                    spectra[sample_name]["peak_width"])
+                    [width]*len(spectra[sample_name]["peak_intensity"]))
 
         sample = copy.deepcopy(darks)
         x_min = axis[0]
@@ -450,6 +451,8 @@ class MockUSBDevice(AbstractUSBDevice):
                         # ignore out of bounds
                         pass
                 s[counter] = height
+        for s in sample:
+            s = utils.apply_boxcar(s, 2*width)
         log.debug(f"adding sample to spec_readings number of pixels is {num_px}")
         self.spec_readings[sample_name.lower()] = sample
         self.reading_cycles[sample_name.lower()] = cycle(sample)
