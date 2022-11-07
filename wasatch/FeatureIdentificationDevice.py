@@ -1684,7 +1684,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
         while True:
             self.set_strobe_enable(flag)
             res = self.get_laser_enabled()
-            log.debug(f"checking laser state set, flag is {flag} and res is {res.data}")
             if flag == res.data:
                 return SpectrometerResponse(data=True)
             tries += 1
@@ -2449,7 +2448,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
     def get_laser_enabled(self) -> SpectrometerResponse:
         res = self._get_code(0xe2, label="GET_LASER_ENABLED", msb_len=1)
-        log.debug(f"get call res is {res.data}")
         flag = 0 != res.data
         log.debug("get_laser_enabled: %s", flag)
         self.settings.state.laser_enabled = flag
