@@ -416,7 +416,7 @@ class MockUSBDevice(AbstractUSBDevice):
         laser_pow = (self.mod_width*100)/self.mod_period
         log.debug(f"new laser power is {laser_pow}")
         for px in peaks:
-            data[px]  = min(data[px] * ((int_time/10)/self.eeprom_obj.startup_integration_time_ms) * laser_pow, 0xffff)
+            data[px]  = min(data[px] * ((int_time/100)/self.eeprom_obj.startup_integration_time_ms) * laser_pow/10, 0xffff)
         
         return struct.pack('H'*len(data), *data)
 
