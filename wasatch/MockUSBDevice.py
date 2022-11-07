@@ -133,7 +133,7 @@ class MockUSBDevice(AbstractUSBDevice):
     def find(self,*args,**kwargs):
         return [self]
 
-    def set_configuration(self):
+    def set_configuration(self, *args):
         pass
 
     def reset(self):
