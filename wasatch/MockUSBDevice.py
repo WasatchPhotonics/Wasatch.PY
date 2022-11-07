@@ -58,6 +58,8 @@ class MockUSBDevice(AbstractUSBDevice):
         self.detector_offset = 1
         self.detector_setpoint = 1
         self.detector_temp_raw = 40.0
+        self.mod_period = 1000
+        self.mod_width = 1000
         self.disconnect = False
         self.single_reading = False
         self.got_start_int = False
@@ -106,6 +108,7 @@ class MockUSBDevice(AbstractUSBDevice):
             (0xb6,None): self.cmd_set_offset,
             (0xb7,None): self.cmd_set_gain,
             (0xbe,None): self.cmd_toggle_laser,
+            (0xc0,0xe2): self.cmd_get_laser_state,
             (0xd6,None): self.cmd_toggle_tec,
             (0xd7,None): self.cmd_get_detector_temp,
             (0xd8,None): self.cmd_set_setpoint,
@@ -113,7 +116,8 @@ class MockUSBDevice(AbstractUSBDevice):
             (0x34,None): self.cmd_get_raw_ambient_temp,
             (0xd5,None): self.cmd_get_laser_temp,
             (0xd7,None): self.cmd_get_detect_temp,
-            (0xe2,None): self.cmd_get_laser_enabled,
+            (0xe2,None): self.cmd_set_mod_width,
+            (0xdb,None): self.cmd_set_mod_period,
             (0xff,1): self.cmd_read_eeprom,
             }
         self.reading_cycles = {}
@@ -129,6 +133,19 @@ class MockUSBDevice(AbstractUSBDevice):
 
     def is_andor(self):
         return False
+
+    def cmd_get_laser_state(self, *args):
+        return int(self.laser_enable).to_bytes(1, byteorder='big')
+
+    def cmd_set_mod_period(self, *args):
+        device, host, bRequest, wValue, wIndex, wLength = args
+        self.mod_period = wValue
+        return [1]
+
+    def cmd_set_mod_width(self, *args):
+        device, host, bRequest, wValue, wIndex, wLength = args
+        self.mod_width = wValue
+        return [1]
 
     def cmd_get_laser_temp(self, *args):
         return [random.randint(0,255)]*2
@@ -172,6 +189,8 @@ class MockUSBDevice(AbstractUSBDevice):
         log.info(f"Mock spec received ctrl transfer of host {host}, request {bRequest}, wValue {wValue}, wIndex {wIndex}, len {wLength}")
         if bRequest == 255:
             cmd_func = self.cmd_dict.get((bRequest,wValue),None)
+        elif host == 192:
+            cmd_func = self.cmd_dict.get((192, bRequest),None)
         else:
             cmd_func = self.cmd_dict.get((bRequest,None),None)
         if cmd_func:
@@ -204,7 +223,9 @@ class MockUSBDevice(AbstractUSBDevice):
 
     def cmd_toggle_laser(self, *args):
         device, host, bRequest, wValue, wIndex, wLength = args
+        log.debug(f"setting laser state to {wValue}")
         self.laser_enable = bool(wValue)
+        log.debug(f"mock laser state is now {self.laser_enable}")
         return [int(self.laser_enable)]
 
     def cmd_set_gain(self, *args):
@@ -265,7 +286,7 @@ class MockUSBDevice(AbstractUSBDevice):
                 ret_reading = next(self.reading_cycles[self.active_readings])
             time.sleep(self.int_time*10**-3)
             log.debug(f"calling generate a reading for data {ret_reading}")
-            ret_reading = self.generate_a_reading(self.active_readings, ret_reading, self.int_time, self.laser_power, count)
+            ret_reading = self.generate_a_reading(self.active_readings, ret_reading, self.int_time)
             if self.eeprom_obj.active_pixels_horizontal == 2048:
                 return ret_reading[:len(ret_reading)//2] if args[1] == 0x82 else ret_reading[len(ret_reading)//2:]
             else:
@@ -383,7 +404,7 @@ class MockUSBDevice(AbstractUSBDevice):
     def get_default_data_dir(self):
         return os.getcwd()
 
-    def generate_a_reading(self, sample_name, data, int_time, laser_pow, count):
+    def generate_a_reading(self, sample_name, data, int_time):
         if sample_name.lower() == "dark":
             return struct.pack("H"*len(data), *data)
         if sample_name.lower() == "default":
@@ -392,8 +413,10 @@ class MockUSBDevice(AbstractUSBDevice):
             return
         data = copy.deepcopy(data)
         peaks = self.reading_peak_locs[sample_name]
+        laser_pow = (self.mod_width*100)/self.mod_period
+        log.debug(f"new laser power is {laser_pow}")
         for px in peaks:
-            data[px]  = min(data[px] + ((int_time/10)/self.eeprom_obj.startup_integration_time_ms) * laser_pow, 0xffff)
+            data[px]  = min(data[px] * ((int_time/10)/self.eeprom_obj.startup_integration_time_ms) * laser_pow, 0xffff)
         
         return struct.pack('H'*len(data), *data)
 

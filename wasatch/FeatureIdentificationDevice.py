@@ -725,7 +725,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         if result is None:
             log.critical("_get_code[%s, %s]: received null", label, self.device_id)
-            self._schedule_disconnect(exc)
+            self._schedule_disconnect("_get_code[%s, %s]: received null")
             return SpectrometerResponse(keep_alive=True)
 
         # demarshall or return raw array
@@ -1630,12 +1630,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
     def get_selected_laser(self) -> SpectrometerResponse:
         return SpectrometerResponse(data=self.settings.state.selected_laser)
 
-    def get_laser_enabled(self) -> SpectrometerResponse:
-        flag = 0 != self._get_code(0xe2, label="GET_LASER_ENABLED", msb_len=1).data
-        log.debug("get_laser_enabled: %s", flag)
-        self.settings.state.laser_enabled = flag
-        return SpectrometerResponse(data=flag)
-
     def set_laser_enable(self, flag: bool) -> SpectrometerResponse:
         """
         Turn the laser on or off.
@@ -1690,6 +1684,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         while True:
             self.set_strobe_enable(flag)
             res = self.get_laser_enabled()
+            log.debug(f"checking laser state set, flag is {flag} and res is {res.data}")
             if flag == res.data:
                 return SpectrometerResponse(data=True)
             tries += 1
@@ -2454,6 +2449,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
     def get_laser_enabled(self) -> SpectrometerResponse:
         res = self._get_code(0xe2, label="GET_LASER_ENABLED", msb_len=1)
+        log.debug(f"get call res is {res.data}")
         flag = 0 != res.data
         log.debug("get_laser_enabled: %s", flag)
         self.settings.state.laser_enabled = flag
