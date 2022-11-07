@@ -117,6 +117,7 @@ class MockUSBDevice(AbstractUSBDevice):
             (0xff,1): self.cmd_read_eeprom,
             }
         self.reading_cycles = {}
+        self.reading_peak_locs = {}
         self.read_count = cycle(range(self.DEFAULT_CYCLE_LENGTH))
         self.generate_readings()
         log.debug(f"After generate reading call spec readings is {self.spec_readings.keys()}")
@@ -389,19 +390,18 @@ class MockUSBDevice(AbstractUSBDevice):
             return struct.pack("H"*len(data), *data)
         if data == []:
             return
-        dark = self.spec_readings["default"][count]
         data = copy.deepcopy(data)
-        '''
-        for idx, val in enumerate(data): # only scale peaks, noise shouldn't scale
-            if data[idx] != dark[idx]:
-                data[idx]  = min(data[idx] * ((int_time/1000)/self.eeprom_obj.startup_integration_time_ms) * laser_pow, 0xffff)
-                '''
+        peaks = self.reading_peak_locs[sample_name]
+        for px in peaks:
+            data[px]  = min(data[px] + ((int_time/10)/self.eeprom_obj.startup_integration_time_ms) * laser_pow, 0xffff)
         
         return struct.pack('H'*len(data), *data)
 
     def generate_readings(self, data = None):
         num_px = self.eeprom_obj.active_pixels_horizontal
         wavelengths = utils.generate_wavelengths(num_px, self.eeprom_obj.wavelength_coeffs)
+        if self.eeprom_obj.excitation_nm == 0.0:
+            self.eeprom_obj.excitation_nm = 785.0
         wavenumbers = utils.generate_wavenumbers(self.eeprom_obj.excitation_nm, wavelengths)
         darks = [np.random.randint(0, 390, size=num_px) for _ in range(self.DEFAULT_CYCLE_LENGTH)]
         self.spec_readings["default"] = darks
@@ -434,6 +434,7 @@ class MockUSBDevice(AbstractUSBDevice):
         log.debug(f"FOR SAMPLE {sample_name} min is {x_min} and max is {x_max}")
 
         counter = 0
+        peak_px_loc = []
         for loc, height, width in peaks:
             gauss_c = width/2.35482 # gauss function to fwhm see gauss function wikipedia page
             if loc < x_min or loc > x_max:
@@ -443,6 +444,8 @@ class MockUSBDevice(AbstractUSBDevice):
             for s in sample:
                 for i in range(width):
                     try:
+                        peak_px_loc.append(counter-i)
+                        peak_px_loc.append(counter+i)
                         lower_val = height * math.exp(-(i)**2/(2*((gauss_c)**2))) + s[counter-i] # gauss function to fwhm
                         s[counter-i] = lower_val if lower_val > s[counter-i] else s[counter-i]
                         higher_val = height * math.exp(-(i)**2/(2*((gauss_c)**2))) + s[counter+i]
@@ -450,10 +453,12 @@ class MockUSBDevice(AbstractUSBDevice):
                     except:
                         # ignore out of bounds
                         pass
+                peak_px_loc.append(counter)
                 s[counter] = height
         for s in sample:
             s = utils.apply_boxcar(s, 2*width)
         log.debug(f"adding sample to spec_readings number of pixels is {num_px}")
+        self.reading_peak_locs[sample_name.lower()] = peak_px_loc
         self.spec_readings[sample_name.lower()] = sample
         self.reading_cycles[sample_name.lower()] = cycle(sample)
         self.active_readings = "default"
