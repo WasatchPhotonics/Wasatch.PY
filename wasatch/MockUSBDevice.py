@@ -5,6 +5,7 @@ import copy
 import json
 import time
 import random
+import bisect
 import struct
 import logging
 from itertools import cycle
@@ -94,7 +95,7 @@ class MockUSBDevice(AbstractUSBDevice):
             if len(self.spec_readings["default"]):
                 num_px = self.eeprom_obj.active_pixels_horizontal # other instance uses eeprom_obj but that hasnt been instantiated yet
                 darks = [np.random.randint(0, 390, size=num_px) for _ in range(self.DEFAULT_CYCLE_LENGTH)]
-                self.spec_readings["default"] = [struct.pack('H' * num_px, *d) for d in darks]
+                self.spec_readings["default"][0] = [struct.pack('H' * num_px, *d) for d in darks]
         else:
             self.eeprom_obj = EEPROM()
             self.mock_eeprom()
@@ -127,9 +128,13 @@ class MockUSBDevice(AbstractUSBDevice):
         log.debug(f"After generate reading call spec readings is {self.spec_readings.keys()}")
         # turn readings arrays into cycles so 
         # we have an infinite loop of spectra to go through
-        for key, value in self.spec_readings.items():
-            log.debug(f"MOCK CYCLES ADDING KEY {key}")
-            self.reading_cycles[key] = cycle(value)
+        log.debug(f"spec readings load is {self.spec_readings.items()}")
+        for compound, int_time in self.spec_readings.items():
+            log.debug(f"MOCK CYCLES ADDING KEY {compound}, {int_time}")
+            for int_time, spectra in int_time.items():
+                if self.reading_cycles.get(compound, None) is None:
+                    self.reading_cycles[compound.lower()] = {}
+                self.reading_cycles[compound.lower()][int_time] = cycle(spectra)
 
     def is_andor(self):
         return False
@@ -278,12 +283,16 @@ class MockUSBDevice(AbstractUSBDevice):
             if not self.laser_enable:
                 has_dark = self.reading_cycles.get("dark", None)
                 if has_dark is None:
-                    ret_reading = next(self.reading_cycles["default"])
+                    ret_reading = next(self.reading_cycles["default"][0])
                 else:
-                    ret_reading = next(self.reading_cycles["dark"])
+                    ret_reading = next(self.reading_cycles["dark"][0])
             else:
                 log.debug(f"active reading is {self.active_readings} while possible is {self.reading_cycles}")
-                ret_reading = next(self.reading_cycles[self.active_readings])
+                int_times = sorted(list(self.reading_cycles[self.active_readings].keys()))
+                closest_int = bisect.bisect_left(int_times, self.int_time)
+                if closest_int == len(int_times):
+                    closest_int -= 1
+                ret_reading = next(self.reading_cycles[self.active_readings][int_times[closest_int]])
             time.sleep(self.int_time*10**-3)
             log.debug(f"calling generate a reading for data {ret_reading}")
             ret_reading = self.generate_a_reading(self.active_readings, ret_reading, self.int_time)
@@ -338,36 +347,52 @@ class MockUSBDevice(AbstractUSBDevice):
         self.parse_measurements(eeprom_file["measurements"])
 
     def parse_measurements(self, measurements):
+        if self.spec_readings.get("deafault", None) is None:
+            self.spec_readings["default"] = {}
+            self.spec_readings["default"][0] = []
         for compound, int_time in measurements.items():
+            spectra_name = str(compound).lower()
+            self.spec_readings[spectra_name] = {}
             for int_time, spectra in int_time.items():
-                spectra_name = (str(compound) + '_' + str(int_time)).lower()
-                log.debug(f"MOCK PARSE MEASUER SAMPLE {spectra_name} data is {spectra}")
-                self.spec_readings[spectra_name] = []
-                self.spec_readings[spectra_name].append([int(val) if val > 0 else 0 for val in spectra]) # append here else cycle will return first element and not list
+                log.debug(f"MOCK PARSE MEASUER SAMPLE {spectra_name} time {int_time} data is {spectra}")
+                self.spec_readings[spectra_name][int(int_time)] = []
+                self.spec_readings[spectra_name][int(int_time)].append([int(val) if val > 0 else 0 for val in spectra]) # append here else cycle will return first element and not list
                 if "dark" in spectra_name:
-                    self.spec_readings["default"].extend(spectra)
+                    self.spec_readings["default"][0].extend(spectra)
 
     def override_eeprom(self):
         for key, value in self.eeprom_overrides.items():
             self.eeprom[key] = value
 
     def load_readings(self):
-        dir_items = os.walk(self.test_spec_readings)
-        reading_files = [os.path.join(path,file) for path,dir,files in dir_items for file in files]
-        parse_objects = [CSVLoader(file) for file in reading_files]
-        self.spec_readings["default"] = []
-        for idx, object in enumerate(parse_objects):
-            object.load_data()
-            object.processed_reading.processed = [int(val) if val > 0 else 0 for val in object.processed_reading.processed]
-            pr = object.processed_reading.processed
-            self.spec_readings["default"].extend(pr)
-            if self.spec_readings.get(os.path.basename(reading_files[idx])[:10], None) != None:
-                self.spec_readings[os.path.basename(reading_files[idx])[:10]].extend(pr)
-            else:
-                self.spec_readings[os.path.basename(reading_files[idx])[:10]] = pr
+        if not os.path.exists(self.test_spec_readings):
+            return
+        spec_samples = os.listdir(self.test_spec_readings)
+        log.debug(f"list of samples dir is {spec_samples}")
+        samples = [obj for obj in spec_samples if os.path.isdir(os.path.join(self.test_spec_readings, obj))]
+        log.debug(f"load readings samples is {samples}")
+        reading_files = [[os.path.join(self.test_spec_readings, s, readings) for readings in os.listdir(os.path.join(self.test_spec_readings, s))] for s in samples]
+        for idx, sample in enumerate(reading_files):
+            reading_files[idx] = list(map(lambda f: CSVLoader(f), sample))
+        self.spec_readings["default"] = {}
+        self.spec_readings["default"][0] = []
+        for idx, sample in enumerate(reading_files):
+            if self.spec_readings.get(samples[idx], None) is None:
+                self.spec_readings[samples[idx].lower()] = {}
+            for reading in sample:
+                reading.load_data()
+                reading.processed_reading.processed = [int(val) if val > 0 else 0 for val in reading.processed_reading.processed]
+                pr = reading.processed_reading.processed
+                log.debug(pr)
+                self.spec_readings["default"][0].extend(pr)
+                reading_int_time = reading.metadata.get("Integration Time", 0)
+                log.debug(f"item int time is {reading_int_time}")
+                readings_list = self.spec_readings[samples[idx].lower()].get(reading_int_time, [])
+                readings_list.append(pr)
+                self.spec_readings[samples[idx].lower()][int(reading_int_time)] = readings_list
 
-    def to_dict():
-        return str(self)
+    def to_dict(self):
+        return self.__dict__
 
     def __str__(self):
         return "<MockUSBDevice 0x%04x:0x%04x:%d:%d>" % (self.vid, self.pid, self.bus, self.address)
@@ -412,11 +437,9 @@ class MockUSBDevice(AbstractUSBDevice):
         if data == []:
             return
         data = copy.deepcopy(data)
-        peaks = self.reading_peak_locs[sample_name]
         laser_pow = (self.mod_width*100)/self.mod_period
-        log.debug(f"new laser power is {laser_pow}")
-        for px in peaks:
-            data[px]  = min(data[px] * ((int_time/100)/self.eeprom_obj.startup_integration_time_ms) * laser_pow/10, 0xffff)
+        #for px in peaks:
+        #    data[px]  = min(data[px] * ((int_time/100)/self.eeprom_obj.startup_integration_time_ms) * laser_pow/10, 0xffff)
         
         return struct.pack('H'*len(data), *data)
 
@@ -427,13 +450,15 @@ class MockUSBDevice(AbstractUSBDevice):
             self.eeprom_obj.excitation_nm = 785.0
         wavenumbers = utils.generate_wavenumbers(self.eeprom_obj.excitation_nm, wavelengths)
         darks = [np.random.randint(0, 390, size=num_px) for _ in range(self.DEFAULT_CYCLE_LENGTH)]
-        self.spec_readings["default"] = darks
-        self.spec_readings["dark"] = darks
+        if self.spec_readings.get('dark', None) is None:
+            self.spec_readings['dark'] = {}
+        self.spec_readings["default"][0] = darks
+        self.spec_readings["dark"][0] = darks
         if data is None:
             return
         log.debug(f"data was not none, was {data} so generating readings")
-        for sample in data.keys():
-            self.create_sample(sample, data, wavenumbers, darks)
+        #for sample in data.keys():
+            #self.create_sample(sample, data, wavenumbers, darks)
 
     def create_sample(self, sample_name, spectra, wavenumbers, darks):
         log.debug(f"creating sample with name {sample_name}")
