@@ -123,18 +123,19 @@ class MockUSBDevice(AbstractUSBDevice):
             }
         self.reading_cycles = {}
         self.reading_peak_locs = {}
-        self.read_count = cycle(range(self.DEFAULT_CYCLE_LENGTH))
+        self.reading_int_times = {}
         self.generate_readings()
-        log.debug(f"After generate reading call spec readings is {self.spec_readings.keys()}")
         # turn readings arrays into cycles so 
         # we have an infinite loop of spectra to go through
-        log.debug(f"spec readings load is {self.spec_readings.items()}")
         for compound, int_time in self.spec_readings.items():
-            log.debug(f"MOCK CYCLES ADDING KEY {compound}, {int_time}")
             for int_time, spectra in int_time.items():
                 if self.reading_cycles.get(compound, None) is None:
                     self.reading_cycles[compound.lower()] = {}
                 self.reading_cycles[compound.lower()][int_time] = cycle(spectra)
+
+        # keep a sorted record of reading int times to grab for easy use in extrap/interp
+        for reading in self.reading_cycles.keys():
+            self.reading_int_times[reading] = sorted(list(self.reading_cycles[reading].keys()))
 
     def is_andor(self):
         return False
@@ -192,10 +193,10 @@ class MockUSBDevice(AbstractUSBDevice):
     def ctrl_transfer(self, *args, **kwargs):
         device, host, bRequest, wValue, wIndex, wLength = args
         log.info(f"Mock spec received ctrl transfer of host {host}, request {bRequest}, wValue {wValue}, wIndex {wIndex}, len {wLength}")
-        if bRequest == 255:
+        if bRequest == 0xff:
             cmd_func = self.cmd_dict.get((bRequest,wValue),None)
-        elif host == 192:
-            cmd_func = self.cmd_dict.get((192, bRequest),None)
+        elif host == 0xc0:
+            cmd_func = self.cmd_dict.get((0xc0, bRequest),None)
         else:
             cmd_func = self.cmd_dict.get((bRequest,None),None)
         if cmd_func:
@@ -273,13 +274,13 @@ class MockUSBDevice(AbstractUSBDevice):
         return True
 
     def read(self, *args, **kwargs):
+        closest_int_idx = 0
         if self.disconnect:
             return False
         if self.spectra_option is None:
             if self.single_reading:
                 ret_reading = self.spec_readings["default"][0]
                 return struct.pack("H"*len(ret_reading), *ret_reading)
-            count = next(self.read_count)
             if not self.laser_enable:
                 has_dark = self.reading_cycles.get("dark", None)
                 if has_dark is None:
@@ -288,14 +289,17 @@ class MockUSBDevice(AbstractUSBDevice):
                     ret_reading = next(self.reading_cycles["dark"][0])
             else:
                 log.debug(f"active reading is {self.active_readings} while possible is {self.reading_cycles}")
-                int_times = sorted(list(self.reading_cycles[self.active_readings].keys()))
-                closest_int = bisect.bisect_left(int_times, self.int_time)
-                if closest_int == len(int_times):
-                    closest_int -= 1
-                ret_reading = next(self.reading_cycles[self.active_readings][int_times[closest_int]])
+                closest_int_idx = bisect.bisect_left(self.reading_int_times[self.active_readings], self.int_time)
+                if closest_int_idx == len(self.reading_int_times[self.active_readings]):
+                    closest_int_idx -= 1
+                # This hinges on multiple readings in an integration time otherwise the next returns the same reading
+                # To explain this line each compound has int times and each int time could have multiple spectra
+                # The multiple spectra are cycled and here the active reading is selected and then the closest integration time
+                # Then it grabs that next spectra in the cycle of the closest integration time
+                ret_reading = next(self.reading_cycles[self.active_readings][self.reading_int_times[self.active_readings][closest_int_idx]])
             time.sleep(self.int_time*10**-3)
             log.debug(f"calling generate a reading for data {ret_reading}")
-            ret_reading = self.generate_a_reading(self.active_readings, ret_reading, self.int_time)
+            ret_reading = self.generate_a_reading(self.active_readings, ret_reading, closest_int_idx)
             if self.eeprom_obj.active_pixels_horizontal == 2048:
                 return ret_reading[:len(ret_reading)//2] if args[1] == 0x82 else ret_reading[len(ret_reading)//2:]
             else:
@@ -385,7 +389,7 @@ class MockUSBDevice(AbstractUSBDevice):
                 pr = reading.processed_reading.processed
                 log.debug(pr)
                 self.spec_readings["default"][0].extend(pr)
-                reading_int_time = reading.metadata.get("Integration Time", 0)
+                reading_int_time = reading.metadata.get("integration time", [0])[0]
                 log.debug(f"item int time is {reading_int_time}")
                 readings_list = self.spec_readings[samples[idx].lower()].get(reading_int_time, [])
                 readings_list.append(pr)
@@ -429,19 +433,78 @@ class MockUSBDevice(AbstractUSBDevice):
     def get_default_data_dir(self):
         return os.getcwd()
 
-    def generate_a_reading(self, sample_name, data, int_time):
+    def generate_a_reading(self, sample_name, data, int_time_idx):
         if sample_name.lower() == "dark":
             return struct.pack("H"*len(data), *data)
-        if sample_name.lower() == "default":
+        if sample_name.lower() == "default" or not self.laser_enable:
             return struct.pack("H"*len(data), *data)
         if data == []:
             return
         data = copy.deepcopy(data)
-        laser_pow = (self.mod_width*100)/self.mod_period
+        if len(self.reading_int_times[sample_name]) == 1:
+            data = self.extrap_spectra(sample_name, data, int_time_idx)
+            return struct.pack('H'*len(data), *data)
+
+        if int_time_idx == 0 and self.int_time <= self.reading_int_times[sample_name][0]:
+            data = self.extrap_spectra(sample_name, data, int_time_idx)
+        elif int_time_idx == (len(self.reading_int_times[sample_name])-1) and self.int_time >= self.reading_int_times[sample_name][int_time_idx]:
+            data = self.extrap_spectra(sample_name, data, int_time_idx)
+        elif self.int_time > self.reading_int_times[sample_name][int_time_idx]:
+            log.debug(f"calling max interp with idxs of {int_time_idx} and {int_time_idx + 1} and length {len(self.reading_int_times[sample_name])}")
+            max_data = next(self.reading_cycles[sample_name][self.reading_int_times[sample_name][int_time_idx+1]])
+            log.debug(f"max data is obtained")
+            data = self.interp_spectra(sample_name, int_time_idx, int_time_idx + 1, data, max_data)
+        elif self.int_time <= self.reading_int_times[sample_name][int_time_idx]:
+            log.debug(f"calling interp with idxs of {int_time_idx - 1} and {int_time_idx} and length {len(self.reading_int_times[sample_name])}")
+            min_data = next(self.reading_cycles[sample_name][self.reading_int_times[sample_name][int_time_idx-1]])
+            data = self.interp_spectra(sample_name, int_time_idx - 1, int_time_idx, min_data, data)
+        #laser_pow = (self.mod_width*100)/self.mod_period
         #for px in peaks:
         #    data[px]  = min(data[px] * ((int_time/100)/self.eeprom_obj.startup_integration_time_ms) * laser_pow/10, 0xffff)
         
+        log.debug(f"packing data")
         return struct.pack('H'*len(data), *data)
+
+    def interp_spectra(self, sample_name, min_idx, max_idx, min_data, max_data):
+        log.debug(f"calculating span")
+        span = self.reading_int_times[sample_name][max_idx] - self.reading_int_times[sample_name][min_idx]
+        log.debug(f"span is {span}")
+        pct_max = (self.int_time - self.reading_int_times[sample_name][min_idx])/span
+        log.debug(f"pct max is {pct_max}")
+        for i in range(len(min_data)):
+            min_data[i] = int((1 - pct_max) * min_data[i] + pct_max * max_data[i])
+        log.debug(f"finished operation on main data")
+        return min_data
+
+    def extrap_spectra(self, sample_name, data, int_idx):
+        int_len = len(self.reading_int_times[sample_name])
+        # for single integration times present
+        if int_len == 1:
+            min_idx = 0
+            max_idx = 0
+        # grab the two lowest
+        elif int_idx == 0:
+            min_idx = 0
+            max_idx = 1
+        # grab the two highest
+        elif int_idx == int_len-1:
+            min_idx = int_len-2
+            max_idx = int_len-1
+
+        if int_len == 1:
+            max_data = next(self.reading_cycles[sample_name][self.reading_int_times[sample_name][max_idx]])
+            min_data = next(self.reading_cycles["default"][0])
+            span = self.reading_int_times[sample_name][max_idx]
+        else:
+            max_data = next(self.reading_cycles[sample_name][self.reading_int_times[sample_name][max_idx]])
+            min_data = next(self.reading_cycles[sample_name][self.reading_int_times[sample_name][min_idx]])
+            span = self.reading_int_times[sample_name][max_idx] - self.reading_int_times[sample_name][min_idx]
+        for idx in range(len(min_data)):
+            slope = (max_data[idx] - min_data[idx])/span
+            delta = slope * (self.int_time-self.reading_int_times[sample_name][max_idx])
+            data[idx] = int(max(0,min(data[idx]+delta,0xffff)))
+
+        return data
 
     def generate_readings(self, data = None):
         num_px = self.eeprom_obj.active_pixels_horizontal
