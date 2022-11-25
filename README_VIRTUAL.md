@@ -37,3 +37,11 @@ device = WasatchDevice(device_id=sim_spec)```
 
 The device object can now be interacted with the same as a regular spectrometer device object.
 
+### Readings Layout
+
+If you are using a readings folder instead of including them in the eeprom file they need to be in the layout readings\{compound_name}
+
+The compound name determines what shows up in the GUI selector box. 
+
+There can be multiple readings per compound. Integration time is determined from the CSV metadata. If no integration time is included it is assumed as 0.
+

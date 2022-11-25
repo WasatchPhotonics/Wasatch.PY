@@ -43,6 +43,7 @@ class MockUSBDevice(AbstractUSBDevice):
         self.vid = self.device_id.vid
         self.pid = self.device_id.pid
         self.active_readings = "default"
+        self.lamp_enabled = False
 
         #path attributes
         if not self.rasa_virtual:
@@ -117,8 +118,8 @@ class MockUSBDevice(AbstractUSBDevice):
             (0x34,None): self.cmd_get_raw_ambient_temp,
             (0xd5,None): self.cmd_get_laser_temp,
             (0xd7,None): self.cmd_get_detect_temp,
-            (0xe2,None): self.cmd_set_mod_width,
-            (0xdb,None): self.cmd_set_mod_period,
+            (0xc7,None): self.cmd_set_mod_period,
+            (0xdb,None): self.cmd_set_mod_width,
             (0xff,1): self.cmd_read_eeprom,
             }
         self.reading_cycles = {}
@@ -156,13 +157,13 @@ class MockUSBDevice(AbstractUSBDevice):
     def cmd_get_laser_temp(self, *args):
         return [random.randint(0,255)]*2
 
-    def cmd_get_detect_temp(self, *args):
+    def cmd_get_detect_temp(self, *args) -> list[int]:
         return [0, random.randint(1,255)] # 1-255, dont return a 0
 
-    def cmd_get_raw_ambient_temp(self, *args):
+    def cmd_get_raw_ambient_temp(self, *args) -> list[int]:
         return [random.randint(0,255)]*2
 
-    def get_spec_folder(self):
+    def get_spec_folder(self) -> str:
         spec_match = []
         for item in os.listdir(self.test_spec_dir):
             item_path = os.path.join(self.test_spec_dir,item)
@@ -176,17 +177,17 @@ class MockUSBDevice(AbstractUSBDevice):
     def find(self,*args,**kwargs):
         return [self]
 
-    def set_configuration(self):
+    def set_configuration(self) -> None:
         pass
 
-    def reset(self):
+    def reset(self) -> None:
         pass
 
-    def claim_interface(self, *args, **kwargs):
+    def claim_interface(self, *args, **kwargs) -> bool:
         # connecting
         return True
 
-    def release_interface(self):
+    def release_interface(self) -> bool:
         # disconnecting
         return True
 
@@ -204,22 +205,22 @@ class MockUSBDevice(AbstractUSBDevice):
         else:
             return self.default_ctrl_return
 
-    def cmd_read_eeprom(self, *args):
+    def cmd_read_eeprom(self, *args) -> bytes:
         device, host, bRequest, wValue, wIndex, wLength = args
         page = wIndex
         return self.eeprom_obj.write_buffers[page]
 
-    def cmd_set_int_time(self, *args):
+    def cmd_set_int_time(self, *args) -> list[int]:
         device, host, bRequest, wValue, wIndex, wLength = args
         if not self.got_start_int: self.got_start_int = True
         self.set_int_time(wIndex << 8 | wValue)
         return [1]
 
-    def cmd_get_laser_enabled(self, *args):
+    def cmd_get_laser_enabled(self, *args) -> list[int]:
         device, host, bRequest, wValue, wIndex, wLength = args
         return [int(self.laser_enable)]
 
-    def cmd_get_detector_temp(self, *args):
+    def cmd_get_detector_temp(self, *args) -> bytes:
         bytes = struct.pack('>e',self.detector_temp_raw)
         value = int.from_bytes(bytes,byteorder='big')
         value = value & 0x0F
@@ -227,14 +228,14 @@ class MockUSBDevice(AbstractUSBDevice):
         return value.to_bytes(2, byteorder='big')
 
 
-    def cmd_toggle_laser(self, *args):
+    def cmd_toggle_laser(self, *args) -> list[int]:
         device, host, bRequest, wValue, wIndex, wLength = args
         log.debug(f"setting laser state to {wValue}")
         self.laser_enable = bool(wValue)
         log.debug(f"mock laser state is now {self.laser_enable}")
         return [int(self.laser_enable)]
 
-    def cmd_set_gain(self, *args):
+    def cmd_set_gain(self, *args) -> list[int]:
         device, host, bRequest, wValue, wIndex, wLength = args
         if not self.got_start_detector_gain: self.got_start_detector_gain = True
         wValB = wValue.to_bytes(2,byteorder='little')#struct.unpack('f',bytearray(wValue))
@@ -246,34 +247,34 @@ class MockUSBDevice(AbstractUSBDevice):
         self.detector_gain = gain
         return [1]
 
-    def cmd_set_offset(self, *args):
+    def cmd_set_offset(self, *args) -> list[int]:
         device, host, bRequest, wValue, wIndex, wLength = args
         if not self.got_start_detector_offset: self.got_start_detector_offset = True
         self.detector_offset = wValue
         return [1]
 
-    def cmd_set_setpoint(self, *args):
+    def cmd_set_setpoint(self, *args) -> list[int]:
         device, host, bRequest, wValue, wIndex, wLength = args
         if not self.got_start_detector_setpoint: self.got_start_detector_setpoint
         self.detector_setpoint = wValue
         return [1]
 
-    def cmd_toggle_tec(self, *args):
+    def cmd_toggle_tec(self, *args) -> None:
         device, host, bRequest, wValue, wIndex, wLength = args
         self.detector_tec_enable = bool(wValue)
 
-    def cmd_get_tec_enable(self, *args):
+    def cmd_get_tec_enable(self, *args) -> list[int]:
         device, host, bRequest, wValue, wIndex, wLength = args
         return [int(self.detector_tec_enable)]
 
-    def get_int_time(self):
+    def get_int_time(self) -> int:
         return self.int_time
 
-    def set_int_time(self, value):
+    def set_int_time(self, value) -> bool:
         self.int_time = value
         return True
 
-    def read(self, *args, **kwargs):
+    def read(self, *args, **kwargs) -> bytes:
         closest_int_idx = 0
         if self.disconnect:
             return False
@@ -281,7 +282,7 @@ class MockUSBDevice(AbstractUSBDevice):
             if self.single_reading:
                 ret_reading = self.spec_readings["default"][0]
                 return struct.pack("H"*len(ret_reading), *ret_reading)
-            if not self.laser_enable:
+            if not self.laser_enable and not self.lamp_enabled:
                 has_dark = self.reading_cycles.get("dark", None)
                 if has_dark is None:
                     ret_reading = next(self.reading_cycles["default"][0])
@@ -298,26 +299,25 @@ class MockUSBDevice(AbstractUSBDevice):
                 # Then it grabs that next spectra in the cycle of the closest integration time
                 ret_reading = next(self.reading_cycles[self.active_readings][self.reading_int_times[self.active_readings][closest_int_idx]])
             time.sleep(self.int_time*10**-3)
-            log.debug(f"calling generate a reading for data {ret_reading}")
             ret_reading = self.generate_a_reading(self.active_readings, ret_reading, closest_int_idx)
             if self.eeprom_obj.active_pixels_horizontal == 2048:
                 return ret_reading[:len(ret_reading)//2] if args[1] == 0x82 else ret_reading[len(ret_reading)//2:]
             else:
                 return ret_reading
 
-    def send_code(self):
+    def send_code(self) -> None:
         pass
 
-    def is_usb(self):
+    def is_usb(self) -> str:
         return True
 
-    def get_pid_hex(self):
+    def get_pid_hex(self) -> str:
         return str(hex(self.pid))[2:]
 
-    def get_vid_hex(self):
+    def get_vid_hex(self) -> str:
         return str(self.vid)
 
-    def load_eeprom(self, eeprom_file_loc):
+    def load_eeprom(self, eeprom_file_loc) -> None:
         dir_items = os.walk(eeprom_file_loc)
         files = [os.path.join(path,file) for path,dir,files in dir_items for file in files]
         log.info(f"files is {files}, looking for {self.eeprom_name}")
@@ -335,7 +335,7 @@ class MockUSBDevice(AbstractUSBDevice):
         log.debug("Mock USB EEPROM results are the following:")
         log.debug(self.eeprom)
 
-    def parse_wpsc_eeprom(self,eeprom_file):
+    def parse_wpsc_eeprom(self,eeprom_file) -> None:
         translated_eeprom = {}
         eeprom = eeprom_file["EEPROM"]
         for key, value in eeprom.items():
@@ -350,7 +350,7 @@ class MockUSBDevice(AbstractUSBDevice):
         self.eeprom = translated_eeprom
         self.parse_measurements(eeprom_file["measurements"])
 
-    def parse_measurements(self, measurements):
+    def parse_measurements(self, measurements) -> None:
         if self.spec_readings.get("deafault", None) is None:
             self.spec_readings["default"] = {}
             self.spec_readings["default"][0] = []
@@ -364,11 +364,11 @@ class MockUSBDevice(AbstractUSBDevice):
                 if "dark" in spectra_name:
                     self.spec_readings["default"][0].extend(spectra)
 
-    def override_eeprom(self):
+    def override_eeprom(self) -> None:
         for key, value in self.eeprom_overrides.items():
             self.eeprom[key] = value
 
-    def load_readings(self):
+    def load_readings(self) -> None:
         if not os.path.exists(self.test_spec_readings):
             return
         spec_samples = os.listdir(self.test_spec_readings)
@@ -395,31 +395,31 @@ class MockUSBDevice(AbstractUSBDevice):
                 readings_list.append(pr)
                 self.spec_readings[samples[idx].lower()][int(reading_int_time)] = readings_list
 
-    def to_dict(self):
+    def to_dict(self) -> dict:
         return self.__dict__
 
-    def __str__(self):
+    def __str__(self) -> str:
         return "<MockUSBDevice 0x%04x:0x%04x:%d:%d>" % (self.vid, self.pid, self.bus, self.address)
 
-    def __hash__(self):
+    def __hash__(self) -> str:
         return hash(str(self))
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return str(self)
 
-    def __eq__(self, other):
+    def __eq__(self, other) -> bool:
         return hash(self) == hash(other)
 
-    def __ne__(self, other):
+    def __ne__(self, other) -> bool:
         return str(self) != str(other)
 
-    def __lt__(self, other):
+    def __lt__(self, other) -> bool:
         return str(self) < str(other)
 
-    def close(self):
+    def close(self) -> None:
         self.disconnect = True
 
-    def convert_eeprom(self):
+    def convert_eeprom(self) -> None:
         self.eeprom_obj = EEPROM()
         for key, value in self.eeprom.items():
             try:
@@ -430,10 +430,11 @@ class MockUSBDevice(AbstractUSBDevice):
         if self.eeprom.get("format", None):
             self.eeprom_obj.write_buffers[0][63] = self.eeprom["format"]
 
-    def get_default_data_dir(self):
+    def get_default_data_dir(self) -> str:
         return os.getcwd()
 
-    def generate_a_reading(self, sample_name, data, int_time_idx):
+    def generate_a_reading(self, sample_name: str, data: list[float], int_time_idx: int) -> bytes:
+        '''Generate a synthetic reading during a live request'''
         if sample_name.lower() == "dark":
             return struct.pack("H"*len(data), *data)
         if sample_name.lower() == "default" or not self.laser_enable:
@@ -458,14 +459,16 @@ class MockUSBDevice(AbstractUSBDevice):
             log.debug(f"calling interp with idxs of {int_time_idx - 1} and {int_time_idx} and length {len(self.reading_int_times[sample_name])}")
             min_data = next(self.reading_cycles[sample_name][self.reading_int_times[sample_name][int_time_idx-1]])
             data = self.interp_spectra(sample_name, int_time_idx - 1, int_time_idx, min_data, data)
-        #laser_pow = (self.mod_width*100)/self.mod_period
-        #for px in peaks:
-        #    data[px]  = min(data[px] * ((int_time/100)/self.eeprom_obj.startup_integration_time_ms) * laser_pow/10, 0xffff)
+        laser_perc = (self.mod_width*100)/self.mod_period
+        log.debug(f"width is {self.mod_width} and period {self.mod_period}")
+        log.debug(f"laser_perc is {laser_perc}")
+        for px in range(len(data)):
+            data[px] = int(data[px] * laser_perc/100)
         
         log.debug(f"packing data")
         return struct.pack('H'*len(data), *data)
 
-    def interp_spectra(self, sample_name, min_idx, max_idx, min_data, max_data):
+    def interp_spectra(self, sample_name: str, min_idx: int, max_idx: int, min_data: int, max_data: int) -> list[float]:
         log.debug(f"calculating span")
         span = self.reading_int_times[sample_name][max_idx] - self.reading_int_times[sample_name][min_idx]
         log.debug(f"span is {span}")
@@ -476,8 +479,9 @@ class MockUSBDevice(AbstractUSBDevice):
         log.debug(f"finished operation on main data")
         return min_data
 
-    def extrap_spectra(self, sample_name, data, int_idx):
+    def extrap_spectra(self, sample_name: str, data: list[float], int_idx: int) -> list[float]:
         int_len = len(self.reading_int_times[sample_name])
+        log.debug(f"running extrap spectra for {self.int_time}")
         # for single integration times present
         if int_len == 1:
             min_idx = 0
@@ -506,7 +510,8 @@ class MockUSBDevice(AbstractUSBDevice):
 
         return data
 
-    def generate_readings(self, data = None):
+    def generate_readings(self, data = None) -> None:
+        '''Generate synthetic readings from given information during mock device initialization'''
         num_px = self.eeprom_obj.active_pixels_horizontal
         wavelengths = utils.generate_wavelengths(num_px, self.eeprom_obj.wavelength_coeffs)
         if self.eeprom_obj.excitation_nm == 0.0:
@@ -523,7 +528,8 @@ class MockUSBDevice(AbstractUSBDevice):
         #for sample in data.keys():
             #self.create_sample(sample, data, wavenumbers, darks)
 
-    def create_sample(self, sample_name, spectra, wavenumbers, darks):
+    def create_sample(self, sample_name: str, spectra: dict, wavenumbers: list[float], darks: list[list[float]]) -> None:
+        '''From a given sample in the set of synthetic spectra, generate that synthetic sample for later display'''
         log.debug(f"creating sample with name {sample_name}")
         num_px = self.eeprom_obj.active_pixels_horizontal
         wavelengths = utils.generate_wavelengths(num_px, self.eeprom_obj.wavelength_coeffs)
@@ -577,7 +583,7 @@ class MockUSBDevice(AbstractUSBDevice):
     def get_available_spectra(self) -> list[str]:
         return self.spec_readings.keys()
 
-    def mock_eeprom(self):
+    def mock_eeprom(self) -> None:
         self.eeprom_obj.model = "WP-MOCK"
         self.eeprom_obj.serial_number = "0000"
         self.eeprom_obj.has_laser = True
@@ -596,4 +602,7 @@ class MockUSBDevice(AbstractUSBDevice):
     def set_active_readings(self, reading_name: str) -> None:
         log.debug(f"setting active reading name to {reading_name}")
         self.active_readings = reading_name
+
+    def toggle_lamp(self):
+        self.lamp_enabled = not self.lamp_enabled
 
