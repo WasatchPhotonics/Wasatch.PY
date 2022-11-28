@@ -8,7 +8,7 @@ Copy the [testSpectrometers](https://github.com/WasatchPhotonics/ENLIGHTEN/tree/
 
 This should already be done if you cloned the repo.
 
-After this, you can run the script with `python demo_virtual.py` and it should work.
+After this, you can run the script with `python demo-virtual.py` and it should work.
 
 An important note, you don't need to run the open command. The virtual spectrometer is already connected
 
