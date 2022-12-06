@@ -257,7 +257,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         if self.settings.is_ingaas():
             # This must be for some very old InGaAs spectrometers?
-            # Will probably want to remove this for SiG...
+            # Will probably want to remove this for Series-XS...
             if not self.settings.is_arm():
                 self.settings.eeprom.active_pixels_horizontal = 512
 
@@ -317,7 +317,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         log.debug("configuring FPGA")
 
         # automatically push EEPROM values to the FPGA (on modern EEPROMs)
-        # (this will work on SiG as well, even if we subsequently track its gain
+        # (this will work on Series-XS as well, even if we subsequently track its gain
         #  somewhat differently as state.gain_db)
         if self.settings.eeprom.format >= 4:
             log.debug("sending gain/offset to FPGA")
@@ -345,12 +345,17 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         # probably the default, but just to be sure
         if self.settings.is_micro():
-            # some kind of SiG
+
+            # some kind of Series-XS
             if self.settings.eeprom.has_laser:
-                log.debug("applying SiG settings")
-                self.set_laser_watchdog_sec(10)
+                log.debug("applying Series-XS settings")
+                sec = self.settings.eeprom.laser_watchdog_sec
+                if sec <= 0:
+                    sec = EEPROM.DEFAULT_LASER_WATCHDOG_SEC
+                    log.debug(f"declining to disable laser watchdog at connection, defaulting to {sec}sec")
+                self.set_laser_watchdog_sec(sec)
             else:
-                log.debug("skipping laser features for non-Raman SiG")
+                log.debug("skipping laser features for non-Raman Series-XS")
 
         self.set_integration_time_ms(self.settings.eeprom.startup_integration_time_ms)
 
@@ -1066,7 +1071,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
             block_len_bytes = 2048 # 1024 pixels apiece from two endpoints
 
         if self.settings.is_micro():
-            # we have no idea if microRaman has to "wake up" the sensor, so wait
+            # we have no idea if Series-XS has to "wake up" the sensor, so wait
             # long enough for 6 throwaway frames if need be
             timeout_ms = self.settings.state.integration_time_ms * 8 + 500 * self.settings.num_connected_devices
         else:
@@ -1335,8 +1340,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
         log.debug("SET_INTEGRATION_TIME_MS: now %d", ms)
         self.settings.state.integration_time_ms = ms
 
-        if self.settings.is_micro():
-            self.update_laser_watchdog();
+        # consciously but cautiously disabling this functionality
+        # if self.settings.is_micro():
+        #     self.update_laser_watchdog();
+
         return result
 
     # ##########################################################################
@@ -1965,7 +1972,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
     # Enable "Raman mode" (automatic laser) in the spectrometer firmware.
     def set_raman_mode_enable_NOT_USED(self, flag: bool) -> SpectrometerResponse:
         if not self.settings.is_micro():
-            log.debug("Raman mode only supported on microRaman")
+            log.debug("Raman mode only supported on Series-XS")
             return SpectrometerResponse(data=False,error_msg="raman mode not supported")
 
         return self._send_code(bRequest        = 0xff,
@@ -1981,7 +1988,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
     def set_raman_delay_ms(self, ms: int) -> SpectrometerResponse:
         if not self.settings.is_micro():
-            log.debug("Raman delay only supported on microRaman")
+            log.debug("Raman delay only supported on Series-XS")
             return SpectrometerResponse(data=False,error_msg="raman delay not supported")
 
         # send value as big-endian
@@ -2001,10 +2008,16 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.settings.state.laser_watchdog_sec = res.data
         return res
 
+    # @note until this change is mimick'd in the STM32 (and after that, until the FPGA
+    #       logic itself is fixed), always send a DISABLE_LASER before changing the 
+    #       watchdog period.
     def set_laser_watchdog_sec(self, sec):
         if not self.settings.is_micro():
-            log.error("Laser watchdog only supported on microRaman")
+            log.error("Laser watchdog only supported on Series-XS")
             return SpectrometerResponse(data=False,error_msg="laser watchdog not supported")
+
+        # remove this call after the Series-XS ARM / FPGA watchdog are fixed
+        self.set_laser_enable(False)
 
         # send value as big-endian
         msb = (sec >> 8) & 0xff
@@ -2023,15 +2036,19 @@ class FeatureIdentificationDevice(InterfaceDevice):
         Automatically set the laser watchdog long enough to handle the current
         integration time, assuming we have to perform 6 throwaways on the sensor
         in case it went to sleep.
-        @todo don't override if the user has "manually" set in ENLIGHTEN
+
+        @note we are not currently using this function
         """
         if not self.settings.is_micro() or not self.settings.eeprom.has_laser:
             return SpectrometerResponse(data=False,error_msg="update laser watchdog not supported")
 
-        throwaways_sec = self.settings.state.integration_time_ms    \
-                       * (8 + self.settings.state.scans_to_average) \
-                       / 1000.0
+        int_ms = self.settings.state.integration_time_ms
+        scans  = self.settings.state.scans_to_average
+        
+        throwaways_sec = int_ms * (8 + scans) / 1000.0
         watchdog_sec = int(max(10, throwaways_sec)) * 2
+        log.debug(f"updating laser watchdog to {watchdog_sec} based on integration time {int_ms}ms and {scans} averaging")
+
         return self.set_laser_watchdog_sec(watchdog_sec)
 
     def set_vertical_binning(self, lines: tuple[int, int]) -> SpectrometerResponse:
@@ -2039,7 +2056,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         if self.settings.fpga_firmware_version == "000-008" and self.settings.microcontroller_firmware_version == "0.1.0.7":
             return SpectrometerResponse(data=False)
         if not self.settings.is_micro():
-            log.debug("Vertical Binning only configurable on microRaman")
+            log.debug("Vertical Binning only configurable on Series-XS")
             return SpectrometerResponse(data=False,error_msg="vertical binning not supported")
 
         try:
@@ -2088,7 +2105,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
     # \endverbose
     def set_pixel_mode(self, mode: float) -> SpectrometerResponse:
         if not self.settings.is_micro():
-            log.debug("Pixel Mode only configurable on microRaman")
+            log.debug("Pixel Mode only configurable on Series-XS")
             return SpectrometerResponse(data=False,error_msg="pixel mode not supported")
 
         # we only care about the two least-significant bits
@@ -2153,7 +2170,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         @param args: either a DetectorROI or a tuple of (region, y0, y1, x0, x1)
         """
         if not self.settings.is_micro():
-            log.debug("Detector ROI only configurable on microRaman")
+            log.debug("Detector ROI only configurable on Series-XS")
             return SpectrometerResponse(data=False,error_msg="Detector ROI not configurable")
 
         if isinstance(args, DetectorROI):
@@ -2302,8 +2319,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
     # ##########################################################################
 
     def set_shutter_enable(self, flag: bool) -> SpectrometerResponse:
-        if not self.settings.is_gen15():
-            log.debug("shutter requires Gen 1.5")
+        if not (self.settings.is_gen15() and self.settings.eeprom.has_shutter):
+            log.debug("shutter requires Gen 1.5 and has_shutter flag")
             return SpectrometerResponse(data=False,error_msg="shutter requires gen1.5")
         value = 1 if flag else 0
         return self._send_code(bRequest        = 0x30,
@@ -2313,8 +2330,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
                               label           = "SET_SHUTTER_ENABLE")
 
     def get_shutter_enabled(self) -> SpectrometerResponse:
-        if not self.settings.is_gen15():
-            log.error("shutter requires Gen 1.5")
+        if not (self.settings.is_gen15() and self.settings.eeprom.has_shutter):
+            log.debug("shutter requires Gen 1.5 and has_shutter flag")
             return SpectrometerResponse(data=False,error_msg="shutter requires gen1.5")
         res = SpectrometerResponse(data=0 != self._get_code(0x31, label="GET_SHUTTER_ENABLED", msb_len=1))
         res.data = 0 != res.data
@@ -2937,7 +2954,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         process_f["acquisition_laser_trigger_delay_ms"] = lambda x: self.settings.state.set("acquisition_laser_trigger_delay_ms", int(round(x)))
         process_f["acquisition_take_dark_enable"]       = lambda x: self.settings.state.set("acquisition_take_dark_enable", bool(x))
 
-        # microRaman
+        # Series-XS
        #f["raman_mode_enable"]                  = lambda x: self.set_raman_mode_enable(bool(x))
         process_f["raman_delay_ms"]                     = lambda x: self.set_raman_delay_ms(int(round(x)))
         process_f["laser_watchdog_sec"]                 = lambda x: self.set_laser_watchdog_sec(int(round(x)))

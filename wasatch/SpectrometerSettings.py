@@ -87,13 +87,13 @@ class SpectrometerSettings(object):
         self.load_from_dict(d)
 
     ##
-    # Assuming that we've loaded a Measurement from JSON, or received a 
+    # Assuming that we've loaded a Measurement from JSON, or received a
     # Measurement-like structure externally via JSON, update whatever we can
     # from it.
     def load_from_dict(self, d):
         utils.update_obj_from_dict(self.fpga_options, utils.dict_get_norm(d, "FPGAOptions"))
         utils.update_obj_from_dict(self.state,        utils.dict_get_norm(d, ["SpectrometerState", "State"]))
-            
+
         d2 = utils.dict_get_norm(d, "EEPROM")
         if d2 is not None:
             utils.update_obj_from_dict(self.eeprom, d2)
@@ -159,7 +159,7 @@ class SpectrometerSettings(object):
             return False
         if self.eeprom.has_laser and not self.is_sml():
             return True
-        
+
     def is_sml(self):
         if not self.eeprom.has_laser:
             return False
@@ -182,7 +182,7 @@ class SpectrometerSettings(object):
     ## @todo return ROI
     def get_vertical_roi(self):
         if self.has_vertical_roi():
-            return (self.eeprom.roi_vertical_region_1_start, 
+            return (self.eeprom.roi_vertical_region_1_start,
                     self.eeprom.roi_vertical_region_1_end)
 
     ##
@@ -295,7 +295,7 @@ class SpectrometerSettings(object):
     ##
     # Note regions are internally 0-indexed (0-3), although EEPROM fields are 1-indexed.
     #
-    # If you want to actually send the ROI downstream to the spectrometer, call 
+    # If you want to actually send the ROI downstream to the spectrometer, call
     # this method on FeatureIdentificationDevice.
     def set_single_region(self, n):
         roi = self.state.detector_regions.get_roi(n)
@@ -332,14 +332,14 @@ class SpectrometerSettings(object):
     ##
     # @par Discussion re: SPI models
     #
-    # (We don't currently have any software issues in this respect, but 
+    # (We don't currently have any software issues in this respect, but
     # retaining this discussion in case it again becomes useful.)
     #
     # All of our silicon-based spectrometers output a cropped set of "active"
     # pixels, omitting any "optically-masked / dark" pixels at the ends.
     # (Theoretically we could output those as well, allowing an EDC feature,
-    # but that's another discussion).  
-    # 
+    # but that's another discussion).
+    #
     # The point is, it's not "unusual" that our new SiG spectrometer is only
     # outputting 1920 active of 1952 physical pixels, nor is it unusual that
     # the wavecal is based on all active output pixels.  That's in fact the
@@ -347,13 +347,13 @@ class SpectrometerSettings(object):
     #
     # What's unusual is that this spectrometer uses the horizontal ROI fields
     # on the EEPROM to TELL the spectrometer where the active region (or
-    # ROI of interest) lies.  
+    # ROI of interest) lies.
     #
     # Therefore, while most of our spectrometers assume the horizontal ROI is
     # zero-indexed at the beginning of the ACTIVE region, and therefore used
     # to crop/vignette the array of ACTIVE pixels being output, in this case
-    # the horizontal ROI is zero-indexed at the beginning of the PHYSICAL 
-    # region, and therefore HAS ALREADY been used to crop/vignette the 
+    # the horizontal ROI is zero-indexed at the beginning of the PHYSICAL
+    # region, and therefore HAS ALREADY been used to crop/vignette the
     # spectrum down to the active region.
     #
     # (The current unit uses EEPROM subformat 1, meaning region_count remains
@@ -362,7 +362,7 @@ class SpectrometerSettings(object):
     # still sum to 1920.)
     #
     # Conclusion: testing confirms the wavecal is correctly generated and
-    # applied in both wavelength and wavenumber space on both USB and SPI 
+    # applied in both wavelength and wavenumber space on both USB and SPI
     # interfaces.
     #
     # @todo update for DetectorRegions
@@ -407,7 +407,7 @@ class SpectrometerSettings(object):
 
     # ##########################################################################
     #
-    # We're kind of using SpectrometerSettings as a "universal interface" for 
+    # We're kind of using SpectrometerSettings as a "universal interface" for
     # applications to query for things, so let's just consolidate some obvious
     # and common checks here (even if wrapping calls elsewhere).
     #
@@ -422,7 +422,7 @@ class SpectrometerSettings(object):
             return True
         elif self.eeprom is None or self.eeprom.detector is None:
             log.debug("is_ingaas FALSE because missing EEPROM or detector")
-            return False 
+            return False
         elif re.match(r'ingaas|g9214|g9206|g14237', self.eeprom.detector.lower()):
             log.debug("is_ingaas TRUE because detector")
             return True
@@ -448,7 +448,8 @@ class SpectrometerSettings(object):
         return ( self.is_arm() and ( \
                    self.is_imx() or \
                    "micro" in self.full_model().lower() or \
-                   "sig"   in self.full_model().lower() \
+                   "sig"   in self.full_model().lower() or \
+                   "xs"    in self.full_model().lower() \
                  ) \
                ) \
                or self.is_spi()
@@ -472,6 +473,9 @@ class SpectrometerSettings(object):
         return '0x136e' in str(self.device_id)
 
     def is_sig(self) -> bool:
+        return self.is_micro()
+
+    def is_xs(self) -> bool:
         return self.is_micro()
 
     # probably a simpler way to do this...
