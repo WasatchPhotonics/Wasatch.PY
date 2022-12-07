@@ -60,6 +60,8 @@ class Workflow:
             self.settings.wavenumbers[0],
             self.settings.wavenumbers[-1]))
 
+        self.fid.set_laser_power_high_resolution(True)
+
         return True
 
     def optimize_working_distance(self):

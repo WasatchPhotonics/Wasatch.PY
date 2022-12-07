@@ -38,7 +38,7 @@ class SpectrometerState(object):
         self.laser_temperature_setpoint_raw = 0
         self.selected_adc = None
         self.selected_laser = 0
-        self.laser_power_high_resolution = False
+        self.laser_power_high_resolution = True
         self.laser_power_require_modulation = False
         self.raman_mode_enabled = False
         self.raman_delay_ms = 0

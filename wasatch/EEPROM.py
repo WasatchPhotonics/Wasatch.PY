@@ -25,12 +25,18 @@ log = logging.getLogger(__name__)
 # @see AT24C256C for ARM (32KB, http://ww1.microchip.com/downloads/en/DeviceDoc/20006270A.pdf)
 # @see 24LC128 for FX2 (16KB, https://www.microchip.com/en-us/product/24LC128)
 class EEPROM(object):
-    
-    LATEST_REV = 15
+
+    # This was mistakenly set to 15 earlier, probably out of confusion between 
+    # ENG-0001 vs ENG-0034 release level (the former WAS at 15, the latter is
+    # only now advancing to 15).  Leaving it alone for now.
+    LATEST_REV = 15 
+
     MAX_PAGES = 8
     PAGE_LENGTH = 64
-    SUBPAGE_COUNT = 4
+    SUBPAGE_COUNT = 4  # is this used for BLE?
     MAX_RAMAN_INTENSITY_CALIBRATION_ORDER = 7
+
+    DEFAULT_LASER_WATCHDOG_SEC = 10
 
     def __init__(self):
         self.format = 0
@@ -49,6 +55,7 @@ class EEPROM(object):
         self.hardware_even_odd           = False
         self.sig_laser_tec               = False
         self.has_interlock_feedback      = False
+        self.has_shutter                 = False
         self.excitation_nm               = 0.0
         self.excitation_nm_float         = 0.0
         self.slit_size_um                = 0
@@ -60,6 +67,8 @@ class EEPROM(object):
         self.detector_gain_odd           = 1.9
         self.detector_offset_odd         = 0
         self.laser_warmup_sec            = 0
+        self.laser_watchdog_sec          = 0
+        self.light_source_type           = 0
                                          
         self.wavelength_coeffs           = []
         self.degC_to_dac_coeffs          = []
@@ -125,7 +134,9 @@ class EEPROM(object):
                           "bin_2x2",
                           "gen15",
                           "cutoff_filter_installed",
+                          "has_shutter",
                           "laser_warmup_sec",
+                          "laser_watchdog_sec",
                           "roi_horizontal_end",             
                           "roi_horizontal_start",           
                           "roi_vertical_region_1_end",      
@@ -319,7 +330,11 @@ class EEPROM(object):
             self.max_integration_time_ms     = self.unpack((3, 44,  4), "I", "max_integ(uint)") 
 
         if self.format >= 7:
-            self.avg_resolution              = self.unpack((3, 48, 4), "f", "avg_resolution")
+            self.avg_resolution              = self.unpack((3, 48,  4), "f", "avg_resolution")
+
+        if self.format >= 15:
+            self.laser_watchdog_sec          = self.unpack((3, 52,  2), "H", "laser_watchdog_sec")
+            self.light_source_type           = self.unpack((3, 54,  1), "B", "light_source_type")
 
         # ######################################################################
         # Page 4
@@ -374,6 +389,7 @@ class EEPROM(object):
             self.hardware_even_odd       = 0 != self.feature_mask & 0x0010
             self.sig_laser_tec           = 0 != self.feature_mask & 0x0020
             self.has_interlock_feedback  = 0 != self.feature_mask & 0x0040
+            self.has_shutter             = 0 != self.feature_mask & 0x0080
         else:
             self.invert_x_axis           = 0 
             self.bin_2x2                 = 0
@@ -382,6 +398,7 @@ class EEPROM(object):
             self.hardware_even_odd       = 0
             self.sig_laser_tec           = 0
             self.has_interlock_feedback  = 0
+            self.has_shutter             = 0
 
         # ######################################################################
         # sanity checks
@@ -423,6 +440,7 @@ class EEPROM(object):
         mask |= 0x0010 if self.hardware_even_odd       else 0
         mask |= 0x0020 if self.sig_laser_tec           else 0
         mask |= 0x0040 if self.has_interlock_feedback  else 0
+        mask |= 0x0080 if self.has_shutter             else 0
         return mask
 
     ##
@@ -538,6 +556,8 @@ class EEPROM(object):
         self.pack((3, 40,  4), "I", self.min_integration_time_ms)
         self.pack((3, 44,  4), "I", self.max_integration_time_ms)
         self.pack((3, 48,  4), "f", self.avg_resolution)
+        self.pack((3, 52,  2), "H", self.laser_watchdog_sec)
+        self.pack((3, 54,  1), "B", self.light_source_type)
 
         # ######################################################################
         # Page 4
@@ -777,9 +797,12 @@ class EEPROM(object):
         log.debug("  HW Even/Odd:      %s", self.hardware_even_odd)
         log.debug("  SiG Laser TEC:    %s", self.sig_laser_tec)
         log.debug("  Int'Lck Feedback: %s", self.has_interlock_feedback)
+        log.debug("  Shutter:          %s", self.has_shutter)
         log.debug("  Excitation:       %s nm", self.excitation_nm)
         log.debug("  Excitation (f):   %.2f nm", self.excitation_nm_float)
         log.debug("  Laser Warmup Sec: %d", self.laser_warmup_sec)
+        log.debug("  Laser Watchdog:   %d", self.laser_watchdog_sec)
+        log.debug("  Light Source:     %d", self.light_source_type)
         log.debug("  Slit size:        %s um", self.slit_size_um)
         log.debug("  Start Integ Time: %d ms", self.startup_integration_time_ms)
         log.debug("  Start Temp:       %.2f degC", self.startup_temp_degC)
