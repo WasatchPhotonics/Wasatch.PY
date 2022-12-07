@@ -1,5 +1,8 @@
 # Changelog
 
+- 2022-12-07 2.1.24
+    - update EEPROM to Rev15
+    - default laser power calibration to high-resolution
 - 2022-10-26 2.1.23
     - fix connect bug
     - added scripts/dark-vs-integ.py
