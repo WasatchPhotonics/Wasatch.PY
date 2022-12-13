@@ -1682,15 +1682,18 @@ class FeatureIdentificationDevice(InterfaceDevice):
         """
         The user has requested to update the laser firing state (on or off),
         so apply the new laser state to the spectrometer immediately.
+
         Because the ability to immediately disable a laser is a safety-related
         feature (noting that truly safety-critical capabilities should be
         implemented in hardware, and generally can't be robustly achieved through
         Python scripts), this function takes the unusual step of looping over
         multiple attempts to set the laser state until either the command succeeds,
         or 3 consecutive failures have occured.
+
         This behavior was added after a developmental, unreleased prototype was
         found to occasionally drop USB packets, and was therefore susceptible to
         inadvertently failing to disable the laser upon command.
+
         @private (as callers are recommended to use set_laser_enable)
         @param flag (Input) whether the laser should be on (true) or off (false)
         @returns true if new state was successfully applied
@@ -1701,9 +1704,17 @@ class FeatureIdentificationDevice(InterfaceDevice):
         else:
             self.last_applied_laser_power = self.next_applied_laser_power
 
+        self.set_strobe_enable(flag)
+
+        if self.settings.is_xs():
+            # Series-XS getLaserEnable doesn't provide immediate confirmation 
+            # because it's comingled with laserWatchdogSec and probably 
+            # laserDelaySec
+            return SpectrometerResponse(data=True)
+
+        # try to verify laserEnable worked
         tries = 0
         while True:
-            self.set_strobe_enable(flag)
             res = self.get_laser_enabled()
             if flag == res.data:
                 return SpectrometerResponse(data=True)
@@ -1714,6 +1725,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 return SpectrometerResponse(data=False,error_msg="laser setting failed",error_lvl=ErrorLevel.medium)
             else:
                 log.error("laser_enable %s command failed, re-trying", flag)
+                self.set_strobe_enable(flag)
 
     def has_laser_power_calibration(self) -> SpectrometerResponse:
         return self.settings.eeprom.has_laser_power_calibration()
