@@ -255,14 +255,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         log.debug("model-specific settings")
 
-        if self.settings.is_ingaas():
-            # This must be for some very old InGaAs spectrometers?
-            # Will probably want to remove this for Series-XS...
-            if not self.settings.is_arm():
-                self.settings.eeprom.active_pixels_horizontal = 512
+        # models supporting high-gain mode
+        if self.settings.is_ingaas() or self.settings.is_andor():
 
-            if not self.get_high_gain_mode_enabled():
-                self.set_high_gain_mode_enable(True)
+            # default high for Raman
+            self.set_high_gain_mode_enable(self.settings.has_excitation())
 
         # ######################################################################
         # EEPROM
