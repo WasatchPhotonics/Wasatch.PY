@@ -255,11 +255,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         log.debug("model-specific settings")
 
-        # models supporting high-gain mode
-        if self.settings.is_ingaas() or self.settings.is_andor():
-
-            # default high for Raman
-            self.set_high_gain_mode_enable(self.settings.has_excitation())
+        # default high-gain mode for InGaAs
+        if self.settings.is_ingaas():
+            self.set_high_gain_mode_enable(True)
 
         # ######################################################################
         # EEPROM
