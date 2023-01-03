@@ -22,10 +22,12 @@ class WasatchBus(object):
         self.usb_bus = USBBus()
         self.update()
 
-    ## called by Controller.update_connections
+    ## called by enlighten.Controller.tick_bus_listener()
     def update(self, poll = False):
         if self.usb_bus:
-            self.device_ids.extend(self.usb_bus.update(poll))
+            # MZ: if we call .extend here...when are devices ever purged from the stateful list?
+            # self.device_ids.extend(self.usb_bus.update(poll)) 
+            self.device_ids = self.usb_bus.update(poll)
             self.device_ids = list(set(self.device_ids)) # used in case of poll if same device is present before connection finishes
 
     def is_empty(self):
