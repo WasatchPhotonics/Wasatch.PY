@@ -423,7 +423,7 @@ class SpectrometerSettings(object):
         elif self.eeprom is None or self.eeprom.detector is None:
             log.debug("is_ingaas FALSE because missing EEPROM or detector")
             return False
-        elif re.match(r'ingaas|g9214|g9206|g14237', self.eeprom.detector.lower()):
+        elif re.match(r'ingaas|g9214|g9206|g14237|du490', self.eeprom.detector.lower()):
             log.debug("is_ingaas TRUE because detector")
             return True
         elif self.fpga_options is not None and self.fpga_options.has_cf_select:

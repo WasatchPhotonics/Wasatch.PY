@@ -1,6 +1,7 @@
 # Changelog
 
 - 2022-12-14 2.1.26
+    - default InGaAs detectors to high-gain mode
     - forget disconnected USB devices
 - 2022-12-13 2.1.25
     - disable laserEnable verification loop for Series-XS

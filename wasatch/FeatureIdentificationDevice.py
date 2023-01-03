@@ -255,14 +255,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         log.debug("model-specific settings")
 
+        # default high-gain mode for InGaAs
         if self.settings.is_ingaas():
-            # This must be for some very old InGaAs spectrometers?
-            # Will probably want to remove this for Series-XS...
-            if not self.settings.is_arm():
-                self.settings.eeprom.active_pixels_horizontal = 512
-
-            if not self.get_high_gain_mode_enabled():
-                self.set_high_gain_mode_enable(True)
+            self.set_high_gain_mode_enable(True)
 
         # ######################################################################
         # EEPROM
