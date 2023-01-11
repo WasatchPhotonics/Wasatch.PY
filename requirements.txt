@@ -1,0 +1,11 @@
+mkl
+numpy
+six
+psutil
+future
+pygtail
+pyusb
+requests
+pexpect
+seabreeze
+pyudev
