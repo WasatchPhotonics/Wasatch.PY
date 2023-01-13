@@ -1,5 +1,8 @@
 # Changelog
 
+- 2023-01-13 2.1.27
+    - is_andor fix
+    - laser watchdog fix (disable on older EEPROMs)
 - 2022-12-14 2.1.26
     - default InGaAs detectors to high-gain mode
     - forget disconnected USB devices

@@ -2023,7 +2023,12 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.error("Laser watchdog only supported on Series-XS")
             return SpectrometerResponse(data=False,error_msg="laser watchdog not supported")
 
+        if ((fmt := self.settings.eeprom.format) < 15):
+            log.info(f"EEPROM format {fmt} does not support laser watchdog")
+            return
+
         # remove this call after the Series-XS ARM / FPGA watchdog are fixed
+        # MZ: are they fixed? can I remove this?
         self.set_laser_enable(False)
 
         # send value as big-endian
