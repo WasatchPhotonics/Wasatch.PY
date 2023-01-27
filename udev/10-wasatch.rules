@@ -3,13 +3,13 @@
 
 SUBSYSTEM!="usb_device", ACTION!="add", GOTO="wasatch_rules_end"
 
-# Stroker USB Board FX2 Code
+# Wasatch Photonics FX2-based Hamamatsu Silicon Spectrometer
 ATTRS{idVendor}=="24aa", ATTRS{idProduct}=="1000", SYMLINK+="wasatch-fx2-%n", MODE:="0666"
 
-# Hamamatsu InGaAs USB Board FX2 Code
+# Wasatch Photonics FX2-based Hamamatsu InGaAs Spectrometer
 ATTRS{idVendor}=="24aa", ATTRS{idProduct}=="2000", SYMLINK+="wasatch-ingaas-%n", MODE:="0666"
 
-# Stroker ARM USB Board
+# Wasatch Photonics ARM-based Spectrometer
 ATTRS{idVendor}=="24aa", ATTRS{idProduct}=="4000", SYMLINK+="wasatch-arm-%n", MODE:="0666"
 
 LABEL="wasatch_rules_end"
