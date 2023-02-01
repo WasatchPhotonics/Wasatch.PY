@@ -20,6 +20,8 @@ from wasatch.WasatchDevice import WasatchDevice
 
 bus = WasatchBus()
 if not bus.device_ids:
+    import sys
+    
     print("no spectrometers found")
     sys.exit(1)
 
