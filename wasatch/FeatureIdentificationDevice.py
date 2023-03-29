@@ -709,7 +709,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
             return SpectrometerResponse(poison_pill=True)
 
         try:
+            log.debug("waiting for usb available")
             self._wait_for_usb_available()
+            log.debug("initiating ctrl transfer")
             result = self.device_type.ctrl_transfer(self.device,
                                                0xc0,        # DEVICE_TO_HOST
                                                bRequest,
@@ -718,6 +720,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                                                wLength)
         except Exception as exc:
             log.critical("Hardware Failure FID Get Code Problem with ctrl transfer", exc_info=1)
+            log.critical(exc)
             self._schedule_disconnect(exc)
             return SpectrometerResponse(poison_pill=True)
 
