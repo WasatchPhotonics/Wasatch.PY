@@ -25,6 +25,8 @@ log = logging.getLogger(__name__)
 # a Reading attribute.  (Also, the loaded Measurement should have a 
 # source_pathname attribute.)
 #
+# Processes are defined in Enlighten
+# enlighten.SpectraProcesses.*
 class ProcessedReading(object):
 
     session_count = 0
@@ -33,8 +35,11 @@ class ProcessedReading(object):
         self.reading = None
         self.device_id = None
         self.raw = None
+
+         # use .get_processed() to access the correct one of these
         self.processed = None
         self.processed_vignetted = None
+
         self.reference = None
         self.dark = None
         self.dark_corrected = False
