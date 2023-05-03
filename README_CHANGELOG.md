@@ -1,5 +1,7 @@
 # Changelog
 
+- 2023-05-03 2.1.28
+    - better handling of rare null-buffer EEPROM readout
 - 2023-01-13 2.1.27
     - is_andor fix
     - laser watchdog fix (disable on older EEPROMs)

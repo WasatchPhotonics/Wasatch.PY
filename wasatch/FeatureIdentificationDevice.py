@@ -767,7 +767,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
             except:
                 log.error("exception reading upper_code 0x01 with page %d", page, exc_info=1)
             buf_len = 0 if buf is None else len(buf)
-            if buf is None or len(buf) < 64:
+            if buf is None:
+                msg = "unable to read EEPROM (null buf)"
+                log.error(msg)
+                return SpectrometerResponse(False, error_lvl=ErrorLevel.medium,error_msg=msg)
+            elif len(buf) < 64:
                 msg = f"unable to read EEPROM received buf of {buf} and len {len(buf)}"
                 log.error(msg)
                 return SpectrometerResponse(False, error_lvl=ErrorLevel.medium,error_msg=msg)
