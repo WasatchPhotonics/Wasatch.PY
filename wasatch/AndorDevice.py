@@ -27,28 +27,30 @@ class AndorDevice(InterfaceDevice):
 
     @todo have check_result return a SpectrometerResponse 
     ##########################################################################
-    This class adopts the external device interface structure
-    This involves receiving a request through the handle_request function
-    A request is processed based on the key in the request
-    The processing function passes the commands to the requested device
+    This class adopts the external device interface structure.
+    This involves receiving a request through the handle_request function.
+    A request is processed based on the key in the request.
+    The processing function passes the commands to the requested device.
     Once it receives a response from the connected device it then passes that
-    back up the chain
+    back up the chain.
+    @verbatim
                                Enlighten Request
                                        |
                                 handle_requests
                                        |
                                  ------------
-                                /   /  |  \  \
+                                /   /  |  \  \  
              { get_laser status, acquire, set_laser_watchdog, etc....}
                                 \   \  |  /  /
                                  ------------
                                        |
                          {self.driver.some_andor_sdk_call}
+    @endverbatim
     ############################################################################
     """
 
     SUCCESS = 20002             #!< see load_error_codes()
-    SHUTTER_SPEED_MS = 50       #!< empirically determined
+    SHUTTER_SPEED_MS = 50       #!< allow time for mechanical shutter to stabilize
 
     def __init__(self, device_id, message_queue=None) -> None:
         # if passed a string representation of a DeviceID, deserialize it
@@ -64,7 +66,7 @@ class AndorDevice(InterfaceDevice):
         self.connected = False
 
         # Receives ENLIGHTEN's 'change settings' commands in the spectrometer
-        # process. Although a logical queue, has nothing to do with multiprocessing.
+        # process. 
         self.command_queue = []
 
         self.immediate_mode = False
@@ -113,6 +115,7 @@ class AndorDevice(InterfaceDevice):
 
         if self.driver is None:
             log.error(f"could not find {filename} in search path: {dll_paths}")
+            # MZ: interesting that we don't return here
 
         # "serial_number", "model" etc are ambiguous in an Andor configuration 
         # file -- do they refer to the camera (Andor), or the spectrometer 
@@ -343,11 +346,13 @@ class AndorDevice(InterfaceDevice):
     # Public Methods
     ###############################################################
 
-    def check_result(self, result, func):
+    def check_result(self, result, func, ignore=False):
         if result != self.SUCCESS:
             name = self.get_error_code(result)
             msg = f"error calling {func}: {result} ({name})"
             log.error(msg)
+            if ignore:
+                return
             raise RuntimeError(msg)
         log.debug(f"successfully called {func}")
 
@@ -356,43 +361,49 @@ class AndorDevice(InterfaceDevice):
             return SpectrometerResponse(False, error_msg="can't find Andor DLL; please confirm Andor Driver Pack 2 installed")
 
         cameraHandle = c_int()
-        self.check_result(self.driver.GetCameraHandle(self.spec_index, byref(cameraHandle)), "GetCameraHandle")
-        self.check_result(self.driver.SetCurrentCamera(cameraHandle.value), "SetCurrentCamera")
+        self.check_result(self.driver.GetCameraHandle(self.spec_index, byref(cameraHandle)), "GetCameraHandle") # step 1
+        self.check_result(self.driver.SetCurrentCamera(cameraHandle.value), "SetCurrentCamera") # step 2
 
         try:
             path_to_ini = create_string_buffer(b'\000' * 256) 
-            self.check_result(self.driver.Initialize(path_to_ini), "Initialize")
+            self.check_result(self.driver.Initialize(path_to_ini), "Initialize") # step 3
         except:
             log.error("Andor.Initialize failed", exc_info=1)
             return SpectrometerResponse(False, error_msg="Andor initialization failed")
 
-        self.get_serial_number()
-        self.init_tec_setpoint()
-        self.init_detector_area()
+        # @todo missing: step 4 capabilities
+
+        self.get_serial_number() # step 16
+        self.init_tec_setpoint() # step 5+6
+        self.init_detector_area() # step 7
 
         if not self._check_config_file():
             self.config_values = {
                 'detector_serial_number': self.serial,
                 'wavelength_coeffs': [0,1,0,0],
                 'excitation_nm_float': 0,
-                }
+            }
             log.debug(f"connect: config file not found, so defaulting to these: {self.config_values}")
             self.save_config()
         else:
             self._load_config_values()
             log.debug(f"connect: loaded config file: {self.config_values}")
 
-        self.check_result(self.driver.CoolerON(), "CoolerON")
-        self.check_result(self.driver.SetAcquisitionMode(1), "SetAcquisitionMode(single_scan)") 
-        self.check_result(self.driver.SetTriggerMode(0), "SetTriggerMode")
-        self.check_result(self.driver.SetReadMode(0), "SetReadMode(full_vertical_binning)")
+        self.check_result(self.driver.CoolerON(), "CoolerON") # step 8
+        self.check_result(self.driver.SetAcquisitionMode(1), "SetAcquisitionMode(single_scan)") # step 9
+        self.check_result(self.driver.SetTriggerMode(0), "SetTriggerMode") # step 10
+        self.check_result(self.driver.SetReadMode(0), "SetReadMode(full_vertical_binning)") # step 11
 
-        self.init_detector_speed()
+        self.init_detector_speed() # step 12+13
 
+        # step 14
         self.check_result(self.driver.SetShutterEx(1, 1, self.SHUTTER_SPEED_MS, self.SHUTTER_SPEED_MS, 0), "SetShutterEx(fully automatic external with internal always open)")
         self.settings.state.shutter_enabled = True
 
+        # step 15
         self.set_integration_time_ms(self.settings.eeprom.startup_integration_time_ms)
+
+        # step 17 (WasatchNET doesn't do this)
         self._obtain_gain_info()
 
         # success!
@@ -484,7 +495,7 @@ class AndorDevice(InterfaceDevice):
     def init_tec_setpoint(self) -> SpectrometerResponse:
         minTemp = c_int()
         maxTemp = c_int()
-        self.check_result(self.driver.GetTemperatureRange(byref(minTemp), byref(maxTemp)), "GetTemperatureRange")
+        self.check_result(self.driver.GetTemperatureRange(byref(minTemp), byref(maxTemp)), "GetTemperatureRange") # step 5
 
         self.settings.eeprom.max_temp_degC = maxTemp.value
         self.settings.eeprom.min_temp_degC = minTemp.value
@@ -495,8 +506,8 @@ class AndorDevice(InterfaceDevice):
         # self.settings.eeprom.startup_temp_degC = minTemp.value 
 
         # however the startup temperature was set (hardcode, JSON, clamped to min)...apply it
-        self.setpoint_deg_c = self.settings.eeprom.startup_temp_degC
-        self.check_result(self.driver.SetTemperature(self.setpoint_deg_c), f"SetTemperature({self.setpoint_deg_c})")
+        self.setpoint_deg_c = self.settings.eeprom.startup_temp_degC 
+        self.check_result(self.driver.SetTemperature(self.setpoint_deg_c), f"SetTemperature({self.setpoint_deg_c})") # step 6
         log.debug(f"set TEC to {self.setpoint_deg_c}°C (range {self.settings.eeprom.min_temp_degC}, {self.settings.eeprom.max_temp_degC})")
 
         return SpectrometerResponse(True)
@@ -553,8 +564,8 @@ class AndorDevice(InterfaceDevice):
         # set vertical to recommended
         VSnumber = c_int()
         speed = c_float()
-        self.check_result(self.driver.GetFastestRecommendedVSSpeed(byref(VSnumber), byref(speed)), "GetFastestRecommendedVSSpeed")
-        self.check_result(self.driver.SetVSSpeed(VSnumber.value), f"SetVSSpeed({VSnumber.value})")
+        self.check_result(self.driver.GetFastestRecommendedVSSpeed(byref(VSnumber), byref(speed)), "GetFastestRecommendedVSSpeed", ignore=True) # step 12
+        self.check_result(self.driver.SetVSSpeed(VSnumber.value), f"SetVSSpeed({VSnumber.value})", ignore=True)
 
         # set horizontal to max
         nAD = c_int()
@@ -562,17 +573,17 @@ class AndorDevice(InterfaceDevice):
         STemp = 0.0
         HSnumber = 0
         ADnumber = 0
-        self.check_result(self.driver.GetNumberADChannels(byref(nAD)), "GetNumberADChannels")
+        self.check_result(self.driver.GetNumberADChannels(byref(nAD)), "GetNumberADChannels") # step 13.1
         for iAD in range(nAD.value):
-            self.check_result(self.driver.GetNumberHSSpeeds(iAD, 0, byref(sIndex)), f"GetNumberHSSpeeds({iAD})")
+            self.check_result(self.driver.GetNumberHSSpeeds(iAD, 0, byref(sIndex)), f"GetNumberHSSpeeds({iAD})") # step 13.2
             for iSpeed in range(sIndex.value):
-                self.check_result(self.driver.GetHSSpeed(iAD, 0, iSpeed, byref(speed)), f"GetHSSpeed(iAD {iAD}, iSpeed {iSpeed})")
+                self.check_result(self.driver.GetHSSpeed(iAD, 0, iSpeed, byref(speed)), f"GetHSSpeed(iAD {iAD}, iSpeed {iSpeed})") # step 13.3
                 if speed.value > STemp:
                     STemp = speed.value
                     HSnumber = iSpeed
                     ADnumber = iAD
-        self.check_result(self.driver.SetADChannel(ADnumber), f"SetADChannel({ADnumber})")
-        self.check_result(self.driver.SetHSSpeed(0, HSnumber), f"SetHSSpeed({HSnumber})")
+        self.check_result(self.driver.SetADChannel(ADnumber), f"SetADChannel({ADnumber})") # 13.4
+        self.check_result(self.driver.SetHSSpeed(0, HSnumber), f"SetHSSpeed({HSnumber})") # 13.5
         log.debug(f"set AD channel {ADnumber} with horizontal speed {HSnumber} ({STemp})")
         return SpectrometerResponse(True)
 
