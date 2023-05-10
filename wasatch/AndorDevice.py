@@ -346,13 +346,11 @@ class AndorDevice(InterfaceDevice):
     # Public Methods
     ###############################################################
 
-    def check_result(self, result, func, ignore=False):
+    def check_result(self, result, func):
         if result != self.SUCCESS:
             name = self.get_error_code(result)
             msg = f"error calling {func}: {result} ({name})"
             log.error(msg)
-            if ignore:
-                return
             raise RuntimeError(msg)
         log.debug(f"successfully called {func}")
 
@@ -541,6 +539,7 @@ class AndorDevice(InterfaceDevice):
         self.check_result(self.driver.GetDetector(byref(xPixels), byref(yPixels)), "GetDetector(x, y)")
         log.debug(f"detector {xPixels.value} width x {yPixels.value} height")
         self.pixels = xPixels.value
+        self.height = yPixels.value
         return SpectrometerResponse(True)
 
     def _obtain_gain_info(self):
@@ -561,11 +560,15 @@ class AndorDevice(InterfaceDevice):
         log.debug(f"obtained gain options for spec, values were {self.gain_options}")
 
     def init_detector_speed(self) -> SpectrometerResponse:
-        # set vertical to recommended
-        VSnumber = c_int()
         speed = c_float()
-        self.check_result(self.driver.GetFastestRecommendedVSSpeed(byref(VSnumber), byref(speed)), "GetFastestRecommendedVSSpeed", ignore=True) # step 12
-        self.check_result(self.driver.SetVSSpeed(VSnumber.value), f"SetVSSpeed({VSnumber.value})", ignore=True)
+
+        # for CCDs, set vertical to recommended
+        if self.height > 1:
+            VSnumber = c_int()
+            self.check_result(self.driver.GetFastestRecommendedVSSpeed(byref(VSnumber), byref(speed)), "GetFastestRecommendedVSSpeed") # step 12
+            self.check_result(self.driver.SetVSSpeed(VSnumber.value), f"SetVSSpeed({VSnumber.value})")
+        else:
+            log.debug("vertical speed does not apply to linear array detectors")
 
         # set horizontal to max
         nAD = c_int()
