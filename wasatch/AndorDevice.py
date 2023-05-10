@@ -185,7 +185,7 @@ class AndorDevice(InterfaceDevice):
             log.debug(f"for {enabled} setting gain to {self.gain_options[0]}")
             return
 
-
+    # MZ: nothing seems to call this?
     def _update_wavelength_coeffs(self, coeffs: list[float]) -> None:
         self.settings.eeprom.wavelength_coeffs = coeffs
         self.config_values['wavelength_coeffs'] = coeffs
@@ -380,6 +380,8 @@ class AndorDevice(InterfaceDevice):
                 'detector_serial_number': self.serial,
                 'wavelength_coeffs': [0,1,0,0],
                 'excitation_nm_float': 0,
+                'raman_intensity_coeffs': [],
+                'raman_intensity_calibration_order': 0
             }
             log.debug(f"connect: config file not found, so defaulting to these: {self.config_values}")
             self.save_config()
@@ -448,6 +450,8 @@ class AndorDevice(InterfaceDevice):
                    'serial_number', 
                    'wavelength_coeffs', 
                    'excitation_nm_float',
+                   'raman_intensity_coeffs',
+                   'raman_intensity_calibration_order',
                    'startup_temp_degC', 
                    'startup_integration_time_ms' ]:
             if k in self.config_values:

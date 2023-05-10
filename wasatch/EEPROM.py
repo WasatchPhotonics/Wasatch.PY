@@ -39,8 +39,6 @@ class EEPROM(object):
     DEFAULT_LASER_WATCHDOG_SEC = 10
 
     def __init__(self):
-        self.format = 0
-
         self.model                       = None
         self.serial_number               = None
         self.baud_rate                   = 0
@@ -109,7 +107,7 @@ class EEPROM(object):
         self.bad_pixels                  = [] # should be set, not list (but this works with EEPROMEditor)
         self.product_configuration       = None
 
-        self.format                      = 0
+        self.format                      = EEPROM.LATEST_REV
         self.subformat                   = 0 # pages 6-7
 
         self.buffers = []
@@ -897,11 +895,18 @@ class EEPROM(object):
 
     def has_raman_intensity_calibration(self):
         if self.format < 6:
+            log.debug(f"has_raman_intensity_calibration: false because format {self.format}")
             return False
 
-        if 0 < self.raman_intensity_calibration_order <= EEPROM.MAX_RAMAN_INTENSITY_CALIBRATION_ORDER:
-            return utils.coeffs_look_valid(self.raman_intensity_coeffs, count = self.raman_intensity_calibration_order + 1)
-        return False
+        if not (0 < self.raman_intensity_calibration_order <= EEPROM.MAX_RAMAN_INTENSITY_CALIBRATION_ORDER):
+            log.debug(f"has_raman_intensity_calibration: false because invalid order {self.raman_intensity_calibration_order}")
+            return False
+            
+        if not utils.coeffs_look_valid(self.raman_intensity_coeffs, count = self.raman_intensity_calibration_order + 1):
+            log.debug(f"has_raman_intensity_calibration: false because coeffs look weird")
+            return False
+
+        return True
 
     ## convert the given laser output power from milliwatts to percentage
     #  using the configured calibration
