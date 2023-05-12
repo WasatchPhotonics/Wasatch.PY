@@ -1,5 +1,7 @@
 # Changelog
 
+- 2023-??-?? 2.1.30
+    - invert x-axis for 1064XL
 - 2023-05-10 2.1.29
     - support for 1064XL
 - 2023-05-03 2.1.28

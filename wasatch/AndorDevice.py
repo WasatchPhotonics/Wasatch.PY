@@ -26,6 +26,9 @@ class AndorDevice(InterfaceDevice):
     This is the basic implementation of our interface with Andor cameras     
 
     @todo have check_result return a SpectrometerResponse 
+    @todo auto-detect whether x-axis needs inverted (haven't checked API to see 
+          if this is exposed somehow)
+
     ##########################################################################
     This class adopts the external device interface structure.
     This involves receiving a request through the handle_request function.
@@ -229,8 +232,9 @@ class AndorDevice(InterfaceDevice):
 
         convertedSpec = [x for x in spec]
 
-        #if (self.eeprom.featureMask.invertXAxis):
-         #   convertedSpec.reverse()
+        # MZ: unsure why this was commented-out...?
+        if (self.eeprom.featureMask.invertXAxis):
+            convertedSpec.reverse()
 
         log.debug(f"getSpectrumRaw: returning {len(spec)} pixels");
         return convertedSpec;
@@ -381,7 +385,8 @@ class AndorDevice(InterfaceDevice):
                 'wavelength_coeffs': [0,1,0,0],
                 'excitation_nm_float': 0,
                 'raman_intensity_coeffs': [],
-                'raman_intensity_calibration_order': 0
+                'raman_intensity_calibration_order': 0,
+                'invert_x_axis': True
             }
             log.debug(f"connect: config file not found, so defaulting to these: {self.config_values}")
             self.save_config()
@@ -448,6 +453,7 @@ class AndorDevice(InterfaceDevice):
         for k in [ 'model', 
                    'detector', 
                    'serial_number', 
+                   'invert_x_axis',
                    'wavelength_coeffs', 
                    'excitation_nm_float',
                    'raman_intensity_coeffs',
