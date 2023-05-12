@@ -26,8 +26,7 @@ class AndorDevice(InterfaceDevice):
     This is the basic implementation of our interface with Andor cameras     
 
     @todo have check_result return a SpectrometerResponse 
-    @todo auto-detect whether x-axis needs inverted (haven't checked API to see 
-          if this is exposed somehow)
+    @todo try to auto-detect whether x-axis needs inverted via DLL.GetImageFlip()
 
     ##########################################################################
     This class adopts the external device interface structure.
