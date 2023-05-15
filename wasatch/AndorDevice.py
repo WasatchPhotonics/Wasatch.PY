@@ -381,7 +381,7 @@ class AndorDevice(InterfaceDevice):
                 'excitation_nm_float': 0,
                 'raman_intensity_coeffs': [],
                 'raman_intensity_calibration_order': 0,
-                'invert_x_axis': True
+                'invert_x_axis': False 
             }
             log.debug(f"connect: config file not found, so defaulting to these: {self.config_values}")
             self.save_config()
