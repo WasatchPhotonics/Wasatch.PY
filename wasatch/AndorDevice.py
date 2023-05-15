@@ -210,17 +210,14 @@ class AndorDevice(InterfaceDevice):
         return os.path.isfile(self.config_file)
 
     def _get_spectrum_raw(self) -> list[float]:
-        log.debug("requesting spectrum");
-        #################
-        # read spectrum
-        #################
-        #int[] spec = new int[pixels];
+        """
+        @todo missing bad-pixel correction
+        """
         spec_arr = c_long * self.pixels
         spec_init_vals = [0] * self.pixels
         spec = spec_arr(*spec_init_vals)
 
         # ask for spectrum then collect, NOT multithreaded (though we should look into that!), blocks
-        #spec = new int[pixels];     //defaults to all zeros
         self.driver.StartAcquisition();
         self.driver.WaitForAcquisition();
         success = self.driver.GetAcquiredData(spec, c_ulong(self.pixels));
@@ -229,13 +226,12 @@ class AndorDevice(InterfaceDevice):
             log.debug(f"getting spectra did not succeed. Received code of {success}. Returning")
             return
 
+        # convert from wasatch.AndorDevice.c_long_Array_512
         convertedSpec = [x for x in spec]
 
-        # MZ: unsure why this was commented-out...?
-        if (self.eeprom.featureMask.invertXAxis):
+        if (self.settings.eeprom.invert_x_axis):
             convertedSpec.reverse()
 
-        log.debug(f"getSpectrumRaw: returning {len(spec)} pixels");
         return convertedSpec;
 
     def _take_one_averaged_reading(self) -> SpectrometerResponse:
