@@ -2,6 +2,7 @@
 
 - 2023-??-?? 2.1.30
     - invert x-axis for 1064XL
+    - don't enable TEC with default / invalid TEC calibration
 - 2023-05-10 2.1.29
     - support for 1064XL
 - 2023-05-03 2.1.28

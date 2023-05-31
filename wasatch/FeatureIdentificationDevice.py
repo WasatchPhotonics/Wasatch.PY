@@ -1522,6 +1522,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.debug("unable to control TEC: EEPROM reports no cooling")
             return SpectrometerResponse(data=False, error_msg="unable to control TEC: EEPROM reports no cooling")
 
+        if not self.settings.eeprom.has_detector_tec_calibration():
+            log.debug("unable to control TEC: EEPROM missing valid TEC calibration")
+            return SpectrometerResponse(data=False, error_msg="unable to control TEC: EEPROM missing valid TEC calibration")
+
         value = 1 if flag else 0
 
         if not self.detector_tec_setpoint_has_been_set:
