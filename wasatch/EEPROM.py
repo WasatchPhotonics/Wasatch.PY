@@ -893,6 +893,20 @@ class EEPROM(object):
             return False
         return utils.coeffs_look_valid(self.laser_power_coeffs, count=4)
 
+    def has_detector_tec_calibration(self):
+        """ simplified version of WasatchNET.Util.validTECCal """
+
+        if not utils.coeffs_look_valid(self.degC_to_dac_coeffs, count=3):
+            return False
+
+        # check it's not the "default"
+        if self.degC_to_dac_coeffs[0] == 2700 and \
+           self.degC_to_dac_coeffs[1] == 0 and \
+           self.degC_to_dac_coeffs[2] == 0:
+            return False
+
+        return True
+
     def has_raman_intensity_calibration(self):
         if self.format < 6:
             log.debug(f"has_raman_intensity_calibration: false because format {self.format}")

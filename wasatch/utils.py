@@ -465,12 +465,13 @@ def coeffs_look_valid(coeffs, count=None):
     # check for [0, 1, 0...] default pattern
     all_default = True
     for i in range(len(coeffs)):
-        if i == 1 and coeffs[i] != 1.0:
-            all_default = False
+        if i == 1:
+            if coeffs[i] != 1.0:
+                all_default = False
         elif coeffs[i] != 0.0:
             all_default = False
     if all_default:
-        log.debug("coeffs all default, reutrning False")
+        log.debug("coeffs all default, returning False")
         return False
 
     # check for constants (all coefficients the same value)
