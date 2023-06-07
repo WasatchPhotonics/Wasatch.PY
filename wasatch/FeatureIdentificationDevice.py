@@ -1784,6 +1784,13 @@ class FeatureIdentificationDevice(InterfaceDevice):
     # (1ms). Since the pulse width is still set in µs, that allows an
     # effective laser power resolution of 0.1%.  This is the new default,
     # and can be explicitly requested by setting this value to True.
+    #
+    # @warning Note that this function is provided for cases where the laser power 
+    # is set as a percentage.  When setting laser power through milliWatts, using
+    # the onboard laser power calibration, it is important to use the same
+    # resolution as was in effect when the calibration was generated.  All Wasatch
+    # laser power calibrations are generated in "high-resolution," so this 
+    # function SHOULD NOT be set "False" (low-res) if setting laser power in mW.
     def set_laser_power_high_resolution(self, flag: bool) -> SpectrometerResponse:
         self.settings.state.laser_power_high_resolution = True if flag else False
         return SpectrometerResponse()
