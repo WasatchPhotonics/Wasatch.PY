@@ -218,6 +218,13 @@ class SpectrometerSettings(object):
     # ##########################################################################
 
     def update_raman_intensity_factors(self):
+        """
+        @todo Note that WasatchNET.Util.applyRamanCorrection() only generates 
+              factors from (roiStart, roiEnd), whereas this function generates
+              them for the whole detector. They're only valid within the ROI,
+              and should only be applied within the ROI, so this is generating
+              more than we need (wasting memory and risking bugs).
+        """
         self.raman_intensity_factors = None
         if not self.eeprom.has_raman_intensity_calibration():
             return
