@@ -1756,6 +1756,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
     ##
     # @brief Sets whether the PWM pulse period is 1000µs (high-resolution, default)
     # or 100µs (low-resolution, legacy).
+    #
+    # @param flag (Input) True for 1000µs PWM period (high-resolution, default), 
+    #        False for 100µs (low-resolution)
     # 
     # Laser power is controlled via PWM (Pulse Width Modulation), essentially 
     # a square wave whose "duty cycle" (high vs low), expressed as a percentage,
