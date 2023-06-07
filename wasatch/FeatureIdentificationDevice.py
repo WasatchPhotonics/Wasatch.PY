@@ -1753,6 +1753,34 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.settings.state.laser_power_mW = mW
         return self.set_laser_power_perc(perc, set_in_perc=False)
 
+    ##
+    # @brief Sets whether the PWM pulse period is 1000µs (high-resolution, default)
+    # or 100µs (low-resolution, legacy).
+    # 
+    # Laser power is controlled via PWM (Pulse Width Modulation), essentially 
+    # a square wave whose "duty cycle" (high vs low), expressed as a percentage,
+    # represents the amount of time the laser is actually firing. If the duty
+    # cycle is 33%, the laser will be firing 1/3 of the time, representing
+    # approximately one-third of "full power".  
+    # 
+    # (It's not "exactly" one-third because the laser needs a moment to 
+    # stablize when energized, and that "start-up" instability is increased 
+    # when you're constantly pulsing the laser on-and-off.)
+    # 
+    # This function is used to determine the LENGTH (period) of that PWM
+    # square wave.  Because the laser's PWM parameters are all specified in
+    # microseconds (µs), a longer period allows greater precision (resolution)
+    # in specifying the duty cycle.
+    # 
+    # Historically, Wasatch spectrometers used a PWM period of 100µs, meaning
+    # the pulse width (time each wave was high) could only be set from 1-99µs,
+    # giving an essential laser power resolution of 1%.  That behavior can
+    # be restored by setting this value False.
+    # 
+    # More recently, we've increased the default PWM pulse period to 1000µs 
+    # (1ms). Since the pulse width is still set in µs, that allows an
+    # effective laser power resolution of 0.1%.  This is the new default,
+    # and can be explicitly requested by setting this value to True.
     def set_laser_power_high_resolution(self, flag: bool) -> SpectrometerResponse:
         self.settings.state.laser_power_high_resolution = True if flag else False
         return SpectrometerResponse()
