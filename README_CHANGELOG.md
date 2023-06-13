@@ -1,8 +1,10 @@
 # Changelog
 
-- 2023-??-?? 2.1.30
+- 2023-06-13 2.1.30
     - invert x-axis for 1064XL
     - don't enable TEC with default / invalid TEC calibration
+    - restore ability for CSVLoader.parse_metadata to support single-measurement
+      CSVs where metadata fields are expected to be scalars rather than lists
 - 2023-05-10 2.1.29
     - support for 1064XL
 - 2023-05-03 2.1.28
