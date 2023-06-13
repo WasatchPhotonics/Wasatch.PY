@@ -41,7 +41,7 @@ class CSVLoader(object):
         self.processed_reading = ProcessedReading()
         self.processed_reading.reading = Reading(device_id = "LOAD:" + pathname)
 
-    def parse_metadata(self, line, scalar_metadata):
+    def parse_metadata(self, line, scalar_metadata=False):
         """
         MZ: I'm not sure who is using this method and wants the metadata 
         values to be returned as lists, but it unnecessarily complicates 
@@ -104,7 +104,7 @@ class CSVLoader(object):
                     # do not transition back
                     if not re.match(r'^[-+]?\d', values[0]):
                         state = "reading_metadata_final"
-                        self.parse_metadata(line)
+                        self.parse_metadata(line, scalar_metadata)
                         continue
 
                     # Assume each value read aligns with a known headers, but recognize that there
@@ -124,6 +124,10 @@ class CSVLoader(object):
                         value = values[i]
                         if len(value) == 0:
                             continue
+
+                        # MZ: honestly not sure if we should skip these or treat as zero
+                        if value == "NA":
+                            value = 0
 
                         # add to array
                         array = None
