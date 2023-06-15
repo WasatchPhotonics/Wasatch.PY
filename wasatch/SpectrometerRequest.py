@@ -2,8 +2,8 @@ from dataclasses import dataclass, field
 
 class SpectrometerRequest:
     cmd = ''
-    args = field(default_factory=list)
-    kwargs = field(default_factory=dict)
+    args = []
+    kwargs = {}
 
     def __init__(self, cmd, args=None, kwargs=None):
         self.cmd = cmd
