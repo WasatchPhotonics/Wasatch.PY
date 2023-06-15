@@ -8,7 +8,6 @@ class ErrorLevel(Enum):
     medium = 2
     high = 3
 
-@dataclass
 class SpectrometerResponse:
     data: Any           = None
     error_msg: str      = ''
@@ -17,6 +16,16 @@ class SpectrometerResponse:
     keep_alive: bool    = False
     incomplete: bool    = False
     progress: int       = 0
+
+
+    def __init__(self, data=None, error_msg='', error_lvl=ErrorLevel.ok, poison_pill=False, keep_alive=False, incomplete=False, progress=0):
+        self.data = data
+        self.error_msg = error_msg
+        self.error_lvl = ErrorLevel.ok
+        self.poison_pill = False
+        self.keep_alive = False
+        self.incomplete = False
+        self.progress = 0
 
     def transfer_response(self,old_response):
         self.data = old_response.data
