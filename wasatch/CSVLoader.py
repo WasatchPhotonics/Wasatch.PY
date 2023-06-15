@@ -41,12 +41,19 @@ class CSVLoader(object):
         self.processed_reading = ProcessedReading()
         self.processed_reading.reading = Reading(device_id = "LOAD:" + pathname)
 
-    def parse_metadata(self, line):
+    def parse_metadata(self, line, scalar_metadata=False):
+        """
+        MZ: I'm not sure who is using this method and wants the metadata 
+        values to be returned as lists, but it unnecessarily complicates 
+        ColumnFileParser, so adding the scalar option.
+        """
         line = list(line)
         key   = line[0]
-        value = line[1:] # for lists with only one element this will give []
-                         # Useful for cases like Declared Match,,,,,,,,
-
+        if scalar_metadata:
+            value = line[1]
+        else:
+            value = line[1:] # for lists with only one element this will give []
+                             # Useful for cases like Declared Match,,,,,,,,
         self.metadata[key] = value
 
     def parse_header(self, line):
@@ -58,7 +65,7 @@ class CSVLoader(object):
         if "corrected" in self.headers: self.processed_reading.processed = []
         log.debug("parse_header: headers = %s", self.headers)
 
-    def load_data(self):
+    def load_data(self, scalar_metadata=False):
         state = "reading_metadata"
         data_rows_read = 0
         with open(self.pathname, "r", encoding=self.encoding) as infile:
@@ -76,8 +83,8 @@ class CSVLoader(object):
                     
                     # check for end of metadata (note trailing comma!)
                     cleanup_line = lambda x: x.strip().lower()
-                    line = [cleanup_line(part) for part in line]
-                    check_present = lambda x: x in line
+                    clean_line = [cleanup_line(part) for part in line]
+                    check_present = lambda x: x in clean_line
                     contains_header = [check_present(header) 
                                        for header in ["pixel", "wavelength", "wavenumber", "processed"]]
                     if any(contains_header):
@@ -85,10 +92,10 @@ class CSVLoader(object):
                         state = "reading_data"
                     else:
                         # still in metadata
-                        self.parse_metadata(line)
+                        self.parse_metadata(line, scalar_metadata)
 
                 elif state == "reading_metadata_final":
-                    self.parse_metadata(line)
+                    self.parse_metadata(line, scalar_metadata)
                 
                 elif state == "reading_data":
                     values = [x.strip() for x in line]
@@ -97,7 +104,7 @@ class CSVLoader(object):
                     # do not transition back
                     if not re.match(r'^[-+]?\d', values[0]):
                         state = "reading_metadata_final"
-                        self.parse_metadata(line)
+                        self.parse_metadata(line, scalar_metadata)
                         continue
 
                     # Assume each value read aligns with a known headers, but recognize that there
@@ -117,6 +124,10 @@ class CSVLoader(object):
                         value = values[i]
                         if len(value) == 0:
                             continue
+
+                        # MZ: honestly not sure if we should skip these or treat as zero
+                        if value == "NA":
+                            value = 0
 
                         # add to array
                         array = None
