@@ -5,10 +5,12 @@ class SpectrometerRequest:
     args = field(default_factory=list)
     kwargs = field(default_factory=dict)
 
-    def __init__(self, cmd, *args, **kwargs):
+    def __init__(self, cmd, args=None, kwargs=None):
         self.cmd = cmd
-        self.args = args
-        self.kwargs = kwargs
+        if args:
+            self.args = args
+        if kwargs:
+            self.kwargs = kwargs
 
     def __str__(self):
         return (
