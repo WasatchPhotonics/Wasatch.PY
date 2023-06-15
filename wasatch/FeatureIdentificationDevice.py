@@ -2838,6 +2838,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return SpectrometerResponse(data=True)
 
     def _init_process_funcs(self) -> dict[str, Callable[..., Any]]:
+        """
+        Is it the expectation that all of these functions will return 
+        SpectrometerResponse? If so, that should be made explicit.
+        """
         process_f = {}
 
         for foo in [ "connect",
@@ -2883,7 +2887,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                      "set_laser_enable",
                      "set_laser_power_ramping_enable",
                      "get_laser_power_ramping_enabled",
-                     "has_laser_power_calibration",
+                    #"has_laser_power_calibration",         
                      "set_laser_power_mW",
                      "set_laser_power_high_resolution",
                      "set_laser_power_require_modulation",
