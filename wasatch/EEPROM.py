@@ -155,7 +155,7 @@ class EEPROM(object):
     #
     # @return False otherwise (don't trust in None's truthiness, as you can't 
     #         pass None to Qt's setEnabled)
-    def is_editable(self, name):
+    def is_editable(self, name) -> bool:
         s = name.lower()
         for field in self.editable:
             if s == field.lower():
@@ -885,15 +885,15 @@ class EEPROM(object):
     # - (2,    1) FALSE (start must < end)
     #   
     # @return whether a valid horizontal ROI is configured
-    def has_horizontal_roi(self):
+    def has_horizontal_roi(self) -> bool:
         return self.get_horizontal_roi() is not None
 
-    def has_laser_power_calibration(self):
+    def has_laser_power_calibration(self) -> bool:
         if self.max_laser_power_mW <= 0:
             return False
         return utils.coeffs_look_valid(self.laser_power_coeffs, count=4)
 
-    def has_detector_tec_calibration(self):
+    def has_detector_tec_calibration(self) -> bool:
         """ simplified version of WasatchNET.Util.validTECCal """
 
         if not utils.coeffs_look_valid(self.degC_to_dac_coeffs, count=3):
@@ -907,7 +907,7 @@ class EEPROM(object):
 
         return True
 
-    def has_raman_intensity_calibration(self):
+    def has_raman_intensity_calibration(self) -> bool:
         if self.format < 6:
             log.debug(f"has_raman_intensity_calibration: false because format {self.format}")
             return False

@@ -1730,11 +1730,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 log.error("laser_enable %s command failed, re-trying", flag)
                 self.set_strobe_enable(flag)
 
-    def has_laser_power_calibration(self) -> SpectrometerResponse:
-        return self.settings.eeprom.has_laser_power_calibration()
-
     def set_laser_power_mW(self, mW_in: int) -> SpectrometerResponse:
-        if mW_in is None or not self.has_laser_power_calibration():
+        if mW_in is None or not self.settings.eeprom.has_laser_power_calibration():
             log.error("EEPROM doesn't have laser power calibration")
             self.settings.state.laser_power_mW = 0
             self.settings.state.laser_power_perc = 0
@@ -1978,6 +1975,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         """
         Check if the laser actually IS firing, independent of laser_enable or 
         can_laser_fire.
+
+        @returns SpectrometerResponse
         """
         if not self.settings.eeprom.has_interlock_feedback:
             log.debug("IS_LASER_FIRING requires has_interlock_feedback (defaulting to laser_enabled)")

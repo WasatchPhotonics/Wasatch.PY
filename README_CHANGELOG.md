@@ -1,5 +1,7 @@
 # Changelog
 
+- 2023-??-?? 2.1.??
+    - clarify methods returning bool vs SpectrometerResponse
 - 2023-06-13 2.1.30
     - invert x-axis for 1064XL
     - don't enable TEC with default / invalid TEC calibration

@@ -30,7 +30,7 @@ class WasatchBus(object):
             self.device_ids = self.usb_bus.update(poll)
             self.device_ids = list(set(self.device_ids)) # used in case of poll if same device is present before connection finishes
 
-    def is_empty(self):
+    def is_empty(self) -> bool:
         return 0 == len(self.device_ids)
 
     ## called by Controller.update_connections

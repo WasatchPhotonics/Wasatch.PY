@@ -10,10 +10,10 @@ class HardwareInfo(object):
         self.vid = vid
         self.pid = pid
     
-    def is_ingaas(self):
+    def is_ingaas(self) -> bool:
         return self.pid == 0x2000
 
-    def is_arm(self):
+    def is_arm(self) -> bool:
         return self.pid == 0x4000
 
     ##

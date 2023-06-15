@@ -154,13 +154,13 @@ class SpectrometerSettings(object):
 
         return old
 
-    def is_mml(self):
+    def is_mml(self) -> bool:
         if not self.eeprom.has_laser:
             return False
         if self.eeprom.has_laser and not self.is_sml():
             return True
 
-    def is_sml(self):
+    def is_sml(self) -> bool:
         if not self.eeprom.has_laser:
             return False
         elif self.eeprom.has_laser and \
@@ -170,10 +170,10 @@ class SpectrometerSettings(object):
         else:
             return False
 
-    def has_excitation(self):
+    def has_excitation(self) -> bool:
         return self.excitation() > 0
 
-    def has_vertical_roi(self):
+    def has_vertical_roi(self) -> bool:
         start = self.eeprom.roi_vertical_region_1_start
         stop  = self.eeprom.roi_vertical_region_1_end
         height = self.eeprom.active_pixels_vertical
@@ -420,7 +420,7 @@ class SpectrometerSettings(object):
     #
     # ##########################################################################
 
-    def is_arm(self):
+    def is_arm(self) -> bool:
         return self.hardware_info is not None and self.hardware_info.is_arm()
 
     def is_ingaas(self) -> bool:

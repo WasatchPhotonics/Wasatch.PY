@@ -104,16 +104,16 @@ class ProcessedReading(object):
         if d is not None:
             self.load_from_dict(d)
 
-    def has_dark(self):
+    def has_dark(self) -> bool:
         return self.dark is not None
 
-    def has_reference(self):
+    def has_reference(self) -> bool:
         return self.reference is not None
 
-    def is_cropped(self):
+    def is_cropped(self) -> bool:
         return self.processed_vignetted is not None and len(self.processed_vignetted) > 0
 
-    def has_processed(self):
+    def has_processed(self) -> bool:
         return self.processed is not None or self.processed_vignetted is not None
 
     def get_processed(self):
