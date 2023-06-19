@@ -45,7 +45,7 @@ device.hardware.set_integration_time_ms(10)
 # or: device.change_setting("integration_time_ms", 10)
 
 print("reading spectrum")
-spectrum = device.hardware.get_line().spectrum
+spectrum = device.hardware.get_line().data.spectrum
 # or: spectrum = device.acquire_data().spectrum
 
 for pixel in range(device.settings.pixels()):
