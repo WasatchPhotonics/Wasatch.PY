@@ -29,7 +29,7 @@ def remove_unicode(s):
         return s.encode('ascii', 'ignore')
     return s
 
-def pixel_to_wavelength(x: int, coeffs: list[float]) -> float:
+def pixel_to_wavelength(x: int, coeffs: list[float]): # -> float 
     wavelength = 0.0
     log.debug(f"converting pixel {x} to wavelen with coeffs {coeffs}")
     for i in range(len(coeffs)):

@@ -46,7 +46,7 @@ class DetectorRegions:
     def count(self):
         return len(self.regions)
 
-    def has_region(self, region) -> bool:
+    def has_region(self, region): # -> bool 
         return region in self.regions
 
     def get_roi(self, region):

@@ -83,7 +83,7 @@ class SPIDevice(InterfaceDevice):
 
     lock = threading.Lock()
 
-    def __init__(self, device_id: DeviceID, message_queue: Queue) -> None:
+    def __init__(self, device_id: DeviceID, message_queue: Queue): # -> None 
         super().__init__()
 
         ########################################################################
@@ -205,7 +205,7 @@ class SPIDevice(InterfaceDevice):
         cmd = self.cmds["Gain dB"]
         cmd.value = self.gain_to_ff(cmd.value)
 
-    def connect(self) -> SpectrometerResponse:
+    def connect(self): # -> SpectrometerResponse 
         log.debug("initializing EEPROM")
         if not self.init_eeprom():
             log.critical("failed to initialize EEPROM, giving up")
@@ -225,7 +225,7 @@ class SPIDevice(InterfaceDevice):
         return SpectrometerResponse(True)
 
     ## @returns True on success
-    def init_eeprom(self) -> bool:
+    def init_eeprom(self): # -> bool 
         eeprom = self.settings.eeprom
 
         pages = []
@@ -255,11 +255,11 @@ class SPIDevice(InterfaceDevice):
 
         return True
 
-    def disconnect(self) -> SpectrometerResponse:
+    def disconnect(self): # -> SpectrometerResponse 
         self.disconnect = True
         return SpectrometerResponse(True)
 
-    def acquire_data(self) -> SpectrometerResponse:
+    def acquire_data(self): # -> SpectrometerResponse 
         log.debug("spi starts reading")
         if self.disconnect:
             log.debug("disconnecting, returning False for the spectrum")
@@ -318,14 +318,14 @@ class SPIDevice(InterfaceDevice):
 
         return SpectrometerResponse(reading)
 
-    def set_integration_time_ms(self, value: int) -> SpectrometerResponse:
+    def set_integration_time_ms(self, value: int): # -> SpectrometerResponse 
         cmd = self.cmds["Integration Time"]
         cmd.value = value
         self.send_command(cmd)
         self.settings.state.integration_time_ms = value
         return SpectrometerResponse()
 
-    def set_gain(self, value: float) -> SpectrometerResponse:
+    def set_gain(self, value: float): # -> SpectrometerResponse 
         cmd = self.cmds["Gain dB"]
         cmd.value = self.gain_to_ff(value)
         self.send_command(cmd)
@@ -339,7 +339,7 @@ class SPIDevice(InterfaceDevice):
             f(value)
         return True
 
-    def _init_process_funcs(self) -> dict[str, Callable[..., Any]]:
+    def _init_process_funcs(self): # -> dict[str, Callable[..., Any]] 
         process_f = {}
 
         process_f["connect"] = self.connect
@@ -394,7 +394,7 @@ class SPIDevice(InterfaceDevice):
         return bytearray(result)
 
     ## @see ENG-0150-C section 3.2, "Configuration Set Response Packet"
-    def errorcode_to_string(self, code) -> str:
+    def errorcode_to_string(self, code): # -> str 
         if   code == 0: return "SUCCESS"
         elif code == 1: return "ERROR_LENGTH"
         elif code == 2: return "ERROR_CRC"
@@ -402,7 +402,7 @@ class SPIDevice(InterfaceDevice):
         else          : return "ERROR_UNDEFINED"
 
     ## @param response (Input): the last 3 bytes of the device's response to a SPI write command
-    def validate_write_response(self, response) -> str:
+    def validate_write_response(self, response): # -> str 
         if len(response) != 3:
             return f"invalid response length: {response}"
         if response[0] != self.START:
@@ -506,7 +506,7 @@ class SPIDevice(InterfaceDevice):
         log.debug(f"send_command[{cmd.name}]: {self.to_hex(buffered_cmd)} -> {self.to_hex(buffered_response)} ({error_msg})")
 
     ## @returns False if SPI communication hosed. This can happen for instance if your SPI_PIN_READY isn't set.
-    def flush_input_buffer(self) -> bool:
+    def flush_input_buffer(self): # -> bool 
         count = 0
         junk = bytearray(self.READY_POLL_LEN)
 
@@ -546,7 +546,7 @@ class SPIDevice(InterfaceDevice):
         log.debug(f"gain_to_ff: {gain:0.3f} -> dec {raw} (0x{raw:04x})")
         return raw
 
-    def read_page(self, page: int) -> list[bytes]:
+    def read_page(self, page: int): # -> list[bytes] 
         with self.lock:
             # send 0xb0 command to tell FPGA to load EEPROM page into FPGA buffer
             unbuffered_cmd = self.fix_crc([self.START, 0, 2, 0xb0, 0x40 + page, self.CRC, self.END])
@@ -568,7 +568,7 @@ class SPIDevice(InterfaceDevice):
         log.debug(f"decoded {len(buf)} values from EEPROM")
         return buf
 
-    def get_spectrum(self) -> list[int]:
+    def get_spectrum(self): # -> list[int] 
         with self.lock:
 
             ####################################################################

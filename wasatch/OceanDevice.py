@@ -84,7 +84,7 @@ class OceanDevice(InterfaceDevice):
     # Private Methods
     ###############################################################
 
-    def _init_process_funcs(self) -> dict[str, Callable[..., Any]]:
+    def _init_process_funcs(self): # -> dict[str, Callable[..., Any]] 
         process_f = {}
 
         process_f["connect"] = self.connect
@@ -99,7 +99,7 @@ class OceanDevice(InterfaceDevice):
 
         return process_f
 
-    def _take_one_averaged_reading(self) -> SpectrometerResponse:
+    def _take_one_averaged_reading(self): # -> SpectrometerResponse 
         averaging_enabled = (self.settings.state.scans_to_average > 1)
 
         if averaging_enabled and not self.settings.state.free_running_mode:
@@ -189,7 +189,7 @@ class OceanDevice(InterfaceDevice):
     # Public Methods
     ###############################################################
 
-    def connect(self) -> SpectrometerResponse:
+    def connect(self): # -> SpectrometerResponse 
         self.device = None
         try:
             devices = list_devices()
@@ -215,7 +215,7 @@ class OceanDevice(InterfaceDevice):
         reading = self._take_one_averaged_reading()
         return reading
 
-    def scans_to_average(self, value: int) -> SpectrometerResponse:
+    def scans_to_average(self, value: int): # -> SpectrometerResponse 
         self.sum_count = 0
         self.settings.state.scans_to_average = int(value)
         return SpectrometerResponse(True)

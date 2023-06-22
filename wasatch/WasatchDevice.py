@@ -47,7 +47,7 @@ class WasatchDevice(InterfaceDevice):
     ##
     # @param device_id      a DeviceID instance OR string label thereof
     # @param message_queue  if provided, used to send status back to caller
-    def __init__(self, device_id: DeviceID, message_queue: Queue = None) -> None:
+    def __init__(self, device_id: DeviceID, message_queue: Queue = None): # -> None 
 
         # if passed a string representation of a DeviceID, deserialize it
         if type(device_id) is str:
@@ -92,7 +92,7 @@ class WasatchDevice(InterfaceDevice):
     # ######################################################################## #
 
     ## Attempt low level connection to the specified DeviceID
-    def connect(self) -> SpectrometerResponse:
+    def connect(self): # -> SpectrometerResponse 
         if self.device_id.is_usb() or self.device_id.is_mock():
             log.debug("trying to connect to %s device" % ("USB" if self.device_id.is_usb() else "Mock"))
             result = self.connect_feature_identification()
@@ -127,7 +127,7 @@ class WasatchDevice(InterfaceDevice):
 
     ## Given a specified universal identifier, attempt to connect to the device using FID protocol.
     # @todo merge with the hardcoded list in DeviceFinderUSB
-    def connect_feature_identification(self) -> SpectrometerResponse:
+    def connect_feature_identification(self): # -> SpectrometerResponse 
         FID_list = ["1000", "2000", "4000"] # hex
 
         # check to see if valid FID PID
@@ -195,7 +195,7 @@ class WasatchDevice(InterfaceDevice):
     #                                                                          #
     # ######################################################################## #
 
-    def acquire_data(self) -> SpectrometerResponse:
+    def acquire_data(self): # -> SpectrometerResponse 
         """
         Process all enqueued settings, then read actual data (spectrum and
         temperatures) from the device.
@@ -865,7 +865,7 @@ class WasatchDevice(InterfaceDevice):
 
         return retval
 
-    def _init_process_funcs(self) -> dict[str, Callable[..., Any]]:
+    def _init_process_funcs(self): # -> dict[str, Callable[..., Any]] 
         process_f = {}
 
         process_f["connect"] = self.connect
@@ -928,7 +928,7 @@ class WasatchDevice(InterfaceDevice):
     #                be None or "anything" for commands like "acquire" which
     #                don't use the argument).
     # @param allow_immediate
-    def change_setting(self, setting: str, value: Any, allow_immediate: bool = True) -> None:
+    def change_setting(self, setting: str, value: Any, allow_immediate: bool = True): # -> None 
         control_object = ControlObject(setting, value)
         log.debug("WasatchDevice.change_setting: %s", control_object)
 
@@ -962,7 +962,7 @@ class WasatchDevice(InterfaceDevice):
 
     # override handle_requests. I didn't see a good way to overwrite change_setting without
     # having to redo that pass through.
-    def handle_requests(self, requests: list[SpectrometerRequest]) -> list[SpectrometerResponse]:
+    def handle_requests(self, requests: list[SpectrometerRequest]): # -> list[SpectrometerResponse] 
         responses = []
         for request in requests:
             try:

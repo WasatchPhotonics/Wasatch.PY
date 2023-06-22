@@ -29,7 +29,7 @@ class Workflow:
         self.integ_time_ms = integ_time_ms
         self.laser_power_mW = laser_power_mW
 
-    def connect(self) -> bool:
+    def connect(self): # -> bool 
         bus = WasatchBus(use_sim=False)
         if not bus.device_ids:
             print("No Wasatch USB spectrometers found.")
@@ -86,7 +86,7 @@ class Workflow:
 
             return np.asarray(spectrum)
 
-    def test_working_distance(self) -> bool:
+    def test_working_distance(self): # -> bool 
         print("-" * 50)
         print("Please insert calibration sample and press <Enter> (ctrl-C to exit)...", end='')
         try:
