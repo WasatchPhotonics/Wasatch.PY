@@ -177,19 +177,19 @@ class DeviceID(object):
         self.bus = -1
         self.address = -1
 
-    def is_file(self):
+    def is_file(self): # -> bool 
         return self.type.upper() == "FILE"
 
-    def is_usb(self):
+    def is_usb(self): # -> bool 
         return self.type.upper() == "USB"
 
-    def is_mock(self):
+    def is_mock(self): # -> bool 
         return self.type.upper() == "MOCK"
 
-    def is_ble(self):
+    def is_ble(self): # -> bool 
         return self.type.upper() == "BLE"
 
-    def is_andor(self):
+    def is_andor(self): # -> bool 
         return self.vid == 0x136e
 
     # Surely there is a better way to obtain the 'bus' and 'address' attributes 

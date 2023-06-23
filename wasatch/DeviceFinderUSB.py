@@ -79,7 +79,7 @@ class DeviceFinderUSB(object):
     # DeviceID for each.  
     #
     # Note that DeviceID internally pulls more attributes from the Device object.
-    def bus_polling(self) -> list[DeviceID]:
+    def bus_polling(self): # -> list[DeviceID] 
         device_ids = []
         count = 0
         for device in usb.core.find(find_all=True, backend=libusb0.get_backend()):
@@ -98,7 +98,7 @@ class DeviceFinderUSB(object):
             device_ids.append(device_id)
         return device_ids
 
-    def linux_monitoring(self) -> list[DeviceID]:
+    def linux_monitoring(self): # -> list[DeviceID] 
         device_ids = []
         for device in iter(partial(self.monitor.poll, 0.001), None):
             # sometimes I see events with None for the vendor id, those should be skipped
@@ -123,7 +123,7 @@ class DeviceFinderUSB(object):
         valid_id_present = map(lambda valid: valid in dev_id, self.STR_VALID_IDS)
         return any(valid_id_present)
 
-    def windows_monitoring(self) -> list[DeviceID]:
+    def windows_monitoring(self): # -> list[DeviceID] 
         device_ids = []
         try:
             # the next event raises an error on timeout

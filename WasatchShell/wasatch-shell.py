@@ -513,7 +513,7 @@ class WasatchShell(object):
         # if laser has power calibration, require it and initialize accordingly 
         # (so if the user enables the laser, it won't fire at an out-of-bounds 
         # 100% unmodulated)
-        if self.device.hardware.has_laser_power_calibration():
+        if self.device.settings.eeprom.has_laser_power_calibration():
             log.info("laser has power calibration, so requiring modulation and initializing to max-rated power in mW")
             self.device.change_setting("laser_power_require_modulation", True)
             self.device.change_setting("laser_power_mW", self.device.settings.eeprom.max_laser_power_mW)
@@ -547,7 +547,7 @@ class WasatchShell(object):
     def clear_dark(self):
         self.dark_spectra = None
 
-    def set_raman_intensity_correction_enable(self, device: WasatchDevice, status: bool) -> int:
+    def set_raman_intensity_correction_enable(self, device: WasatchDevice, status: bool): # -> int 
         if not device.settings.eeprom.has_raman_intensity_calibration():
             self.display("Device has no Raman Intensity Calibration")
             self.srm = False
@@ -557,7 +557,7 @@ class WasatchShell(object):
             self.display(1)
             return
 
-    def srm_process(self, spectrum: list[float], device: WasatchDevice) -> list[float]:
+    def srm_process(self, spectrum: list[float], device: WasatchDevice): # -> list[float] 
 
         factors = device.settings.raman_intensity_factors
         if factors is None or len(factors) != len(spectrum):

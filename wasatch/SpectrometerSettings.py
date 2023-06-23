@@ -154,13 +154,13 @@ class SpectrometerSettings(object):
 
         return old
 
-    def is_mml(self):
+    def is_mml(self): # -> bool 
         if not self.eeprom.has_laser:
             return False
         if self.eeprom.has_laser and not self.is_sml():
             return True
 
-    def is_sml(self):
+    def is_sml(self): # -> bool 
         if not self.eeprom.has_laser:
             return False
         elif self.eeprom.has_laser and \
@@ -170,10 +170,10 @@ class SpectrometerSettings(object):
         else:
             return False
 
-    def has_excitation(self):
+    def has_excitation(self): # -> bool 
         return self.excitation() > 0
 
-    def has_vertical_roi(self):
+    def has_vertical_roi(self): # -> bool 
         start = self.eeprom.roi_vertical_region_1_start
         stop  = self.eeprom.roi_vertical_region_1_end
         height = self.eeprom.active_pixels_vertical
@@ -420,10 +420,10 @@ class SpectrometerSettings(object):
     #
     # ##########################################################################
 
-    def is_arm(self):
+    def is_arm(self): # -> bool 
         return self.hardware_info is not None and self.hardware_info.is_arm()
 
-    def is_ingaas(self) -> bool:
+    def is_ingaas(self): # -> bool 
         if self.hardware_info is not None and self.hardware_info.is_ingaas():
             log.debug("is_ingaas TRUE because hardware_info")
             return True
@@ -439,19 +439,19 @@ class SpectrometerSettings(object):
         # log.debug("is_ingaas FALSE by default")
         return False
 
-    def is_imx(self) -> bool:
+    def is_imx(self): # -> bool 
         return self.eeprom is not None and \
                self.eeprom.detector is not None and \
                "imx" in self.eeprom.detector.lower()
 
-    def is_imx392(self) -> bool:
+    def is_imx392(self): # -> bool 
         return self.is_imx() and "imx392" in self.eeprom.detector.lower()
 
-    def is_spi(self) -> bool:
+    def is_spi(self): # -> bool 
         return self.hardware_info is not None and \
                self.hardware_info.pid == 0x6014
 
-    def is_micro(self) -> bool:
+    def is_micro(self): # -> bool 
         return ( self.is_arm() and ( \
                    self.is_imx() or \
                    "micro" in self.full_model().lower() or \
@@ -461,28 +461,28 @@ class SpectrometerSettings(object):
                ) \
                or self.is_spi()
 
-    def is_non_raman(self) -> bool:
+    def is_non_raman(self): # -> bool 
         return not self.has_excitation()
 
-    def is_gen15(self) -> bool:
+    def is_gen15(self): # -> bool 
         if "DISABLE_GEN15" in os.environ:
             return False
         return self.eeprom.gen15
 
-    def is_gen2(self) -> bool:
+    def is_gen2(self): # -> bool 
         return False
 
     ## @todo add this to EEPROM.feature_mask if we decide to keep the feature
-    def has_marker(self) -> bool:
+    def has_marker(self): # -> bool 
         return self.eeprom.model == "WPX-8CHANNEL"
 
-    def is_andor(self) -> bool:
+    def is_andor(self): # -> bool 
         return '0x136e' in str(self.device_id)
 
-    def is_sig(self) -> bool:
+    def is_sig(self): # -> bool 
         return self.is_micro()
 
-    def is_xs(self) -> bool:
+    def is_xs(self): # -> bool 
         return self.is_micro()
 
     # probably a simpler way to do this...

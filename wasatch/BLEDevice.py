@@ -111,7 +111,7 @@ class BLEDevice(InterfaceDevice):
     # Private Methods
     ###############################################################
 
-    def _init_process_funcs(self) -> dict[str, Callable[..., Any]]:
+    def _init_process_funcs(self): # -> dict[str, Callable[..., Any]] 
         process_f = {}
 
         process_f["connect"] = self.connect
@@ -379,14 +379,14 @@ class BLEDevice(InterfaceDevice):
         return pages
 
 
-    def _get_default_data_dir(self) -> str:
+    def _get_default_data_dir(self): # -> str 
         return os.getcwd()
 
     ###############################################################
     # Public Methods
     ###############################################################
 
-    def connect(self) -> SpectrometerResponse:
+    def connect(self): # -> SpectrometerResponse 
         self.thread = threading.Thread(target=self.loop.run_forever, daemon=True)
         self.thread.start()
         fut = asyncio.run_coroutine_threadsafe(self._connect_spec(), self.loop)
@@ -399,7 +399,7 @@ class BLEDevice(InterfaceDevice):
         self.label = f"{self.settings.eeprom.serial_number} ({self.settings.eeprom.model})"
         return SpectrometerResponse(True)
 
-    def acquire_data(self) -> SpectrometerResponse:
+    def acquire_data(self): # -> SpectrometerResponse 
         if self.performing_acquire:
             return SpectrometerResponse(True)
         if self.disconnect:
@@ -415,7 +415,7 @@ class BLEDevice(InterfaceDevice):
     # both this and change_setting are needed
     # change_device_setting is called by the controller
     # while change_setting is being called by the wrapper_worker
-    def change_device_setting(self, setting: str, value: int) -> None:
+    def change_device_setting(self, setting: str, value: int): # -> None 
         control_object = ControlObject(setting, value)
         log.debug("BLEDevice.change_setting: %s", control_object)
 
@@ -429,20 +429,20 @@ class BLEDevice(InterfaceDevice):
             req = SpectrometerRequest(setting, args=[value])
             self.handle_requests([req])
 
-    def get_pid_hex(self) -> str:
+    def get_pid_hex(self): # -> str 
         return str(hex(self.pid))[2:]
 
-    def get_vid_hex(self) -> str:
+    def get_vid_hex(self): # -> str 
         return str(self.vid)
 
-    def to_dict(self) -> str:
+    def to_dict(self): # -> str 
         return str(self)
 
-    def scans_to_average(self, value: int) -> None:
+    def scans_to_average(self, value: int): # -> None 
         self.sum_count = 0
         self.settings.state.scans_to_average = int(value)
 
-    def close(self) -> None:
+    def close(self): # -> None 
         log.info("BLE close called, trying to disconnect spec")
         self.disconnect = True
         fut = asyncio.run_coroutine_threadsafe(self._disconnect_spec(), self.loop)

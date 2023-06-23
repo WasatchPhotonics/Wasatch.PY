@@ -68,7 +68,7 @@ class WrapperWorker(threading.Thread):
     # All communications with the parent thread are routed through
     # one of the three queues (cmd inputs, response outputs, and
     # a one-shot SpectrometerSettings).
-    def run(self) -> None:
+    def run(self): # -> None 
         is_options = (self.is_ocean, self.is_andor, self.is_ble, self.is_spi)
         device_classes = (OceanDevice, AndorDevice, BLEDevice, SPIDevice, WasatchDevice)
         try:
@@ -241,7 +241,7 @@ class WrapperWorker(threading.Thread):
 
         log.critical("done")
 
-    def dedupe(self, q: Queue) -> list[ControlObject]:
+    def dedupe(self, q: Queue): # -> list[ControlObject] 
         keep = [] # list, not a set, because we want to keep it ordered
         while True:
             if not q.empty():

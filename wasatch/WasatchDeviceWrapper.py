@@ -257,7 +257,7 @@ class WasatchDeviceWrapper:
 
         return True
 
-    def poll_settings(self) -> SpectrometerResponse:
+    def poll_settings(self): # -> SpectrometerResponse 
         """ @returns SpectrometerResponse(True) on success, (False) otherwise """
         log.debug("polling device settings")
         if not self.settings_queue.empty():
@@ -331,7 +331,7 @@ class WasatchDeviceWrapper:
     #       ACQUISITION_MODE_KEEP_COMPLETE have been well-tested,
     #       especially in the context of multiple spectrometers,
     #       BatchCollection etc.
-    def acquire_data(self, mode=None) -> SpectrometerResponse:
+    def acquire_data(self, mode=None): # -> SpectrometerResponse 
         if self.closing or not self.connected:
             log.critical(f"acquire_data: closing {self.closing} (sending poison-pill upstream) and connected {self.connected}")
             return SpectrometerResponse(False, poison_pill=True)
@@ -352,7 +352,7 @@ class WasatchDeviceWrapper:
     #
     # In the currently implementation, it seems unlikely that a "True" will ever
     # be passed up (we're basically converting them to None here).
-    def get_final_item(self, keep_averaged=False) -> SpectrometerResponse:
+    def get_final_item(self, keep_averaged=False): # -> SpectrometerResponse 
         last_reading  = SpectrometerResponse()
         last_averaged = SpectrometerResponse()
         dequeue_count = 0
