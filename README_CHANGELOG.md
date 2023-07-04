@@ -1,6 +1,6 @@
 # Changelog
 
-- 2023-??-?? 2.1.??
+- 2023-07-04 2.1.31
     - clarify methods returning bool vs SpectrometerResponse
     - remove return type annotations
     - s/vignette/crop/
