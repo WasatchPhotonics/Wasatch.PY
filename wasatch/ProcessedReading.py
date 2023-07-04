@@ -34,7 +34,7 @@ class ProcessedReading(object):
         self.device_id = None
         self.raw = None
         self.processed = None
-        self.processed_vignetted = None
+        self.processed_cropped = None
         self.reference = None
         self.dark = None
         self.dark_corrected = False
@@ -44,8 +44,8 @@ class ProcessedReading(object):
         self.declared_match = None
         self.raman_intensity_corrected = False
         self.deconvolved = False
-        self.wavelengths_vignetted = None
-        self.wavenumbers_vignetted = None
+        self.wavelengths_cropped = None
+        self.wavenumbers_cropped = None
         self.first_pixel = None
         self.plugin_metadata = None # extra data added by Plugin
 
@@ -111,23 +111,23 @@ class ProcessedReading(object):
         return self.reference is not None
 
     def is_cropped(self): # -> bool 
-        return self.processed_vignetted is not None and len(self.processed_vignetted) > 0
+        return self.processed_cropped is not None and len(self.processed_cropped) > 0
 
     def has_processed(self): # -> bool 
-        return self.processed is not None or self.processed_vignetted is not None
+        return self.processed is not None or self.processed_cropped is not None
 
     def get_processed(self):
-        if self.processed_vignetted is None:
+        if self.processed_cropped is None:
             return self.processed
         else:
-            return self.processed_vignetted
+            return self.processed_cropped
 
     def set_processed(self, spectrum):
         if self.is_cropped():
-            log.debug("set_processed: updating vignetted")
-            self.processed_vignetted = spectrum
+            log.debug("set_processed: updating cropped")
+            self.processed_cropped = spectrum
         else:
-            log.debug("set_processed: updating non-vignetted")
+            log.debug("set_processed: updating non-cropped")
             self.processed = spectrum
 
     def correct_dark(self, dark):

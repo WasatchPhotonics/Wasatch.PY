@@ -358,9 +358,9 @@ class SpectrometerSettings(object):
     #
     # Therefore, while most of our spectrometers assume the horizontal ROI is
     # zero-indexed at the beginning of the ACTIVE region, and therefore used
-    # to crop/vignette the array of ACTIVE pixels being output, in this case
+    # to crop the array of ACTIVE pixels being output, in this case
     # the horizontal ROI is zero-indexed at the beginning of the PHYSICAL
-    # region, and therefore HAS ALREADY been used to crop/vignette the
+    # region, and therefore HAS ALREADY been used to crop the
     # spectrum down to the active region.
     #
     # (The current unit uses EEPROM subformat 1, meaning region_count remains
