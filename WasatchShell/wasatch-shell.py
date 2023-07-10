@@ -539,7 +539,7 @@ class WasatchShell(object):
         value = getattr(self.device.hardware, func_name)()
 
         if isinstance(value, SpectrometerResponse):
-            if value.error_lvl != ErrorLevel.ok:
+            if value.error_msg:
                 self.display(f"ERROR: {value.error_msg}")
                 return
             value = value.data
