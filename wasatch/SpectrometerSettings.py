@@ -318,12 +318,12 @@ class SpectrometerSettings(object):
     def get_wavecal_coeffs(self):
         n = self.state.region
 
-        if n is None or n == 0:
-            return self.eeprom.wavelength_coeffs
-
         if   n == 1: return self.eeprom.roi_wavecal_region_2_coeffs
         elif n == 2: return self.eeprom.roi_wavecal_region_3_coeffs
         elif n == 3: return self.eeprom.roi_wavecal_region_4_coeffs
+
+        # if n is None or n == 0:
+        return self.eeprom.wavelength_coeffs
 
     def set_wavecal_coeffs(self, coeffs):
         n = self.state.region
