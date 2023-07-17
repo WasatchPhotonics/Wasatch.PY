@@ -316,6 +316,14 @@ class SpectrometerSettings(object):
         self.update_wavecal()
 
     def get_wavecal_coeffs(self):
+        """
+        Return a list of coefficients from EEPROM that define the mapping from pixels to wavelengths.
+
+        The coefficients are returned in ascending degree.
+
+        [A, B, C, D] <--> W(x) = A + B*x + C*x**2 + D*x**3
+        """
+
         n = self.state.region
 
         if   n == 1: return self.eeprom.roi_wavecal_region_2_coeffs
