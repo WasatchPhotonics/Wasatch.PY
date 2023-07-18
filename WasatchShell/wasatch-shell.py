@@ -16,6 +16,8 @@ from wasatch.WasatchBus         import WasatchBus
 from wasatch.WasatchDevice      import WasatchDevice
 from wasatch.BalanceAcquisition import BalanceAcquisition
 from wasatch.RealUSBDevice      import RealUSBDevice
+from wasatch.SpectrometerResponse import SpectrometerResponse
+from wasatch.SpectrometerResponse import ErrorLevel
 
 VERSION = "2.3.0"
 
@@ -57,63 +59,63 @@ class WasatchShell(object):
         self.srm = False
 
         # pass-through calls to any of these gettors (note names are lowercased)
+        # SR = SpectrometerResponse
         self.gettors = {}
         for func_name in [ 
-            "get_actual_frames",
-            "get_actual_integration_time_us",
-            "get_ambient_temperature_degC",
-            "get_ccd_sensing_threshold",
-            "get_ccd_threshold_sensing_mode",
-            "get_dac",
-            "get_detector_gain",
-            "get_detector_gain_odd",
-            "get_detector_offset",
-            "get_detector_offset_odd",
-            "get_detector_tec_setpoint_degC",
-            "get_detector_tec_setpoint_raw",
-            "get_detector_temperature_degC",
-            "get_detector_temperature_raw",
-            "get_external_trigger_output",
-            "get_fan_enabled",
-            "get_fpga_firmware_version",
-            "get_high_gain_mode_enabled",
-            "get_integration_time_ms",
-            "get_lamp_enabled",
-            "get_laser_enabled",
-            "get_laser_interlock",
-            "get_laser_temperature_degC",
-            "get_laser_temperature_raw",
-            "get_laser_watchdog_sec",
-            "get_microcontroller_firmware_version",
-            "get_mod_delay_us",
-            "get_mod_duration_us",
-            "get_mod_enabled",
-            "get_mod_linked_to_integration",
-            "get_mod_period_us",
-            "get_mod_width_us",
-            "get_opt_actual_integration_time",
-            "get_opt_area_scan",
-            "get_opt_cf_select",
-            "get_opt_data_header_tab",
-            "get_opt_has_laser",
-            "get_opt_horizontal_binning",
-            "get_opt_integration_time_resolution",
-            "get_opt_laser_control",
-            "get_raman_delay_ms",
-            "get_secondary_adc_calibrated",
-            "get_secondary_adc_raw",
-            "get_selected_adc",
-            "get_selected_laser",
-            "get_sensor_line_length",
-            "get_shutter_enabled",
-            "get_strobe_enabled",
-            "get_tec_enabled",
-            "get_trigger_delay",
-            "get_trigger_source",
-            "get_vr_continuous_ccd",
-            "get_vr_num_frames",
-            "has_laser_power_calibration",
-            "has_linearity_coeffs" ]:
+            "get_actual_frames",                        # SR
+            "get_actual_integration_time_us",           # SR
+            "get_ambient_temperature_degC",             # SR
+            "get_ccd_sensing_threshold",                # SR
+            "get_ccd_threshold_sensing_mode",           # SR
+            "get_dac",                                  # SR
+            "get_detector_gain",                        # SR
+            "get_detector_gain_odd",                    # SR
+            "get_detector_offset",                      # raw (now SR)
+            "get_detector_offset_odd",                  # raw (now SR)
+            "get_detector_tec_setpoint_degC",           # SR
+            "get_detector_tec_setpoint_raw",            # SR
+            "get_detector_temperature_degC",            # SR
+            "get_detector_temperature_raw",             # SR
+            "get_external_trigger_output",              # SR
+            "get_fan_enabled",                          # SR
+            "get_fpga_firmware_version",                # SR
+            "get_high_gain_mode_enabled",               # SR
+            "get_integration_time_ms",                  # SR
+            "get_lamp_enabled",                         # SR
+            "get_laser_enabled",                        # SR
+            "get_laser_interlock",                      # SR
+            "get_laser_temperature_degC",               # SR
+            "get_laser_temperature_raw",                # SR
+            "get_laser_watchdog_sec",                   # SR
+            "get_microcontroller_firmware_version",     # SR
+            "get_mod_delay_us",                         # SR
+            "get_mod_duration_us",                      # SR
+            "get_mod_enabled",                          # SR
+            "get_mod_linked_to_integration",            # SR
+            "get_mod_period_us",                        # SR
+            "get_mod_width_us",                         # SR
+            "get_opt_actual_integration_time",          # SR
+            "get_opt_area_scan",                        # SR
+            "get_opt_cf_select",                        # SR
+            "get_opt_data_header_tab",                  # SR
+            "get_opt_has_laser",                        # SR
+            "get_opt_horizontal_binning",               # SR
+            "get_opt_integration_time_resolution",      # SR
+            "get_opt_laser_control",                    # SR
+            "get_raman_delay_ms",                       # SR
+            "get_secondary_adc_calibrated",             # SR
+            "get_secondary_adc_raw",                    # SR
+            "get_selected_adc",                         # SR
+            "get_selected_laser",                       # SR
+            "get_sensor_line_length",                   # SR
+            "get_shutter_enabled",                      # SR
+            "get_strobe_enabled",                       # SR
+            "get_tec_enabled",                          # SR
+            "get_trigger_delay",                        # SR
+            "get_trigger_source",                       # SR
+            "get_vr_continuous_ccd",                    # SR
+            "get_vr_num_frames",                        # SR
+            "has_linearity_coeffs" ]:                   # BOOL
             self.gettors[func_name.lower()] = func_name
 
     # ##############################################################################
@@ -535,6 +537,13 @@ class WasatchShell(object):
     def run_gettor(self, command):
         func_name = self.gettors[command]
         value = getattr(self.device.hardware, func_name)()
+
+        if isinstance(value, SpectrometerResponse):
+            if value.error_msg:
+                self.display(f"ERROR: {value.error_msg}")
+                return
+            value = value.data
+
         if isinstance(value, bool):
             self.display(1 if value else 0)
         else:

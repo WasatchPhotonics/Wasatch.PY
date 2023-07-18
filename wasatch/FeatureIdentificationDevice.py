@@ -1384,9 +1384,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
         if self.settings.state.selected_adc is None or self.settings.state.selected_adc != 1:
             self.select_adc(1)
 
-        value = self._get_code(0xd5, wLength=2, label="GET_ADC", lsb_len=2) & 0xfff
-        log.debug("secondary_adc_raw: 0x%04x", value)
-        return value
+        result = self._get_code(0xd5, wLength=2, label="GET_ADC", lsb_len=2) & 0xfff
+        log.debug("secondary_adc_raw: 0x%04x", result)
+        return result
 
     ##
     # Laser temperature conversion doesn't use EEPROM coeffs at all.
@@ -1508,7 +1508,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         if self.detector_tec_setpoint_has_been_set:
             return SpectrometerResponse(self.settings.state.tec_setpoint_degC)
         log.error("Detector TEC setpoint has not yet been applied")
-        return SpectrometerResponse(0.0)
+        return SpectrometerResponse(data=0.0)
 
     def get_detector_tec_setpoint_raw(self): # -> SpectrometerResponse 
         return self.get_dac(0)
@@ -2393,6 +2393,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         res = SpectrometerResponse(data=0 != self._get_code(0x31, label="GET_SHUTTER_ENABLED", msb_len=1))
         res.data = 0 != res.data
         return res 
+
     # ##########################################################################
     # Laser Modulation and Continuous Strobe
     # ##########################################################################
@@ -2416,9 +2417,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return self._send_code(0xc7, lsw, msw, buf, label="SET_MOD_PERIOD")
 
     def get_mod_period_us(self): # -> SpectrometerResponse 
-        value = self._get_code(0xcb, label="GET_MOD_PERIOD", lsb_len=5)
-        self.settings.state.mod_period_us = value
-        return value
+        result = self._get_code(0xcb, label="GET_MOD_PERIOD", lsb_len=5)
+        self.settings.state.mod_period_us = result
+        return result
 
     def set_mod_width_us(self, us: float): # -> SpectrometerResponse 
         self.settings.state.mod_width_us = us
@@ -2426,9 +2427,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return self._send_code(0xdb, lsw, msw, buf, label="SET_MOD_WIDTH")
 
     def get_mod_width_us(self): # -> SpectrometerResponse 
-        value = self._get_code(0xdc, label="GET_MOD_WIDTH", lsb_len=5)
-        self.settings.state.mod_width_us = value.data
-        return value
+        result = self._get_code(0xdc, label="GET_MOD_WIDTH", lsb_len=5)
+        self.settings.state.mod_width_us = result.data
+        return result
 
     def set_mod_delay_us(self, us: float): # -> SpectrometerResponse 
         self.settings.state.mod_delay_us = us
@@ -2436,9 +2437,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return self._send_code(0xc6, lsw, msw, buf, label="SET_MOD_DELAY")
 
     def get_mod_delay_us(self): # -> SpectrometerResponse 
-        value = self._get_code(0xca, label="GET_MOD_DELAY", lsb_len=5)
-        self.settings.state.mod_delay_us = value.data
-        return value
+        result = self._get_code(0xca, label="GET_MOD_DELAY", lsb_len=5)
+        self.settings.state.mod_delay_us = result.data
+        return result
 
     def set_mod_duration_us_NOT_USED(self, us: float): # -> SpectrometerResponse 
         self.settings.state.mod_duration_us = us
@@ -2446,9 +2447,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return self._send_code(0xb9, lsw, msw, buf, label="SET_MOD_DURATION")
 
     def get_mod_duration_us(self): # -> SpectrometerResponse 
-        value = self._get_code(0xc3, label="GET_MOD_DURATION", lsb_len=5)
-        self.settings.state.mod_duration_us = value.data
-        return value
+        result = self._get_code(0xc3, label="GET_MOD_DURATION", lsb_len=5)
+        self.settings.state.mod_duration_us = result.data
+        return result
 
     ## this is a synonym for _set_laser_enable_immediate(), but without side-effects
     def set_strobe_enable(self, flag: bool): # -> SpectrometerResponse 
@@ -2506,7 +2507,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
     def get_detector_offset(self): # -> SpectrometerResponse 
         value = self._get_code(0xc4, label="GET_DETECTOR_OFFSET", lsb_len=2)
         self.settings.eeprom.detector_offset = value.data
-        return value
+        return SpectrometerResponse(data=value)
 
     def get_detector_offset_odd(self): # -> SpectrometerResponse 
         if not self.settings.is_ingaas():
@@ -2517,7 +2518,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         if value.error_msg != '':
             return value
         self.settings.eeprom.detector_offset_odd = value.data
-        return value
+        return SpectrometerResponse(data=value)
 
     def get_ccd_sensing_threshold(self): # -> SpectrometerResponse 
         return self._get_code(0xd1, label="GET_CCD_SENSING_THRESHOLD", lsb_len=2)
@@ -2584,8 +2585,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
     # not tested
     def get_trigger_delay(self): # -> SpectrometerResponse 
         if not self.settings.is_arm():
-            log.error("GET_TRIGGER_DELAY only supported on ARM")
-            return -1
+            msg = "GET_TRIGGER_DELAY only supported on ARM"
+            log.error(msg)
+            return SpectrometerResponse(error_lvl=ErrorLevel.low, error_msg=msg)
         return self._get_code(0xe4, label="GET_TRIGGER_DELAY", lsb_len=3) # not sure about LSB
 
     def get_vr_continuous_ccd(self): # -> SpectrometerResponse 
@@ -2887,7 +2889,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
                      "set_laser_enable",
                      "set_laser_power_ramping_enable",
                      "get_laser_power_ramping_enabled",
-                    #"has_laser_power_calibration",         
                      "set_laser_power_mW",
                      "set_laser_power_high_resolution",
                      "set_laser_power_require_modulation",

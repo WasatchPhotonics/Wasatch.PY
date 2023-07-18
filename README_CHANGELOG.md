@@ -1,8 +1,12 @@
 # Changelog
 
-- 2023-??-?? 2.1.??
+- 2023-07-10 2.1.32
+    - offset gettors now return SpectrometerResponse 
+    - fixed display of gettors returning SpectrometerResponse in WasatchShell 
+- 2023-07-04 2.1.31
     - clarify methods returning bool vs SpectrometerResponse
     - remove return type annotations
+    - s/vignette/crop/
 - 2023-06-13 2.1.30
     - invert x-axis for 1064XL
     - don't enable TEC with default / invalid TEC calibration
