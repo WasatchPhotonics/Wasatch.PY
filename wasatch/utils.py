@@ -91,27 +91,15 @@ def generate_excitation(wavelengths, wavenumbers):
     return total / count
 
 ##
-# compute a moving average on array 'a' of width 'n'
-#
-# @note this trims the ends of the array!  len(a) > len(moving_average(a, n))
-# @see http://stackoverflow.com/questions/14313510/how-to-calculate-moving-average-using-numpy
-def moving_average(a, n):
-    ret = numpy.cumsum(a, dtype=float)
-    ret[n:] = ret[n:] - ret[:-n]
-    return ret[n - 1:] / n 
-
-##
 # apply a boxcar convolution of the given half_width to input array 'a'
 def apply_boxcar(a, half_width):
-    if a is None:
-        return None
-    if half_width < 1:
-        return a
-    
-    # "horizontally stack" a series of lists, then flatten them sequentially
-    return numpy.hstack((a[0:half_width], 
-                         moving_average(a, half_width * 2 + 1), 
-                         a[-half_width:])).ravel()
+    out = []
+    for i in range(len(a)):
+        # hw is smaller than half_width near the fringes
+        hw = min(i, half_width, len(a)-1-i)
+        # each pixel is the mean of itself and `hw` pixels to the left and right
+        out.append(sum(a[i-hw:i+hw+1]) / (2*hw+1))
+    return out
 
 ## similar to Perl's Data::Dumper
 def dump(foo, indent=0):
