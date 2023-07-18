@@ -93,14 +93,12 @@ def generate_excitation(wavelengths, wavenumbers):
 ##
 # apply a boxcar convolution of the given half_width to input array 'a'
 def apply_boxcar(a, half_width):
-    c = numpy.cumsum(a, dtype=float)
-    out = numpy.zeros(len(a))
-    for i in range(1, len(a)-1):
-        # hw is smaller than half_width near the frindges
+    out = []
+    for i in range(len(a)):
+        # hw is smaller than half_width near the fringes
         hw = min(i, half_width, len(a)-1-i)
-        out[i] = (c[i+hw] - c[i-hw]) / hw
-    # prevent horizontal lines
-    out[0] = out[1]; out[-1] = out[-2]
+        # each pixel is the mean of itself and `hw` pixels to the left and right
+        out.append(sum(a[i-hw:i+hw+1]) / (2*hw+1))
     return out
 
 ## similar to Perl's Data::Dumper
