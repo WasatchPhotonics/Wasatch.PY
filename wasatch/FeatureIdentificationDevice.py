@@ -279,28 +279,36 @@ class FeatureIdentificationDevice(InterfaceDevice):
             self.set_laser_enable(False)
 
         # ######################################################################
-        # Detector TEC
+        # TEC Setpoint
         # ######################################################################
 
-        degC = UNINITIALIZED_TEMPERATURE_DEG_C;
-        eeprom = self.settings.eeprom
-        if (eeprom.startup_temp_degC >= eeprom.min_temp_degC and 
-            eeprom.startup_temp_degC <= eeprom.max_temp_degC):
-            degC = eeprom.startup_temp_degC
-        elif (re.match(r"10141|9214", eeprom.detector, re.IGNORECASE)):
-            degC = -15
-        elif (re.match(r"11511|11850|13971|7031", eeprom.detector, re.IGNORECASE)):
-            degC = 10
+        if self.settings.eeprom.has_cooling:
 
-        if (eeprom.has_cooling and degC != UNINITIALIZED_TEMPERATURE_DEG_C):
-            #TEC doesn't do anything unless you give it a temperature first
-            log.debug(f"setting TEC setpoint to {degC} deg C")
-            self.detector_tec_setpoint_degC = degC
-            self.set_detector_tec_setpoint_degC(self.detector_tec_setpoint_degC)
+            if self.settings.is_xs():
+                log.debug("XS with cooling, so assuming TEC setpoint is for laser")
+                self.set_laser_temperature_setpoint_raw(self.settings.eeprom.startup_temp_degC)
 
-            log.debug("enabling detector TEC")
-            self.detector_tec_setpoint_has_been_set = True
-            self.set_tec_enable(True)
+            else:
+                # FX2 / Hamamatsu-based, so assume TEC setpoint is for detector
+                degC = None
+                eeprom = self.settings.eeprom
+
+                if eeprom.min_temp_degC <= startup_temp_degC <= eeprom.max_temp_degC:
+                    degC = eeprom.startup_temp_degC
+                elif re.match(r"7031|10141|9214", eeprom.detector):
+                    degC = -15
+                elif re.match(r"16011|11511|11850|13971", eeprom.detector):
+                    degC = 10
+
+                if degC is not None:
+                    # TEC doesn't do anything unless you give it a temperature first
+                    log.debug(f"setting detector TEC setpoint to {degC} deg C")
+                    self.detector_tec_setpoint_degC = degC
+                    self.set_detector_tec_setpoint_degC(self.detector_tec_setpoint_degC)
+
+                    log.debug("enabling detector TEC")
+                    self.detector_tec_setpoint_has_been_set = True
+                    self.set_tec_enable(True)
 
         # ######################################################################
         # FPGA
@@ -1357,17 +1365,16 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return result
 
     def get_secondary_adc_calibrated(self, raw: float = None): # -> SpectrometerResponse 
-        response = SpectrometerResponse()
         if not self.has_linearity_coeffs():
             log.debug("secondary_adc_calibrated: no calibration")
             return SpectrometerResponse(data=None, error_lvl=ErrorLevel.low, error_msg="secondary_adc_calibrated: no calibration")
 
         if raw is None:
-            raw_res = self.get_secondary_adc_raw()
-        if raw_res.data is None:
-            return raw_res
+            response = self.get_secondary_adc_raw()
+        if response.data is None:
+            return response
 
-        raw = float(raw_res.data)
+        raw = float(response.data)
 
         # use the first 4 linearity coefficients as a 3rd-order polynomial
         calibrated = float(self.settings.eeprom.linearity_coeffs[0]) \
@@ -1375,7 +1382,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
                    + float(self.settings.eeprom.linearity_coeffs[2]) * raw * raw \
                    + float(self.settings.eeprom.linearity_coeffs[3]) * raw * raw * raw
         log.debug("secondary_adc_calibrated: %f", calibrated)
-        response.transfer_response(raw_res)
         response.data = calibrated
         return response
 
@@ -1941,11 +1947,15 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return self._get_code(0xe8, label="GET_LASER_TEC_SETPOINT")
 
     def set_laser_temperature_setpoint_raw(self, value: int): # -> SpectrometerResponse 
-        log.debug("Send laser temperature setpoint raw: %d", value)
+        log.debug(f"Send laser temperature setpoint raw: 0x{value:03x}")
         return self._send_code(0xe7, value, label="SET_LASER_TEC_SETPOINT")
 
-    def set_laser_power_attenuation(self, value):
-        cmd = "SET_LASER_ATTENUATION"
+    ############################################################################
+    # digital pot on 220250 Rev4A+
+    ############################################################################
+
+    def set_laser_power_attenuator(self, value):
+        cmd = "SET_LASER_ATTENUATOR"
         if not self.settings.is_xs():
             msg = f"{cmd} is only available on XS-Series with 220250 Rev4A+"
             log.debug(msg)
@@ -1956,14 +1966,18 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         return self._send_code(0x82, value, label=cmd)
 
-    def get_laser_power_attenuation(self):
-        cmd = "GET_LASER_ATTENUATION"
+    def get_laser_power_attenuator(self):
+        cmd = "GET_LASER_ATTENUATOR"
         if not self.settings.is_xs():
             msg = f"{cmd} is only available on XS-Series with 220250 Rev4A+"
             log.debug(msg)
             return SpectrometerResponse(data=None, error_msg=msg)
 
         return self._get_code(0x83, msb_len=1, label=cmd)
+
+    ############################################################################
+    # laser interlock
+    ############################################################################
 
     def get_laser_interlock(self): # -> SpectrometerResponse 
         """ Legacy wrapper over can_laser_fire. """
@@ -3003,7 +3017,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         process_f["laser_power_perc"]                   = lambda x: self.set_laser_power_perc(x)
         process_f["laser_power_mW"]                     = lambda x: self.set_laser_power_mW(x)
         process_f["laser_temperature_setpoint_raw"]     = lambda x: self.set_laser_temperature_setpoint_raw(int(round(x)))
-        process_f["laser_power_attenuation"]            = lambda x: self.set_laser_power_attenuation(int(round(x)))
+        process_f["laser_power_attenuator"]             = lambda x: self.set_laser_power_attenuator(int(round(x)))
         process_f["laser_power_ramping_enable"]         = lambda x: self.set_laser_power_ramping_enable(bool(x))
         process_f["laser_power_high_resolution"]        = lambda x: self.set_laser_power_high_resolution(x)
         process_f["laser_power_require_modulation"]     = lambda x: self.set_laser_power_require_modulation(x)

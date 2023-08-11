@@ -1,5 +1,9 @@
 # Changelog
 
+- 2023-??-?? 2.1.33
+    - XS-Series
+        - added set_laser_power_attenuator
+        - added support for startup laser TEC setpoint
 - 2023-07-10 2.1.32
     - offset gettors now return SpectrometerResponse 
     - fixed display of gettors returning SpectrometerResponse in WasatchShell 

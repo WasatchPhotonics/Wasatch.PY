@@ -83,7 +83,7 @@ class WasatchShell(object):
             "get_integration_time_ms",                  # SR
             "get_lamp_enabled",                         # SR
             "get_laser_enabled",                        # SR
-            "get_laser_power_attenuation",              # SR
+            "get_laser_power_attenuator",               # SR
             "get_laser_interlock",                      # SR
             "get_laser_temperature_degC",               # SR
             "get_laser_temperature_raw",                # SR
@@ -139,7 +139,7 @@ class WasatchShell(object):
         set_laser_enable                       - takes bool argument (on/off, true/false, 1/0)
         set_laser_power_mw                     - takes float argument
         set_laser_power_perc                   - takes int argument
-        set_laser_power_attenuation            - takes uint8 argument
+        set_laser_power_attenuator             - takes uint8 argument
         set_laser_watchdog_sec                 - takes integer argument
         set_acquisition_laser_trigger_enable   - takes bool argument
         set_acquisition_laser_trigger_delay_ms - takes float argument
@@ -361,8 +361,8 @@ class WasatchShell(object):
                             self.device.change_setting("laser_power_perc", self.read_float())
                             self.display(1)
 
-                        elif command == "set_laser_power_attenuation":
-                            self.device.change_setting("laser_power_attenuation", self.read_int())
+                        elif command == "set_laser_power_attenuator":
+                            self.device.change_setting("laser_power_attenuator", self.read_int())
                             self.display(1)
 
                         elif command == "set_laser_enable":
