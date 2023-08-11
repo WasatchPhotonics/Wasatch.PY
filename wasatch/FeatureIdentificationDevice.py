@@ -1938,15 +1938,32 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.error("unable to control laser: EEPROM reports no laser installed")
             return SpectrometerResponse(data=None,error_msg="no laser installed")
 
-        result = self._get_code(0xe8, label="GET_LASER_TEC_SETPOINT")
-        res = SpectrometerResponse()
-        res.transfer_response(result)
-        res.data = result.data[0]
-        return res
+        return self._get_code(0xe8, label="GET_LASER_TEC_SETPOINT")
 
     def set_laser_temperature_setpoint_raw(self, value: int): # -> SpectrometerResponse 
         log.debug("Send laser temperature setpoint raw: %d", value)
         return self._send_code(0xe7, value, label="SET_LASER_TEC_SETPOINT")
+
+    def set_laser_power_attenuation(self, value):
+        cmd = "SET_LASER_ATTENUATION"
+        if not self.settings.is_xs():
+            msg = f"{cmd} is only available on XS-Series with 220250 Rev4A+"
+            log.debug(msg)
+            return SpectrometerResponse(data=None, error_msg=msg)
+
+        # digital potentiometer is 8-bit
+        value = max(0, min(0xff, int(round(value))))
+
+        return self._send_code(0x82, value, label=cmd)
+
+    def get_laser_power_attenuation(self):
+        cmd = "GET_LASER_ATTENUATION"
+        if not self.settings.is_xs():
+            msg = f"{cmd} is only available on XS-Series with 220250 Rev4A+"
+            log.debug(msg)
+            return SpectrometerResponse(data=None, error_msg=msg)
+
+        return self._get_code(0x83, msb_len=1, label=cmd)
 
     def get_laser_interlock(self): # -> SpectrometerResponse 
         """ Legacy wrapper over can_laser_fire. """
@@ -2986,6 +3003,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         process_f["laser_power_perc"]                   = lambda x: self.set_laser_power_perc(x)
         process_f["laser_power_mW"]                     = lambda x: self.set_laser_power_mW(x)
         process_f["laser_temperature_setpoint_raw"]     = lambda x: self.set_laser_temperature_setpoint_raw(int(round(x)))
+        process_f["laser_power_attenuation"]            = lambda x: self.set_laser_power_attenuation(int(round(x)))
         process_f["laser_power_ramping_enable"]         = lambda x: self.set_laser_power_ramping_enable(bool(x))
         process_f["laser_power_high_resolution"]        = lambda x: self.set_laser_power_high_resolution(x)
         process_f["laser_power_require_modulation"]     = lambda x: self.set_laser_power_require_modulation(x)
