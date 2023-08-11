@@ -284,8 +284,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         if self.settings.eeprom.has_cooling:
 
-            if self.settings.is_xs():
-                log.debug("XS with cooling, so assuming TEC setpoint is for laser")
+            if self.settings.is_xs() and self.settings.eeprom.sig_laser_tec:
+                log.debug("XS with cooling, so using TEC setpoint for laser")
                 self.set_laser_temperature_setpoint_raw(self.settings.eeprom.startup_temp_degC)
 
             else:
