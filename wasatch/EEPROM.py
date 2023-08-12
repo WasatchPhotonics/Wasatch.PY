@@ -42,7 +42,7 @@ class EEPROM(object):
         self.model                       = None
         self.serial_number               = None
         self.baud_rate                   = 0
-        self.has_cooling                 = False
+        self.has_cooling                 = False    # explicitly means detector TEC, not laser
         self.has_battery                 = False
         self.has_laser                   = False
         self.feature_mask                = 0

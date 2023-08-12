@@ -282,14 +282,20 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # TEC Setpoint
         # ######################################################################
 
-        if self.settings.eeprom.has_cooling:
-
-            if self.settings.is_xs() and self.settings.eeprom.sig_laser_tec:
-                log.debug("XS with cooling, so using TEC setpoint for laser")
+        if self.settings.is_xs():
+            
+            # XS only supports a TEC on the laser, not the detector
+            if self.settings.eeprom.sig_laser_tec:
+                log.debug("initializing laser TEC on XS")
                 self.set_laser_temperature_setpoint_raw(self.settings.eeprom.startup_temp_degC)
 
-            else:
-                # FX2 / Hamamatsu-based, so assume TEC setpoint is for detector
+        else:
+            
+            # X/XM models don't require runtime configuration of the laser TEC
+            # (it's set via pots on 110280 (SML) or 110613 (MML)), but do need
+            # to initialize the detector TEC for R and C units.
+            if self.settings.eeprom.has_cooling:
+
                 degC = None
                 eeprom = self.settings.eeprom
 
