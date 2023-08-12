@@ -198,6 +198,7 @@ class SpectrometerSettings(object):
         degC = None
         if   "11511" in det: degC =  10
         elif "16011" in det: degC =  10
+        elif "13971" in det: degC =  10
         elif "10141" in det: degC = -15
         elif "9214"  in det: degC = -15
         elif "7031"  in det: degC = -15
