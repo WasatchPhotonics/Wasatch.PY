@@ -299,7 +299,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 degC = None
                 eeprom = self.settings.eeprom
 
-                if eeprom.min_temp_degC <= startup_temp_degC <= eeprom.max_temp_degC:
+                if eeprom.min_temp_degC <= eeprom.startup_temp_degC <= eeprom.max_temp_degC:
                     degC = eeprom.startup_temp_degC
                 elif re.match(r"7031|10141|9214", eeprom.detector):
                     degC = -15
