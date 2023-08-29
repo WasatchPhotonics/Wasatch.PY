@@ -472,9 +472,9 @@ class WasatchDevice(InterfaceDevice):
             except Exception as exc:
                 log.debug("Error reading ambient temperature", exc_info=1)
 
-        # read battery every 10sec
+        # read battery every 1sec
         if self.settings.eeprom.has_battery:
-            if self.settings.state.battery_timestamp is None or (datetime.datetime.now() >= self.settings.state.battery_timestamp + datetime.timedelta(seconds=10)):
+            if self.settings.state.battery_timestamp is None or (datetime.datetime.now() >= self.settings.state.battery_timestamp + datetime.timedelta(seconds=1)):
                 req = SpectrometerRequest("get_battery_state_raw")
                 res = self.hardware.handle_requests([req])[0]
                 if res.error_msg != '':

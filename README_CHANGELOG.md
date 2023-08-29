@@ -4,6 +4,7 @@
     - XS-Series
         - added set_laser_power_attenuator
         - added support for startup laser TEC setpoint
+        - read battery @ 1Hz
 - 2023-07-10 2.1.32
     - offset gettors now return SpectrometerResponse 
     - fixed display of gettors returning SpectrometerResponse in WasatchShell 
