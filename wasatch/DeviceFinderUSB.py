@@ -1,15 +1,16 @@
 import re
+import usb
 import logging
 import platform
 from functools import partial
+
 if platform.system() == "Darwin":
     # would like to include in Mac stub
     # * imports must be at the module level though
     from ctypes import *
     from CoreFoundation import *
-
-import usb
-import usb.backend.libusb0 as libusb0
+else:
+    import usb.backend.libusb0 as libusb0
 
 log = logging.getLogger(__name__)
 
@@ -36,7 +37,9 @@ class DeviceFinderUSB(object):
     def __init__(self):
         self.system = platform.system()
         self.startup_scan = 0
+        self.use_libusb0 = True
         if self.system == "Windows":
+            log.debug("configuring for Windows")
             import win32com.client
             # see https://docs.microsoft.com/en-us/windows/win32/wmisdk/creating-a-wmi-script
             obj_WMI_service = win32com.client.GetObject("winmgmts:")
@@ -47,9 +50,13 @@ class DeviceFinderUSB(object):
             # the polling now shifts to WMI events as the query is a polling operation
             self.obj_events = obj_WMI_service.ExecNotificationQuery(raw_wql)
         elif self.system == "Linux":
+            log.debug("configuring for Linux")
             import pyudev
             self.context = pyudev.Context()
             self.monitor = pyudev.Monitor.from_netlink(self.context)
+        elif self.system == "Darwin":
+            log.debug("configuring for MacOS")
+            self.use_libusb0 = False
         else:
             pass
 
@@ -82,7 +89,11 @@ class DeviceFinderUSB(object):
     def bus_polling(self): # -> list[DeviceID] 
         device_ids = []
         count = 0
-        for device in usb.core.find(find_all=True, backend=libusb0.get_backend()):
+        if self.use_libusb0:
+            devices = usb.core.find(find_all=True, backend=libusb0.get_backend())
+        else:
+            devices = usb.core.find(find_all=True)
+        for device in devices:
             count += 1
             vid = int(device.idVendor)
             pid = int(device.idProduct)
