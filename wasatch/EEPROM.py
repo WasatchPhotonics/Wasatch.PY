@@ -58,7 +58,7 @@ class EEPROM(object):
         self.excitation_nm_float         = 0.0
         self.slit_size_um                = 0
         self.startup_integration_time_ms = 10
-        self.startup_temp_degC           = 15
+        self.startup_temp_degC           = 15       # normally used for detector TEC; now also used for raw laser TEC on SiG (needs updated in ENG-0034)
         self.startup_triggering_scheme   = 0
         self.detector_gain               = 1.9
         self.detector_offset             = 0
