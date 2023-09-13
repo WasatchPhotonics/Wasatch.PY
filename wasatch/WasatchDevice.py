@@ -472,9 +472,12 @@ class WasatchDevice(InterfaceDevice):
             except Exception as exc:
                 log.debug("Error reading ambient temperature", exc_info=1)
 
-        # read battery every 10sec
+        # read battery every 5sec
         if self.settings.eeprom.has_battery:
-            if self.settings.state.battery_timestamp is None or (datetime.datetime.now() >= self.settings.state.battery_timestamp + datetime.timedelta(seconds=10)):
+            if self.settings.state.battery_timestamp is None or (datetime.datetime.now() - self.settings.state.battery_timestamp).total_seconds() > 5:
+
+                # note that the following 3 requests should actually only generate 
+                # one USB transaction as raw is cached internally
                 req = SpectrometerRequest("get_battery_state_raw")
                 res = self.hardware.handle_requests([req])[0]
                 if res.error_msg != '':
@@ -506,7 +509,7 @@ class WasatchDevice(InterfaceDevice):
                     acquire_response.poison_pill = True
                     return acquire_response
 
-                log.debug("battery: level %.2f%% (%s)", reading.battery_percentage, "charging" if reading.battery_charging else "not charging")
+                log.debug("battery: %.2f%% (%s)", reading.battery_percentage, "charging" if reading.battery_charging else "discharging")
             else:
                 if reading is not None:
                     reading.battery_percentage = self.last_battery_percentage

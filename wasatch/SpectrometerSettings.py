@@ -185,11 +185,8 @@ class SpectrometerSettings(object):
             return (self.eeprom.roi_vertical_region_1_start,
                     self.eeprom.roi_vertical_region_1_end)
 
-    ##
-    # @note S11510 is ambient so shouldn't have a TEC
     def default_detector_setpoint_degC(self):
-        log.debug("default_detector_setpoint_degC: here")
-
+        
         # newer units should specify this via EEPROM
         if self.eeprom.format >= 4:
             log.debug("default_detector_setpoint_degC: eeprom.format %d so using startup_temp_degC %d",
@@ -199,14 +196,15 @@ class SpectrometerSettings(object):
         # otherwise infer from detector
         det = self.eeprom.detector.upper()
         degC = None
-        if   "S11511" in det: degC =  10
-        elif "S10141" in det: degC = -15
-        elif "G9214"  in det: degC = -15
-        elif "7031"   in det: degC = -15
+        if   "11511" in det: degC =  10
+        elif "16011" in det: degC =  10
+        elif "13971" in det: degC =  10
+        elif "10141" in det: degC = -15
+        elif "9214"  in det: degC = -15
+        elif "7031"  in det: degC = -15
 
         if degC is not None:
-            log.debug("default_detector_setpoint_degC: defaulting to %d per supported detector %s",
-                degC, det)
+            log.debug("default_detector_setpoint_degC: defaulting to %d per supported detector %s", degC, det)
             return degC
 
         log.error("default_detector_setpoint_degC: serial %s has unknown detector %s",
