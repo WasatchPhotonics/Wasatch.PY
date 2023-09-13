@@ -9,8 +9,9 @@ if platform.system() == "Darwin":
     # * imports must be at the module level though
     from ctypes import *
     from CoreFoundation import *
+    import usb.backend.libusb1 as backend
 else:
-    import usb.backend.libusb0 as libusb0
+    import usb.backend.libusb0 as backend
 
 log = logging.getLogger(__name__)
 
@@ -35,10 +36,8 @@ class DeviceFinderUSB(object):
     MIN_POLLING_SCANS = 10
 
     def __init__(self):
-        self.system = platform.system()
         self.startup_scan = 0
-        self.use_libusb0 = True
-        if self.system == "Windows":
+        if platform.system() == "Windows":
             log.debug("configuring for Windows")
             import win32com.client
             # see https://docs.microsoft.com/en-us/windows/win32/wmisdk/creating-a-wmi-script
@@ -49,14 +48,13 @@ class DeviceFinderUSB(object):
             # while it removes polling the usb bus
             # the polling now shifts to WMI events as the query is a polling operation
             self.obj_events = obj_WMI_service.ExecNotificationQuery(raw_wql)
-        elif self.system == "Linux":
+        elif platform.system() == "Linux":
             log.debug("configuring for Linux")
             import pyudev
             self.context = pyudev.Context()
             self.monitor = pyudev.Monitor.from_netlink(self.context)
-        elif self.system == "Darwin":
+        elif platform.system() == "Darwin":
             log.debug("configuring for MacOS")
-            self.use_libusb0 = False
         else:
             pass
 
@@ -89,10 +87,7 @@ class DeviceFinderUSB(object):
     def bus_polling(self): # -> list[DeviceID] 
         device_ids = []
         count = 0
-        if self.use_libusb0:
-            devices = usb.core.find(find_all=True, backend=libusb0.get_backend())
-        else:
-            devices = usb.core.find(find_all=True)
+        devices = usb.core.find(find_all=True, backend=backend.get_backend())
         for device in devices:
             count += 1
             vid = int(device.idVendor)
@@ -155,7 +150,7 @@ class DeviceFinderUSB(object):
         vids = [id_num[0] for id_num in vids if id_num is not []]
         # end by querying just the desired Wasatch Devices via pyusb
         # this provides an easy meshing with our current setup using pyusb devices
-        pyusb_devices = [usb.core.find(idVendor=int(vid, 16), idProduct=int(pid, 16), backend=libusb0.get_backend()) for vid, pid in zip(vids, pids)]
+        pyusb_devices = [usb.core.find(idVendor=int(vid, 16), idProduct=int(pid, 16), backend=backend.get_backend()) for vid, pid in zip(vids, pids)]
         # if there is an error/can't find pyusb returns none
         # filter those out
         if None in pyusb_devices:
@@ -176,9 +171,9 @@ class DeviceFinderUSB(object):
             log.debug(f"DeviceFinderUSB.find_usb_devices: just doing a bus poll for startup_scan {self.startup_scan}")
             device_ids = self.bus_polling()
             self.startup_scan += 1
-        elif self.system == "Windows":
+        elif platform.system() == "Windows":
             device_ids = self.windows_monitoring()
-        elif self.system == "Linux":
+        elif platform.system() == "Linux":
             device_ids = self.linux_monitoring()
         else:
             device_ids = self.bus_polling()
