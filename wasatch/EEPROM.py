@@ -193,6 +193,16 @@ class EEPROM(object):
         self.buffers = buffers
         self.digest = self.generate_digest()
 
+        # handy for debugs
+        self.hexbuf = [" ".join([f"{v:02x}" for v in buf]) for buf in buffers]
+
+        # check for known ne'er-do-well
+        bad = r"c2 47 05 31 21 00 00 04 00 03 00 00 02 31 a5 00 03 00 33 02 39 0f 00 03 00 43 02 2f 00 00 03 00 " \
+            + r"4b 02 2b 23 00 03 00 53 02 2f 00 03 ff 01 00 90 e6 78 e0 54 10 ff c4 54 0f 44 50 f5 09 13 e4"
+        for i, s in enumerate(self.hexbuf):
+            if bad in s:
+                log.error(f"bad string found in EEPROM page {i}")
+
         # unpack all the fields we know about
         try:
             self.read_eeprom()
