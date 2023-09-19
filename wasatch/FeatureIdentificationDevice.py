@@ -735,8 +735,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
             self._schedule_disconnect(exc)
             return SpectrometerResponse(poison_pill=True)
 
+        result_hex = " ".join([f"{v:02x}" for v in result])
         log.debug("%s_get_code: request 0x%02x value 0x%04x index 0x%04x = [%s]",
-            prefix, bRequest, wValue, wIndex, result)
+            prefix, bRequest, wValue, wIndex, result_hex)
 
         if result is None:
             log.critical("_get_code[%s, %s]: received null", label, self.device_id)
