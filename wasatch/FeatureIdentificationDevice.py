@@ -1026,7 +1026,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
     def get_fpga_firmware_version(self): # -> SpectrometerResponse 
         s = ""
-        res = self._get_code(0xb4, label="GET_FPGA_REV")
+        res = self._get_code(0xb4, wLength=7, label="GET_FPGA_REV")
         result = res.data
         if result is not None:
             for i in range(len(result)):
