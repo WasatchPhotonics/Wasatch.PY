@@ -112,7 +112,8 @@ class MainLogger(object):
             log_level=logging.DEBUG, 
             enable_stdout=True,
             logfile=None,
-            timeout_sec=5):
+            timeout_sec=5,
+            append=False):
         self.log_queue     = Queue() 
         self.log_level     = log_level
         self.enable_stdout = enable_stdout
@@ -123,13 +124,13 @@ class MainLogger(object):
             set_location(self.logfile)
 
         root_log = logging.getLogger()
-        self.log_configurer(self.logfile)
+        self.log_configurer(self.logfile, append)
         root_log.setLevel(self.log_level)
         root_log.warning("Top level log configuration (%d handlers, get_location %s)", len(root_log.handlers), get_location())
 
     ## Setup file handler and command window stream handlers. Every log
     #  message received on the queue handler will use these log configurers. 
-    def log_configurer(self, logfile=None):
+    def log_configurer(self, logfile=None, append=False):
         if logfile is not None:
             pathname = logfile
         elif self.logfile is not None:
@@ -138,7 +139,7 @@ class MainLogger(object):
             pathname = get_location()
 
         root_logger = logging.getLogger()
-        fh = logging.FileHandler(pathname, mode='w', encoding='utf-8') 
+        fh = logging.FileHandler(pathname, mode='a' if append else 'w', encoding='utf-8') 
         formatter = logging.Formatter(self.FORMAT)
         fh.setFormatter(formatter)
         root_logger.addHandler(fh) 
