@@ -1,6 +1,9 @@
 # Changelog
 
-- 2023-??-?? 2.1.33
+- 2023-09-20 2.1.33
+    - enforce FPGA version number length
+    - log USB results in hex
+    - check for "bad data" in EEPROM
     - XS-Series
         - added set_laser_power_attenuator
         - added support for startup laser TEC setpoint
