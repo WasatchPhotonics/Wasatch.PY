@@ -1,5 +1,7 @@
 # Changelog
 
+- 2023-09-20 2.1.34
+    - added applog(append)
 - 2023-09-20 2.1.33
     - enforce FPGA version number length
     - log USB results in hex
