@@ -114,7 +114,7 @@ class MainLogger(object):
             enable_stdout=True,
             logfile=None,
             timeout_sec=5,
-            append_arg):
+            append_arg="True"):
         self.log_queue     = Queue() 
         self.log_level     = log_level
         self.enable_stdout = enable_stdout
