@@ -593,7 +593,7 @@ def uint16_to_little_endian(values):
         a.append((n >> 8) & 0xff)   # msb
     return a
 
-def resize_file(path, nbytes):
+def resize_file(path, nbytes, ensure_no_overwrite=False):
     """
     Keep only the last `nbytes` of a text file specified by `path`.
 
@@ -622,8 +622,10 @@ def resize_file(path, nbytes):
     tpath = path+".temp"
 
     # don't overwrite any local files
-    while os.path.exists(tpath):
-        tpath += ".temp"
+    # defaults to false so we don't err on the side of a bunch of extra .temp files
+    if ensure_no_overwrite:
+        while os.path.exists(tpath):
+            tpath += ".temp"
 
     f2 = open(tpath, "wb")
 
@@ -632,6 +634,7 @@ def resize_file(path, nbytes):
 
     if tbytes <= nbytes:
         # don't do anything if file is already smaller than target size
+        f2.close()
         os.remove(tpath)
         return False
 
