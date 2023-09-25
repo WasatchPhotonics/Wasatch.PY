@@ -24,6 +24,7 @@ import logging
 import platform
 import traceback
 import multiprocessing
+from . import utils
 from queue import Queue
 
 # ##############################################################################
@@ -113,7 +114,7 @@ class MainLogger(object):
             enable_stdout=True,
             logfile=None,
             timeout_sec=5,
-            append=False):
+            append_arg="True"):
         self.log_queue     = Queue() 
         self.log_level     = log_level
         self.enable_stdout = enable_stdout
@@ -122,6 +123,17 @@ class MainLogger(object):
 
         if self.logfile is not None:
             set_location(self.logfile)
+
+        # append file size limits are enforced upon program restart
+        if append_arg.lower() == "true":
+            # limit to 300mb if --log-append is explicitly set to "True"
+            append = True
+        if append_arg.lower() == "false":
+            # when append is a falsy value, the log file is always reset on reboot
+            append = False
+        if append_arg.lower() == "limit":
+            # the default --log-append keeps up to 20mb between sessions
+            append = 20*1024*1024
 
         root_log = logging.getLogger()
         self.log_configurer(self.logfile, append)
@@ -137,6 +149,12 @@ class MainLogger(object):
             pathname = self.logfile
         else:
             pathname = get_location()
+
+        try:
+            if type(append) == int:
+                utils.resize_file(path=pathname, nbytes=append)
+        except (IOError, FileNotFoundError):
+            print("Unable to truncate log file.")
 
         root_logger = logging.getLogger()
         fh = logging.FileHandler(pathname, mode='a' if append else 'w', encoding='utf-8') 

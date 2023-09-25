@@ -4,14 +4,18 @@
 #                                                                              #
 # ##############################################################################
 
-import datetime
-import logging
-import ctypes
 import numpy
-import json
 import math
-import os
+
+import json
 import re
+
+import os
+import shutil
+import logging
+
+import datetime
+import ctypes
 
 log = logging.getLogger(__name__)
 
@@ -588,3 +592,82 @@ def uint16_to_little_endian(values):
         a.append(n & 0xff)          # lsb
         a.append((n >> 8) & 0xff)   # msb
     return a
+
+def resize_file(path, nbytes, ensure_no_overwrite=False):
+    """
+    Keep only the last `nbytes` of a text file specified by `path`.
+
+    This function is encoding (utf-8, utf-16, ascii) agnostic because it uses the line-
+    continuation character '\n' as a boundary. It is system independent because it slices
+    before that character. This was written to keep our default log file within a reasonable
+    filesize, suitable for emailing.
+
+    Call this on a file that is not yet opened. Expect the file to be closed and flushed
+    by the time the function returns.
+
+    returns True if the file was changed.
+    """
+
+    # limit how much memory is used to copy file contents
+    MAX_BYTES_MEMORY = 2_000_000
+
+    START_OF_STREAM = 0 # seek from start of a file
+    CURRENT_STREAM = 1 # seek from current location in file
+    END_OF_STREAM = 2 # seek from end of file, offset should be negative
+
+    # open file with the intention of reading bytes, preserving what's there
+    f = open(path, "rb")
+
+    # path to temporary file
+    tpath = path+".temp"
+
+    # don't overwrite any local files
+    # defaults to false so we don't err on the side of a bunch of extra .temp files
+    if ensure_no_overwrite:
+        while os.path.exists(tpath):
+            tpath += ".temp"
+
+    f2 = open(tpath, "wb")
+
+    # fast-forward to end of file and keep track of total_bytes
+    tbytes = f.seek(0, END_OF_STREAM)
+
+    if tbytes <= nbytes:
+        # don't do anything if file is already smaller than target size
+        f2.close()
+        os.remove(tpath)
+        return False
+
+    # go to nbytes from the end
+    f.seek(-nbytes, END_OF_STREAM)
+
+    # seek to a newline
+    for i in range(500):
+        if f.read(1) == b'\n':
+            break
+
+    # make sure to land before the newline
+    t_start = f.seek(-1, CURRENT_STREAM)
+
+    # decrease nbytes by the amount we skipped forward (usually small)
+    nbytes = tbytes-t_start
+
+    # copy the end of the file into the beginning of a temporary one
+    f.seek(t_start, START_OF_STREAM)
+    i = nbytes
+    while i:
+        block_size = min(MAX_BYTES_MEMORY, i)
+
+        b = f.read(block_size)
+        f2.write(b)
+        i -= block_size
+
+    # wrap up resource use
+    f.close()
+    f2.flush()
+    f2.close()
+
+    # move temporary file in place
+    shutil.move(tpath, path)
+
+    return True
