@@ -127,7 +127,7 @@ class MainLogger(object):
         # append file size limits are enforced upon program restart
         if append_arg.lower() == "true":
             # limit to 300mb if --log-append is explicitly set to "True"
-            append = 300*1024*1024
+            append = True
         if append_arg.lower() == "false":
             # when append is a falsy value, the log file is always reset on reboot
             append = False
@@ -151,7 +151,7 @@ class MainLogger(object):
             pathname = get_location()
 
         try:
-            if append:
+            if type(append) == int:
                 utils.resize_file(path=pathname, nbytes=append)
         except (IOError, FileNotFoundError):
             print("Unable to truncate log file.")
