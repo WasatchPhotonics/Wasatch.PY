@@ -2884,7 +2884,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         """
         process_f = {}
 
-        for foo in [ "connect",
+        for fn_name in [ "connect",
                      "disconnect",
                      "get_battery_register",
                      "get_battery_state_raw",
@@ -3002,7 +3002,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                      "write_eeprom",
                      "set_log_level",
                      "queue_message" ]:
-            process_f[foo] = getattr(self, foo)
+            process_f[fn_name] = getattr(self, fn_name)
     
         ##################################################################
         # What follows is the old init-lambdas that are squashed into process_f
