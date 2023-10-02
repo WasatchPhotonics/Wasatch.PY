@@ -609,7 +609,7 @@ def resize_file(path, nbytes, ensure_no_overwrite=False):
     """
 
     # limit how much memory is used to copy file contents
-    MAX_BYTES_MEMORY = 2_000_000
+    MAX_BYTES_MEMORY = 2_000
 
     START_OF_STREAM = 0 # seek from start of a file
     CURRENT_STREAM = 1 # seek from current location in file
