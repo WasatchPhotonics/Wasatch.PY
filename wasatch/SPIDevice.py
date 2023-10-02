@@ -17,7 +17,7 @@ from typing import Callable, Any
 # MZ: I don't remember anything about this, but SPI is not a priority at
 #     this time and this broke under Python 3.11
 #
-# import usb.core
+import usb.core
 # usb.core.find()
 
 from .SpectrometerSettings        import SpectrometerSettings
