@@ -609,6 +609,8 @@ def resize_file(path, nbytes, ensure_no_overwrite=False):
     """
 
     # limit how much memory is used to copy file contents
+    # NOTE: this NOT the filesize limit, that is passed in via nbytes
+    # see applog.py's call of resize_file for the log file limit
     MAX_BYTES_MEMORY = 2_000_000
 
     START_OF_STREAM = 0 # seek from start of a file

@@ -132,8 +132,8 @@ class MainLogger(object):
             # when append is a falsy value, the log file is always reset on reboot
             append = False
         if append_arg.lower() == "limit":
-            # the default --log-append keeps up to 20mb between sessions
-            append = 20*1024*1024
+            # the default --log-append keeps up to 2mb between sessions
+            append = 2*1024*1024
 
         root_log = logging.getLogger()
         self.log_configurer(self.logfile, append)
