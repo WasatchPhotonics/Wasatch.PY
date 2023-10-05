@@ -13,8 +13,12 @@ from typing import Callable, Any
 # Device Finder should already have done this
 # For thoroughness though doing here anyway
 # This is required for finding the usb <-> serial board
+#
+# MZ: I don't remember anything about this, but SPI is not a priority at
+#     this time and this broke under Python 3.11
+#
 import usb.core
-usb.core.find()
+# usb.core.find()
 
 from .SpectrometerSettings        import SpectrometerSettings
 from .SpectrometerState           import SpectrometerState
