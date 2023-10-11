@@ -20,6 +20,12 @@ log = logging.getLogger(__name__)
 # well, which contain no metadata, but instead begin directly with the header
 # row.  In that case, wavelength and wavenumber are used directly from the input
 # data, as no wavecal coefficients or excitation are available.
+#
+# Currently this class is used by two callers:
+#
+# - enlighten.parser.ColumFileParser
+# - wasatch.MockUSBDevice
+#
 class CSVLoader(object):
 
     def __init__(self, pathname, save_options=None, encoding="utf-8"):
@@ -72,13 +78,12 @@ class CSVLoader(object):
             csv_lines = csv.reader(infile)
             for line in csv_lines:
                 # skip comments and blanks
-                log.debug(line)
                 if len(line) == 0 or line[0].startswith('#'):
                     continue
 
-                # log.debug("load_data[%s]: %s", state, line)
-
                 line[-1] = line[-1].strip() # remove the \n
+                log.debug("load_data[%s]: %s", state, line)
+
                 if state == "reading_metadata":
                     
                     # check for end of metadata (note trailing comma!)

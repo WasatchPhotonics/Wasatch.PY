@@ -14,7 +14,6 @@ from bleak.exc import BleakError
 
 from . import utils
 from .Reading import Reading
-from .CSVLoader import CSVLoader
 from wasatch.EEPROM import EEPROM
 from wasatch.DeviceID import DeviceID
 from .ControlObject import ControlObject
