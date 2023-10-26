@@ -435,7 +435,7 @@ class AndorDevice(InterfaceDevice):
                 self.config_values[k] = v
 
     def _load_config_values(self):
-        f = open(self.config_file,)
+        f = open(self.config_file)
         self.config_values = dict(json.load(f))
         log.debug(f"loaded {self.config_file}: {self.config_values}")
 
@@ -457,6 +457,11 @@ class AndorDevice(InterfaceDevice):
                    'startup_integration_time_ms' ]:
             if k in self.config_values:
                 setattr(self.settings.eeprom, k, self.config_values[k])
+
+        # default missing-but-obvious fields
+        if "raman_intensity_coeffs" in self.config_values:
+            if "raman_intensity_calibration_order" not in self.config_values:
+                self.settings.eeprom.raman_intensity_calibration_order = len(self.settings.eeprom.raman_intensity_coeffs) - 1
 
         # post-load initialization
         if 'startup_temp_degC' in self.config_values:

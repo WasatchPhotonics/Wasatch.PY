@@ -181,3 +181,22 @@ class ProcessedReading(object):
         self.raw       = wasatch_utils.dict_get_norm(d, "Raw")
 
         self.post_load_cleanup()
+
+    def to_dict(self):
+        return {
+            "Processed": self.processed,
+            "Reference": self.reference,
+            "Dark": self.dark,
+            "Raw": self.raw,
+            "Processed Cropped": self.processed_cropped,
+            "Dark Corrected": self.dark_corrected,
+            "Recordable Dark": self.recordable_dark,
+            "Recordable Reference": self.recordable_reference,
+            "Used Reference": self.used_reference,
+            "Raman Intensity Corrected": self.raman_intensity_corrected,
+            "Deconvolved": self.deconvolved,
+            "Wavelengths Cropped": self.wavelengths_cropped,
+            "Wavenumbers Cropped": self.wavenumbers_cropped,
+            "First Pixel": self.first_pixel,
+            "Plugin Metadata": self.plugin_metadata
+        }
