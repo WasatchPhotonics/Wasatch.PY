@@ -414,10 +414,15 @@ class AndorDevice(InterfaceDevice):
         self.settings.eeprom.has_cooling = True
         return SpectrometerResponse(data=True)
 
-    ##
-    # @param eeprom: if provided, overwrite current settings with those in the 
-    #        passed dict before writing to disk
     def save_config(self, eeprom=None):
+        """
+        The user has edited the "virtual EEPROM", for instance using ENLIGHTEN's 
+        EEPROM Editor, and wants to save the new EEPROM.  Therefore we need to
+        generate a fresh JSON equivalent and write it to disk.
+
+        @param eeprom: if provided, overwrite current settings with those in the 
+               passed dict before writing to disk
+        """
         log.debug("save_config: here")
         if eeprom is not None:
             self.update_config_from_eeprom(eeprom)
@@ -427,12 +432,20 @@ class AndorDevice(InterfaceDevice):
         log.debug(f"saved {self.config_file}: {self.config_values}")
 
     def update_config_from_eeprom(self, eeprom):
-        for k, v in self.config_names_to_eeprom.items():
-            self.config_values[k] = getattr(eeprom, v)
+        """ 
+        Populates a dict used to update the configuration file `self.config_file`
+        from `self.settings.eeprom` members.
+        """
+        # first, copy over any EEPROM fields which have a different name in 
+        # wasatch.EEPROM vs the external JSON file 
+        for json_name, python_name in self.config_names_to_eeprom.items():
+            self.config_values[json_name] = getattr(eeprom, python_name)
 
-        for k, v in eeprom.__dict__.items():
-            if k in self.config_values:
-                self.config_values[k] = v
+        # now do all the standard attributes of the wasatch.EEPROM, adding 
+        # their values into the same dict
+        for python_name, python_value in eeprom.__dict__.items():
+            if python_name in self.config_values:
+                self.config_values[python_name] = python_value
 
     def _load_config_values(self):
         f = open(self.config_file)
