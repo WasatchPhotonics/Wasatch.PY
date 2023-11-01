@@ -435,6 +435,10 @@ class AndorDevice(InterfaceDevice):
                 self.config_values[k] = v
 
     def _load_config_values(self):
+        """
+        Loads configuration from file `self.config_file` and populates `self.settings.eeprom` with members.
+        """
+        
         f = open(self.config_file,)
         self.config_values = dict(json.load(f))
         log.debug(f"loaded {self.config_file}: {self.config_values}")
