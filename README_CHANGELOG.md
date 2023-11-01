@@ -1,5 +1,8 @@
 # Changelog
 
+- 2023-11-01 2.1.35
+    - auto-generate raman_intensity_calibration_order in AndorDevice virtual EEPROM if missing
+    - added ProcessedReading.to_dict()
 - 2023-09-20 2.1.34
     - added applog(append)
 - 2023-09-20 2.1.33
