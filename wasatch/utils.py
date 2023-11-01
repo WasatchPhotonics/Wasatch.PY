@@ -150,7 +150,7 @@ def update_obj_from_dict(obj, d):
     for k in sorted(obj.__dict__.keys()):
         v = dict_get_norm(d, k)
         if v is not None:
-            log.debug("%s -> %s", k, v)
+            # log.debug("%s -> %s", k, v)
             setattr(obj, k, v)
 
 ##
