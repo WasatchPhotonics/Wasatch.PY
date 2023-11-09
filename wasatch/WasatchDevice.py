@@ -273,6 +273,9 @@ class WasatchDevice(InterfaceDevice):
         averaging_enabled = (self.settings.state.scans_to_average > 1)
         acquire_response = SpectrometerResponse()
 
+        # move to before the averaged dark, as darks need to be stable too
+        self.perform_optional_throwaways()
+
         ########################################################################
         # Batch Collection silliness
         ########################################################################
@@ -312,10 +315,6 @@ class WasatchDevice(InterfaceDevice):
         ########################################################################
         # Take a Reading (possibly averaged)
         ########################################################################
-
-        # IMX sensors are free-running, so make sure we collect one full
-        # integration after turning on the laser
-        self.perform_optional_throwaways()
 
         log.debug("taking averaged reading")
         take_one_response = self.take_one_averaged_reading()
@@ -530,7 +529,16 @@ class WasatchDevice(InterfaceDevice):
     # @todo This shouldn't be required at all if we're in free-running mode, or 
     #       if it's been less than a second since the last acquisition.
     def perform_optional_throwaways(self):
-        if self.settings.is_micro() and self.take_one:
+        if not self.settings.is_micro():
+            # currently only required on SiG, since that sensor "goes to sleep"
+            return
+
+        if not self.take_one:
+            # currently only needed for "TakeOne" measurements, because those are
+            # expected to be individually "robust and useable," whereas free-
+            # running spectra are accustomed to having bumps and wiggles
+            return
+
             count = 2
             readout_ms = 5
 
@@ -563,10 +571,10 @@ class WasatchDevice(InterfaceDevice):
         # directions and we tried to accommodate responsively rather than refactor
         # each time requirements changed...hence the current strangeness.
         #
-        # Normally this process (the background process dedicated to a forked
+        # Normally this thread (the background thread dedicated to a 
         # WasatchDeviceWrapper object) is in "free-running" mode, taking spectra
         # just as fast as it can in an endless loop, feeding them back to the
-        # consumer (ENLIGHTEN) over a multiprocess pipe.  To keep that pipeline
+        # consumer (ENLIGHTEN) over a queue.  To keep that pipeline
         # "moving," generally we don't do heavy blocking operations down here
         # in the background thread.
         #
@@ -574,6 +582,10 @@ class WasatchDevice(InterfaceDevice):
         # take an averaged series of darks, then enable the laser, wait for the
         # laser to warmup, take an averaged series of dark-corrected measurements,
         # and return the average as one spectrum.
+        #
+        # These are basically the same requirements as the newer, software-driven
+        # "Raman Mode" (not to be confused with any device Raman Mode implemented
+        # in firmware).
         #
         # That is VERY different from what this code was originally written to
         # do.  There are cleaner ways to do this, but I haven't gone back to
@@ -764,7 +776,7 @@ class WasatchDevice(InterfaceDevice):
             # averaged."
             #
             # We no longer show the "background" spectral trace in ENLIGHTEN,
-            # so this is kind of wasting some intra-process bandwidth, but we
+            # so this is kind of wasting some intra-threadbandwidth, but we
             # do still increment the on-screen tally as feedback while the
             # averaging is taking place, so the in-process Reading messages
             # sent during an averaged collection are not entirely wasted.
