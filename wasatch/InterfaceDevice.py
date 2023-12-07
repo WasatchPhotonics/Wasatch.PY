@@ -13,6 +13,7 @@ class InterfaceDevice:
         It provides the common functions that avoid repeated code.
         """
         self.process_f = []
+        self.remaining_throwaways = 0
 
     def handle_requests(self, requests: list[SpectrometerRequest]): # -> list[SpectrometerResponse] 
         responses = []

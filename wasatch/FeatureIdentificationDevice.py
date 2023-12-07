@@ -91,10 +91,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         self.device = None
         if "MOCK" in str(device_id).upper():
-            self.device_type = MockUSBDevice(device_id.name, \
-                device_id.directory,
-                device_id.overrides,
-                device_id.spectra_options)
+            self.device_type = MockUSBDevice(device_id.name,
+                                             device_id.directory,
+                                             device_id.overrides,
+                                             device_id.spectra_options)
         else:
             self.device_type = RealUSBDevice(device_id)
 
@@ -731,7 +731,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                                                wIndex,
                                                wLength)
         except Exception as exc:
-            log.critical("Hardware Failure FID Get Code Problem with ctrl transfer", exc_info=1)
+            log.critical(f"Hardware Failure FID Get Code Problem with ctrl transfer (bRequest 0x{bRequest:02x}, wValue 0x{wValue:04x}, wIndex 0x{wIndex:04x}, label {label})", exc_info=1)
             self._schedule_disconnect(exc)
             return SpectrometerResponse(poison_pill=True)
 
@@ -975,13 +975,19 @@ class FeatureIdentificationDevice(InterfaceDevice):
     # is 31.1 - 72.0 (I think).
     #
     # @see https://wasatchphotonics.com/api/Wasatch.NET/class_wasatch_n_e_t_1_1_funky_float.html
+    # @todo we should probably track runtime hardware gain in SpectrometerState,
+    #       not EEPROM
     def set_detector_gain(self, gain: float): # -> SpectrometerResponse 
         raw = self.settings.eeprom.float_to_uint16(gain)
 
         # MZ: note that we SEND gain MSB-LSB, but we READ gain LSB-MSB?!
         log.debug("Send Detector Gain: 0x%04x (%s)", raw, gain)
+        result = self._send_code(0xb7, raw, label="SET_DETECTOR_GAIN")
+
+        self.add_throwaway(gain != self.settings.eeprom.detector_gain)
         self.settings.eeprom.detector_gain = gain
-        return self._send_code(0xb7, raw, label="SET_DETECTOR_GAIN")
+
+        return result
 
     def set_detector_gain_odd(self, gain: float): # -> SpectrometerResponse 
         if not self.settings.is_ingaas():
@@ -1143,6 +1149,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 log.debug("sleeping 5ms between endpoints")
                 sleep(0.005)
 
+        # received a response, so decrement throwaways
+        self.remaining_throwaways = max(0, self.remaining_throwaways - 1)
+
         ########################################################################
         # error-check the received spectrum
         ########################################################################
@@ -1160,10 +1169,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
             response.error_lvl = ErrorLevel.low
             response.keep_alive = True
             return response
-            # if len(spectrum) < pixels:
-            #     spectrum.extend([0] * (pixels - len(spectrum)))
-            # else:
-            #     spectrum = spectrum[:-pixels]
 
         ########################################################################
         #
@@ -1278,6 +1283,17 @@ class FeatureIdentificationDevice(InterfaceDevice):
             spectrum.reverse()
 
         ########################################################################
+        # ignore isolated "flat" spectra on SiG
+        ########################################################################
+
+        if self.settings.is_micro() and utils.all_same(spectrum):
+            response.error_msg = "skipping flat spectrum"
+            response.error_lvl = ErrorLevel.low
+            response.keep_alive = True
+            log.debug(response.error_msg)
+            return response
+
+        ########################################################################
         # Bad Pixel Correction
         ########################################################################
 
@@ -1337,6 +1353,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
         response.data = SpectrumAndRow(spectrum, area_scan_row_count) 
         return response
 
+    def add_throwaway(self, flag):
+        if flag and self.settings.is_xs():
+            log.debug("queuing throwaways")
+            self.remaining_throwaways += 2
+
     def set_integration_time_ms(self, ms: float): # -> SpectrometerResponse 
         """
         Send the updated integration time in a control message to the device
@@ -1352,6 +1373,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         result = self._send_code(0xB2, lsw, msw, label="SET_INTEGRATION_TIME_MS")
         log.debug("SET_INTEGRATION_TIME_MS: now %d", ms)
+
+        self.add_throwaway(ms != self.settings.state.integration_time_ms)
         self.settings.state.integration_time_ms = ms
 
         # consciously but cautiously disabling this functionality

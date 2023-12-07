@@ -496,6 +496,12 @@ def stomp_last(a, count):
 def clamp_to_int16(n):
     return max(-32768, min(32767, int(n)))
 
+def all_same(a):
+    for i in range(1, len(a)):
+        if a[0] != a[i]:
+            return False
+    return True
+
 ##
 # Given an array of doubles and a peak index, use the peak and its two
 # neighbors to form a parabola and return the interpolated maximum height of the

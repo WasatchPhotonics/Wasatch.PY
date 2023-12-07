@@ -1,5 +1,8 @@
 # Changelog
 
+- 2023-12-07 2.1.36
+    - add throwaways around IMX sensor commands
+    - treat flat IMX spectra as keepalives
 - 2023-11-01 2.1.35
     - auto-generate raman_intensity_calibration_order in AndorDevice virtual EEPROM if missing
     - added ProcessedReading.to_dict()

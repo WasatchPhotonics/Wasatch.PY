@@ -200,11 +200,13 @@ class WasatchDevice(InterfaceDevice):
         Process all enqueued settings, then read actual data (spectrum and
         temperatures) from the device.
 
+        ENLIGHTEN calls this function via WrapperWorker.run().
+
         @see Controller.acquire_reading
         """
         log.debug("acquire_data: start")
 
-        self.monitor_memory()
+        # self.monitor_memory()
 
         if self.hardware.shutdown_requested:
             log.critical("acquire_data: hardware shutdown requested")
@@ -233,8 +235,8 @@ class WasatchDevice(InterfaceDevice):
     # optionally-averaged spectrum, device temperatures and other hardware
     # status.
     #
-    # This is normally called by acquire_data when that function decides it is
-    # time to perform an acquisition.
+    # This is normally called by self.acquire_data when that function decides it
+    # is time to perform an acquisition.
     #
     # @par Scan Averaging
     #
@@ -520,65 +522,85 @@ class WasatchDevice(InterfaceDevice):
         return acquire_response
 
     ##
-    # It's unclear how many throwaways are really needed for a stable Raman spectrum, and whether they're
-    # really based on number of integrations (sensor stabilization) or time (laser warmup); I suspect
-    # both.  Also note the potential need for sensor warm-up, but I think that's handled inside FW.
+    # It's unclear how many throwaways are really needed for a stable Raman 
+    # spectrum, and whether they're really based on number of integrations 
+    # (sensor stabilization) or time (laser warmup); I suspect both.  Also note 
+    # the potential need for sensor warm-up, but I think that's handled inside FW.
     #
-    # Optimal would probably be something like "As many integrations as it takes to span 2sec, but not
-    # fewer than two."
+    # Optimal would probably be something like "As many integrations as it takes
+    # to span 2sec, but not fewer than two."
+    #
+    # These are NOT the same throwaways added to smooth spectra over changes to
+    # integration time and gain. These are separate throwaways potentially 
+    # required when waking the sensor from sleep. However, I'm using the same
+    # mechanism for tracking (self.remaining_throwaways) for commonality.
     #
     # @todo This shouldn't be required at all if we're in free-running mode, or 
     #       if it's been less than a second since the last acquisition.
+    # @returns SpectrometerResponse IFF error occurred (normally None)
     def perform_optional_throwaways(self):
         if self.settings.is_micro() and self.take_one:
             count = 2
             readout_ms = 5
 
-            # MZ: this was forcing me to take 250 throwaways for each 3ms measurement 
-            #     in BatchCollection with a SiG :-(
-            #
-            # For now, assume that if we FINISHED the last measurement less than
-            # a second ago, the sensor probably has not gone to sleep and doesn't
-            # need SW-driven warmups.
-            if self.last_complete_acquisition is None or \
-                    (datetime.datetime.now() - self.last_complete_acquisition).total_seconds() > 1.0:
+            # Assume that if we FINISHED the last measurement less than a second 
+            # ago, the sensor probably has not gone to sleep and doesn't need SW-
+            # driven warmups.
+            elapsed_sec_since_last_acquisition = (datetime.datetime.now() - self.last_complete_acquisition).total_seconds()
+            if self.last_complete_acquisition is None or elapsed_sec_since_last_acquisition > 1:
+                # for now, default to 2sec worth of acquisitions
                 while count * (self.settings.state.integration_time_ms + readout_ms) < 2000:
                     count += 1
 
-            for i in range(count):
-                log.debug("performing optional throwaway %d of %d before ramanMicro TakeOne", i, count)
+            self.hardware.remaining_throwaways = count
+            while self.hardware.remaining_throwaways > 0:
+                log.debug(f"more than a second since last measurement, so performing wake-up throwaways ({self.hardware.remaining_throwaways - 1} remaining)")
                 req = SpectrometerRequest("get_line")
                 res = self.hardware.handle_requests([req])[0]
                 if res.error_msg != '':
                     return res
-                spectrum_and_row = res.data
-    ##
-    # @returns Reading on success, true or false on "stop processing" conditions
+
     def take_one_averaged_reading(self):
+        """
+        Okay, let's talk about averaging.  Normally we don't perform averaging
+        as a blocking batch process inside Wasatch.PY.  However, ENLIGHTEN's
+        BatchCollection requirements pulled this architecture in weird
+        directions and we tried to accommodate responsively rather than refactor
+        each time requirements changed...hence the current strangeness.
+        
+        Normally this thread (the background thread owned by a 
+        WasatchDeviceWrapper object and running WrapperWorker.run) is in "free-
+        running" mode, taking spectra just as fast as it can in an endless loop,
+        feeding them back to the consumer (ENLIGHTEN) over a queue. To keep that 
+        pipeline "moving," generally we don't do heavy blocking operations down 
+        here in the background thread.
+        
+        However, the use-case for BatchCollection was very specific: to
+        take an averaged series of darks, then enable the laser, wait for the
+        laser to warmup, take an averaged series of dark-corrected measurements,
+        and return the average as one spectrum.
+        
+        If I were implementing that feature now, in multi-threaded ENLIGHTEN,
+        I would definitely encapsulate all the functionality in 
+        enlighten.BatchCollection or enlighten.TakeOne etc. However, in the
+        old multi-process ENLIGHTEN days, it was cumbersome to tightly 
+        coordinate precisely-timed events across processes, so we shoved
+        averaging down here.
+        
+        This should be all thrown out and re-written.
+
+        @returns Reading on success, true or false on "stop processing" conditions
+        """
+
+        # clear any pending throwaways
+        while self.hardware.remaining_throwaways > 0:
+            log.debug(f"clearing stabilization throwaway ({self.hardware.remaining_throwaways - 1} remaining)")
+            req = SpectrometerRequest("get_line")
+            res = self.hardware.handle_requests([req])[0]
+            if res.error_msg != '':
+                return res
+
         take_one_response = SpectrometerResponse()
-
-        # Okay, let's talk about averaging.  Normally we don't perform averaging
-        # as a blocking batch process inside Wasatch.PY.  However, ENLIGHTEN's
-        # BatchCollection requirements pulled this architecture in weird
-        # directions and we tried to accommodate responsively rather than refactor
-        # each time requirements changed...hence the current strangeness.
-        #
-        # Normally this process (the background process dedicated to a forked
-        # WasatchDeviceWrapper object) is in "free-running" mode, taking spectra
-        # just as fast as it can in an endless loop, feeding them back to the
-        # consumer (ENLIGHTEN) over a multiprocess pipe.  To keep that pipeline
-        # "moving," generally we don't do heavy blocking operations down here
-        # in the background thread.
-        #
-        # However, the use-case for BatchCollection was very specific: to
-        # take an averaged series of darks, then enable the laser, wait for the
-        # laser to warmup, take an averaged series of dark-corrected measurements,
-        # and return the average as one spectrum.
-        #
-        # That is VERY different from what this code was originally written to
-        # do.  There are cleaner ways to do this, but I haven't gone back to
-        # tidy things up.
-
         averaging_enabled = (self.settings.state.scans_to_average > 1)
 
         if averaging_enabled and not self.settings.state.free_running_mode:

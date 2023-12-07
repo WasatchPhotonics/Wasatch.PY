@@ -318,14 +318,14 @@ class WasatchDeviceWrapper:
             return self.message_queue.get_nowait()
 
     ##
-    # This method is called by the Controller in MainProcess.  It checks
-    # the response_queue it shares with the child thread to see if any
-    # Reading objects have been queued from the spectrometer to the GUI.
+    # This method is called by the Controller.  It checks the response_queue it 
+    # shares with the child thread to see if any Reading objects have been queued
+    # from the spectrometer to the GUI.
     #
-    # It is the upstream interface's job to decide how to process the
-    # potentially voluminous amount of data returned from the device.
-    # get_last by default will make sure the queue is cleared, then
-    # return the most recent reading from the device.
+    # It is the upstream interface's job to decide how to process the potentially
+    # voluminous amount of data returned from the device. get_last by default 
+    # will make sure the queue is cleared, then return the most recent reading 
+    # from the device.
     #
     # @note it is not clear that measurement modes other than
     #       ACQUISITION_MODE_KEEP_COMPLETE have been well-tested,
