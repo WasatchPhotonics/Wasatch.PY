@@ -1,5 +1,7 @@
 # Changelog
 
+- 2023-12-14 2.1.37
+    - ProcessedReading tweak
 - 2023-12-07 2.1.36
     - add throwaways around IMX sensor commands
     - treat flat IMX spectra as keepalives
