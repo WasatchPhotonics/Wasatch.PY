@@ -151,10 +151,14 @@ class ProcessedReading(object):
     # header rows), but ultimately never populated.
     def post_load_cleanup(self):
         for field in [ "processed", "raw", "dark", "reference" ]:
-            array = getattr(self, field)
-            if array is not None:
-                if len(array) == 0:
-                    setattr(self, field, None)
+            if hasattr(self, field):
+                array = getattr(self, field)
+                if array is not None:
+                    if isinstance(array, list):
+                        if len(array) == 0:
+                            setattr(self, field, None)
+                    else:
+                        setattr(self, field, None)
 
         # if they didn't save a raw, assume same as processed.
         if self.raw is None and self.processed is not None:
