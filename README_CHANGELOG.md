@@ -1,5 +1,7 @@
 # Changelog
 
+- 2023-12-18 2.1.38
+    - fixed iterable bug in ProcessedReading dict ctor
 - 2023-12-14 2.1.37
     - ProcessedReading tweak
 - 2023-12-07 2.1.36

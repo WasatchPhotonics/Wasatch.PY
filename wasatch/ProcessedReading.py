@@ -154,10 +154,11 @@ class ProcessedReading(object):
             if hasattr(self, field):
                 array = getattr(self, field)
                 if array is not None:
-                    if isinstance(array, list):
+                    try:
                         if len(array) == 0:
                             setattr(self, field, None)
-                    else:
+                    except TypeError:
+                        log.debug(f"post_load_cleanup: zeroing {field} because it is not iterable")
                         setattr(self, field, None)
 
         # if they didn't save a raw, assume same as processed.
