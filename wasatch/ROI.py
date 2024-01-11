@@ -1,7 +1,12 @@
-##
-# This class encapsulates a Region Of Interest, which may be either horizontal 
-# (pixels) or vertical (rows/lines).
 class ROI:
+    """
+    This class encapsulates a Region Of Interest, which may be either horizontal 
+    (pixels) or vertical (rows/lines).
+
+    Note that self.end is the LAST valid index, not LAST+1; (start, end) is an 
+    open interval, not half-open.
+    """
+
     def __init__(self, start, end):
         self.start = start
         self.end = end
@@ -17,4 +22,4 @@ class ROI:
         return self.start <= value <= self.end
 
     def __str__(self):
-        return f"({self.start}, {self.end})"
+        return f"({self.start}, {self.end}) inclusive"
