@@ -319,4 +319,4 @@ Using [Homebrew](https://brew.sh/), type:
 
 # Version History
 
-See [Changelog](README_CHANGELOG.md)
+See [Changelog](CHANGELOG.md)
