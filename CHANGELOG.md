@@ -1,5 +1,8 @@
 # Changelog
 
+- 2024-01-11 2.1.39
+    - refactored ProcessedReading with new .cropped and .interpolated nodes
+    - fixed small PWM bug
 - 2023-12-18 2.1.38
     - fixed iterable bug in ProcessedReading dict ctor
 - 2023-12-14 2.1.37
