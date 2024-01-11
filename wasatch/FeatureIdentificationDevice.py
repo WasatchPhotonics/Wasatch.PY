@@ -456,7 +456,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         """
         lsw = val & 0xffff
         msw = (val >> 16) & 0xffff
-        buf = [ (val >> 32) & 0xff, 0 * 7 ]
+        buf = [ (val >> 32) & 0xff ] + [0] * 7
         return (lsw, msw, buf)
 
     def _wait_for_usb_available(self): # -> None 
@@ -2128,10 +2128,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
         if not self.settings.is_micro():
             log.error("Laser watchdog only supported on Series-XS")
             return SpectrometerResponse(data=False,error_msg="laser watchdog not supported")
-
-        if ((fmt := self.settings.eeprom.format) < 15):
-            log.info(f"EEPROM format {fmt} does not support laser watchdog")
-            return
 
         # remove this call after the Series-XS ARM / FPGA watchdog are fixed
         # MZ: are they fixed? can I remove this?
