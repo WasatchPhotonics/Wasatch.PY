@@ -158,6 +158,8 @@ class ProcessedReading:
                     v = getattr(obj, name)
                     if v is not None:
                         return v
+        log.debug(f"_get_array: could not find {name} in {sources}")
+        self.dump()
 
     def get_processed(self, stage=None):
         return self._get_array("processed", stage)
@@ -241,7 +243,6 @@ class ProcessedReading:
             log.info("  Interpolated:")
             self.interpolated.dump()
 
-    # doesn't currently support cropped or x-axis
     def load_from_dict(self, d):
         if d is None:
             return
@@ -250,6 +251,14 @@ class ProcessedReading:
         self.reference = wasatch_utils.dict_get_norm(d, "Reference")
         self.dark      = wasatch_utils.dict_get_norm(d, "Dark")
         self.raw       = wasatch_utils.dict_get_norm(d, "Raw")
+
+        self.wavelengths = wasatch_utils.dict_get_norm(d, "Wavelengths")
+        self.wavenumbers = wasatch_utils.dict_get_norm(d, "Wavenumbers")
+
+        if "Cropped" in d:
+            self.cropped = ProcessedReading(d=d["Cropped"])
+        if "Interpolated" in d:
+            self.cropped = ProcessedReading(d=d["Interpolated"])
 
         self.post_load_cleanup()
 
@@ -269,7 +278,8 @@ class ProcessedReading:
             "Plugin Metadata": self.plugin_metadata,
             "Wavelengths": self.wavelengths,
             "Wavenumbers": self.wavenumbers,
-            "Cropped": self.cropped.to_dict() if self.cropped else None
+            "Cropped": self.cropped.to_dict() if self.cropped else None,
+            "Interpolated": self.interpolated.to_dict() if self.interpolated else None
         }
 
     # The thought here is that ProcessedReading could retain a dict[OoO] of
