@@ -1,5 +1,8 @@
 # Changelog
 
+- 2024-01-15 2.1.40
+    - better UTF-8 support
+    - support cropped/interpolated ProcessedReading in dict conversions
 - 2024-01-11 2.1.39
     - refactored ProcessedReading with new .cropped and .interpolated nodes
     - fixed small PWM bug
