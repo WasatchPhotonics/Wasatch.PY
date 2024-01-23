@@ -1,6 +1,7 @@
 import re
 import os
 import time
+import numpy as np
 import psutil
 import logging
 import datetime
@@ -76,7 +77,7 @@ class WasatchDevice(InterfaceDevice):
         self.summed_spectra         = None
         self.sum_count              = 0
         self.session_reading_count  = 0
-        self.take_one               = False
+        self.take_one_request       = None
         self.last_complete_acquisition = None
 
         self.process_id = os.getpid()
@@ -215,7 +216,9 @@ class WasatchDevice(InterfaceDevice):
         # process queued commands, and find out if we've been asked to read a
         # spectrum
         needs_acquisition = self.process_commands()
-        if not (needs_acquisition or self.settings.state.free_running_mode):
+        if not needs_acquisition and \
+           not self.settings.state.free_running_mode and \
+           not self.take_one_request: # MZ: YOU ARE HERE
             return SpectrometerResponse(None)
 
         # if we don't yet have an integration time, nothing to do
@@ -272,11 +275,18 @@ class WasatchDevice(InterfaceDevice):
     # @return a Reading object
     #
     def acquire_spectrum(self):
-        averaging_enabled = (self.settings.state.scans_to_average > 1)
         acquire_response = SpectrometerResponse()
 
+        tor = self.take_one_request
+        if tor:
+            log.debug(f"WasatchDevice.acquire_spectrum: attempting to fulfill {tor}")
+        else:
+            log.debug(f"WasatchDevice.acquire_spectrum: no TakeOneRequest in effect")
+
+        self.perform_optional_throwaways()
+
         ########################################################################
-        # Batch Collection silliness
+        # Batch Collection and Raman Mode silliness
         ########################################################################
 
         # We could move this up into ENLIGHTEN.BatchCollection: have it enable
@@ -290,18 +300,18 @@ class WasatchDevice(InterfaceDevice):
         # this should all go into the firmware anyway.
 
         dark_reading = SpectrometerResponse()
-        if self.settings.state.acquisition_take_dark_enable:
-            log.debug("taking internal dark")
-            dark_reading = self.take_one_averaged_reading()
+        if tor and tor.take_dark:
+            log.debug(f"RAMAN MODE ==> taking internal dark (scans_to_average {self.settings.state.scans_to_average})")
+            dark_reading = self.take_one_averaged_reading(label="internal dark")
             if dark_reading.poison_pill or dark_reading.error_msg:
                 log.debug(f"dark reading was bool {dark_reading}")
                 return dark_reading
-            log.debug("done taking internal dark")
 
-        auto_enable_laser = self.settings.state.acquisition_laser_trigger_enable # and not self.settings.state.free_running_mode
+        auto_enable_laser = tor and tor.enable_laser_before 
         log.debug("acquire_spectrum: auto_enable_laser = %s", auto_enable_laser)
+
         if auto_enable_laser:
-            log.debug("acquire_spectum: enabling laser, then sleeping %d ms", self.settings.state.acquisition_laser_trigger_delay_ms)
+            log.debug(f"RAMAN MODE ==> acquire_spectum: enabling laser")
             req = SpectrometerRequest('set_laser_enable', args=[True])
             self.hardware.handle_requests([req])
             if self.hardware.shutdown_requested:
@@ -309,21 +319,21 @@ class WasatchDevice(InterfaceDevice):
                 acquire_response.poison_pill = True
                 return acquire_response
 
-            time.sleep(self.settings.state.acquisition_laser_trigger_delay_ms / 1000.0)
+            if tor:
+                log.debug(f"RAMAN MODE ==> acquire_spectum: sleeping {tor.laser_warmup_ms}ms for laser to warmup")
+                time.sleep(tor.laser_warmup_ms / 1000.0)
+
+            self.perform_optional_throwaways()
 
         ########################################################################
         # Take a Reading (possibly averaged)
         ########################################################################
 
-        # IMX sensors are free-running, so make sure we collect one full
-        # integration after turning on the laser
-        self.perform_optional_throwaways()
-
         log.debug("taking averaged reading")
-        take_one_response = self.take_one_averaged_reading()
+        take_one_response = self.take_one_averaged_reading(label="sample (possibly Raman)")
         reading = take_one_response.data
         if take_one_response.poison_pill:
-            log.debug(f"take_one_averaged_reading floating poison pill {take_one_response}")
+            log.debug(f"floating up take_one_averaged_reading poison pill {take_one_response}")
             return take_one_response
         if take_one_response.keep_alive:
             log.debug(f"floating up keep alive")
@@ -335,20 +345,21 @@ class WasatchDevice(InterfaceDevice):
         # don't perform dark subtraction, but pass the dark measurement along
         # with the averaged reading
         if dark_reading.data is not None:
-            log.debug("attaching dark to reading")
             reading.dark = dark_reading.data.spectrum
+            log.debug(f"attaching dark to reading (mean {np.mean(reading.dark)}, min {min(reading.dark)}, max {max(reading.dark)})")
+            log.debug(f"reading spectrum          (mean {np.mean(reading.spectrum)}, min {min(reading.spectrum)}, max {max(reading.spectrum)})")
 
         ########################################################################
         # provide early exit-ramp if we've been asked to return bare Readings
         # (just averaged spectra with corrected bad pixels, no metadata)
         ########################################################################
 
-        def disable_laser(force=False):
-            if force or auto_enable_laser:
-                log.debug("acquire_spectrum: disabling laser post-acquisition")
+        def disable_laser(shutdown=False, label=None):
+            if shutdown or auto_enable_laser:
+                log.debug(f"acquire_spectrum.disable_laser: shutdown {shutdown}, auto_enable_laser {auto_enable_laser}, label {label}")
                 req = SpectrometerRequest('set_laser_enable', args=[False])
                 self.hardware.handle_requests([req])
-                acquire_response.poison_pill = True
+                acquire_response.poison_pill = shutdown
             return acquire_response # for convenience
 
         ########################################################################
@@ -370,8 +381,7 @@ class WasatchDevice(InterfaceDevice):
                         return res
                     reading.laser_temperature_raw  = res.data
                     if self.hardware.shutdown_requested:
-                        return disable_laser(force=True)
-
+                        return disable_laser(shuttdown=True, label=f"reading laser temperature (throwaway {throwaway} of {count})")
 
                 req = SpectrometerRequest('get_laser_temperature_degC', args=[reading.laser_temperature_raw])
                 res = self.hardware.handle_requests([req])[0]
@@ -379,9 +389,10 @@ class WasatchDevice(InterfaceDevice):
                     return res
                 reading.laser_temperature_degC = res.data
                 if self.hardware.shutdown_requested:
-                    return disable_laser(force=True)
+                    return disable_laser(shutdown=True, label=f"reading laser temperature")
 
                 if not auto_enable_laser:
+                    # MZ: we might want to do these for auto_enable_laser as well...
                     for (func, attr) in [ ('get_laser_enabled', 'laser_enabled'),
                                           ('can_laser_fire',    'laser_can_fire'),
                                           ('is_laser_firing',   'laser_is_firing') ]:
@@ -392,7 +403,7 @@ class WasatchDevice(InterfaceDevice):
                         setattr(reading, attr, res.data)
 
                 if self.hardware.shutdown_requested:
-                    return disable_laser(force=True)
+                    return disable_laser(shutdown=True, label=f"loading laser attributes")
 
             except Exception as exc:
                 log.debug("Error reading laser temperature", exc_info=1)
@@ -403,7 +414,7 @@ class WasatchDevice(InterfaceDevice):
                 req = SpectrometerRequest("select_adc", args=[1])
                 self.hardware.handle_requests([req])
                 if self.hardware.shutdown_requested:
-                    return disable_laser(force=True)
+                    return disable_laser(shutdown=True, label="select_adc[1]")
 
                 for throwaway in range(2):
                     req = SpectrometerRequest("get_secondary_adc_raw")
@@ -412,7 +423,7 @@ class WasatchDevice(InterfaceDevice):
                         return res
                     reading.secondary_adc_raw = res.data
                     if self.hardware.shutdown_requested:
-                        return disable_laser(force=True)
+                        return disable_laser(shutdown=True, label="get_secondary_adc_raw")
 
                 req = SpectrometerRequest("get_secondary_adc_calibrated", args =[reading.secondary_adc_raw])
                 res = self.hardware.handle_requests([req])[0]
@@ -424,7 +435,7 @@ class WasatchDevice(InterfaceDevice):
                 if res.error_msg != '':
                     return res
                 if self.hardware.shutdown_requested:
-                    return disable_laser(force=True)
+                    return disable_laser(shutdown=True, label="select_adc[0]")
 
             except Exception as exc:
                 log.debug("Error reading secondary ADC", exc_info=1)
@@ -434,7 +445,7 @@ class WasatchDevice(InterfaceDevice):
         # disable the laser (if we're the one who enabled it)
         ########################################################################
 
-        disable_laser()
+        disable_laser(label="clean exit")
 
         ########################################################################
         # finish collecting any metadata that doesn't require the laser
@@ -516,7 +527,15 @@ class WasatchDevice(InterfaceDevice):
                 if reading is not None:
                     reading.battery_percentage = self.last_battery_percentage
 
-        # log.debug("device.acquire_spectrum: returning %s", reading)
+        if auto_enable_laser:
+            log.debug(f"RAMAN MODE ==> done")
+
+        if tor:
+            log.debug(f"completed {tor}")
+            reading.take_one_request = tor
+            self.take_one_request = None
+
+        log.debug("device.acquire_spectrum: returning %s", reading)
         acquire_response.data = reading
         self.last_complete_acquisition = datetime.datetime.now()
         return acquire_response
@@ -539,7 +558,7 @@ class WasatchDevice(InterfaceDevice):
     #       if it's been less than a second since the last acquisition.
     # @returns SpectrometerResponse IFF error occurred (normally None)
     def perform_optional_throwaways(self):
-        if self.settings.is_micro() and self.take_one:
+        if self.settings.is_micro() and self.take_one_request:
             count = 2
             readout_ms = 5
 
@@ -560,7 +579,7 @@ class WasatchDevice(InterfaceDevice):
                 if res.error_msg != '':
                     return res
 
-    def take_one_averaged_reading(self):
+    def take_one_averaged_reading(self, label=None):
         """
         Okay, let's talk about averaging.  Normally we don't perform averaging
         as a blocking batch process inside Wasatch.PY.  However, ENLIGHTEN's
@@ -591,6 +610,8 @@ class WasatchDevice(InterfaceDevice):
 
         @returns Reading on success, true or false on "stop processing" conditions
         """
+
+        log.debug(f"take_one_averaged_reading: {label} (remaining_throwaways {self.hardware.remaining_throwaways}, scans_to_average {self.settings.state.scans_to_average}, free_running {self.settings.state.free_running_mode})")
 
         # clear any pending throwaways
         while self.hardware.remaining_throwaways > 0:
@@ -826,9 +847,9 @@ class WasatchDevice(InterfaceDevice):
                 reading.averaged = True
 
             # were we told to only take one (potentially averaged) measurement?
-            if self.take_one and reading.averaged:
-                log.debug("completed take_one")
-                self.change_setting("cancel_take_one", True)
+            # if self.take_one_request and reading.averaged:
+            #     log.debug(f"completed take_one_request {self.take_one_request}")
+            #     self.take_one_request = None
 
         log.debug("device.take_one_averaged_reading: returning %s", reading)
         # reading.dump_area_scan()
@@ -864,11 +885,7 @@ class WasatchDevice(InterfaceDevice):
         control_object = "throwaway"
         retval = False
         log.debug("process_commands: processing")
-        # while control_object != None:
         while len(self.command_queue) > 0:
-            # try:
-            # control_object = self.command_queue.get_nowait()
-
             control_object = self.command_queue.pop(0)
             log.debug("process_commands: %s", control_object)
 
@@ -882,11 +899,6 @@ class WasatchDevice(InterfaceDevice):
                 # (probably FeatureIdentificationDevice)
                 req = SpectrometerRequest(control_object.setting, args=[control_object.value])
                 self.hardware.handle_requests([req])
-
-            if control_object.setting == "free_running_mode" and not self.hardware.settings.state.free_running_mode:
-                # we just LEFT free-running mode (went on "pause"), so toss any
-                # queued for the caller (ENLIGHTEN)
-                log.debug("exited free-running mode")
 
         return retval
 
@@ -954,28 +966,29 @@ class WasatchDevice(InterfaceDevice):
     #                don't use the argument).
     # @param allow_immediate
     def change_setting(self, setting: str, value: Any, allow_immediate: bool = True): # -> None 
-        control_object = ControlObject(setting, value)
-        log.debug("WasatchDevice.change_setting: %s", control_object)
+        log.debug(f"WasatchDevice.change_setting: {setting} -> {value}")
 
         # Since scan averaging lives in WasatchDevice, handle commands which affect
         # averaging at this level
-        if control_object.setting == "scans_to_average":
+        if setting == "scans_to_average":
             self.sum_count = 0
             self.settings.state.scans_to_average = int(value)
             return
-        elif control_object.setting == "reset_scan_averaging":
+        elif setting == "reset_scan_averaging":
             self.sum_count = 0
             return
-        elif control_object.setting == "take_one":
-            self.take_one = True
-            self.change_setting("free_running_mode", True)
-            return
-        elif control_object.setting == "cancel_take_one":
+        elif setting == "take_one_request":
             self.sum_count = 0
-            self.take_one = False
-            self.change_setting("free_running_mode", False)
+            self.take_one_request = value
+            # self.change_setting("free_running_mode", True) # MZ: this messes with scan averaging
+            return
+        elif setting == "cancel_take_one":
+            self.sum_count = 0
+            self.take_one_request = None
+            # self.change_setting("free_running_mode", False)
             return
 
+        control_object = ControlObject(setting, value)
         self.command_queue.append(control_object)
         log.debug("change_setting: queued %s", control_object)
 

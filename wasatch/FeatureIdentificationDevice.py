@@ -3069,10 +3069,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         process_f["mod_width_us"]                       = lambda x: self.set_mod_width_us(int(round(x)))
 
         # BatchCollection
-        process_f["free_running_mode"]                  = lambda x: self.settings.state.set("free_running_mode", bool(x))
-        process_f["acquisition_laser_trigger_enable"]   = lambda x: self.settings.state.set("acquisition_laser_trigger_enable", bool(x))
-        process_f["acquisition_laser_trigger_delay_ms"] = lambda x: self.settings.state.set("acquisition_laser_trigger_delay_ms", int(round(x)))
-        process_f["acquisition_take_dark_enable"]       = lambda x: self.settings.state.set("acquisition_take_dark_enable", bool(x))
+       #process_f["free_running_mode"]                  = lambda x: self.settings.state.set("free_running_mode", bool(x))
+        process_f["take_one_request"]                   = lambda x: self.settings.state.set("take_one_request", x)
 
         # Series-XS
        #f["raman_mode_enable"]                  = lambda x: self.set_raman_mode_enable(bool(x))
