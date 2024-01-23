@@ -141,8 +141,6 @@ class WasatchShell(object):
         set_laser_power_perc                   - takes int argument
         set_laser_power_attenuator             - takes uint8 argument
         set_laser_watchdog_sec                 - takes integer argument
-        set_acquisition_laser_trigger_enable   - takes bool argument
-        set_acquisition_laser_trigger_delay_ms - takes float argument
         set_tec_enable                         - takes bool argument
         set_detector_tec_setpoint_degc         - takes float argument
         set_detector_offset                    - override the "offset" added to pixel readings
@@ -386,14 +384,6 @@ class WasatchShell(object):
 
                         elif command == "set_scans_to_average":
                             self.device.change_setting("scans_to_average", self.read_int())
-                            self.display(1)
-
-                        elif command == "set_acquisition_laser_trigger_enable":
-                            self.device.change_setting("acquisition_laser_trigger_enable", self.read_bool())
-                            self.display(1)
-
-                        elif command == "set_acquisition_laser_trigger_delay_ms":
-                            self.device.change_setting("acquisition_laser_trigger_delay_ms", self.read_int())
                             self.display(1)
 
                         elif command == "set_selected_laser":
