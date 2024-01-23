@@ -35,13 +35,14 @@ class Reading(object):
         self.battery_charging          = None
         self.laser_can_fire            = False  # per interlock board
         self.laser_is_firing           = False  # per interlock board, not laser_enable
+        self.take_one_request          = None
 
         # for the rare case (BatchCollection with LaserMode "Spectrum") where the 
         # driver is asked to collect a dark just before enabling the laser
         self.dark                      = None
 
     def __str__(self):
-        return "wasatch.Reading {device_id %s, spectrum %s, averaged %s, session_count %d, area_scan_row_count %d, timestamp %s, timestamp_complete %s, failure %s}" % (
+        return "wasatch.Reading {device_id %s, spectrum %s, averaged %s, session_count %d, area_scan_row_count %d, timestamp %s, timestamp_complete %s, failure %s, take_one_request %s }" % (
             self.device_id, 
             "None" if self.spectrum is None else ("%d values" % len(self.spectrum)),
             self.averaged, 
@@ -49,7 +50,8 @@ class Reading(object):
             self.area_scan_row_count,
             self.timestamp, 
             self.timestamp_complete, 
-            self.failure)
+            self.failure,
+            self.take_one_request)
 
     def __init__(self, device_id=None):
         self.clear()
