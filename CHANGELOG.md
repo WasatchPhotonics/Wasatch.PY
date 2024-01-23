@@ -1,5 +1,8 @@
 # Changelog
 
+- 2024-01-23 2.1.41
+    - moved to TakeOneRequest
+    - deprecated acquisition_laser_trigger_enable, self.acquisition_take_dark_enable and acquisition_laser_trigger_delay_ms
 - 2024-01-15 2.1.40
     - better UTF-8 support
     - support cropped/interpolated ProcessedReading in dict conversions
