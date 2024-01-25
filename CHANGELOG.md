@@ -1,5 +1,7 @@
 # Changelog
 
+- 2024-01-25 2.1.42
+    - TakeOneRequest.take_dark + .enable_laser_before now implies laser disable + 1sec delay
 - 2024-01-23 2.1.41
     - moved to TakeOneRequest
     - deprecated acquisition_laser_trigger_enable, self.acquisition_take_dark_enable and acquisition_laser_trigger_delay_ms

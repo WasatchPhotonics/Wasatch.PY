@@ -299,16 +299,24 @@ class WasatchDevice(InterfaceDevice):
         # (given sleep()'s precision) for each acquisition.  For true precision
         # this should all go into the firmware anyway.
 
-        dark_reading = SpectrometerResponse()
-        if tor and tor.take_dark:
-            log.debug(f"RAMAN MODE ==> taking internal dark (scans_to_average {self.settings.state.scans_to_average})")
-            dark_reading = self.take_one_averaged_reading(label="internal dark")
-            if dark_reading.poison_pill or dark_reading.error_msg:
-                log.debug(f"dark reading was bool {dark_reading}")
-                return dark_reading
-
         auto_enable_laser = tor and tor.enable_laser_before 
         log.debug("acquire_spectrum: auto_enable_laser = %s", auto_enable_laser)
+
+        dark_reading = SpectrometerResponse()
+        if auto_enable_laser and tor.take_dark:
+            log.debug(f"RAMAN MODE ==> taking internal dark (scans_to_average {self.settings.state.scans_to_average})")
+
+            # disable laser if it was on
+            if self.settings.state.laser_enabled:
+                log.debug("RAMAN MODE ==> disabling laser for internal dark")
+                self.hardware.handle_requests([SpectrometerRequest('set_laser_enable', args=[False])])
+                time.sleep(1) 
+
+            dark_reading = self.take_one_averaged_reading(label="internal dark")
+            if dark_reading.poison_pill or dark_reading.error_msg:
+                log.debug(f"internal dark error {dark_reading}")
+                acquire_response.poison_pill = True
+                return acquire_response
 
         if auto_enable_laser:
             log.debug(f"RAMAN MODE ==> acquire_spectum: enabling laser")
