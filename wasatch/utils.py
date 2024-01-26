@@ -90,7 +90,7 @@ def generate_excitation(wavelengths, wavenumbers):
     total = 0.0
     count = len(wavelengths)
     for i in range(count):
-        excitation = 1e7 / (wavenumbers[i] + 1e7/wavelength[i])
+        excitation = 1e7 / (wavenumbers[i] + 1e7 / wavelengths[i])
         total += excitation
     return total / count
 
