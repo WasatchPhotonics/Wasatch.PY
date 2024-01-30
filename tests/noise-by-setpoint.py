@@ -19,7 +19,7 @@ from wasatch.WasatchDeviceWrapper import WasatchDeviceWrapper
 
 log = logging.getLogger(__name__)
 
-class Test(object):
+class Test:
 
     def __init__(self, argv=None):
         self.bus     = None

@@ -39,7 +39,7 @@ log = logging.getLogger(__name__)
 # @todo currently there is no support for scan averaging.  That is because 
 #       scan averaging is built into WasatchDevice.acquire_data, and configured
 #       via Feature
-class WasatchShell(object):
+class WasatchShell:
     
     def __init__(self):
         self.device = None                      # wasatch.WasatchDevice

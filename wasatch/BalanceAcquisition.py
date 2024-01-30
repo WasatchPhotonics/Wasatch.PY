@@ -3,7 +3,7 @@ import re
 
 log = logging.getLogger(__name__)
 
-class BalanceAcquisition(object):
+class BalanceAcquisition:
 
     INTEGRATION            = 0
     LASER                  = 1

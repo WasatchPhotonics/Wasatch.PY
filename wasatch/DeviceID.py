@@ -67,7 +67,7 @@ log = logging.getLogger(__name__)
 # So yeah, I think this is useful and a good design.
 #
 # @note USB VID and PID are stored as ints
-class DeviceID(object):
+class DeviceID:
 
     ##
     # Instantiates a DeviceID object from either a usb.device or an

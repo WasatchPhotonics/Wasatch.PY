@@ -20,7 +20,7 @@ from .DeviceID import DeviceID
 ##
 # Generates a list of DeviceID objects for all connected USB Wasatch Photonics 
 # spectrometers.
-class DeviceFinderUSB(object):
+class DeviceFinderUSB:
 
     WASATCH_VID = 0x24aa
     OCEAN_VID = 0x2457

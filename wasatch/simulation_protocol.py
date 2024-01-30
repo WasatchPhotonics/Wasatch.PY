@@ -20,7 +20,7 @@ log = logging.getLogger(__name__)
 # scales just the noise on the spectrum. A integration time of 1 has
 # 1-10k counts of noise. An integration time of 10k has 0-1 counts of
 # noise. 
-class SimulateMaterial(object):
+class SimulateMaterial:
 
     def __init__(self):
         super(SimulateMaterial, self).__init__()

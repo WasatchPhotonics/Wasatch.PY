@@ -13,7 +13,7 @@ import multiprocessing
 
 max_readings = 10000
 
-class Reading(object):
+class Reading:
     count = 0
 
     def __init__(self):
@@ -42,11 +42,11 @@ class Reading(object):
     def rand(self, lo, hi):
         return lo + (hi - lo) * random.random()
 
-class SubprocessArgs(object):
+class SubprocessArgs:
     def __init__(self, response_queue):
         self.response_queue = response_queue
 
-class Wrapper(object):
+class Wrapper:
     def __init__(self):
         self.manager = multiprocessing.Manager()
         self.response_queue = self.manager.Queue(100) 

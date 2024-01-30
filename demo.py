@@ -38,7 +38,7 @@ from wasatch.RealUSBDevice        import RealUSBDevice
 
 log = logging.getLogger(__name__)
 
-class WasatchDemo(object):
+class WasatchDemo:
 
     ############################################################################
     #                                                                          #

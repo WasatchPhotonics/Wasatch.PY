@@ -4,7 +4,7 @@
 # shouldn't see, which isn't otherwise reliably inferred from EEPROM, ModelInfo 
 # etc.
 
-class HardwareInfo(object):
+class HardwareInfo:
 
     def __init__(self, vid=None, pid=None):
         self.vid = vid

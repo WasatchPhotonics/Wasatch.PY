@@ -33,7 +33,7 @@ log = logging.getLogger(__name__)
 # 2. A place where the GUI can store settings of MANY different connected
 #    spectrometers, and quickly switch between them.
 #
-class SpectrometerSettings(object):
+class SpectrometerSettings:
 
     ##
     # @param device_id (Input) where the spectrometer was found (optional)

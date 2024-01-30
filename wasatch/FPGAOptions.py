@@ -23,7 +23,7 @@ LASER_CONTROL_RAMPING           = 2
 # in the firmware of the connected spectrometer.  
 #
 # This class is normally accessed as an attribute of SpectrometerSettings.
-class FPGAOptions(object):
+class FPGAOptions:
 
     def __init__(self):
         self.integration_time_resolution = INTEG_TIME_RES_ONE_MS

@@ -106,7 +106,7 @@ def explicit_log_close():
 #                                                                              #
 # ##############################################################################
 
-class MainLogger(object):
+class MainLogger:
     FORMAT = u'%(asctime)s [0x%(thread)08x] %(name)s %(levelname)-8s %(message)s'
 
     def __init__(self, 

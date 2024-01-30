@@ -14,7 +14,7 @@ log = logging.getLogger(__name__)
 #
 # @param use_sim not used, left to avoid breaking old code
 # @param monitor_dir not used, left to avoid breaking old code
-class WasatchBus(object):
+class WasatchBus:
     def __init__(self, use_sim=False, monitor_dir=None):
         self.device_ids = []
 

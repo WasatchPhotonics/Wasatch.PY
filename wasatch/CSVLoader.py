@@ -26,7 +26,7 @@ log = logging.getLogger(__name__)
 # - enlighten.parser.ColumFileParser
 # - wasatch.MockUSBDevice
 #
-class CSVLoader(object):
+class CSVLoader:
 
     def __init__(self, pathname, save_options=None, encoding="utf-8"):
         self.pathname = pathname

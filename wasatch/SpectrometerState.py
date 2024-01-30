@@ -3,13 +3,13 @@ import logging
 
 log = logging.getLogger(__name__)
 
-##
-# volatile attributes (must persist here for multi-spectrometers)
-#
-# Note that these should generally not include READOUTS from the 
-# spectrometer like temperature, ADC etc...unless that proves convenient.
-#
-class SpectrometerState(object):
+class SpectrometerState:
+    """
+    Volatile attributes (must persist here for multi-spectrometers).
+    
+    Note that these should generally not include READOUTS from the 
+    spectrometer like temperature, ADC etc...unless that proves convenient.
+    """
 
     TRIGGER_SOURCE_INTERNAL = 0
     TRIGGER_SOURCE_EXTERNAL = 1

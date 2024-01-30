@@ -24,12 +24,12 @@ log = logging.getLogger(__name__)
 # @see ENG-0034
 # @see AT24C256C for ARM (32KB, http://ww1.microchip.com/downloads/en/DeviceDoc/20006270A.pdf)
 # @see 24LC128 for FX2 (16KB, https://www.microchip.com/en-us/product/24LC128)
-class EEPROM(object):
+class EEPROM:
 
     # This was mistakenly set to 15 earlier, probably out of confusion between 
     # ENG-0001 vs ENG-0034 release level (the former WAS at 15, the latter is
     # only now advancing to 15).  Leaving it alone for now.
-    LATEST_REV = 15 
+    LATEST_REV = 15
 
     MAX_PAGES = 8
     PAGE_LENGTH = 64
@@ -931,6 +931,14 @@ class EEPROM(object):
             return False
 
         return True
+
+    def has_sml(self):
+        """ @todo include light_source_type """
+        return self.has_laser and self.max_laser_power_mW < 150
+
+    def has_mml(self):
+        """ @todo include light_source_type """
+        return self.has_laser and self.max_laser_power_mW >= 150
 
     ## convert the given laser output power from milliwatts to percentage
     #  using the configured calibration

@@ -57,7 +57,7 @@ SETTINGS = {
 #
 # We're not actually using this at the moment, but it would be a way to provide 
 # some automated data validation and type-checking on callers like wasatch-shell.py
-class CommandSettings(object):
+class CommandSettings:
 
     def get_settings(self):
         return sorted(SETTINGS.keys())

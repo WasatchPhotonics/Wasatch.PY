@@ -7,7 +7,7 @@ log = logging.getLogger(__name__)
 # A single set of data read from a device. This includes spectrum,
 # temperature, gain, offset, etc. Essentially a snapshot of the device
 # state in time. 
-class Reading(object):
+class Reading:
 
     def clear(self):
         self.device_id                 = None
@@ -42,7 +42,7 @@ class Reading(object):
         self.dark                      = None
 
     def __str__(self):
-        return "wasatch.Reading {device_id %s, spectrum %s, averaged %s, session_count %d, area_scan_row_count %d, timestamp %s, timestamp_complete %s, failure %s, take_one_request %s }" % (
+        return "wasatch.Reading {device_id %s, spectrum %s, averaged %s, session_count %d, area_scan_row_count %d, timestamp %s, timestamp_complete %s, failure %s, laser_enabled %s, take_one_request %s }" % (
             self.device_id, 
             "None" if self.spectrum is None else ("%d values" % len(self.spectrum)),
             self.averaged, 
@@ -51,6 +51,7 @@ class Reading(object):
             self.timestamp, 
             self.timestamp_complete, 
             self.failure,
+            self.laser_enabled,
             self.take_one_request)
 
     def __init__(self, device_id=None):
