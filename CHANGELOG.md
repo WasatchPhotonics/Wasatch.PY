@@ -1,5 +1,8 @@
 # Changelog
 
+- 2024-01-30 2.1.44
+    - Auto-Raman fix: store laser-related attributes in Reading before auto-disabling laser
+    - notation updates
 - 2024-01-26 2.1.43
     - utils bugfix
 - 2024-01-25 2.1.42
