@@ -286,7 +286,7 @@ class WasatchDevice(InterfaceDevice):
         self.perform_optional_throwaways()
 
         ########################################################################
-        # Batch Collection and Raman Mode silliness
+        # Batch Collection and Auto-Raman silliness
         ########################################################################
 
         # We could move this up into ENLIGHTEN.BatchCollection: have it enable
@@ -304,11 +304,11 @@ class WasatchDevice(InterfaceDevice):
 
         dark_reading = SpectrometerResponse()
         if auto_enable_laser and tor.take_dark:
-            log.debug(f"RAMAN MODE ==> taking internal dark (scans_to_average {self.settings.state.scans_to_average})")
+            log.debug(f"AUTO-RAMAN ==> taking internal dark (scans_to_average {self.settings.state.scans_to_average})")
 
             # disable laser if it was on
             if self.settings.state.laser_enabled:
-                log.debug("RAMAN MODE ==> disabling laser for internal dark")
+                log.debug("AUTO-RAMAN ==> disabling laser for internal dark")
                 self.hardware.handle_requests([SpectrometerRequest('set_laser_enable', args=[False])])
                 time.sleep(1) 
 
@@ -319,7 +319,7 @@ class WasatchDevice(InterfaceDevice):
                 return acquire_response
 
         if auto_enable_laser:
-            log.debug(f"RAMAN MODE ==> acquire_spectum: enabling laser")
+            log.debug(f"AUTO-RAMAN ==> acquire_spectum: enabling laser")
             req = SpectrometerRequest('set_laser_enable', args=[True])
             self.hardware.handle_requests([req])
             if self.hardware.shutdown_requested:
@@ -328,7 +328,7 @@ class WasatchDevice(InterfaceDevice):
                 return acquire_response
 
             if tor:
-                log.debug(f"RAMAN MODE ==> acquire_spectum: sleeping {tor.laser_warmup_ms}ms for laser to warmup")
+                log.debug(f"AUTO-RAMAN ==> acquire_spectum: sleeping {tor.laser_warmup_ms}ms for laser to warmup")
                 time.sleep(tor.laser_warmup_ms / 1000.0)
 
             self.perform_optional_throwaways()
@@ -381,6 +381,22 @@ class WasatchDevice(InterfaceDevice):
         # only read laser temperature if we have a laser
         if self.settings.eeprom.has_laser:
             try:
+                # MZ: we might want to do these for auto_enable_laser as well...
+                for (func, attr) in [ ('get_laser_enabled', 'laser_enabled'),
+                                      ('can_laser_fire',    'laser_can_fire'),
+                                      ('is_laser_firing',   'laser_is_firing') ]:
+                    req = SpectrometerRequest(func)
+                    res = self.hardware.handle_requests([req])[0]
+                    if res.error_msg != '':
+                        return res
+                    value = res.data
+                    log.debug(f"WasatchDevice.acquire_spectrum: storing {attr} = {value}")
+                    setattr(reading, attr, value)
+
+                if self.hardware.shutdown_requested:
+                    return disable_laser(shutdown=True, label=f"loading laser attributes")
+
+                # laser temperature
                 count = 2 if self.settings.state.secondary_adc_enabled else 1
                 for throwaway in range(count):
                     req = SpectrometerRequest('get_laser_temperature_raw')
@@ -398,20 +414,6 @@ class WasatchDevice(InterfaceDevice):
                 reading.laser_temperature_degC = res.data
                 if self.hardware.shutdown_requested:
                     return disable_laser(shutdown=True, label=f"reading laser temperature")
-
-                if not auto_enable_laser:
-                    # MZ: we might want to do these for auto_enable_laser as well...
-                    for (func, attr) in [ ('get_laser_enabled', 'laser_enabled'),
-                                          ('can_laser_fire',    'laser_can_fire'),
-                                          ('is_laser_firing',   'laser_is_firing') ]:
-                        req = SpectrometerRequest(func)
-                        res = self.hardware.handle_requests([req])[0]
-                        if res.error_msg != '':
-                            return res
-                        setattr(reading, attr, res.data)
-
-                if self.hardware.shutdown_requested:
-                    return disable_laser(shutdown=True, label=f"loading laser attributes")
 
             except Exception as exc:
                 log.debug("Error reading laser temperature", exc_info=1)
@@ -536,7 +538,7 @@ class WasatchDevice(InterfaceDevice):
                     reading.battery_percentage = self.last_battery_percentage
 
         if auto_enable_laser:
-            log.debug(f"RAMAN MODE ==> done")
+            log.debug(f"AUTO-RAMAN ==> done")
 
         if tor:
             log.debug(f"completed {tor}")
