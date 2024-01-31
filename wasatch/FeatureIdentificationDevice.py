@@ -2213,15 +2213,15 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return SpectrometerResponse(data=ok1.data and ok2.data)
 
     ## 
-    # @params mode: integral value 0-3
+    # @param mode: integral value 0-3
     #
-    # \verbose
+    # \verbatim
     # mode  ADC (AD)   Pixel Width (OD)
     # b00   10-bit     10-bit
     # b01   10-bit     12-bit
     # b10   12-bit     10-bit
     # b11   12-bit     12-bit
-    # \endverbose
+    # \endverbatim
     def set_pixel_mode(self, mode: float):
         if not self.settings.is_micro():
             log.debug("Pixel Mode only configurable on Series-XS")

@@ -433,7 +433,7 @@ class SPIDevice(InterfaceDevice):
     # read back (including leading junk from the command/write phase), parse out the
     # actual response data and validate checksum.
     #
-    # @para Example (reading FPGA version number)
+    # @par Example (reading FPGA version number)
     # @verbatim
     #              offset:    0     1     2     3     4     5     6     7     8     9    10    11    12    13    14    15    16    17
     #         explanation:    <    (_length_)  ADDR   >     <    (_length_)  ADDR  '0'   '2'   '.'   '1'   '.'   '2'   '3'   CRC    >
