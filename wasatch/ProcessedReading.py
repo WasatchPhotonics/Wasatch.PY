@@ -140,6 +140,9 @@ class ProcessedReading:
     def is_cropped(self): 
         return self.cropped is not None 
 
+    def is_interpolated(self): 
+        return self.interpolated is not None 
+
     def has_processed(self): 
         return self.processed is not None 
 
@@ -223,25 +226,26 @@ class ProcessedReading:
         if self.raw is None and self.processed is not None:
             self.raw = self.processed
 
-    def dump(self):
+    def dump(self, indent=0):
+        gap = " " * indent
         n = 5
-        log.info("ProcessedReading:")
-        log.info("  Device ID:            %s", self.device_id)
-        log.info("  Processed:            %s", None if self.processed            is None else self.processed[:n])
-        log.info("  Raw:                  %s", None if self.raw                  is None else self.raw[:n])
-        log.info("  Dark:                 %s", None if self.dark                 is None else self.dark[:n])
-        log.info("  Reference:            %s", None if self.reference            is None else self.reference[:n])
-        log.info("  Recordable Dark:      %s", None if self.recordable_dark      is None else self.recordable_dark[:n])
-        log.info("  Recordable Reference: %s", None if self.recordable_reference is None else self.recordable_reference[:n])
-        log.info("  Wavelengths:          %s", None if self.wavelengths          is None else self.wavelengths[:n])
-        log.info("  Wavenumbers:          %s", None if self.wavenumbers          is None else self.wavenumbers[:n])
-        log.info("  Pixels:               %s", None if self.wavelengths          is None else len(self.wavelengths))
+        log.info(f"{gap}ProcessedReading:")
+        log.info(f"{gap}  Device ID:            %s", self.device_id)
+        log.info(f"{gap}  Processed:            %s", None if self.processed            is None else self.processed[:n])
+        log.info(f"{gap}  Raw:                  %s", None if self.raw                  is None else self.raw[:n])
+        log.info(f"{gap}  Dark:                 %s", None if self.dark                 is None else self.dark[:n])
+        log.info(f"{gap}  Reference:            %s", None if self.reference            is None else self.reference[:n])
+        log.info(f"{gap}  Recordable Dark:      %s", None if self.recordable_dark      is None else self.recordable_dark[:n])
+        log.info(f"{gap}  Recordable Reference: %s", None if self.recordable_reference is None else self.recordable_reference[:n])
+        log.info(f"{gap}  Wavelengths:          %s", None if self.wavelengths          is None else self.wavelengths[:n])
+        log.info(f"{gap}  Wavenumbers:          %s", None if self.wavenumbers          is None else self.wavenumbers[:n])
+        log.info(f"{gap}  Pixels:               %s", None if self.wavelengths          is None else len(self.wavelengths))
         if self.cropped:
             log.info("  Cropped:")
-            self.cropped.dump()
+            self.cropped.dump(indent=indent+4)
         if self.interpolated:
             log.info("  Interpolated:")
-            self.interpolated.dump()
+            self.interpolated.dump(indent=indent+4)
 
     def load_from_dict(self, d):
         if d is None:
