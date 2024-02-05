@@ -1,5 +1,8 @@
 # Changelog
 
+- 2024-02-05 2.1.45
+    - clarified scan averaging a bit
+    - added TakeOneRequest.scans_to_average
 - 2024-01-30 2.1.44
     - Auto-Raman fix: store laser-related attributes in Reading before auto-disabling laser
     - notation updates

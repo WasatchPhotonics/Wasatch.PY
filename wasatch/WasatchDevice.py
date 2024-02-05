@@ -216,10 +216,11 @@ class WasatchDevice(InterfaceDevice):
         # process queued commands, and find out if we've been asked to read a
         # spectrum
         needs_acquisition = self.process_commands()
-        if not needs_acquisition and \
-           not self.settings.state.free_running_mode and \
-           not self.take_one_request: # MZ: YOU ARE HERE
-            return SpectrometerResponse(None)
+
+        # if not needs_acquisition and \
+        #    not self.settings.state.free_running_mode and \
+        #    not self.take_one_request:
+        #     return SpectrometerResponse(None)
 
         # if we don't yet have an integration time, nothing to do
         if self.settings.state.integration_time_ms <= 0:
@@ -227,10 +228,9 @@ class WasatchDevice(InterfaceDevice):
             return SpectrometerResponse(None)
 
         # note that right now, all we return are Readings (encapsulating both
-        # spectra and temperatures).  If we disable spectra (turn off
-        # free_running_mode), then ENLIGHTEN stops receiving temperatures as
-        # well.  In the future perhaps we should return multiple object types
-        # (Acquisitions, Temperatures, etc)
+        # spectra and temperatures).  If we disable spectra, ENLIGHTEN stops 
+        # receiving temperatures as well.  In the future perhaps we should return
+        # multiple object types (Acquisitions, Temperatures, etc)
         return self.acquire_spectrum()
 
     ##
@@ -304,7 +304,7 @@ class WasatchDevice(InterfaceDevice):
 
         dark_reading = SpectrometerResponse()
         if auto_enable_laser and tor.take_dark:
-            log.debug(f"AUTO-RAMAN ==> taking internal dark (scans_to_average {self.settings.state.scans_to_average})")
+            log.debug(f"AUTO-RAMAN ==> taking internal dark")
 
             # disable laser if it was on
             if self.settings.state.laser_enabled:
@@ -591,37 +591,45 @@ class WasatchDevice(InterfaceDevice):
 
     def take_one_averaged_reading(self, label=None):
         """
-        Okay, let's talk about averaging.  Normally we don't perform averaging
-        as a blocking batch process inside Wasatch.PY.  However, ENLIGHTEN's
-        BatchCollection requirements pulled this architecture in weird
-        directions and we tried to accommodate responsively rather than refactor
-        each time requirements changed...hence the current strangeness.
-        
-        Normally this thread (the background thread owned by a 
+        Okay, let's talk about averaging.  We only perform averaging as a 
+        blocking call in Wasatch.PY when given a TakeOneRequest with non-zero 
+        scans_to_average, typically from ENLIGHTEN's TakeOneFeature (perhaps via
+        VCRControls.step, possibly with AutoRaman, or BatchCollection).
+
+        Otherwise, normally this thread (the background thread owned by a 
         WasatchDeviceWrapper object and running WrapperWorker.run) is in "free-
         running" mode, taking spectra just as fast as it can in an endless loop,
         feeding them back to the consumer (ENLIGHTEN) over a queue. To keep that 
         pipeline "moving," generally we don't do heavy blocking operations down 
         here in the background thread.
         
-        However, the use-case for BatchCollection was very specific: to
-        take an averaged series of darks, then enable the laser, wait for the
-        laser to warmup, take an averaged series of dark-corrected measurements,
-        and return the average as one spectrum.
-        
-        If I were implementing that feature now, in multi-threaded ENLIGHTEN,
-        I would definitely encapsulate all the functionality in 
-        enlighten.BatchCollection or enlighten.TakeOne etc. However, in the
-        old multi-process ENLIGHTEN days, it was cumbersome to tightly 
-        coordinate precisely-timed events across processes, so we shoved
-        averaging down here.
-        
-        This should be all thrown out and re-written.
+        The new AutoRaman feature makes increased using of scan averaging,
+        and again kind of wants to be encapsulated down here. And by implication,
+        all TakeOneRequests should really support encapsulated, atomic averaging.
+        So the current design is that ATOMIC scans_to_average comes from 
+        TakeOneRequest, ENLIGHTEN-based averaging in SpectrometerState.
 
         @returns Reading on success, true or false on "stop processing" conditions
         """
+        take_one_response = SpectrometerResponse()
 
-        log.debug(f"take_one_averaged_reading: {label} (remaining_throwaways {self.hardware.remaining_throwaways}, scans_to_average {self.settings.state.scans_to_average}, free_running {self.settings.state.free_running_mode})")
+        if self.take_one_request:
+            scans_to_average = self.take_one_request.scans_to_average   # how many (for completion test / division)
+            loop_count = scans_to_average                               # how many to take NOW
+            sum_locally = scans_to_average > 1                          # whether we should be summing at all
+            self.sum_count = 0                                          # whether we should reset previous sums
+        else:
+            scans_to_average = self.settings.state.scans_to_average     # how many (for completion test / division)
+            sum_locally = scans_to_average > 1                          # whether we should be summing at all
+            loop_count = 1                                              # how many to take NOW
+
+        if False:
+            log.debug(f"take_one_averaged_reading[{label}]:")
+            log.debug(f"  self.sum_count        = {self.sum_count}")
+            log.debug(f"  scans_to_average      = {scans_to_average}")
+            log.debug(f"  loop_count            = {loop_count}")
+            log.debug(f"  sum_locally           = {sum_locally}")
+            log.debug(f"  remaining_throwaways  = {self.hardware.remaining_throwaways}")
 
         # clear any pending throwaways
         while self.hardware.remaining_throwaways > 0:
@@ -631,28 +639,11 @@ class WasatchDevice(InterfaceDevice):
             if res.error_msg != '':
                 return res
 
-        take_one_response = SpectrometerResponse()
-        averaging_enabled = (self.settings.state.scans_to_average > 1)
-
-        if averaging_enabled and not self.settings.state.free_running_mode:
-            # collect the entire averaged spectrum at once (added for
-            # BatchCollection with laser delay)
-            #
-            # So: we're NOT in "free-running" mode, so we're basically being
-            # slaved to parent process and doing exactly what is requested
-            # "on command."  That means we can perform a big, heavy blocking
-            # scan average all at once, because they requested it.
-            self.sum_count = 0
-            loop_count = self.settings.state.scans_to_average
-        else:
-            # we're in free-running mode
-            loop_count = 1
-
-        log.debug("take_one_averaged_reading: loop_count = %d", loop_count)
-
-        # either take one measurement (normal), or a bunch (blocking averaging)
+        # either take one measurement (normal), or a bunch (sum_locally)
         reading = None
-        for loop_index in range(0, loop_count):
+        for loop_index in range(loop_count):
+
+            log.debug(f"take_one_averaged_reading: loop_index {loop_index+1} of {loop_count}")
 
             # start a new reading
             # NOTE: reading.timestamp is when reading STARTED, not FINISHED!
@@ -706,7 +697,7 @@ class WasatchDevice(InterfaceDevice):
                                 take_one_response.transfer_response(response)
                                 return take_one_response
                             elif spectrum_and_row.spectrum is None:
-                                log.debug("device.take_one_averaged_spectrum: get_line None, sending keepalive for now (area scan fast)")
+                                log.debug("take_one_averaged_reading: get_line None, sending keepalive for now (area scan fast)")
                                 take_one_response.transfer_response(response)
                                 return take_one_response
 
@@ -768,7 +759,7 @@ class WasatchDevice(InterfaceDevice):
                         if spectrum_and_row is None or spectrum_and_row.spectrum is None:
                             # FeatureIdentificationDevice can return None when waiting
                             # on an external trigger.  
-                            log.debug("device.take_one_averaged_spectrum: get_line None, sending keepalive for now")
+                            log.debug("take_one_averaged_reading: get_line None, sending keepalive for now")
                             take_one_response.transfer_response(res)
                             return take_one_response
                         else:
@@ -824,28 +815,38 @@ class WasatchDevice(InterfaceDevice):
             #
             # Still, this is not the way we would have designed a Python driver
             # "from a blank sheet," and our other driver architectures show that.
+            #
+            # @todo: since we're actually passing every pre-averaged spectrum
+            # back to ENLIGHTEN, for non-TakeOneRequest averaging, I feel like
+            # we should probably perform the summation in ENLIGHTEN too (for
+            # non-TakeOneRequest averages).
 
             if not reading.failure:
-                if averaging_enabled:
+                log.debug("take_one_averaged_reading: not failure")
+                if sum_locally:
+                    log.debug("take_one_averaged_reading: summing locally")
                     if self.sum_count == 0:
+                        log.debug("take_one_averaged_reading: first spectrum (initializing)")
                         self.summed_spectra = [float(i) for i in reading.spectrum]
                     else:
-                        log.debug("device.take_one_averaged_reading: summing spectra")
+                        log.debug("take_one_averaged_reading: adding to previous")
                         for i in range(len(self.summed_spectra)):
                             self.summed_spectra[i] += reading.spectrum[i]
                     self.sum_count += 1
-                    log.debug("device.take_one_averaged_reading: summed_spectra : %s ...", self.summed_spectra[0:9])
+                    log.debug("take_one_averaged_reading: summed_spectra : %s ...", self.summed_spectra[0:9])
 
             # count spectra
             self.session_reading_count += 1
             reading.session_count = self.session_reading_count
             reading.sum_count = self.sum_count
+            log.debug(f"take_one_averaged_reading: reading.sum_count now {reading.sum_count}")
 
             # have we completed the averaged reading?
-            if averaging_enabled:
-                if self.sum_count >= self.settings.state.scans_to_average:
+            if sum_locally: 
+                log.debug(f"take_one_averaged_reading: checking for completion self.sum_count {self.sum_count} >?= scans_to_average {scans_to_average}")
+                if self.sum_count >= scans_to_average:
                     reading.spectrum = [ x / self.sum_count for x in self.summed_spectra ]
-                    log.debug("device.take_one_averaged_reading: averaged_spectrum : %s ...", reading.spectrum[0:9])
+                    log.debug("take_one_averaged_reading: averaged_spectrum : %s ...", reading.spectrum[0:9])
                     reading.averaged = True
 
                     # reset for next average
@@ -855,11 +856,6 @@ class WasatchDevice(InterfaceDevice):
                 # if averaging isn't enabled...then a single reading is the
                 # "averaged" final measurement (check reading.sum_count to confirm)
                 reading.averaged = True
-
-            # were we told to only take one (potentially averaged) measurement?
-            # if self.take_one_request and reading.averaged:
-            #     log.debug(f"completed take_one_request {self.take_one_request}")
-            #     self.take_one_request = None
 
         log.debug("device.take_one_averaged_reading: returning %s", reading)
         # reading.dump_area_scan()
@@ -990,12 +986,10 @@ class WasatchDevice(InterfaceDevice):
         elif setting == "take_one_request":
             self.sum_count = 0
             self.take_one_request = value
-            # self.change_setting("free_running_mode", True) # MZ: this messes with scan averaging
             return
         elif setting == "cancel_take_one":
             self.sum_count = 0
             self.take_one_request = None
-            # self.change_setting("free_running_mode", False)
             return
 
         control_object = ControlObject(setting, value)
