@@ -157,8 +157,8 @@ class ProcessedReading:
                     v = getattr(obj, name)
                     if v is not None:
                         return v
-        log.debug(f"_get_array: could not find {name} in {sources}")
-        self.dump()
+        # log.debug(f"_get_array: could not find {name} in {sources}")
+        # self.dump()
 
     def get_processed(self, stage=None):
         return self._get_array("processed", stage)
