@@ -28,9 +28,8 @@ log = logging.getLogger(__name__)
 #
 class CSVLoader:
 
-    def __init__(self, pathname, save_options=None, encoding="utf-8"):
+    def __init__(self, pathname, encoding="utf-8"):
         self.pathname = pathname
-        self.save_options = save_options
         self.encoding = encoding
 
         # default

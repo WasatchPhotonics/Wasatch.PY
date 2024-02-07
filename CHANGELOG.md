@@ -1,5 +1,8 @@
 # Changelog
 
+- 2024-02-06 2.1.46
+    - removed enlighten.SaveOptions(?) from wasatch.CSVLoader(?!?)
+    - made ProcessedReading smarter about loading wavelengths/wavenumbers from SpectrometerSettings
 - 2024-02-05 2.1.45
     - clarified scan averaging a bit
     - added TakeOneRequest.scans_to_average

@@ -115,15 +115,10 @@ class ProcessedReading:
         self.session_count = ProcessedReading.session_count
         ProcessedReading.session_count += 1
 
-        if settings:
-            self.settings = settings
-            if settings.wavelengths is not None:
-                self.wavelengths = copy(settings.wavelengths)
-            if settings.wavenumbers is not None:
-                self.wavenumbers = copy(settings.wavenumbers)
-
         if d is not None:
             self.load_from_dict(d)
+
+        self.post_load_cleanup(settings)
 
     def get_pixel_count(self):
         spectrum = self.get_processed()
@@ -210,8 +205,16 @@ class ProcessedReading:
     # Resets spectral component arrays which were somehow initialized (perhaps
     # while parsing a textfile and getting overly hopeful based on declared
     # header rows), but ultimately never populated.
-    def post_load_cleanup(self):
-        for field in [ "processed", "raw", "dark", "reference" ]:
+    def post_load_cleanup(self, settings=None):
+        if settings:
+            if self.settings is None:
+                self.settings = settings
+            if self.wavelengths is None:
+                self.wavelengths = copy(settings.wavelengths)
+            if self.wavenumbers is None:
+                self.wavenumbers = copy(settings.wavenumbers)
+
+        for field in [ "processed", "raw", "dark", "reference", "recordable_dark", "recordable_reference", "wavelengths", "wavenumbers" ]:
             if hasattr(self, field):
                 array = getattr(self, field)
                 if array is not None:
@@ -263,8 +266,6 @@ class ProcessedReading:
             self.cropped = ProcessedReading(d=d["Cropped"])
         if "Interpolated" in d:
             self.cropped = ProcessedReading(d=d["Interpolated"])
-
-        self.post_load_cleanup()
 
     def to_dict(self):
         return {
