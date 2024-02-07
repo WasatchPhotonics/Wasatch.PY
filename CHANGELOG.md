@@ -1,5 +1,7 @@
 # Changelog
 
+- 2024-02-07 2.1.47
+    - ProcessedReading always takes wavelengths/wavenumbers from settings if empty and available
 - 2024-02-06 2.1.46
     - removed enlighten.SaveOptions(?) from wasatch.CSVLoader(?!?)
     - made ProcessedReading smarter about loading wavelengths/wavenumbers from SpectrometerSettings

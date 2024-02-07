@@ -8,8 +8,9 @@ log = logging.getLogger(__name__)
 
 
 ##
-# This class encapsulates anything done to a wasatch.Reading after it has been
-# received by ENLIGHTEN.  This would include any post-processing like dark
+# This class encapsulates anything done to a wasatch.Reading (usually generated 
+# by wasatch.WasatchDevice) after it has been received by ENLIGHTEN (usually
+# Controller.process_reading).  This would include any post-processing like dark
 # subtraction, conversion into a processed transmission, reflectance, absorbance
 # or irradiance measurement, etc.  
 #
@@ -206,13 +207,15 @@ class ProcessedReading:
     # while parsing a textfile and getting overly hopeful based on declared
     # header rows), but ultimately never populated.
     def post_load_cleanup(self, settings=None):
-        if settings:
-            if self.settings is None:
-                self.settings = settings
-            if self.wavelengths is None:
-                self.wavelengths = copy(settings.wavelengths)
-            if self.wavenumbers is None:
-                self.wavenumbers = copy(settings.wavenumbers)
+        # keep settings if passed and had none
+        if settings and not self.settings:
+            self.settings = settings
+
+        # keep x-axes if available and had none
+        if self.settings and self.wavelengths is None:
+            self.wavelengths = copy(self.settings.wavelengths)
+        if self.settings and self.wavenumbers is None:
+            self.wavenumbers = copy(self.settings.wavenumbers)
 
         for field in [ "processed", "raw", "dark", "reference", "recordable_dark", "recordable_reference", "wavelengths", "wavenumbers" ]:
             if hasattr(self, field):
