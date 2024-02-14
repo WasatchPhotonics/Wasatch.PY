@@ -563,13 +563,14 @@ def parabolic_approximation(pixel, x, y):
         right = x3
     x_coord = x[left] + (x[right] - x[left]) * (vertex_x - left)
 
-    log.debug("parabolic approximation: x1 %d, x2 %d, x3 %d", x1, x2, x3)
-    log.debug("parabolic approximation: x.x1 %.2f, x.x2 %.2f, x.x3 %.2f", x[x1], x[x2], x[x3])
-    log.debug("parabolic approximation: y.x1 %.2f, y.x2 %.2f, y.x3 %.2f", y[x1], y[x2], y[x3])
-    log.debug("parabolic approximation: vertex_x %.2f, vertex_y %.2f", vertex_x, vertex_y)
-    log.debug("parabolic approximation: left %d, right %d", left, right)
-    log.debug("parabolic approximation: x.left %.2f, x.right %.2f", x[left], x[right])
-    log.debug("parabolic approximation: x.coord %.2f", x_coord)
+    if False:
+        log.debug("parabolic approximation: x1 %d, x2 %d, x3 %d", x1, x2, x3)
+        log.debug("parabolic approximation: x.x1 %.2f, x.x2 %.2f, x.x3 %.2f", x[x1], x[x2], x[x3])
+        log.debug("parabolic approximation: y.x1 %.2f, y.x2 %.2f, y.x3 %.2f", y[x1], y[x2], y[x3])
+        log.debug("parabolic approximation: vertex_x %.2f, vertex_y %.2f", vertex_x, vertex_y)
+        log.debug("parabolic approximation: left %d, right %d", left, right)
+        log.debug("parabolic approximation: x.left %.2f, x.right %.2f", x[left], x[right])
+        log.debug("parabolic approximation: x.coord %.2f", x_coord)
 
     return (x_coord, vertex_y)
 
