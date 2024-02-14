@@ -173,8 +173,19 @@ class ProcessedReading:
     def get_wavenumbers(self, stage=None):
         return self._get_array("wavenumbers", stage)
 
-    # MZ: who calls this?
     def set_processed(self, spectrum):
+        """
+        Called by enlighten.post_processing.(RichardsonLucy, AbsorbanceFeature, 
+        BoxcarFeature, TransmissionFeature, BaselineCorrection).
+
+        This never updates .interpolated, so all calls to this should definitely
+        occur BEFORE .interpolated is created by enlighten.post_processing.InterpolationFeature.
+        """
+
+        if self.interpolated:
+            log.error("set_processed: clearing interpolation")
+            self.interpolated = None
+
         if self.cropped:
             log.debug("set_processed: updating cropped")
             self.cropped.processed = spectrum
@@ -257,13 +268,19 @@ class ProcessedReading:
         if d is None:
             return
 
-        self.processed = wasatch_utils.dict_get_norm(d, "Processed")
-        self.reference = wasatch_utils.dict_get_norm(d, "Reference")
-        self.dark      = wasatch_utils.dict_get_norm(d, "Dark")
-        self.raw       = wasatch_utils.dict_get_norm(d, "Raw")
-
+        self.processed   = wasatch_utils.dict_get_norm(d, "Processed")
+        self.reference   = wasatch_utils.dict_get_norm(d, "Reference")
+        self.dark        = wasatch_utils.dict_get_norm(d, "Dark")
+        self.raw         = wasatch_utils.dict_get_norm(d, "Raw")
         self.wavelengths = wasatch_utils.dict_get_norm(d, "Wavelengths")
         self.wavenumbers = wasatch_utils.dict_get_norm(d, "Wavenumbers")
+
+        # make sure they're all Numpy for consistency
+        for attr in ['processed', 'reference', 'dark', 'raw', 'wavelengths', 'wavenumbers']:
+            if hasattr(self, attr):
+                a = getattr(self, attr)
+                if a is not None:
+                    setattr(self, np.array(a, dtype=np.float64))
 
         if "Cropped" in d:
             self.cropped = ProcessedReading(d=d["Cropped"])
