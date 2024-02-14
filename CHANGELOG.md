@@ -1,5 +1,7 @@
 # Changelog
 
+- 2024-02-14 2.1.48
+    - ProcessedReading: force to np.array on load_from_dict, clear .interpolated on set_processed
 - 2024-02-07 2.1.47
     - ProcessedReading always takes wavelengths/wavenumbers from settings if empty and available
 - 2024-02-06 2.1.46
