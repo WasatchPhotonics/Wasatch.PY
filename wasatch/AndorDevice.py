@@ -80,7 +80,7 @@ class AndorDevice(InterfaceDevice):
         self.take_one               = False
         self.failure_count          = 0
         self.dll_fail               = True
-        self.toggle_state           = True
+        self.tec_enabled            = True
         self.driver                 = None
 
         self.process_id = os.getpid()
@@ -261,14 +261,26 @@ class AndorDevice(InterfaceDevice):
             # NOTE: reading.timestamp is when reading STARTED, not FINISHED!
             reading = Reading(self.device_id)
 
-            if self.settings.eeprom.has_cooling and self.toggle_state:
-                c_temp = c_int()
-                result = self.driver.GetTemperature(0,c_temp)
-                if (self.SUCCESS != result):
-                    log.error(f"unable to read tec temp, result was {result}")
+            if self.tec_enabled:
+                log.debug("TEC enabled, so reading temperature")
+
+                use_float = True    # seems to work on 785XL (WP-01635)
+
+                if use_float:
+                    c_temp = c_float()
+                    result = self.driver.GetTemperatureF(byref(c_temp))
                 else:
-                    log.debug(f"andor read temperature, value of {c_temp.value}")
+                    c_temp = c_int()
+                    result = self.driver.GetTemperature(byref(c_temp))
+
+                label = self.get_error_code(result)
+                
+                if label in ["DRV_SUCCESS", "DRV_TEMP_STABILIZED", "DRV_TEMP_NOT_REACHED", "DRV_TEMP_DRIFT", "DRV_TEMP_NOT_STABILIZED"]:
                     reading.detector_temperature_degC = c_temp.value
+                    log.debug(f"Andor temperature {reading.detector_temperature_degC:.2f} ({label})")
+                else:
+                    log.error(f"unable to read detector temperature, result was {label}")
+
             try:
                 reading.integration_time_ms = self.settings.state.integration_time_ms
                 reading.laser_power_perc    = self.settings.state.laser_power_perc
@@ -276,10 +288,10 @@ class AndorDevice(InterfaceDevice):
                 reading.laser_enabled       = self.settings.state.laser_enabled
                 reading.spectrum            = self._get_spectrum_raw()
 
-                temperature = c_float()
-                temp_success = self.driver.GetTemperatureF(byref(temperature))
-
-                reading.detector_temperature_degC = temperature.value
+                # MZ: why were we trying to use GetTemperatureF(float) here, when above it was GetTemperature(int)?
+                # temperature = c_float()
+                # temp_success = self.driver.GetTemperatureF(byref(temperature))
+                # reading.detector_temperature_degC = temperature.value
             except usb.USBError:
                 self.failure_count += 1
                 log.error(f"Andor Device: encountered USB error in reading for device {self.device}")
@@ -538,8 +550,8 @@ class AndorDevice(InterfaceDevice):
 
     def toggle_tec(self, toggle_state):
         c_toggle = c_int(toggle_state)
-        self.toggle_state = c_toggle.value
-        if toggle_state:
+        self.tec_enabled = c_toggle.value
+        if self.tec_enabled:
             self.check_result(self.driver.CoolerON(), "CoolerON")
         else:
             self.check_result(self.driver.CoolerOFF(), "CoolerOFF")
@@ -549,8 +561,8 @@ class AndorDevice(InterfaceDevice):
         if set_temp < self.settings.eeprom.min_temp_degC or set_temp > self.settings.eeprom.max_temp_degC:
             log.error(f"requested temp of {set_temp}, but it is outside range ({self.settings.eeprom.min_temp_degC}C, {self.settings.eeprom.max_temp_degC}C)")
             return
-        if not self.toggle_state:
-            log.error(f"returning because toggle state is {self.toggle_state}")
+        if not self.tec_enabled:
+            log.error(f"returning because tec_enabled {self.tec_enabled}")
             return
         self.setpoint_deg_c = set_temp
         # I don't think CoolerON should need to be called, but I'm not seeing temperature changes
@@ -621,6 +633,11 @@ class AndorDevice(InterfaceDevice):
         self.settings.state.scans_to_average = int(value)
         return SpectrometerResponse(True)
 
+    def get_error_code_long(self, code):
+        if code in self.error_codes:
+            return f"{code} ({self.error_codes[code]})"
+        return f"{code} (UNKNOWN_ANDOR_ERROR)"
+
     def get_error_code(self, code):
         if code in self.error_codes:
             return self.error_codes[code]
@@ -682,10 +699,10 @@ class AndorDevice(InterfaceDevice):
             20055: "DRV_EEPROMVERSIONERROR",
             20064: "DRV_DATATYPE",
             20065: "DRV_DRIVER_ERRORS",
-            20066: "DRV_P1INVALID",
-            20067: "DRV_P2INVALID",
-            20068: "DRV_P3INVALID",
-            20069: "DRV_P4INVALID",
+            20066: "DRV_P1INVALID", # param #1
+            20067: "DRV_P2INVALID", # param #2
+            20068: "DRV_P3INVALID", # param #3
+            20069: "DRV_P4INVALID", # param #4
             20070: "DRV_INIERROR",
             20071: "DRV_COFERROR",
             20072: "DRV_ACQUIRING",
