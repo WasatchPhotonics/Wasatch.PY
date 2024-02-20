@@ -1465,7 +1465,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         if raw.data == 0:
             msg = "get_laser_temperature_degC: can't take log of raw ADC value 0"
-            log.error(msg)
+            # log.debug(msg)
             return SpectrometerResponse(data=None) # not propogating error_msg for now
 
         degC = 0
@@ -1688,11 +1688,12 @@ class FeatureIdentificationDevice(InterfaceDevice):
         res = self._get_code(0xe2, label="GET_LASER_ENABLED", msb_len=1)
         flag = 0 != res.data
 
-        if self.device_id.pid != 0x4000:
+        if self.device_id.pid == 0x4000:
             # MZ: get_laser_enabled not currently robust on SiG :-(
-            log.debug(f"MZ: get_laser_enabled: {flag} (storing to {self.settings.state})")
-            self.settings.state.laser_enabled = flag
+            return SpectrometerResponse(data=self.settings.state.laser_enabled)
 
+        log.debug(f"get_laser_enabled: {flag} (storing to {self.settings.state})")
+        self.settings.state.laser_enabled = flag
         return SpectrometerResponse(data=flag)
 
     def set_laser_enable(self, flag: bool):

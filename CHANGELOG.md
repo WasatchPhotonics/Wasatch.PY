@@ -1,5 +1,7 @@
 # Changelog
 
+- 2024-02-19 2.1.49
+    - return state.laser_enabled from FID.get_laser_enabled on SiG until FW fixed
 - 2024-02-14 2.1.48
     - ProcessedReading: force to np.array on load_from_dict, clear .interpolated on set_processed
 - 2024-02-07 2.1.47
