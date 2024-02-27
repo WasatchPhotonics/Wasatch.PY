@@ -56,7 +56,7 @@ class ProcessedReading:
         self.recordable_dark = None
 
         self.declared_match = None
-        self.first_pixel = None             # MZ: ?
+        self.first_pixel = -1 # only used in .cropped (set by enlighten.HorizROI.process)
         self.plugin_metadata = None
 
         # these are optional handles to secondary ProcessedReadings
@@ -173,6 +173,11 @@ class ProcessedReading:
     def get_wavenumbers(self, stage=None):
         return self._get_array("wavenumbers", stage)
 
+    def get_pixel_axis(self):
+        if self.is_cropped() and not self.is_interpolated() and self.cropped.first_pixel >= 0:
+            return range(self.cropped.first_pixel, self.cropped.first_pixel + self.get_pixel_count())
+        return range(self.get_pixel_count())
+
     def set_processed(self, spectrum):
         """
         Called by enlighten.post_processing.(RichardsonLucy, AbsorbanceFeature, 
@@ -285,7 +290,7 @@ class ProcessedReading:
         if "Cropped" in d:
             self.cropped = ProcessedReading(d=d["Cropped"])
         if "Interpolated" in d:
-            self.cropped = ProcessedReading(d=d["Interpolated"])
+            self.interpolated = ProcessedReading(d=d["Interpolated"])
 
     def to_dict(self):
         return {

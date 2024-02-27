@@ -1,5 +1,7 @@
 # Changelog
 
+- 2024-02-27 2.1.51
+    - added ProcessedReading.get_pixel_axis
 - 2024-02-20 2.1.50
     - fixed AndorDevice temperature
 - 2024-02-19 2.1.49
