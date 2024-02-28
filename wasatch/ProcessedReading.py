@@ -285,7 +285,7 @@ class ProcessedReading:
             if hasattr(self, attr):
                 a = getattr(self, attr)
                 if a is not None:
-                    setattr(self, np.array(a, dtype=np.float64))
+                    setattr(self, attr, np.array(a, dtype=np.float64))
 
         if "Cropped" in d:
             self.cropped = ProcessedReading(d=d["Cropped"])
