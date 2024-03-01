@@ -1,7 +1,9 @@
 # Changelog
 
+- 2024-02-28 2.1.53
+    - enriched ProcessedReading.dump 
 - 2024-02-28 2.1.52
-    - fied ProcessedReading bug
+    - fixed ProcessedReading bug
 - 2024-02-27 2.1.51
     - added ProcessedReading.get_pixel_axis
 - 2024-02-20 2.1.50
