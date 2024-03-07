@@ -162,14 +162,19 @@ class ProcessedReading:
 
     def get_processed(self, stage=None):
         return self._get_array("processed", stage)
+        
     def get_raw(self, stage=None):
         return self._get_array("raw", stage)
+
     def get_dark(self, stage=None):
         return self._get_array("dark", stage)
+
     def get_reference(self, stage=None):
         return self._get_array("reference", stage)
+
     def get_wavelengths(self, stage=None):
         return self._get_array("wavelengths", stage)
+
     def get_wavenumbers(self, stage=None):
         return self._get_array("wavenumbers", stage)
 
