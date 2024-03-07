@@ -1,5 +1,7 @@
 # Changelog
 
+- 2024-03-07 2.1.54
+    - return "sensor stabilizing" message
 - 2024-02-28 2.1.53
     - enriched ProcessedReading.dump 
 - 2024-02-28 2.1.52

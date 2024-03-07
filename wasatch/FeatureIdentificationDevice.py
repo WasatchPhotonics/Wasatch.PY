@@ -1291,6 +1291,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
             response.error_lvl = ErrorLevel.low
             response.keep_alive = True
             log.debug(response.error_msg)
+            self.queue_message("marquee_info", "sensor is stabilizing")
             return response
 
         ########################################################################
