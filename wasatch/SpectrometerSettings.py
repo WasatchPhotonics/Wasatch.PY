@@ -440,9 +440,10 @@ class SpectrometerSettings:
             log.debug("is_ingaas TRUE because detector")
             return True
         elif not self.is_arm() and (self.fpga_options is not None and self.fpga_options.has_cf_select):
+            # new SiG ARM code removes GET_FPGA_COMPILATION_OPTIONS and therefore returns all 0xff for unsupported register
             log.debug("is_ingaas TRUE because has_cf_select")
             return True
-        # log.debug("is_ingaas FALSE by default")
+        log.debug("is_ingaas FALSE by default")
         return False
 
     def is_imx(self): # -> bool 

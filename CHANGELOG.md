@@ -1,5 +1,8 @@
 # Changelog
 
+- 2024-03-13 2.1.56
+    - double-check to prevent div-by-zero in InGaAs gain correction
+    - decline to parse FPGAOptions for ARM (leave at initialized values)
 - 2024-03-13 2.1.55
     - don't use FPGAOptions on ARM
     - return "Sensor Stabilizing" message on ARM when intTime/gain changes

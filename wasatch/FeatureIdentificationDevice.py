@@ -511,6 +511,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
            self.settings.eeprom.detector_offset_odd == self.settings.eeprom.detector_offset:
             return False
 
+        if 0 == self.settings.eeprom.detector_gain:
+            log.debug("declining to attempt division by zero")
+            return
+
         log.debug("rescaling InGaAs odd pixels from even gain %.4f, offset %d to odd gain %.4f, offset %d",
             self.settings.eeprom.detector_gain,
             self.settings.eeprom.detector_offset,
@@ -817,6 +821,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return False
 
     def _read_fpga_compilation_options(self):
+        if self.settings.is_arm():
+            log.debug("ARM spectrometers no longer supporting FPGA compilation options")
+            return
+            
         response = self.get_upper_code(0x04, label="READ_COMPILATION_OPTIONS", lsb_len=2)
         word = response.data
         self.settings.fpga_options.parse(word)
