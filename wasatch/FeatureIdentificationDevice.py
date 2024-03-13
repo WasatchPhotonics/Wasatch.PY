@@ -987,6 +987,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.add_throwaway(gain != self.settings.eeprom.detector_gain)
         self.settings.eeprom.detector_gain = gain
 
+        if self.settings.is_xs():
+            self.queue_message("marquee_info", "sensor is stabilizing")
+
         return result
 
     def set_detector_gain_odd(self, gain: float):
@@ -1366,6 +1369,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
              request; range limits in EEPROM are defined as 16-bit
              values, while integration time is actually a 24-bit value,
              such that the EEPROM is artificially limiting our range.
+
+        @todo SiG needs to wait 20ms + 8 frames for stabilization.
         """
         ms = max(1, int(round(ms)))
 
@@ -1378,9 +1383,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.add_throwaway(ms != self.settings.state.integration_time_ms)
         self.settings.state.integration_time_ms = ms
 
-        # consciously but cautiously disabling this functionality
-        # if self.settings.is_micro():
-        #     self.update_laser_watchdog();
+        if self.settings.is_xs():
+            self.queue_message("marquee_info", "sensor is stabilizing")
 
         return result
 

@@ -1,5 +1,8 @@
 # Changelog
 
+- 2024-03-13 2.1.55
+    - don't use FPGAOptions on ARM
+    - return "Sensor Stabilizing" message on ARM when intTime/gain changes
 - 2024-03-07 2.1.54
     - return "sensor stabilizing" message
 - 2024-02-28 2.1.53
