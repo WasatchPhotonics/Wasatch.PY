@@ -825,7 +825,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.debug("ARM spectrometers no longer supporting FPGA compilation options")
             return
             
-        response = self.get_upper_code(0x04, label="READ_COMPILATION_OPTIONS", lsb_len=2)
+        response = self.get_upper_code(0x04, label="READ_COMPILATION_OPTIONS", lsb_len=3)
         word = response.data
         self.settings.fpga_options.parse(word)
 
@@ -1054,6 +1054,55 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.settings.fpga_firmware_version = s
         return SpectrometerResponse(data=s)
 
+    def apply_edc(self, spectrum):
+        """
+        Use the "pixel side ignored area" for electrical dark correction (EDC).
+
+        @par IMX385LQR-C datasheet (p8)
+
+        @verbatim
+        Pixels    Count Description
+        0-3       4     OB side ignored area
+        4-8       4     Effective pixel side ignored area       <-- "shelf" complicates
+        9-16      8     Effective margin for color processing
+        17-1936   1920  Recording pixel area
+        1937-1945 9     Effective margin for color processing
+        1946-1949 4     Effective pixel side ignored area       <-- using these
+        1950-1952 3     Dummy
+        @endverbatim
+
+        @todo we might want to make buffer length configurable, either in spectra
+              or by time (consider 10ms vs 1sec integration time)
+        """            
+        if not self.settings.state.edc_enabled:
+            return spectrum
+
+        if not self.settings.is_imx():
+            return spectrum
+
+        if len(spectrum) != 1952:
+            log.error("IMX EDC hard-coded to 1952px")
+            return spectrum
+
+        # this averages electrical dark over SPACE
+        electrical_dark = sum(spectrum[1946:1950]) / 4.0 
+
+        # this averages electrical dark over the last ONE SEC
+        now = datetime.datetime.now()
+        too_old = now - datetime.timedelta(seconds=1)
+
+        total = electrical_dark
+        new_buf = [ (now, electrical_dark) ]
+        for pair in self.settings.state.edc_buffer:
+            ts, value = pair
+            if ts >= too_old:
+                total += value
+                new_buf.append( (ts, value) )
+        self.settings.state.edc_buffer = new_buf
+
+        avg_dark = round(total / len(new_buf), 2)
+        return [ v - avg_dark for v in spectrum ]
+
     def get_line(self, trigger: bool = True):
         """
         Send "acquire", then immediately read the bulk endpoint(s).
@@ -1272,6 +1321,12 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 utils.stomp_last (spectrum, 1)
 
         ########################################################################
+        # Electrical Dark Correction (EDC, experimental)
+        ########################################################################
+
+        spectrum = self.apply_edc(spectrum)
+
+        ########################################################################
         # Invert X-Axis
         ########################################################################
 
@@ -1439,7 +1494,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
     ##
     # Laser temperature conversion doesn't use EEPROM coeffs at all.
-    # Most Wasatch Raman systems use an IPS Wavelength-Stabilized TO-56
+    #
+    # Wasatch SML products use an IPS Wavelength-Stabilized TO-56
     # laser, which internally uses a Betatherm 10K3CG3 thermistor.
     #
     # @see https://www.ipslasers.com/data-sheets/SM-TO-56-Data-Sheet-IPS.pdf
@@ -1458,45 +1514,68 @@ class FeatureIdentificationDevice(InterfaceDevice):
     #        C3 = 8.78e-8
     # \endverbatim
     #
-    # @param raw    the value read from the thermistor's 12-bit ADC (should be 
-    #               uint12, but apparently can be SpectrometerResponse?)
-    def get_laser_temperature_degC(self, raw: int = None):
-        if not isinstance(raw, SpectrometerResponse):
-            raw = SpectrometerResponse(data=raw)
+    # That said, on XS the IPS thermistor then goes through a MAX1978ETM-T
+    # TEC IC which buffers the thermistor voltage. This requires the additional
+    # empirically-determined static conversion captured below.
+    #
+    # Regrettably, the laser thermistor voltage on X series spectrometers
+    # overflows the ADC range, so we don't currently have valid laser 
+    # temperature read-out on X. 
+    #
+    # Also, on MML units using the Ondax OEM Module, the cable to the 220060 
+    # does not seem to pass-through the thermistor pin, so we don't have
+    # laser temperature read-out on those, either. (Nor photodiode...)
+    #
+    # @param raw    the value read from the thermistor's 12-bit ADC (can be
+    #               uint12 or SpectrometerResponse)
+    def get_laser_temperature_degC(self, raw=None):
+        if isinstance(raw, SpectrometerResponse):
+            raw = raw.data
         if raw is None:
             raw = self.get_laser_temperature_raw()
 
-        if raw.data is None:
+        if raw is None:
             msg="get_laser_temperature_degC: error reading raw laser temperature"
             log.error(msg)
             return SpectrometerResponse(error_lvl=ErrorLevel.low, error_msg=msg)
 
-        if raw.data > 0xfff:
-            msg = "get_laser_temperature_degC: raw value 0x%04x exceeds 12 bits" % raw.data
+        if raw > 0xfff:
+            msg = f"get_laser_temperature_degC: raw value 0x{raw:x} exceeds 12 bits"
             log.error(msg)
             return SpectrometerResponse(data=None, error_lvl=ErrorLevel.low, error_msg=msg)
 
-        if raw.data == 0:
+        if raw == 0:
             msg = "get_laser_temperature_degC: can't take log of raw ADC value 0"
             # log.debug(msg)
             return SpectrometerResponse(data=None) # not propogating error_msg for now
 
         degC = 0
         try:
-            voltage    = 2.5 * raw.data / 4096
-            resistance = 21450.0 * voltage / (2.5 - voltage) # LB confirmed
+            if self.settings.is_xs():
+                # conversion for 220250 Rev4 MAX1978ETM-T 3V3 buffer -> 12-bit DAC -> degC
+                coeffs = [ 1.5712971947853123e+000,
+                           1.4453391889061071e-002,
+                          -1.8534086153440592e-006,
+                           4.2553356470494626e-010 ]
+                for i, coeff in enumerate(coeffs):
+                    degC += coeff * pow(raw, i)
+                    log.debug(f"get_laser_temperature_degC: degC {degC:g} after adding {coeff} x (pow({raw}, {i}) = {pow(raw, i):g})")
+            else:
+                # when not using TEC IC
+                voltage    = 2.5 * raw / 4096
+                resistance = 21450.0 * voltage / (2.5 - voltage) # LB confirmed
 
-            if resistance < 0:
-                msg="get_laser_temperature_degC: can't compute degC: raw = 0x%04x, voltage = %f, resistance = %f" % (
-                    raw.data, voltage, resistance)
-                log.error(msg)
-                return SpectrometerResponse(data=None, error_level=ErrorLevel.low, error_msg=msg)
+                if resistance < 0:
+                    msg="get_laser_temperature_degC: can't compute degC: raw = 0x%04x, voltage = %f, resistance = %f" % (
+                        raw, voltage, resistance)
+                    log.error(msg)
+                    return SpectrometerResponse(data=None, error_level=ErrorLevel.low, error_msg=msg)
 
-            logVal     = math.log(resistance / 10000.0)
-            insideMain = logVal + 3977.0 / (25 + 273.0)
-            degC       = 3977.0 / insideMain - 273.0
+                logVal     = math.log(resistance / 10000.0)
+                insideMain = logVal + 3977.0 / (25 + 273.0)
+                degC       = 3977.0 / insideMain - 273.0
 
-            log.debug("Laser temperature: %.2f deg C (0x%04x raw)" % (degC, raw.data))
+            log.debug("Laser temperature: %.2f deg C (0x%04x raw)" % (degC, raw))
         except:
             msg = "exception computing laser temperature"
             log.error(msg, exc_info=1)
@@ -1659,17 +1738,18 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 value, self.settings.eeprom.has_laser)
         return SpectrometerResponse(data=available)
 
-    ## @note little-endian, reverse of get_detector_temperature_raw
     def get_laser_temperature_raw(self):
+        """ @note little-endian, reverse of get_detector_temperature_raw """
         # flip to primary ADC if needed
         if self.settings.state.selected_adc is None or self.settings.state.selected_adc != 0:
+            # MZ: unclear if this is needed on SiG
             self.select_adc(0)
 
         result = self._get_code(0xd5, wLength=2, label="GET_ADC", lsb_len=2)
         if not result.data:
             log.debug("Unable to read laser temperature")
             return SpectrometerResponse(0)
-        result.data = result.data & 0xfff
+        result.data = result.data & 0xfff # clamp to 12-bit
         return result
 
     def set_selected_laser(self, value: int):
@@ -3111,6 +3191,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # experimental (R&D)
         process_f["graph_alternating_pixels"]           = lambda x: self.settings.state.set("graph_alternating_pixels", bool(x))
         process_f["swap_alternating_pixels"]            = lambda x: self.settings.state.set("swap_alternating_pixels", bool(x))
+        process_f["edc_enable"]                         = lambda x: self.settings.state.set("edc_enabled", bool(x))
         process_f["invert_x_axis"]                      = lambda x: self.settings.eeprom.set("invert_x_axis", bool(x))
         process_f["bin_2x2"]                            = lambda x: self.settings.eeprom.set("bin_2x2", bool(x))
         process_f["wavenumber_correction"]              = lambda x: self.settings.set_wavenumber_correction(float(x))

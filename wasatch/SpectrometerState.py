@@ -126,6 +126,10 @@ class SpectrometerState:
         # from the wavelength calibration at the specified excitation wavelength)
         self.wavenumber_correction = 0
 
+        # EDC
+        self.edc_enabled = False
+        self.edc_buffer = []
+
         # ######################################################################
         # gain (dB) (IMX only)
         # ######################################################################

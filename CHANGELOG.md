@@ -1,5 +1,9 @@
 # Changelog
 
+- 2024-03-14 2.1.57
+    - added laser temperature calibration for XS
+    - added EDC for XS
+    - clarified FPGAOptions as 24-bit (but ignore for XS)
 - 2024-03-13 2.1.56
     - double-check to prevent div-by-zero in InGaAs gain correction
     - decline to parse FPGAOptions for ARM (leave at initialized values)
