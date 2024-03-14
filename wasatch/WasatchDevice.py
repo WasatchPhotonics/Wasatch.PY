@@ -171,6 +171,8 @@ class WasatchDevice(InterfaceDevice):
         self.settings = self.hardware.settings
 
         # generic post-initialization stuff 
+
+        # MZ: interesting that we don't try to read firmware/FPGA versions until AFTER fid.connect() completes
         req_fw_v = SpectrometerRequest('get_microcontroller_firmware_version')
         req_fpga_v = SpectrometerRequest('get_fpga_firmware_version')
         req_int = SpectrometerRequest('get_integration_time_ms')
