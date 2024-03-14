@@ -36,19 +36,19 @@ class FPGAOptions:
         self.has_horiz_binning           = False
 
     ## 
-    # Parse the given 32-bit words according to the following representation:
+    # Parse the given 24-bit register according to the following representation:
     #
-    # @code
-    # bits 0-2: 0000 0000 0000 0111 IntegrationTimeResolution
-    # bit  3-5: 0000 0000 0011 1000 DataHeader
-    # bit    6: 0000 0000 0100 0000 HasCFSelect
-    # bit  7-8: 0000 0001 1000 0000 LaserType
-    # bit 9-11: 0000 1110 0000 0000 LaserControl
-    # bit   12: 0001 0000 0000 0000 HasAreaScan
-    # bit   13: 0010 0000 0000 0000 HasActualIntegTime
-    # bit   14: 0100 0000 0000 0000 HasHorizBinning
-    # bit   15: 1000 0000 0000 0000 Reserved
-    # @endcode
+    # @verbatim
+    #   0-2: IntegrationTimeResolution
+    #   3-5: DataHeader
+    #     6: HasCFSelect
+    #   7-8: LaserType
+    #  9-11: LaserControl
+    #    12: HasAreaScan
+    #    13: HasActualIntegTime
+    #    14: HasHorizBinning
+    # 23-15: Reserved
+    # @endverbatim
     def parse(self, word):
         if word is None:
             log.error("can't parse NULL word")
