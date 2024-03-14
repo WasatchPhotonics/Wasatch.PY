@@ -1,5 +1,8 @@
 # Changelog
 
+- 2024-03-15 2.1.58
+    - added set/get_laser_tec_mode
+    - sanity-check XS laser TEC setpoint to 700-900 range
 - 2024-03-14 2.1.57
     - added laser temperature calibration for XS
     - added EDC for XS
