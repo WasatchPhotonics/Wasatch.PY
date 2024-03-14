@@ -1462,8 +1462,21 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return result
 
     # ##########################################################################
-    # ADCs 
+    # ADCs / DACs
     # ##########################################################################
+
+    # This is a little confusing, so:
+    #
+    # The "primary" ADC (ADC 0) is assumed to return laser temperature.
+    #
+    # The "secondary" ADC (ADC 1) may be wired to various other things for
+    # legacy or OEM systems. For instance, it has been used with an integrated
+    # photodiode for real-time measurement of laser output power (with or
+    # without a calibration to convert the photodiode result to mW, hence
+    # get_secondary_adc_calibrated).
+    #
+    # Most users will never need to explicitly call select_adc, and can simply
+    # call get_laser_temperature_raw and/or get_laser_temperature_degC.
 
     def get_dac(self, dacIndex: int = 0):
         return self._get_code(0xd9, wIndex=dacIndex, label="GET_DAC", lsb_len=2)
