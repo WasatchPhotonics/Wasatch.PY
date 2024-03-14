@@ -286,9 +286,19 @@ class FeatureIdentificationDevice(InterfaceDevice):
             
             # XS only supports a TEC on the laser, not the detector
             if self.settings.eeprom.sig_laser_tec:
-                log.debug("initializing laser TEC on XS")
-                self.set_laser_temperature_setpoint_raw(self.settings.eeprom.startup_temp_degC)
+                if 700 <= self.settings.eeprom.startup_temp_degC <= 900:
+                    log.debug("initializing XS laser TEC setpoint")
 
+                    # kludge: for now, use the detector TEC startup setpoint for laser
+                    self.settings.state.laser_tec_setpoint = self.settings.eeprom.startup_temp_degC
+
+                    self.set_laser_temperature_setpoint_raw(self.settings.state.laser_tec_setpoint)
+
+                    log.debug("initializing XS laser TEC mode -> AUTO")
+                    self.set_laser_tec_mode(2) # 0 off, 1 on, 2 AUTO, 3 auto-on
+                else:
+                    # don't set anything if default setpoint looks way off
+                    log.error(f"laser TEC setpoint looks invalid: {self.settings.eeprom.startup_temp_degC}")
         else:
             
             # X/XM models don't require runtime configuration of the laser TEC
@@ -1452,8 +1462,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return result
 
     # ##########################################################################
-    # Temperature
+    # ADCs 
     # ##########################################################################
+
+    def get_dac(self, dacIndex: int = 0):
+        return self._get_code(0xd9, wIndex=dacIndex, label="GET_DAC", lsb_len=2)
 
     def select_adc(self, n: int):
         log.debug("select_adc -> %d", n)
@@ -1490,6 +1503,39 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         result = self._get_code(0xd5, wLength=2, label="GET_ADC", lsb_len=2) & 0xfff
         log.debug("secondary_adc_raw: 0x%04x", result)
+        return result
+
+    # ##########################################################################
+    # Laser Temperature
+    # ##########################################################################
+
+    def set_laser_tec_mode(self, mode):
+        if not self.settings.is_xs():
+            msg = "Laser TEC mode only applicable on XS"
+            log.error(msg)
+            return SpectrometerResponse(data=None, error_lvl=ErrorLevel.low, error_msg=msg)
+
+        mode = min(3, max(0, int(mode)))
+        return self._send_code(0x84, mode, label="SET_LASER_TEC_MODE")
+
+    def get_laser_tec_mode(self):
+        if not self.settings.is_xs():
+            msg = "Laser TEC mode only applicable on XS"
+            log.error(msg)
+            return SpectrometerResponse(data=None, error_lvl=ErrorLevel.low, error_msg=msg)
+
+        mode = min(3, max(0, int(mode)))
+        result = self._get_code(0x85, wLength=1, label="GET_LASER_TEC_MODE", lsb_len=1) & 0xfff
+        if result is None or result.data < 0 or result.data > 3:
+            msg = f"get_laser_tec_mode: invalid mode {result}"
+            log.error(msg)
+            return SpectrometerResponse(data=None, error_lvl=ErrorLevel.low, error_msg=msg)
+
+        mode = result.data
+        modes = [ 'OFF', 'ON', 'AUTO', 'AUTO_ON' ]
+        log.debug(f"get_laser_tec_mode: mode {modes[mode]}")
+
+        self.settings.state.laser_tec_mode = mode
         return result
 
     ##
@@ -1583,6 +1629,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         return SpectrometerResponse(data=degC)
 
+    # ##########################################################################
+    # Detector Temperature
+    # ##########################################################################
+
     ## @note big-endian, reverse of get_laser_temperature_raw
     def get_detector_temperature_raw(self):
         return self._get_code(0xd7, label="GET_CCD_TEMP", msb_len=2)
@@ -1641,9 +1691,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
     def get_detector_tec_setpoint_raw(self):
         return self.get_dac(0)
 
-    def get_dac(self, dacIndex: int = 0):
-        return self._get_code(0xd9, wIndex=dacIndex, label="GET_DAC", lsb_len=2)
-
     ## @todo rename set_detector_tec_enable
     def set_tec_enable(self, flag: bool):
         if not self.settings.eeprom.has_cooling:
@@ -1667,6 +1714,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
         if ok.data:
             self.settings.state.tec_enabled = flag
         return ok
+
+    # ##########################################################################
+    # Triggering
+    # ##########################################################################
 
     def set_trigger_source(self, value: bool):
         """
@@ -1695,6 +1746,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         # MZ: this is weird...we're sending the buffer on an FX2-only command
         return self._send_code(0xd2, lsb, msb, buf, label="SET_TRIGGER_SOURCE")
+
+    # ##########################################################################
+    # High-Gain Mode
+    # ##########################################################################
 
     ##
     # CF_SELECT is configured using bit 2 of the FPGA configuration register
@@ -3025,6 +3080,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
                      "get_detector_tec_setpoint_degC",
                      "get_dac",
                      "set_tec_enable",
+                     "set_laser_tec_mode",
+                     "get_laser_tec_mode",
                      "set_trigger_source",
                      "set_high_gain_mode_enable",
                      "get_high_gain_mode_enabled",
