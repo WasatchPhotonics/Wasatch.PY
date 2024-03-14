@@ -23,7 +23,7 @@ class SpectrometerState:
         self.integration_time_ms = 0
         self.ignore_timeouts_until = None
 
-        # TEC
+        # TEC       @todo rename detector_tec...
         self.tec_setpoint_degC = 15 # that's a very strange default...
         self.tec_enabled = False
 
@@ -43,6 +43,8 @@ class SpectrometerState:
         self.raman_mode_enabled = False
         self.raman_delay_ms = 0
         self.laser_watchdog_sec = 0 
+        self.laser_tec_mode = 0 
+        self.laser_tec_setpoint = 800
 
         # triggering
         self.trigger_source = self.TRIGGER_SOURCE_INTERNAL
