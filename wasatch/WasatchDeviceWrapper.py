@@ -228,8 +228,8 @@ class WasatchDeviceWrapper:
             device_id      = self.device_id,
             command_queue  = self.command_queue,  # Main --> child
             response_queue = self.response_queue, # Main <-- child \
-            settings_queue = self.settings_queue, # Main <-- child / consolidate into SpectrometerMessage?
-            message_queue  = self.message_queue,
+            settings_queue = self.settings_queue, # Main <-- child  | consolidate into 
+            message_queue  = self.message_queue,  # Main <-- child /  SpectrometerMessage?
             is_ocean       = self.is_ocean,
             is_andor       = self.is_andor,
             is_spi         = self.is_spi,
@@ -271,6 +271,7 @@ class WasatchDeviceWrapper:
                 self.connected = True
                 self.settings = result.data
                 self.connect_start_time = datetime.datetime(year=datetime.MAXYEAR, month=1, day=1)
+                self.settings.state.dump("WasatchDeviceWrapper.poll_settings")
                 return SpectrometerResponse(True)
             else:
                 log.critical("got error response instead of settings from connection request")
@@ -463,4 +464,3 @@ class WasatchDeviceWrapper:
             return
         except Exception as e:
             log.error(f"found an error of {e}")
-

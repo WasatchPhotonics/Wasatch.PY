@@ -1,5 +1,8 @@
 # Changelog
 
+- 2024-03-15 2.1.59
+    - changed XS get_detector_gain to big-endian
+    - added clarity around XS laser_tec_mode -vs- enabled
 - 2024-03-15 2.1.58
     - added set/get_laser_tec_mode
     - sanity-check XS laser TEC setpoint to 700-900 range

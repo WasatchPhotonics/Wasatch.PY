@@ -272,7 +272,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
             return result
 
         # ######################################################################
-        # Laser
+        # Automatically disable laser at connection
         # ######################################################################
 
         if self.settings.eeprom.has_laser:
@@ -284,23 +284,29 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         if self.settings.is_xs():
             
-            # XS only supports a TEC on the laser, not the detector
             if self.settings.eeprom.sig_laser_tec:
+
+                # sanity-check for reasonable setpoint range (raw 12-bit)
                 if 700 <= self.settings.eeprom.startup_temp_degC <= 900:
                     log.debug("initializing XS laser TEC setpoint")
 
                     # kludge: for now, use the detector TEC startup setpoint for laser
                     self.settings.state.laser_tec_setpoint = self.settings.eeprom.startup_temp_degC
-
                     self.set_laser_temperature_setpoint_raw(self.settings.state.laser_tec_setpoint)
 
+                    # this should be the default in firmware, but set anyway
                     log.debug("initializing XS laser TEC mode -> AUTO")
-                    self.set_laser_tec_mode(2) # 0 off, 1 on, 2 AUTO, 3 auto-on
+                    self.set_laser_tec_mode("AUTO")
                 else:
                     # don't set anything if default setpoint looks way off
                     log.error(f"laser TEC setpoint looks invalid: {self.settings.eeprom.startup_temp_degC}")
-        else:
+
+        # ######################################################################
+        # Detector TEC
+        # ######################################################################
             
+        if not self.settings.is_xs():
+
             # X/XM models don't require runtime configuration of the laser TEC
             # (it's set via pots on 110280 (SML) or 110613 (MML)), but do need
             # to initialize the detector TEC for R and C units.
@@ -390,6 +396,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         log.debug("connection successful")
         self.connected = True
         self.connecting = False
+
+        self.settings.state.dump("FID.post_connect")
 
         return SpectrometerResponse(self.connected)
 
@@ -930,6 +938,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         E.g., 231 dec == 0x01e7 == 1.90234375
         """
         res = self._get_code(0xc5, label="GET_DETECTOR_GAIN")
+
         result = res.data
 
         if result is None:
@@ -937,8 +946,13 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.error(msg)
             return SpectrometerResponse(error_lvl=ErrorLevel.medium,error_msg=msg,keep_alive=True)
 
-        lsb = result[0] # LSB-MSB
-        msb = result[1]
+        if self.settings.is_xs():
+            msb = result[0] # big-endian, SAME as set_detector_gain
+            lsb = result[1] # this adds confusion, but is an improvement :-/
+        else:
+            lsb = result[0] # little-endian, OPPOSITE of set_detector_gain
+            msb = result[1]
+
         raw = (msb << 8) | lsb
 
         gain = msb + lsb / 256.0
@@ -960,6 +974,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         result = self._get_code(0x9f, label="GET_DETECTOR_GAIN_ODD")
 
+        # not reversing this for XS, because we don't currently have an XS-NIR
         lsb = result[0] # LSB-MSB
         msb = result[1]
         raw = (msb << 8) | lsb
@@ -1514,7 +1529,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         if self.settings.state.selected_adc is None or self.settings.state.selected_adc != 1:
             self.select_adc(1)
 
-        result = self._get_code(0xd5, wLength=2, label="GET_ADC", lsb_len=2) & 0xfff
+        result = self._get_code(0xd5, wLength=2, label="GET_ADC", lsb_len=2)
         log.debug("secondary_adc_raw: 0x%04x", result)
         return result
 
@@ -1528,27 +1543,48 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.error(msg)
             return SpectrometerResponse(data=None, error_lvl=ErrorLevel.low, error_msg=msg)
 
+        if isinstance(mode, str):
+            mode = mode.upper()
+            if mode == "OFF": 
+                mode = 0
+            elif mode == "ON":  
+                mode = 1
+            elif mode == "AUTO": 
+                mode = 2
+            elif mode == "AUTO_ON": 
+                mode = 3
+            else: 
+                mode = 0
+
         mode = min(3, max(0, int(mode)))
+        self.settings.state.laser_tec_mode = mode
         return self._send_code(0x84, mode, label="SET_LASER_TEC_MODE")
 
     def get_laser_tec_mode(self):
+        """ 
+        The current opcode (0x85) seems to be actually returning 
+        GET_LASER_TEC_ENABLED, not GET_LASER_TEC_MODE. 
+        """
         if not self.settings.is_xs():
             msg = "Laser TEC mode only applicable on XS"
             log.error(msg)
             return SpectrometerResponse(data=None, error_lvl=ErrorLevel.low, error_msg=msg)
 
-        mode = min(3, max(0, int(mode)))
-        result = self._get_code(0x85, wLength=1, label="GET_LASER_TEC_MODE", lsb_len=1) & 0xfff
+        result = self._get_code(0x85, wLength=1, label="GET_LASER_TEC_MODE", lsb_len=1)
         if result is None or result.data < 0 or result.data > 3:
             msg = f"get_laser_tec_mode: invalid mode {result}"
             log.error(msg)
             return SpectrometerResponse(data=None, error_lvl=ErrorLevel.low, error_msg=msg)
 
-        mode = result.data
-        modes = [ 'OFF', 'ON', 'AUTO', 'AUTO_ON' ]
-        log.debug(f"get_laser_tec_mode: mode {modes[mode]}")
+        # mode = result.data
+        # names = [ 'OFF', 'ON', 'AUTO', 'AUTO_ON' ]
+        # log.debug(f"get_laser_tec_mode: mode {names[mode]}")
+        # self.settings.state.laser_tec_mode = mode 
 
-        self.settings.state.laser_tec_mode = mode
+        enabled = 0 != result.data
+        log.debug(f"get_laser_tec_mode: enabled {enabled}")
+        self.settings.state.laser_tec_enabled = enabled
+
         return result
 
     ##
@@ -1876,13 +1912,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.settings.state.laser_enabled = flag
         self._set_laser_enable_immediate(flag)
         return SpectrometerResponse(data=True)
-
-    def set_laser_power_ramping_enable(self, flag: bool):
-        log.error("laser power ramping has been deprecated")
-        return SpectrometerResponse(data=False)
-
-    def get_laser_power_ramping_enabled(self):
-        return False
 
     def _set_laser_enable_immediate(self, flag: bool):
         """
@@ -3106,8 +3135,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
                      "get_selected_laser",
                      "get_laser_enabled",
                      "set_laser_enable",
-                     "set_laser_power_ramping_enable",
-                     "get_laser_power_ramping_enabled",
                      "set_laser_power_mW",
                      "set_laser_power_high_resolution",
                      "set_laser_power_require_modulation",
@@ -3206,7 +3233,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
         process_f["laser_power_mW"]                     = lambda x: self.set_laser_power_mW(x)
         process_f["laser_temperature_setpoint_raw"]     = lambda x: self.set_laser_temperature_setpoint_raw(int(round(x)))
         process_f["laser_power_attenuator"]             = lambda x: self.set_laser_power_attenuator(int(round(x)))
-        process_f["laser_power_ramping_enable"]         = lambda x: self.set_laser_power_ramping_enable(bool(x))
         process_f["laser_power_high_resolution"]        = lambda x: self.set_laser_power_high_resolution(x)
         process_f["laser_power_require_modulation"]     = lambda x: self.set_laser_power_require_modulation(x)
         process_f["selected_laser"]                     = lambda x: self.set_selected_laser(int(x))

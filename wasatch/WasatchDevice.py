@@ -384,9 +384,13 @@ class WasatchDevice(InterfaceDevice):
         if self.settings.eeprom.has_laser:
             try:
                 # MZ: we might want to do these for auto_enable_laser as well...
-                for (func, attr) in [ ('get_laser_enabled', 'laser_enabled'),
-                                      ('can_laser_fire',    'laser_can_fire'),
-                                      ('is_laser_firing',   'laser_is_firing') ]:
+                func_attr = [ ('get_laser_enabled', 'laser_enabled'),
+                              ('can_laser_fire',    'laser_can_fire'),
+                              ('is_laser_firing',   'laser_is_firing') ]
+                if self.settings.is_xs() and self.settings.eeprom.sig_laser_tec:
+                    func_attr.append( ('get_laser_tec_mode', 'laser_tec_enabled') )
+
+                for (func, attr) in func_attr:
                     req = SpectrometerRequest(func)
                     res = self.hardware.handle_requests([req])[0]
                     if res.error_msg != '':

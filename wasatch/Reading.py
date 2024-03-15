@@ -35,6 +35,7 @@ class Reading:
         self.battery_charging          = None
         self.laser_can_fire            = False  # per interlock board
         self.laser_is_firing           = False  # per interlock board, not laser_enable
+        self.laser_tec_enabled         = False
         self.take_one_request          = None
 
         # for the rare case (BatchCollection with LaserMode "Spectrum") where the 

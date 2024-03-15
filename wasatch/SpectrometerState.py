@@ -43,7 +43,8 @@ class SpectrometerState:
         self.raman_mode_enabled = False
         self.raman_delay_ms = 0
         self.laser_watchdog_sec = 0 
-        self.laser_tec_mode = 0 
+        self.laser_tec_mode = 0  # 0 off, 1 on, 2 auto, 3 auto-on
+        self.laser_tec_enabled = False
         self.laser_tec_setpoint = 800
 
         # triggering
@@ -111,10 +112,6 @@ class SpectrometerState:
 
         # secondary ADC
         self.secondary_adc_enabled = False
-
-        # laser power ramping
-        self.laser_power_ramping_enabled = False
-        self.laser_power_ramp_increments = 100
 
         # pixel binning
         self.graph_alternating_pixels = False
@@ -202,8 +199,8 @@ class SpectrometerState:
         else:
             return "ERROR"
 
-    def dump(self):
-        log.debug("SpectrometerState:")
+    def dump(self, label=None):
+        log.debug(f"SpectrometerState: {label}")
         log.debug(f"  Integration Time:       {self.integration_time_ms}")
         log.debug("  TEC Setpoint:           %.2f degC", self.tec_setpoint_degC)
         log.debug("  TEC Enabled:            %s", self.tec_enabled)
@@ -223,10 +220,11 @@ class SpectrometerState:
         log.debug("  Bad Pixel Mode:         %s", self.stringify_bad_pixel_mode())
         log.debug("  USB Interval:           (%d, %dms)", self.min_usb_interval_ms, self.max_usb_interval_ms)
         log.debug("  Secondary ADC Enabled:  %s", self.secondary_adc_enabled)
-        log.debug("  Laser Power Ramping:    %s", self.laser_power_ramping_enabled)
-        log.debug("  Laser Power Ramp Incr:  %d", self.laser_power_ramp_increments)
         log.debug("  Position:               %s", self.position)
         log.debug("  Wavenumber Correction:  %d", self.wavenumber_correction)
+        log.debug("  Laser Watchdog Sec:     %d", self.laser_watchdog_sec)
+        log.debug("  Laser TEC Mode:         %d", self.laser_tec_mode)
+        log.debug("  Laser TEC Setpoint:     %d", self.laser_tec_setpoint)
 
     def to_dict(self):
         dict = self.__dict__
