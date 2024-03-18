@@ -389,6 +389,7 @@ class WasatchDevice(InterfaceDevice):
                               ('is_laser_firing',   'laser_is_firing') ]
                 if self.settings.is_xs() and self.settings.eeprom.sig_laser_tec:
                     func_attr.append( ('get_laser_tec_mode', 'laser_tec_enabled') )
+                    func_attr.append( ('get_ambient_temperature_degC', 'ambient_temperature_degC') )
 
                 for (func, attr) in func_attr:
                     req = SpectrometerRequest(func)

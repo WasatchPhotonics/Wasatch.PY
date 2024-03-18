@@ -2719,15 +2719,41 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
     ## @see https://www.nxp.com/docs/en/data-sheet/LM75B.pdf
     def get_ambient_temperature_degC(self):
-        if not self.settings.is_gen15():
-            log.error("ambient temperature requires Gen 1.5")
-            return SpectrometerResponse(data=False,error_msg="ambient temp requires gen1.5")
+        if self.settings.is_gen15():
+            return self.get_ambient_temperature_degC_gen15()
+        elif self.settings.is_xs():
+            return self.get_ambient_temperature_degC_arm()
+        else:
+            log.debug("ambient temperature requires XS or Gen 1.5")
+            return SpectrometerResponse(error_msg="ambient temp requires gen1.5")
 
-        log.debug("attempting to read ambient temperature")
-        result = self._get_code(0x34, label="GET_AMBIENT_TEMPERATURE", msb_len=2)
+    def get_ambient_temperature_degC_arm(self):
+        if not self.settings.is_xs():
+            msg = "ambient temperature ARM requires XS"
+            log.error(msg)
+            return SpectrometerResponse(error_msg=msg)
+
+        result = self._get_code(0xff, 0x2a, label="GET_AMBIENT_TEMPERATURE_ARM", msb_len=1)
+        if result is None or result.data is None:
+            msg = f"failed to read ambient temperature"
+            log.error(msg)
+            return SpectrometerResponse(error_msg=msg)
+        degC = result.data
+
+        log.debug("ambient temperature degC ARM: %s", degC)
+        return SpectrometerResponse(data=degC)
+
+    def get_ambient_temperature_degC_gen15(self):
+        if not self.settings.is_gen15():
+            msg = "ambient temperature Gen1.5 requires Gen 1.5"
+            log.error(msg)
+            return SpectrometerResponse(error_msg=msg)
+            
+        result = self._get_code(0x35, label="GET_AMBIENT_TEMPERATURE_GEN15", msb_len=2)
         if result is None or len(result) != 2:
-            log.error("failed to read ambient temperature")
-            return SpectrometerResponse(data=False,error_msg="ambient temp read failed")
+            msg = f"failed to read ambient temperature"
+            log.error(msg)
+            return SpectrometerResponse(error_msg=msg)
         log.debug("ambient temperature raw: %s", result)
 
         raw = result.data

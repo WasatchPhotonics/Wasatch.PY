@@ -1,5 +1,7 @@
 # Changelog
 
+- 2024-03-18 2.1.60
+    - added get_ambient_temperature_degC_arm
 - 2024-03-15 2.1.59
     - changed XS get_detector_gain to big-endian
     - added clarity around XS laser_tec_mode -vs- enabled

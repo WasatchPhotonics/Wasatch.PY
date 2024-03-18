@@ -43,7 +43,7 @@ class Reading:
         self.dark                      = None
 
     def __str__(self):
-        return "wasatch.Reading {device_id %s, spectrum %s, averaged %s, session_count %d, area_scan_row_count %d, timestamp %s, timestamp_complete %s, failure %s, laser_enabled %s, take_one_request %s }" % (
+        return "wasatch.Reading {device_id %s, spectrum %s, averaged %s, session_count %d, area_scan_row_count %d, timestamp %s, timestamp_complete %s, failure %s, laser_enabled %s, ambient %s, take_one_request %s }" % (
             self.device_id, 
             "None" if self.spectrum is None else ("%d values" % len(self.spectrum)),
             self.averaged, 
@@ -53,6 +53,7 @@ class Reading:
             self.timestamp_complete, 
             self.failure,
             self.laser_enabled,
+            self.ambient_temperature_degC,
             self.take_one_request)
 
     def __init__(self, device_id=None):
