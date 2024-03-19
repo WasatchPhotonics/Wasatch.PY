@@ -774,7 +774,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
             return SpectrometerResponse(data=value)
         elif lsb_len is not None:
             for i in range(lsb_len):
-                value = (result[i] << (8 * i)) | value
+                if i < len(result):
+                    value = (result[i] << (8 * i)) | value
             return SpectrometerResponse(data=value)
         else:
             return SpectrometerResponse(data=result)
@@ -1177,18 +1178,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         if self.settings.is_micro():
             # we have no idea if Series-XS has to "wake up" the sensor, so wait
-            # long enough for 6 throwaway frames if need be
-            timeout_ms = self.settings.state.integration_time_ms * 8 + 500 * self.settings.num_connected_devices
+            # long enough for 20ms + 8 throwaway frames if need be (IMX385 datasheet p69)
+            timeout_ms = self.settings.state.integration_time_ms * 8 + 500 * self.settings.num_connected_devices + 20
         else:
             timeout_ms = self.settings.state.integration_time_ms * 2 + 1000 * self.settings.num_connected_devices
-
-        # due to additional firmware processing time for area scan?
-        if self.settings.state.area_scan_enabled:
-            if trigger:
-                timeout_ms += 250
-            else:
-                # kludge: just use triple the intra-line delay
-                timeout_ms = self.settings.eeprom.detector_offset * 3
 
         self._wait_for_usb_available()
 

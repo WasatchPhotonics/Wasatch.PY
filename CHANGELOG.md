@@ -1,5 +1,7 @@
 # Changelog
 
+- 2024-03-19 2.1.61
+    - handle either 3-byte or 2-byte FPGA_COMPILATION_OPTIONS response
 - 2024-03-18 2.1.60
     - added get_ambient_temperature_degC_arm
 - 2024-03-15 2.1.59
