@@ -2733,7 +2733,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.error(msg)
             return SpectrometerResponse(error_msg=msg)
 
-        result = self._get_code(0xff, 0x2a, label="GET_AMBIENT_TEMPERATURE_ARM", msb_len=1)
+        result = self._get_code(0xff, 0x2a, label="GET_AMBIENT_TEMPERATURE_DEGC_ARM", msb_len=1)
         if result is None or result.data is None:
             msg = f"failed to read ambient temperature"
             log.error(msg)
