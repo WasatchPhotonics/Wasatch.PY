@@ -197,10 +197,10 @@ class ProcessedReading:
             self.interpolated = None
 
         if self.cropped:
-            log.debug("set_processed: updating cropped")
+            log.debug(f"set_processed: updating cropped to {len(spectrum)} px {spectrum[:5]}")
             self.cropped.processed = spectrum
         else:
-            log.debug("set_processed: updating non-cropped")
+            log.debug(f"set_processed: updating non-cropped to {len(spectrum)} px {spectrum[:5]}")
             self.processed = spectrum
 
     # should be done before .cropped created
