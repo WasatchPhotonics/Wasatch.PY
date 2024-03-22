@@ -1,5 +1,9 @@
 # Changelog
 
+- 2024-03-22 2.1.62
+    - ignore 3 consecutive USB errors when reading spectra (R&D)
+    - ignore None responses in WasatchDevice func/attr calls
+    - skip ambient temperature readout on ARM 1.0.2.9
 - 2024-03-19 2.1.61
     - handle either 3-byte or 2-byte FPGA_COMPILATION_OPTIONS response
 - 2024-03-18 2.1.60

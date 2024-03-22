@@ -394,11 +394,14 @@ class WasatchDevice(InterfaceDevice):
                 for (func, attr) in func_attr:
                     req = SpectrometerRequest(func)
                     res = self.hardware.handle_requests([req])[0]
-                    if res.error_msg != '':
-                        return res
-                    value = res.data
-                    log.debug(f"WasatchDevice.acquire_spectrum: storing {attr} = {value}")
-                    setattr(reading, attr, value)
+                    if res is None:
+                        log.debug(f"WasatchDevice.acquire_spectrum: ignoring None {func} response")
+                    else:
+                        if res.error_msg != '':
+                            return res
+                        value = res.data
+                        log.debug(f"WasatchDevice.acquire_spectrum: storing {attr} = {value}")
+                        setattr(reading, attr, value)
 
                 if self.hardware.shutdown_requested:
                     return disable_laser(shutdown=True, label=f"loading laser attributes")

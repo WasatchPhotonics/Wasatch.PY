@@ -1190,6 +1190,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         ########################################################################
 
         spectrum = []
+        errors = 0
         for endpoint in endpoints:
             data = None
             while data is None:
@@ -1203,16 +1204,21 @@ class FeatureIdentificationDevice(InterfaceDevice):
                         response.error_msg = f"Encountered error on read"
                         response.error_lvl = ErrorLevel.high
                         response.poison_pill = True # unrecoverable
+                        return response
                     elif self.settings.state.trigger_source == SpectrometerState.TRIGGER_SOURCE_EXTERNAL:
                         # we don't know how long we'll have to wait for the trigger, so
                         # just loop and hope
                         # log.debug("still waiting for external trigger")
                         pass
                     else:
+                        errors += 1
                         log.error(f"Encountered error on read of {exc}")
-                        response.error_msg = f"Encountered error on read"
-                        response.error_lvl = ErrorLevel.high
-                    return response
+                        if errors < 3:
+                            log.error(f"ignoring error number {errors}")
+                        else:
+                            response.error_msg = "Encountered error on read"
+                            response.error_lvl = ErrorLevel.high
+                            return response
 
             # This is a convoluted way to iterate across the received bytes in 'data' as
             # two interleaved arrays, both only processing alternating bytes, but one (i)
@@ -2718,13 +2724,18 @@ class FeatureIdentificationDevice(InterfaceDevice):
             return self.get_ambient_temperature_degC_arm()
         else:
             log.debug("ambient temperature requires XS or Gen 1.5")
-            return SpectrometerResponse(error_msg="ambient temp requires gen1.5")
+            return 
 
     def get_ambient_temperature_degC_arm(self):
         if not self.settings.is_xs():
             msg = "ambient temperature ARM requires XS"
-            log.error(msg)
-            return SpectrometerResponse(error_msg=msg)
+            log.debug(msg)
+            return
+
+        if self.settings.microcontroller_firmware_version == "1.0.2.9":
+            msg = "ambient temperature ARM requires newer firmware"
+            log.debug(msg)
+            return
 
         result = self._get_code(0xff, 0x2a, label="GET_AMBIENT_TEMPERATURE_DEGC_ARM", msb_len=1)
         if result is None or result.data is None:
