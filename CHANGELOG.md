@@ -1,5 +1,10 @@
 # Changelog
 
+- 2024-03-23 2.1.63
+    - CSVLoader 
+        - store x-axes in ProcessedReading rather than metadata
+        - support "intensity" header
+        - simplified
 - 2024-03-22 2.1.62
     - ignore 3 consecutive USB errors when reading spectra (R&D)
     - ignore None responses in WasatchDevice func/attr calls
