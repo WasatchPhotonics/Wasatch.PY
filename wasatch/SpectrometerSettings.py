@@ -163,9 +163,9 @@ class SpectrometerSettings:
     def is_sml(self): # -> bool 
         if not self.eeprom.has_laser:
             return False
-        elif self.eeprom.has_laser and \
-            self.eeprom.max_laser_power_mW >= 95 and \
-            self.eeprom.max_laser_power_mW <= 120:
+        elif (self.eeprom.has_laser and 
+              self.eeprom.max_laser_power_mW >= 95 and 
+              self.eeprom.max_laser_power_mW <= 120):
             return True
         else:
             return False
@@ -459,14 +459,13 @@ class SpectrometerSettings:
                self.hardware_info.pid == 0x6014
 
     def is_micro(self): # -> bool 
-        return ( self.is_arm() and ( \
-                   self.is_imx() or \
-                   "micro" in self.full_model().lower() or \
-                   "sig"   in self.full_model().lower() or \
-                   "xs"    in self.full_model().lower() \
-                 ) \
-               ) \
-               or self.is_spi()
+        return ( self.is_arm() and (
+                   self.is_imx() or
+                   "micro" in self.full_model().lower() or
+                   "sig"   in self.full_model().lower() or
+                   "xs"    in self.full_model().lower()
+                 )
+               ) or self.is_spi()
 
     def is_non_raman(self): # -> bool 
         return not self.has_excitation()
