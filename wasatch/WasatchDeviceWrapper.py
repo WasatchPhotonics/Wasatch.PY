@@ -1,23 +1,13 @@
-import sys
-import pdb
 import time
 import random
 import logging
 import datetime
-import threading
 
 from queue import Queue
 
-from . import applog
-from . import utils
-
-from .SpectrometerSettings import SpectrometerSettings
 from .SpectrometerResponse import SpectrometerResponse
-from .SpectrometerResponse import ErrorLevel
 from .ControlObject        import ControlObject
 from .WrapperWorker        import WrapperWorker
-from .BLEDevice            import BLEDevice
-from .Reading              import Reading
 
 log = logging.getLogger(__name__)
 
@@ -241,18 +231,9 @@ class WasatchDeviceWrapper:
 
         self.wrapper_worker.start()
 
-        # If something goes wrong, we won't want to kill the current thread (this
-        # function runs within MainProcess), but we will want to kill the spawned 
-        # child, and ensure 'self' (the current WasatchDeviceWrapper instance) is 
-        # ready for clean destruction (otherwise we'd be leaking resources 
-        # continuously).
-        kill_myself = False
-
         # expect to read a single post-initialization SpectrometerSettings object off the queue
         self.connect_start_time = datetime.datetime.now()
         self.settings = None
-        log.debug("connect: blocking on settings_queue (waiting on child thread to send SpectrometerSettings)")
-
         log.debug("connect: setup connection, returning to controller for settings polling")
 
         return True

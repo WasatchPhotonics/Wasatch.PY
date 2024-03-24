@@ -4,6 +4,7 @@ import usb
 import time
 import logging
 import datetime
+import platform
 import threading
 
 from queue import Queue

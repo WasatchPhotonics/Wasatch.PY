@@ -1,5 +1,7 @@
 import logging
 
+from wasatch.DetectorROI import DetectorROI
+
 log = logging.getLogger(__name__)
 
 ##

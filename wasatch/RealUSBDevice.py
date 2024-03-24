@@ -42,7 +42,7 @@ class RealUSBDevice(AbstractUSBDevice):
     def send_code(self):
         pass
 
-    def to_dict():
+    def to_dict(self):
         return str(self)
 
     def __str__(self):

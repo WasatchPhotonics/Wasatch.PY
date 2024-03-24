@@ -315,7 +315,7 @@ class MockUSBDevice(AbstractUSBDevice):
             object.processed_reading.processed = [int(val) if val > 0 else 0 for val in object.processed_reading.processed]
         self.spec_readings["default"].extend([struct.pack('H' * len(object.processed_reading.processed),*object.processed_reading.processed) for object in parse_objects])
 
-    def to_dict():
+    def to_dict(self):
         return str(self)
 
     def __str__(self):

@@ -692,7 +692,7 @@ class WasatchShell:
         unit                    = "px"          if not self.has_input() else self.read_str()
 
         if not re.match('(px|cm|nm)$', unit):
-            return self.display("ERROR: invalid unit " + s)
+            return self.display(f"ERROR: invalid unit {unit}")
 
         pixel = None
         if x_value is not None:

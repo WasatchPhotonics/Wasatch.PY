@@ -1,14 +1,11 @@
 import threading
-import datetime
 import logging
 import time
 from queue import Queue
 
 from .SpectrometerResponse import SpectrometerResponse
 from .SpectrometerRequest  import SpectrometerRequest
-from .SpectrometerResponse import ErrorLevel
 from .WasatchDevice        import WasatchDevice
-from .ControlObject        import ControlObject
 from .AndorDevice          import AndorDevice
 from .OceanDevice          import OceanDevice
 from .SPIDevice            import SPIDevice
@@ -84,8 +81,8 @@ class WrapperWorker(threading.Thread):
                     device_id = self.device_id,
                     message_queue = self.message_queue)
         except:
-                log.critical("exception instantiating device", exc_info=1)
-                return self.settings_queue.put(None) 
+            log.critical("exception instantiating device", exc_info=1)
+            return self.settings_queue.put(None) 
 
         log.debug("calling connect")
         ok = False
@@ -109,16 +106,10 @@ class WrapperWorker(threading.Thread):
         self.settings_queue.put_nowait(SpectrometerResponse(self.connected_device.settings))
 
         log.debug("entering loop")
-        last_command = datetime.datetime.now()
-        min_thread_timeout_sec = 10
-        thread_timeout_sec = min_thread_timeout_sec
-
         received_poison_pill_command  = False # from ENLIGHTEN
-        received_poison_pill_response = False # from WasatchDevice
 
         num_connected_devices = 1
         while True:
-            now = datetime.datetime.now()
             dedupped = self.dedupe(self.command_queue)
 
             # apply dedupped commands
@@ -140,8 +131,6 @@ class WrapperWorker(threading.Thread):
                     else:
                         log.debug("processing command queue: %s", record.setting)
 
-                        last_command = now
-
                         # basically, this simply moves each de-dupped command from
                         # WasatchDeviceWrapper.command_queue to WasatchDevice.command_queue,
                         # where it gets read during the next call to
@@ -154,8 +143,6 @@ class WrapperWorker(threading.Thread):
                         # peek in some settings locally
                         if record.setting == "num_connected_devices":
                             num_connected_devices = record.value
-                        elif record.setting == "subprocess_timeout_sec":
-                            thread_timeout_sec = record.value
 
             else:
                 log.debug("command queue empty")
@@ -181,7 +168,7 @@ class WrapperWorker(threading.Thread):
                 req = SpectrometerRequest("acquire_data")
                 (reading_response,) = self.connected_device.handle_requests([req])
                 #log.debug("continuous_poll: acquire_data returned %s", str(reading))
-            except Exception as exc:
+            except:
                 log.critical("exception calling WasatchDevice.acquire_data", exc_info=1)
                 continue
             if not isinstance(reading_response, SpectrometerResponse):
@@ -189,19 +176,19 @@ class WrapperWorker(threading.Thread):
                 continue
             log.debug(f"response {reading_response} data is {reading_response.data}")
 
-            if reading_response.keep_alive == True:
+            if reading_response.keep_alive:
                 log.debug("worker is flowing up keep_alive")
                 self.response_queue.put(reading_response) 
 
             elif reading_response.error_msg != "":
-                if reading_response.data == None:
+                if reading_response.data is None:
                     reading_response.data = Reading()
                 self.response_queue.put(reading_response)
 
             elif reading_response.data is None:
                 log.debug("worker saw no reading (but not error, either)")
 
-            elif reading_response.data == False:
+            elif not reading_response.data:
                 log.critical(f"hardware level error...exiting because data False")
                 reading_response.poison_pill = True
                 self.response_queue.put(reading_response)
@@ -248,12 +235,7 @@ class WrapperWorker(threading.Thread):
                 control_object = q.get_nowait() 
 
                 # treat None elements (poison pills) same as everything else
-                if control_object is None:
-                    setting = None
-                    value = None
-                else:
-                    setting = control_object.setting
-                    value = control_object.value
+                setting = None if control_object is None else control_object.setting
 
                 # remove previous setting if duplicate
                 new_keep = []
