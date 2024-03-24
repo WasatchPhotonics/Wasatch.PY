@@ -15,11 +15,9 @@
 
 import traceback
 import argparse
-import platform
 import datetime
 import pexpect
 import random
-import time
 import sys
 import re
 import os

@@ -208,12 +208,12 @@ class DeviceFinderUSB:
         # the primary port comes from a constant used in the dylib
         # https://developer.apple.com/documentation/iokit/1514480-ionotificationportcreate?language=objc
         kIOMasterPortDefault = c_void_p.in_dll(iokit, 'kIOMasterPortDefault')
-        res = iokit.IONotificationPortCreate(kIOMasterPortDefault)
+        _ = iokit.IONotificationPortCreate(kIOMasterPortDefault)
 
         # For the io_name_t that comes from a constant in the dll
         # See the parameter description in the AddMatchinServiceNotification link at the top
         # We want publish because it means whenever a connection occurs
-        kIOPublishNotification = c_int.in_dll(iokit, 'kIOPublishNotification') # this throws an error that it doesn't have this symbol, idk why. It should export that
+        _ = c_int.in_dll(iokit, 'kIOPublishNotification') # this throws an error that it doesn't have this symbol, idk why. It should export that
 
         # CFDictionary creation call info, along with args to pass, can be found here
         # https://developer.apple.com/documentation/corefoundation/1516791-cfdictionarycreatemutable?language=objc

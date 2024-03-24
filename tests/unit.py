@@ -3,7 +3,8 @@
 # Run this program without arguments in your development env to generate a test report.
 
 # add wasatch folder to import path independent of cwd
-import sys, os
+import sys
+import os
 filefolder = os.path.dirname(__file__)
 sys.path.append(filefolder + os.sep + ".." + os.sep + "wasatch")
 
@@ -15,7 +16,6 @@ LINEBREAK = '-'*get_terminal_size((72,0))[0]
 from random import random, seed
 # be deterministic
 seed(0)
-import numpy
 import existing_implementations
 
 # modules to test

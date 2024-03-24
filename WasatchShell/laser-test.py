@@ -7,14 +7,11 @@
 #
 ################################################################################
 
-import traceback
 import argparse
 import datetime
 import pexpect
-import time
 import sys
 import re
-import os
 
 from pexpect.popen_spawn import PopenSpawn
 

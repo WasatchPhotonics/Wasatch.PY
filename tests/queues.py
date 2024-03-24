@@ -70,20 +70,20 @@ class Wrapper:
                 elif isinstance(reading, bool):
                     return reading
                 else:
-                    print "acquire_data: read Reading %d" % reading.id
+                    print(f"acquire_data: read Reading {reading.id}")
                     dequeue_count += 1
                     last_reading = reading
             except Queue.Empty:
                 break
 
         if dequeue_count > 1:
-            print "acquire_data: discarded %d readings" % (dequeue_count - 1)
+            print(f"acquire_data: discarded {dequeue_count - 1} readings")
 
         return last_reading
 
     def continuous_poll(self, args):
         pid = os.getpid()
-        print "worker: entering loop in process %d" % pid
+        print(f"worker: entering loop in process {pid}")
         count = 0
         while True:
             # sleep_sec = 0.01 + (.01 * random.random())
@@ -91,44 +91,44 @@ class Wrapper:
             # time.sleep(sleep_sec)
 
             reading = Reading()
-            print "worker: enqueuing reading %d" % reading.id
+            print(f"worker: enqueuing reading {reading.id}")
             args.response_queue.put(reading, timeout=1)
             count += 1
 
             if count >= max_readings:
-                print "worker: enqueued %d readings, quitting" % count
+                print(f"worker: enqueued {count}, readings, quitting")
                 break
                 
-        print "worker: sending poison-pill"
+        print("worker: sending poison-pill")
         args.response_queue.put(True, timeout=1)
 
-        print "worker: exiting"
+        print("worker: exiting")
         sys.exit()
 
 parent_pid = os.getpid()
-print "Main: Running from pid %d" % parent_pid
+print(f"Main: Running from pid {parent_pid}")
 
-print "Main: instantiating Wrapper"
+print("Main: instantiating Wrapper")
 wrapper = Wrapper()
 
-print "Main: connecting to background process"
+print("Main: connecting to background process")
 wrapper.connect()
 
-print "Main: reading spectra"
+print("Main: reading spectra")
 while True:
     reading = wrapper.acquire_data()
     if reading is None:
-        print "Main: no reading available"
-    elif isinstance(reading, bool) and reading == True:
+        print("Main: no reading available")
+    elif isinstance(reading, bool) and reading:
         print("Main: received poison-pill, exiting")
         break
     else:
-        print "Main: received reading %d (%s)" % (reading.id, reading.spectrum[:10])
+        print("Main: received reading %d (%s)" % (reading.id, reading.spectrum[:10]))
 
     size_in_bytes = psutil.Process(parent_pid).memory_info().rss
-    print "Main: memory = %d bytes" % size_in_bytes
+    print("Main: memory = %d bytes" % size_in_bytes)
 
-    print "Main: sleeping 1 sec"
+    print("Main: sleeping 1 sec")
     time.sleep(1)
 
-print "Main: exiting"
+print("Main: exiting")

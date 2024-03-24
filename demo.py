@@ -193,7 +193,7 @@ class WasatchDemo:
     def attempt_reading(self):
         try:
             reading_response = self.acquire_reading()
-        except Exception as exc:
+        except:
             log.critical("attempt_reading caught exception", exc_info=1)
             self.exiting = True
             return

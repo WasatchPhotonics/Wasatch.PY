@@ -91,12 +91,12 @@ class MockUSBDevice(AbstractUSBDevice):
             (0xb7,None): self.cmd_set_gain,
             (0xbe,None): self.cmd_set_laser_enable,
             (0xd6,None): self.cmd_set_detector_tec_enable,
-            (0xd7,None): self.cmd_get_detector_temp,
+           #(0xd7,None): self.cmd_get_detector_temp,
             (0xd8,None): self.cmd_set_setpoint,
             (0xda,None): self.cmd_get_tec_enable,
             (0x34,None): self.cmd_get_raw_ambient_temp,
             (0xd5,None): self.cmd_get_laser_temp,
-            (0xd7,None): self.cmd_get_detect_temp,
+           #(0xd7,None): self.cmd_get_detect_temp,
             (0xe2,None): self.cmd_get_laser_enabled,
             (0xff,1): self.cmd_read_eeprom,
             }
@@ -195,7 +195,6 @@ class MockUSBDevice(AbstractUSBDevice):
         wValB = wValue.to_bytes(2,byteorder='little')#struct.unpack('f',bytearray(wValue))
         lsb = wValB[0] # LSB-MSB
         msb = wValB[1]
-        raw = (msb << 8) | lsb
 
         gain = msb + lsb / 256.0
         self.detector_gain = gain
