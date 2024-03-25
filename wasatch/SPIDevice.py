@@ -1,13 +1,14 @@
-import re
 import os
 import usb
 import time
 import logging
 import datetime
+import platform
 import threading
 
 from queue import Queue
-from typing import Callable, Any
+
+from pyftdi.ftdi import FtdiError
 
 # Needed for Mac side
 # Device Finder should already have done this
@@ -23,9 +24,7 @@ import usb.core
 from .SpectrometerSettings        import SpectrometerSettings
 from .SpectrometerState           import SpectrometerState
 from .SpectrometerResponse        import SpectrometerResponse
-from .SpectrometerRequest         import SpectrometerRequest
 from .SpectrometerResponse        import ErrorLevel
-from .ControlObject               import ControlObject
 from .DeviceID                    import DeviceID
 from .InterfaceDevice             import InterfaceDevice
 from .Reading                     import Reading
@@ -66,7 +65,7 @@ class SPIDevice(InterfaceDevice):
                                 handle_requests
                                        |
                                  ------------
-                                /   /  |  \  \
+                                /   /  |  \  \ 
              { get_laser status, acquire, set_laser_watchdog, etc....}
                                 \   \  |  /  /
                                  ------------
@@ -101,15 +100,15 @@ class SPIDevice(InterfaceDevice):
             import digitalio
             import busio
             import_successful = True
-        except RuntimeError as ex:
+        except RuntimeError:
             log.error("No FT232H connected.", exc_info=1)
             if platform.system() == "Windows":
                 log.error("Ensure you've followed the Zadig process in README_SPI.md")
-        except ValueError as ex:
+        except ValueError:
             log.error("If you are receiving 'no backend available' errors, try the following:")
             log.error("MacOS:  $ export DYLD_LIBRARY_PATH=/usr/local/lib")
             log.error("Linux:  $ export LD_LIBRARY_PATH=/usr/local/lib")
-        except FtdiError as ex:
+        except FtdiError:
             log.error("No FT232H connected.", exc_info=1)
             if platform.system() == "Windows":
                 log.error("Ensure you've followed the Zadig process in README_SPI.md")
@@ -188,21 +187,21 @@ class SPIDevice(InterfaceDevice):
         ########################################################################
 
         self.cmds = {}
-        for  addr, value, len_, name in [
-           # ---- ------ ----- -----------
-            (0x11,    3,     4, "Integration Time"),
-            (0x13,    0,     3, "Black Level"),
-            (0x14,   24,     3, "Gain dB"),
-            (0x2B,    3,     2, "Pixel Mode"),
-            (0x50,  250,     3, "Start Line 0"),
-            (0x51,  750,     3, "Stop Line 0"),
-            (0x52,   12,     3, "Start Column 0"),
-            (0x53, 1932,     3, "Stop Column 0"),
-            (0x54,    0,     3, "Start Line 1"),
-            (0x55,    0,     3, "Stop Line 1"),
-            (0x56,    0,     3, "Start Column 1"),
-            (0x57,    0,     3, "Stop Column 1"),
-            (0x58,    0,     3, "Desmile") ]:
+        for      addr, value, len_, name in [
+                #----  -----  ----  -----------
+                (0x11,    3,     4, "Integration Time"),
+                (0x13,    0,     3, "Black Level"),
+                (0x14,   24,     3, "Gain dB"),
+                (0x2B,    3,     2, "Pixel Mode"),
+                (0x50,  250,     3, "Start Line 0"),
+                (0x51,  750,     3, "Stop Line 0"),
+                (0x52,   12,     3, "Start Column 0"),
+                (0x53, 1932,     3, "Stop Column 0"),
+                (0x54,    0,     3, "Start Line 1"),
+                (0x55,    0,     3, "Stop Line 1"),
+                (0x56,    0,     3, "Start Column 1"),
+                (0x57,    0,     3, "Stop Column 1"),
+                (0x58,    0,     3, "Desmile") ]:
             self.cmds[name] = CommandTuple(addr, value, len_, name)
 
         # patch gain
@@ -277,7 +276,7 @@ class SPIDevice(InterfaceDevice):
             reading.laser_power_mW      = self.settings.state.laser_power_mW
             reading.laser_enabled       = self.settings.state.laser_enabled
             reading.spectrum            = self.get_spectrum()
-            if reading.spectrum == False:
+            if not reading.spectrum:
                 return False
         except usb.USBError:
             self.failure_count += 1
@@ -526,7 +525,7 @@ class SPIDevice(InterfaceDevice):
         except OSError:
             log.critical("flush_input_buffer: OSError", exc_info=1)
             return False
-        except pyftdi.ftdi.FtdiError:
+        except FtdiError:
             log.critical("flush_input_buffer: FtdiError", exc_info=1)
             return False
 

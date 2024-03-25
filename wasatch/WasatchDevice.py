@@ -7,11 +7,7 @@ import logging
 import datetime
 import threading
 from queue import Queue
-from typing import TypeVar, Any, Callable
-
-from configparser import ConfigParser
-
-from . import utils
+from typing import Any
 
 from .FeatureIdentificationDevice import FeatureIdentificationDevice
 from .SpectrometerSettings        import SpectrometerSettings
@@ -22,7 +18,6 @@ from .InterfaceDevice             import InterfaceDevice
 from .BalanceAcquisition          import BalanceAcquisition
 from .SpectrometerState           import SpectrometerState
 from .ControlObject               import ControlObject
-from .WasatchBus                  import WasatchBus
 from .DeviceID                    import DeviceID
 from .Reading                     import Reading
 
@@ -118,7 +113,7 @@ class WasatchDevice(InterfaceDevice):
         try:
             req = SpectrometerRequest("disconnect")
             self.hardware.handle_requests([req])
-        except Exception as exc:
+        except:
             log.critical("Issue disconnecting hardware", exc_info=1)
 
         time.sleep(0.1)
@@ -133,7 +128,7 @@ class WasatchDevice(InterfaceDevice):
 
         # check to see if valid FID PID
         pid_hex = self.device_id.get_pid_hex()
-        if not pid_hex in FID_list:
+        if pid_hex not in FID_list:
             log.debug("connect_feature_identification: device_id %s PID %s not in FID list %s", self.device_id, pid_hex, FID_list)
             return SpectrometerResponse(False)
 
@@ -157,7 +152,7 @@ class WasatchDevice(InterfaceDevice):
 
             self.hardware = dev
 
-        except Exception as exc:
+        except:
             log.critical("Problem connecting to: %s", self.device_id, exc_info=1)
             return SpectrometerResponse(False)
 
@@ -209,20 +204,13 @@ class WasatchDevice(InterfaceDevice):
         """
         log.debug("acquire_data: start")
 
-        # self.monitor_memory()
-
         if self.hardware.shutdown_requested:
             log.critical("acquire_data: hardware shutdown requested")
             return SpectrometerResponse(False, poison_pill=True)
 
         # process queued commands, and find out if we've been asked to read a
         # spectrum
-        needs_acquisition = self.process_commands()
-
-        # if not needs_acquisition and \
-        #    not self.settings.state.free_running_mode and \
-        #    not self.take_one_request:
-        #     return SpectrometerResponse(None)
+        self.process_commands()
 
         # if we don't yet have an integration time, nothing to do
         if self.settings.state.integration_time_ms <= 0:
@@ -348,7 +336,7 @@ class WasatchDevice(InterfaceDevice):
         if take_one_response.keep_alive:
             log.debug(f"floating up keep alive")
             return take_one_response
-        if take_one_response.data == None:
+        if take_one_response.data is None:
             log.debug(f"Received a none reading, floating it up {take_one_response}")
             return take_one_response
 
@@ -425,7 +413,7 @@ class WasatchDevice(InterfaceDevice):
                 if self.hardware.shutdown_requested:
                     return disable_laser(shutdown=True, label=f"reading laser temperature")
 
-            except Exception as exc:
+            except:
                 log.debug("Error reading laser temperature", exc_info=1)
 
         # read secondary ADC if requested
@@ -457,7 +445,7 @@ class WasatchDevice(InterfaceDevice):
                 if self.hardware.shutdown_requested:
                     return disable_laser(shutdown=True, label="select_adc[0]")
 
-            except Exception as exc:
+            except:
                 log.debug("Error reading secondary ADC", exc_info=1)
 
         ########################################################################
@@ -494,7 +482,7 @@ class WasatchDevice(InterfaceDevice):
                     acquire_response.poison_pill = True
                     return acquire_response
 
-            except Exception as exc:
+            except:
                 log.debug("Error reading detector temperature", exc_info=1)
 
         # read ambient temperature if applicable
@@ -502,7 +490,7 @@ class WasatchDevice(InterfaceDevice):
             try:
                 # reading.ambient_temperature_degC = self.hardware.get_ambient_temperature_degC()
                 pass
-            except Exception as exc:
+            except:
                 log.debug("Error reading ambient temperature", exc_info=1)
 
         # read battery every 5sec
@@ -1020,7 +1008,7 @@ class WasatchDevice(InterfaceDevice):
             try:
                 cmd = request.cmd
                 proc_func = self.process_f.get(cmd, None)
-                if proc_func == None:
+                if proc_func is None:
                     try:
                         self.change_setting(cmd, *request.args, **request.kwargs)
                     except Exception as e:

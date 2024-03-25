@@ -347,6 +347,6 @@ class ProcessedReading:
     def get_array(self, array_name, level_name):
         if level_name.upper() not in self.ORDER_OF_OPERATIONS:
             return
-        if array.upper() not in self.ARRAYS:
+        if array_name.upper() not in self.ARRAYS:
             return
         pass

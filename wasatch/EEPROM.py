@@ -2,7 +2,6 @@ import hashlib
 import logging
 import struct
 import array
-import math
 import copy
 import json
 import re
@@ -739,7 +738,7 @@ class EEPROM:
         else:
             struct.pack_into(data_type, buf, start_byte, value)
 
-        extra = "" if label is None else (" (%s)" % label)
+        # extra = "" if label is None else (" (%s)" % label)
         # log.debug("Packed (%d, %2d, %2d) '%s' value %s -> %s%s", 
         #     page, start_byte, length, data_type, value, buf[start_byte:end_byte], extra)
 
@@ -1058,7 +1057,7 @@ class EEPROM:
         
         self.spline_min = self.unpack((4, 56, 4), "f", "spline_wavelength_min")
         self.spline_max = self.unpack((4, 60, 4), "f", "spline_wavelength_max")
-        if lo >= hi:
+        if self.spline_min >= self.spline_max:
             log.error("invalid spline (min %f, max %f)", self.spline_min, self.spline_max)
             return
 

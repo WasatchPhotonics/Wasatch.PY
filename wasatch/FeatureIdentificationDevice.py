@@ -1,17 +1,12 @@
-import subprocess
 import platform
 import datetime
 import logging
 import random
 import copy
 import math
-import usb
-import usb.core
-import usb.util
 import os
 import re
 
-from typing import TypeVar, Any, Callable
 from random import randint
 from time   import sleep
 
@@ -60,17 +55,19 @@ class FeatureIdentificationDevice(InterfaceDevice):
     The processing function passes the commands to the requested device
     Once it recevies a response from the connected device it then passes that
     back up the chain
+    @verbatim
                                Enlighten Request
                                        |
                                 handle_requests
                                        |
                                  ------------
-                                /   /  |  \  \
+                                /   /  |  \  \ 
              { get_laser status, acquire, set_laser_watchdog, etc....}
                                 \   \  |  /  /
                                  ------------
                                        |
                                    _send_code
+    @endverbatim
     ############################################################################
     """
 
@@ -146,7 +143,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
             try:
                 cmd = request.cmd
                 proc_func = self.process_f.get(cmd, None)
-                if proc_func == None:
+                if proc_func is None:
                     responses.append(SpectrometerResponse(error_msg=f"unsupported cmd {request.cmd}", error_lvl=ErrorLevel.low))
                 elif request.args == [] and request.kwargs == {}:
                     responses.append(proc_func())
@@ -212,7 +209,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
             # logged)
             try:
                 log.debug("setting configuration")
-                result = self.device_type.set_configuration(device)
+                self.device_type.set_configuration(device)
             except Exception as exc:
                 #####################################################################################################################
                 # This additional if statement is present for the Raspberry Pi. There is an issue with resource busy errors.
@@ -232,8 +229,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
             try:
                 log.debug("claiming interface")
-                result = self.device_type.claim_interface(device, 0)
-            except Exception as exc:
+                self.device_type.claim_interface(device, 0)
+            except:
                 self.connecting = False
                 msg = "Hardware Failure in claimInterface"
                 log.critical(msg, exc_info=1)
@@ -266,7 +263,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         log.debug("reading EEPROM")
 
         result = self._read_eeprom()
-        if result.data == False:
+        if not result.data:
             log.error(f"failed to read EEPROM, got error message of {result.error_msg}")
             self.connecting = False
             return result
@@ -415,7 +412,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 self.device_type.reset(self.device)
             except:
                 log.error("Couldn't reset device")
-        except Exception as exc:
+        except:
             log.warn("Failure in release interface", exc_info=1)
             raise
         return SpectrometerResponse(True)
@@ -763,7 +760,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         if result is None:
             log.critical("_get_code[%s, %s]: received null", label, self.device_id)
-            self._schedule_disconnect(exc)
+            self._schedule_disconnect(f"_get_code[{label}] received NULL")
             return SpectrometerResponse(keep_alive=True)
 
         # demarshall or return raw array
@@ -804,7 +801,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
                     return response
             except:
                 log.error("exception reading upper_code 0x01 with page %d", page, exc_info=1)
-            buf_len = 0 if buf is None else len(buf)
             if buf is None:
                 msg = "unable to read EEPROM (null buf)"
                 log.error(msg)
@@ -1835,7 +1831,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return self.get_upper_code(0x09, label="GET_OPT_LASER_CONTROL", msb_len=1)
 
     def get_opt_has_laser(self):
-        available = (0 != self.get_upper_code(0x08, label="GET_OPT_HAS_LASER", msb_len=1).data)
+        value = self.get_upper_code(0x08, label="GET_OPT_HAS_LASER", msb_len=1).data
+        available = 0 != value
         if available != self.settings.eeprom.has_laser:
             log.error("OPT_HAS_LASER opcode result %s != EEPROM has_laser %s (using opcode)",
                 value, self.settings.eeprom.has_laser)
@@ -2464,7 +2461,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         # send a "fake" ROI downstream, overriding to position 0
         self.set_detector_roi([0, roi.y0, roi.y1, roi.x0, roi.x1], store=False)
-        return SpSpectrometerResponse()
+        return SpectrometerResponse()
 
     def set_detector_roi(self, args: list[float], store: bool = True):
         """
@@ -2499,12 +2496,12 @@ class FeatureIdentificationDevice(InterfaceDevice):
             x0     = int(round(args[3]))
             x1     = int(round(args[4]))
 
-            if not (0 <= region <= 3 and \
-                    y0 < y1 and \
-                    x0 < x1 and \
-                    y0 >= 0 and \
-                    x0 >= 0 and \
-                    y1 <= self.settings.eeprom.active_pixels_horizontal and \
+            if not (0 <= region <= 3 and
+                    y0 < y1 and
+                    x0 < x1 and
+                    y0 >= 0 and
+                    x0 >= 0 and
+                    y1 <= self.settings.eeprom.active_pixels_horizontal and
                     x1 <= self.settings.eeprom.active_pixels_horizontal):
                 log.error(f"invalid detector roi: {args}")
                 return SpectrometerResponse(data=False,error_msg="invalid roi args")
@@ -2812,12 +2809,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
     def get_external_trigger_output(self):
         return self._get_code(0xe1, label="GET_EXTERNAL_TRIGGER_OUTPUT", msb_len=1)
 
-    def get_laser_interlock(self):
-        if self.settings.is_arm():
-            log.error("GET_LASER_INTERLOCK not supported on ARM")
-            return SpectrometerResponse(data=False,error_msg="laser interlock not supported")
-        return self._get_code(0xef, label="GET_LASER_INTERLOCK", msb_len=1)
-
     def set_mod_linked_to_integration(self, flag: bool):
         value = 1 if flag else 0
         return self._send_code(0xdd, value, label="SET_MOD_LINKED_TO_INTEGRATION")
@@ -2913,7 +2904,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
     ## @param value (Input) tuple of (bool enable, int mode)
     def set_analog_output_mode(self, value: tuple[bool, int]):
         if not self.settings.is_gen2():
-            logger.error("analog output only available on Gen2")
+            log.error("analog output only available on Gen2")
             return SpectrometerResponse(data=False,error_msg="analog output unsupported")
 
         wIndex = 0
@@ -2927,7 +2918,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
             mode = int(value[1])
             if (mode != 0 and mode != 1):
-                logger.error("invalid analog output mode 0x%02x, disabling", mode)
+                log.error("invalid analog output mode 0x%02x, disabling", mode)
                 enable = False
                 mode = 0
 
@@ -2943,7 +2934,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 self.state.analog_out_value = 0
 
         except:
-            logger.error("set_analog_output_mode takes tuple of (bool, int), disabling")
+            log.error("set_analog_output_mode takes tuple of (bool, int), disabling")
             wIndex = 0
 
         return self._send_code(bRequest  = 0xff,
@@ -2953,7 +2944,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
     def set_analog_output_value(self, value: int):
         if not self.settings.is_gen2():
-            logger.error("analog output only available on Gen2")
+            log.error("analog output only available on Gen2")
             return SpectrometerResponse(data=False,error_msg="analog output unsupported")
 
         # spectrometer should range-limit, but just to codify:
@@ -2980,7 +2971,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
     def get_analog_output_state(self):
         if not self.settings.is_gen2():
-            logger.error("analog output only available on Gen2")
+            log.error("analog output only available on Gen2")
             return SpectrometerResponse(data=False,error_msg="analog output unsupported")
 
         res = self.get_upper_code(0x1a, wLength=3, label="GET_ANALOG_OUT_STATE")
@@ -2988,13 +2979,13 @@ class FeatureIdentificationDevice(InterfaceDevice):
             return res
         data = res.data
         if (data is None or len(data) != 3):
-            logger.error("invalid analog out state read: %s", data)
+            log.error("invalid analog out state read: %s", data)
             return SpectrometerResponse(data=False,error_msg="invalid analog out state read")
 
         if data[0] != 0 and data[0] != 1:
-            logger.error("received invalid analog out enable: %d", data[0])
+            log.error("received invalid analog out enable: %d", data[0])
         if data[1] != 0 and data[1] != 1:
-            logger.error("received invalid analog out mode: %d", data[1])
+            log.error("received invalid analog out mode: %d", data[1])
 
         self.state.analog_out_enable = data[0] != 0
         self.state.analog_out_mode = data[1]
@@ -3007,7 +2998,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
     # @returns decivolts
     def get_analog_input_value(self):
         if not self.settings.is_gen2():
-            logger.error("analog input only available on Gen2")
+            log.error("analog input only available on Gen2")
             return SpectrometerResponse(data=False,error_msg="analog input unsupported")
         return self.get_upper_code(0x1b, lsb_len=1, label="GET_ANALOG_IN_VALUE")
 
@@ -3215,7 +3206,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
                      "get_ccd_sensing_threshold",
                      "get_ccd_threshold_sensing_mode",
                      "get_external_trigger_output",
-                     "get_laser_interlock",
                      "can_laser_fire",
                      "is_laser_firing",
                      "get_laser_enabled",

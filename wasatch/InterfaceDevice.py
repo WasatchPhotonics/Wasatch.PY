@@ -21,7 +21,7 @@ class InterfaceDevice:
             try:
                 cmd = request.cmd
                 proc_func = self.process_f.get(cmd, None)
-                if proc_func == None:
+                if proc_func is None:
                     responses.append(SpectrometerResponse(error_msg=f"unsupported cmd {request.cmd}", error_lvl=ErrorLevel.low))
                 elif request.args == [] and request.kwargs == {}:
                     responses.append(proc_func())

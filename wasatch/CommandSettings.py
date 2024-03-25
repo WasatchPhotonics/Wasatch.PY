@@ -63,7 +63,7 @@ class CommandSettings:
         return sorted(SETTINGS.keys())
 
     def get_datatype(self, setting):
-        if not setting in SETTINGS:
+        if setting not in SETTINGS:
             return None
 
         return SETTINGS[setting]["datatype"]
@@ -72,7 +72,7 @@ class CommandSettings:
         return setting in SETTINGS
 
     def convert_type(self, setting, value):
-        if not setting in SETTINGS:
+        if setting not in SETTINGS:
             log.error("invalid setting: %s", setting)
             return None
 

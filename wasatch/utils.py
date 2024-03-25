@@ -212,7 +212,7 @@ def get_pathnames_from_directory(rootdir, pattern=None, recursive=False):
     pathnames = []
     # log.debug("searching %s matching %s with recursive %s", rootdir, pattern, recursive)
     if recursive:
-        for (directory, dirnames, filenames) in walk(rootdir):
+        for (directory, dirnames, filenames) in os.walk(rootdir):
             for filename in filenames:
                 pathname = os.path.join(directory, filename)
                 if pattern:
@@ -372,7 +372,7 @@ def interpolate_array(spectrum, old_axis, new_axis):
 
 ## I might be making this more difficult than it needs to be
 def interpolate_value(spectrum, old_axis, x):
-    if not spectrum or not old_axis or not new_axis or len(spectrum) != len(old_axis) or len(new_axis) < 1:
+    if not spectrum or not old_axis or len(spectrum) != len(old_axis):
         return 
     new_axis = [ x-1, x, x+1 ] 
     new_y = numpy.interp(new_axis, old_axis, spectrum)

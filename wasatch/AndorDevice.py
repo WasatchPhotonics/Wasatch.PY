@@ -1,20 +1,13 @@
-import re
 import os
 import usb
-import time
 import json
-import queue
 import struct
 import logging
 import datetime
 from ctypes import *
-from typing import TypeVar, Any, Callable
 
 from .SpectrometerSettings        import SpectrometerSettings
-from .SpectrometerState           import SpectrometerState
 from .SpectrometerResponse        import SpectrometerResponse
-from .SpectrometerRequest         import SpectrometerRequest
-from .SpectrometerResponse        import ErrorLevel
 from .InterfaceDevice             import InterfaceDevice
 from .DeviceID                    import DeviceID
 from .Reading                     import Reading
@@ -218,9 +211,9 @@ class AndorDevice(InterfaceDevice):
         spec = spec_arr(*spec_init_vals)
 
         # ask for spectrum then collect, NOT multithreaded (though we should look into that!), blocks
-        self.driver.StartAcquisition();
-        self.driver.WaitForAcquisition();
-        success = self.driver.GetAcquiredData(spec, c_ulong(self.pixels));
+        self.driver.StartAcquisition()
+        self.driver.WaitForAcquisition()
+        success = self.driver.GetAcquiredData(spec, c_ulong(self.pixels))
 
         if (success != self.SUCCESS):
             log.debug(f"getting spectra did not succeed. Received code of {success}. Returning")
@@ -232,7 +225,7 @@ class AndorDevice(InterfaceDevice):
         if (self.settings.eeprom.invert_x_axis):
             convertedSpec.reverse()
 
-        return convertedSpec;
+        return convertedSpec
 
     def _take_one_averaged_reading(self): # -> SpectrometerResponse 
         averaging_enabled = (self.settings.state.scans_to_average > 1)
@@ -682,14 +675,6 @@ class AndorDevice(InterfaceDevice):
             20038: "DRV_TEMPERATURE_OUT_RANGE",
             20039: "DRV_TEMPERATURE_NOT_SUPPORTED",
             20040: "DRV_TEMPERATURE_DRIFT",
-            20033: "DRV_TEMP_CODES",
-            20034: "DRV_TEMP_OFF",
-            20035: "DRV_TEMP_NOT_STABILIZED",
-            20036: "DRV_TEMP_STABILIZED",
-            20037: "DRV_TEMP_NOT_REACHED",
-            20038: "DRV_TEMP_OUT_RANGE",
-            20039: "DRV_TEMP_NOT_SUPPORTED",
-            20040: "DRV_TEMP_DRIFT",
             20049: "DRV_GENERAL_ERRORS",
             20050: "DRV_INVALID_AUX",
             20051: "DRV_COF_NOTLOADED",
@@ -735,9 +720,6 @@ class AndorDevice(InterfaceDevice):
             20100: "DRV_INVALID_AMPLIFIER",
             20101: "DRV_INVALID_COUNTCONVERT_MODE",
             20102: "DRV_USB_INTERRUPT_ENDPOINT_TIMEOUT",
-            20990: "DRV_ERROR_NOCAMERA",
-            20991: "DRV_NOT_SUPPORTED",
-            20992: "DRV_NOT_AVAILABLE",
             20115: "DRV_ERROR_MAP",
             20116: "DRV_ERROR_UNMAP",
             20117: "DRV_ERROR_MDL",
@@ -777,5 +759,8 @@ class AndorDevice(InterfaceDevice):
             20194: "DRV_OA_CAMERA_NOT_SUPPORTED",
             20195: "DRV_OA_FAILED_TO_GET_MODE",
             20196: "DRV_OA_CAMERA_NOT_AVAILABLE",
-            20211: "DRV_PROCESSING_FAILED"
+            20211: "DRV_PROCESSING_FAILED",
+            20990: "DRV_ERROR_NOCAMERA",
+            20991: "DRV_NOT_SUPPORTED",
+            20992: "DRV_NOT_AVAILABLE"
         }

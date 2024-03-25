@@ -1,21 +1,12 @@
 import os
-import re
-import json
-import time
-import random
-import struct
 import logging
 import asyncio
 import threading
 
-from typing import TypeVar, Any, Callable
-from bleak import discover, BleakClient, BleakScanner
-from bleak.exc import BleakError
+from bleak import BleakClient
 
-from . import utils
 from .Reading import Reading
 from wasatch.EEPROM import EEPROM
-from wasatch.DeviceID import DeviceID
 from .ControlObject import ControlObject
 from .InterfaceDevice import InterfaceDevice
 from .SpectrometerResponse import ErrorLevel
@@ -219,7 +210,7 @@ class BLEDevice(InterfaceDevice):
         if self.disconnect:
             log.debug("ble spec is set to disconnect, returning False")
             return SpectrometerResponse(False)
-        request = await self.client.write_gatt_char(DEVICE_ACQUIRE_UUID, bytes(0), response = True)
+        _ = await self.client.write_gatt_char(DEVICE_ACQUIRE_UUID, bytes(0), response = True)
         pixels = self.settings.eeprom.active_pixels_horizontal
         request_retry = False
         averaging_enabled = (self.settings.state.scans_to_average > 1)
@@ -272,11 +263,11 @@ class BLEDevice(InterfaceDevice):
             request = self.pixels_read.to_bytes(2, byteorder="big")
             await self.client.write_gatt_char(SPECTRUM_PIXELS_UUID, request, response = True)
 
-            log.debug(f"reading spectrumChar (pixelsRead {self.pixels_read})");
+            log.debug(f"reading spectrumChar (pixelsRead {self.pixels_read})")
             response = await self.client.read_gatt_char(READ_SPECTRUM_UUID)
 
             # make sure response length is even, and has both header and at least one pixel of data
-            response_len = len(response);
+            response_len = len(response)
             if (response_len < header_len or response_len % 2 != 0):
                 log.error(f"received invalid response of {response_len} bytes")
                 request_retry = True
@@ -292,9 +283,9 @@ class BLEDevice(InterfaceDevice):
                 request_retry = True
                 continue
 
-            pixels_in_packet = int((response_len - header_len) / 2);
+            pixels_in_packet = int((response_len - header_len) / 2)
 
-            log.debug(f"received spectrum packet starting at pixel {first_pixel} with {pixels_in_packet} pixels");
+            log.debug(f"received spectrum packet starting at pixel {first_pixel} with {pixels_in_packet} pixels")
 
             for i in range(pixels_in_packet):
                 # pixel intensities are little-endian UInt16
@@ -311,9 +302,9 @@ class BLEDevice(InterfaceDevice):
                     log.debug("read complete spectrum")
                     self.session_reading_count += 1
                     if (i + 1 != pixels_in_packet):
-                        log.error(f"ignoring {pixels_in_packet - (i + 1)} trailing pixels");
+                        log.error(f"ignoring {pixels_in_packet - (i + 1)} trailing pixels")
                     break
-            response = None;
+            response = None
             #### WHILE LOOP ENDS HERE ####
             for i in range(4):
                 self.spectrum[i] = self.spectrum[4]
@@ -322,7 +313,7 @@ class BLEDevice(InterfaceDevice):
 
             reading.session_count = self.session_reading_count
             reading.sum_count = self.sum_count
-            log.debug("Spectrometer.takeOneAsync: returning completed spectrum");
+            log.debug("Spectrometer.takeOneAsync: returning completed spectrum")
             reading.spectrum = self.spectrum
 
             if not reading.failure:
@@ -365,11 +356,10 @@ class BLEDevice(InterfaceDevice):
         pages = []
         for i in range(EEPROM.MAX_PAGES):
             buf = bytearray()
-            pos = 0
             for j in range(EEPROM.SUBPAGE_COUNT):
                 page_ids = bytearray([i, j])
                 log.debug(f"Writing to tell gateway to get page {i} ands subpage {j}")
-                request = await self.client.write_gatt_char(SELECT_EEPROM_PAGE_UUID, page_ids, response = True)
+                _ = await self.client.write_gatt_char(SELECT_EEPROM_PAGE_UUID, page_ids, response = True)
                 log.debug("Attempting to read page data")
                 response = await self.client.read_gatt_char(READ_EEPROM_UUID)
                 for byte in response:
@@ -445,5 +435,5 @@ class BLEDevice(InterfaceDevice):
         log.info("BLE close called, trying to disconnect spec")
         self.disconnect = True
         fut = asyncio.run_coroutine_threadsafe(self._disconnect_spec(), self.loop)
-        result = fut.result()
+        _ = fut.result()
         self.loop.stop()

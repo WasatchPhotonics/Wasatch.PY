@@ -1,11 +1,7 @@
-import re
 import os
 import usb
-import time
-import queue
 import logging
 import datetime
-from typing import TypeVar, Any, Callable
 
 import seabreeze
 seabreeze.use("pyseabreeze")
@@ -13,10 +9,7 @@ import seabreeze.spectrometers as sb
 from seabreeze.spectrometers import Spectrometer, list_devices
 
 from .SpectrometerSettings        import SpectrometerSettings
-from .SpectrometerRequest         import SpectrometerRequest
 from .SpectrometerResponse        import SpectrometerResponse
-from .SpectrometerResponse        import ErrorLevel
-from .SpectrometerState           import SpectrometerState
 from .InterfaceDevice             import InterfaceDevice
 from .DeviceID                    import DeviceID
 from .Reading                     import Reading

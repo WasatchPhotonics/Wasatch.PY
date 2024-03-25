@@ -1,6 +1,5 @@
 import datetime
 import logging
-import copy
 import csv
 import re
 

@@ -9,7 +9,6 @@ peak of cyclohexane, in this case) matches a prescribed threshold.
 
 import sys
 import time
-import wasatch
 import numpy as np
 import scipy.signal
 

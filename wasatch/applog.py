@@ -19,11 +19,8 @@
 
 import os
 import sys
-import queue            # for exception
 import logging
 import platform
-import traceback
-import multiprocessing
 from . import utils
 from queue import Queue
 
@@ -151,7 +148,7 @@ class MainLogger:
             pathname = get_location()
 
         try:
-            if type(append) == int:
+            if isinstance(append, int):
                 utils.resize_file(path=pathname, nbytes=append)
         except (IOError, FileNotFoundError):
             print("Unable to truncate log file.")

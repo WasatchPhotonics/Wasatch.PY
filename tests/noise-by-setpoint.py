@@ -1,21 +1,17 @@
 #!/usr/bin/env python
 
 import re
-import os
 import sys
 import time
 import numpy
-import signal
 import logging
 import datetime
 import argparse
 
 import wasatch
-from wasatch import utils
 from wasatch import applog
 from wasatch.WasatchBus           import WasatchBus
 from wasatch.WasatchDevice        import WasatchDevice
-from wasatch.WasatchDeviceWrapper import WasatchDeviceWrapper
 
 log = logging.getLogger(__name__)
 
@@ -121,7 +117,6 @@ class Test:
     # probably a numpy one-liner for this...
     def process(self, spectra):
         # compute the stdev for each pixel over time, placing in new array
-        count = len(spectra)
         pixels = len(spectra[0])
         stdevs = []
         for pix in range(pixels):

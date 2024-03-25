@@ -153,26 +153,23 @@ class SimulateMaterial:
     # the enlighten software. The temporary fix here is to load the
     # file directly from disk, and manually slice the data required. 
     def load_raw_data(self, filename=None):
-        if filename == None:
+        if filename is None:
             filename = "enlighten/assets/example_data/"
             filename += "Spectra_093016_785L_192.csv"
 
         log.info("Raw data load file: %s", filename)
-
-    csv_data = []
-    line_count = 0
-    with open(filename, "r") as csv_file:
-        for line_data in csv_file:
-
-            if line_count > 1:
-            line_data = line_data.replace('"','')
-                commas = [x.strip() for x in line_data.split(",")]
-                ints = [int(x.strip()) for x in commas[17:]]
-                csv_data.append(ints)
-                #log.info("Strip: %s", csv_data)
-        line_count += 1
-
-    return csv_data
+        csv_data = []
+        line_count = 0
+        with open(filename, "r") as csv_file:
+            for line_data in csv_file:
+                if line_count > 1:
+                    line_data = line_data.replace('"','')
+                    commas = [x.strip() for x in line_data.split(",")]
+                    ints = [int(x.strip()) for x in commas[17:]]
+                    csv_data.append(ints)
+                    #log.info("Strip: %s", csv_data)
+            line_count += 1
+        return csv_data
 
     ## Placeholder to log disconnect event. 
     def disconnect(self):

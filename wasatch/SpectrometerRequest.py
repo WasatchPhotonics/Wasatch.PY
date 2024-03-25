@@ -12,4 +12,4 @@ class SpectrometerRequest:
 
     def clear(self):
         self.cmd = ''
-        args = []
+        self.args = []
