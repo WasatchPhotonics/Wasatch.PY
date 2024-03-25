@@ -113,7 +113,7 @@ class OceanDevice(InterfaceDevice):
 
         # either take one measurement (normal), or a bunch (blocking averaging)
         reading = None
-        for loop_index in range(0, loop_count):
+        for _ in range(0, loop_count):
 
             # start a new reading
             # NOTE: reading.timestamp is when reading STARTED, not FINISHED!

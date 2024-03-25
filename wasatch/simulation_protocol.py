@@ -73,7 +73,7 @@ class SimulateMaterial:
         # Set default to zero bad pixels which is a list of -1's of
         # length 15
         self.bad_pixels = []
-        for pixel in range(15):
+        for _ in range(15):
             self.bad_pixels.append(-1)
 
     ## Return the spectrum read from file. Add the noise. 

@@ -151,9 +151,9 @@ class MockUSBDevice(AbstractUSBDevice):
         device, host, bRequest, wValue, wIndex, wLength = args
         log.info(f"Mock spec received ctrl transfer of host {host}, request {bRequest}, wValue {wValue}, wIndex {wIndex}, len {wLength}")
         if bRequest == 255:
-            cmd_func = self.cmd_dict.get((bRequest,wValue),None)
+            cmd_func = self.cmd_dict.get((bRequest, wValue), None)
         else:
-            cmd_func = self.cmd_dict.get((bRequest,None),None)
+            cmd_func = self.cmd_dict.get((bRequest, None), None)
         if cmd_func:
             return cmd_func(*args)
         else:

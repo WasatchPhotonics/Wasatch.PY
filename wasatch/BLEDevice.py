@@ -226,7 +226,7 @@ class BLEDevice(InterfaceDevice):
             # we're in free-running mode
             loop_count = 1
         reading = None
-        for loop_index in range(0, loop_count):
+        for _ in range(0, loop_count):
             reading = Reading(self.device_id)
             reading.integration_time_ms = self.settings.state.integration_time_ms
             reading.laser_power_perc    = self.settings.state.laser_power_perc

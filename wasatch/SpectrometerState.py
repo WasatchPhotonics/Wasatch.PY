@@ -227,9 +227,13 @@ class SpectrometerState:
         log.debug("  Laser TEC Setpoint:     %d", self.laser_tec_setpoint)
 
     def to_dict(self):
-        dict = self.__dict__
-        dict["battery_timestamp"] = str(dict["battery_timestamp"])
-        return dict
+        d = self.__dict__
+
+        # stringify some
+        for k in ["battery_timestamp"]:
+            d[k] = str(d[k])
+
+        return d
 
     def set(self, name, value):
         setattr(self, name, value)

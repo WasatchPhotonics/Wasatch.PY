@@ -212,7 +212,7 @@ def get_pathnames_from_directory(rootdir, pattern=None, recursive=False):
     pathnames = []
     # log.debug("searching %s matching %s with recursive %s", rootdir, pattern, recursive)
     if recursive:
-        for (directory, dirnames, filenames) in os.walk(rootdir):
+        for (directory, _, filenames) in os.walk(rootdir):
             for filename in filenames:
                 pathname = os.path.join(directory, filename)
                 if pattern:
