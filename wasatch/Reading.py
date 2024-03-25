@@ -27,7 +27,7 @@ class Reading:
         self.laser_power_mW            = 0
         self.failure                   = None
         self.averaged                  = False
-        self.session_count             = 0
+        self.session_count             = 0      # can treat as reading_id
         self.area_scan_row_count       = -1
         self.area_scan_data            = None
         self.battery_raw               = None
@@ -47,7 +47,7 @@ class Reading:
             self.device_id, 
             "None" if self.spectrum is None else ("%d values" % len(self.spectrum)),
             self.averaged, 
-            self.session_count, 
+            self.session_count,
             self.area_scan_row_count,
             self.timestamp, 
             self.timestamp_complete, 
