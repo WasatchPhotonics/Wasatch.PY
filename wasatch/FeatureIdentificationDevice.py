@@ -23,6 +23,7 @@ from .StatusMessage        import StatusMessage
 from .RealUSBDevice        import RealUSBDevice
 from .MockUSBDevice        import MockUSBDevice
 from .DetectorROI          import DetectorROI
+from .PollStatus           import PollStatus
 from .EEPROM               import EEPROM
 
 log = logging.getLogger(__name__)
@@ -150,7 +151,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 else:
                     responses.append(proc_func(*request.args, **request.kwargs))
             except Exception as e:
-                log.error(f"error in handling request {request} of {e}")
+                log.error(f"error in handling request {request} of {e}", exc_info=1)
                 responses.append(SpectrometerResponse(error_msg="error processing cmd", error_lvl=ErrorLevel.medium))
         return responses
 
@@ -245,6 +246,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
         Perform additional setup after instantiating FID device.
         Split-out from physical / bus connect() to simplify MockSpectrometer.
         """
+
+        # grab firmware versions early
+        self.get_microcontroller_firmware_version()
+        self.get_fpga_firmware_version()
 
         # ######################################################################
         # model-specific settings
@@ -633,10 +638,13 @@ class FeatureIdentificationDevice(InterfaceDevice):
                         # for now, draw a line between previous and next_good pixels
                         # TODO: consider some kind of curve-fit
                         delta = float(spectrum[next_good] - spectrum[prev_good])
-                        rng   = next_good - prev_good
+                        rng   = next_good - prev_good 
                         step  = delta / rng
+                        # log.debug(f"correct_bad_pixels: bad_pix {bad_pix}, prev_good {prev_good} ({spectrum[prev_good]}), next_good {next_good} ({spectrum[next_good]}), delta {delta:.2f}, rng {rng}, step {step:.2f}")
                         for j in range(rng - 1):
-                            spectrum[prev_good + j + 1] = spectrum[prev_good] + step * (j + 1)
+                            new = spectrum[prev_good] + step * (j + 1)
+                            spectrum[prev_good + j + 1] = new
+                            # log.debug(f"correct_bad_pixels: stomping pix {prev_good + j + 1} with {new}")
                     else:
                         # we ran off the high end, so copy-right
                         for j in range(bad_pix, pixels):
@@ -1008,6 +1016,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
     # @todo we should probably track runtime hardware gain in SpectrometerState,
     #       not EEPROM
     def set_detector_gain(self, gain: float):
+        if not self.is_sensor_stable():
+            log.error("declining to change sensor settings while stabilizing")
+            return
+
         raw = self.settings.eeprom.float_to_uint16(gain)
 
         # MZ: note that we SEND gain MSB-LSB, but we READ gain LSB-MSB?!
@@ -1056,15 +1068,22 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return SpectrometerResponse(data=value)
 
     def get_microcontroller_firmware_version(self):
+        if self.settings.microcontroller_firmware_version is not None:
+            return SpectrometerResponse(data=self.settings.microcontroller_firmware_version)
+
         res = self._get_code(0xc0, label="GET_CODE_REVISION")
         result = res.data
         version = "?.?.?.?"
         if result is not None and len(result) >= 4:
             version = "%d.%d.%d.%d" % (result[3], result[2], result[1], result[0]) # MSB-LSB
+
         self.settings.microcontroller_firmware_version = version
         return SpectrometerResponse(data=version)
 
     def get_fpga_firmware_version(self):
+        if self.settings.fpga_firmware_version is not None:
+            return SpectrometerResponse(data=self.settings.fpga_firmware_version)
+
         s = ""
         res = self._get_code(0xb4, wLength=7, label="GET_FPGA_REV")
         result = res.data
@@ -1073,6 +1092,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 c = result[i]
                 if 0x20 <= c < 0x7f: # visible ASCII
                     s += chr(c)
+
         self.settings.fpga_firmware_version = s
         return SpectrometerResponse(data=s)
 
@@ -1138,11 +1158,19 @@ class FeatureIdentificationDevice(InterfaceDevice):
                  when NOT in external-triggered mode
         @throws exception on timeout (unless external triggering enabled)
         """
+        response = SpectrometerResponse()
+
+        if not self.is_sensor_stable():
+            response.error_msg = "get_line: leaving sensor alone while stabilizing"
+            response.error_lvl = ErrorLevel.low
+            response.keep_alive = True
+            log.debug(response.error_msg)
+            self.queue_message("marquee_info", "sensor is stabilizing")
+            return response
 
         ########################################################################
         # send the ACQUIRE
         ########################################################################
-        response = SpectrometerResponse()
 
         # main use-case for NOT sending a trigger would be when reading
         # subsequent lines of data from area scan "fast" mode
@@ -1455,6 +1483,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         @todo SiG needs to wait 20ms + 8 frames for stabilization.
         """
+        if not self.is_sensor_stable():
+            log.error("declining to change sensor settings while stabilizing")
+            return
+
         ms = max(1, int(round(ms)))
 
         lsw =  ms        & 0xffff
@@ -1469,6 +1501,28 @@ class FeatureIdentificationDevice(InterfaceDevice):
         if self.settings.is_xs():
             self.queue_message("marquee_info", "sensor is stabilizing")
 
+        return result
+
+    def is_sensor_stable(self):
+        if not (self.settings.is_imx() and self.settings.supports_feature("imx_stabilization")):
+            return True
+
+        self.get_poll_status()
+        stable = PollStatus.IDLE == self.settings.state.poll_status
+        log.debug(f"is_sensor_stable: sensor {'IS' if stable else 'IS NOT'} stable (poll_status 0x{self.settings.state.poll_status:02x})")
+        return stable
+
+    def get_poll_status(self):
+        # default
+        status = PollStatus.IDLE # .UNDEFINED (kludge)
+        result = SpectrometerResponse(data=status)
+
+        if False and self.settings.is_imx() and self.settings.supports_feature("imx_stabilization"):
+            result = self._get_code(0xd4, lsb_len=1, label="GET_POLL_STATUS")
+            if result is not None:
+                status = result.data
+        self.settings.state.poll_status = status
+        log.debug(f"get_poll_status: status 0x{status:02x}")
         return result
 
     # ##########################################################################

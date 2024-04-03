@@ -747,16 +747,20 @@ class EEPROM:
     # WRITTEN from current settings in memory.
     def generate_digest(self, regenerate=False):
         buffers = self.buffers
-        if regenerate:
-            self.generate_write_buffers()
-            buffers = self.write_buffers
+        digest = 'invalid'
+        try:
+            if regenerate:
+                self.generate_write_buffers()
+                buffers = self.write_buffers
 
-        h = hashlib.new("md5")
-        for buf in buffers:
-            h.update(bytes(buf))
-        digest = h.hexdigest()
+            h = hashlib.new("md5")
+            for buf in buffers:
+                h.update(bytes(buf))
+            digest = h.hexdigest()
+        except: 
+            log.error(f"exception generating EEPROM digest...using '{digest}'", exc_info=1)
 
-        log.debug("EEPROM MD5 digest = %s (regenerate = %s)", digest, regenerate)
+        log.debug(f"EEPROM MD5 digest {digest} (regenerate {regenerate})")
         return digest
 
     def to_dict(self):
@@ -951,6 +955,9 @@ class EEPROM:
              + self.laser_power_coeffs[3] * mW * mW * mW
 
         return perc
+
+    def is_valid_serial_number(self):
+        return re.match(r"^[-+a-z0-9_ ]{1,16}$", self.serial_number, re.IGNORECASE)
 
     # ##########################################################################
     #                                                                          #

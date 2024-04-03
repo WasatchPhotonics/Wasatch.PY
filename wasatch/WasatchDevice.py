@@ -167,12 +167,9 @@ class WasatchDevice(InterfaceDevice):
 
         # generic post-initialization stuff 
 
-        # MZ: interesting that we don't try to read firmware/FPGA versions until AFTER fid.connect() completes
-        req_fw_v = SpectrometerRequest('get_microcontroller_firmware_version')
-        req_fpga_v = SpectrometerRequest('get_fpga_firmware_version')
         req_int = SpectrometerRequest('get_integration_time_ms')
         req_gain = SpectrometerRequest('get_detector_gain')# note we don't pass update_session_eeprom, so this doesn't really do anything
-        reqs = [req_fw_v, req_fpga_v, req_int, req_gain]
+        reqs = [req_int, req_gain]
         self.hardware.handle_requests(reqs) 
         # could read the defaults for these ss.state volatiles from FID too:
         #
@@ -216,6 +213,13 @@ class WasatchDevice(InterfaceDevice):
         if self.settings.state.integration_time_ms <= 0:
             log.debug("skipping acquire_data because no integration_time_ms")
             return SpectrometerResponse(None)
+
+        # if not self.hardware.is_sensor_stable():
+        #     # technically, we could do all the other stuff in acquire_spectrum 
+        #     # (read battery, laser temperature, ambient temperature, detector 
+        #     # temperature etc), not bothering for now
+        #     log.debug("declining to read spectra while stabilizing") 
+        #     return SpectrometerResponse(None)
 
         # note that right now, all we return are Readings (encapsulating both
         # spectra and temperatures).  If we disable spectra, ENLIGHTEN stops 

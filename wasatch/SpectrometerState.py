@@ -1,6 +1,8 @@
 import datetime
 import logging
 
+from wasatch.PollStatus import PollStatus
+
 log = logging.getLogger(__name__)
 
 class SpectrometerState:
@@ -63,6 +65,9 @@ class SpectrometerState:
         # wasatch.DetectorRegions
         self.detector_regions = None
         self.region = None
+
+        # wasatch.PollStatus
+        self.poll_status = PollStatus.UNDEFINED
 
         # ######################################################################
         # accessory connector
