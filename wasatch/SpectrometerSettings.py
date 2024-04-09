@@ -49,6 +49,8 @@ class SpectrometerSettings:
         # permanent attributes
         self.microcontroller_firmware_version = None
         self.fpga_firmware_version = None
+        self.detector_serial_number = None          # Andor
+        self.microcontroller_serial_number = None   # STM32H7
         self.fpga_options = FPGAOptions()
 
         # semi-permanent attributes

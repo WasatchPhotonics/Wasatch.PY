@@ -250,6 +250,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # grab firmware versions early
         self.get_microcontroller_firmware_version()
         self.get_fpga_firmware_version()
+        self.get_microcontroller_serial_number()
 
         # ######################################################################
         # model-specific settings
@@ -1096,6 +1097,29 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.settings.fpga_firmware_version = s
         return SpectrometerResponse(data=s)
 
+    def get_microcontroller_serial_number(self):
+        if not self.settings.is_arm():
+            log.debug("GET_MICROCONTROLLER_SERIAL_NUMBER requires ARM")
+            return None
+
+        if not self.settings.supports_feature("microcontroller_serial_number"):
+            log.debug("GET_MICROCONTROLLER_SERIAL_NUMBER not supported on this firmware")
+            return None
+
+        result = self._get_code(0xff, wValue=0x2c, wLength=12, label="GET_MICROCONTROLLER_SERIAL_NUMBER")
+        if result is None:
+            log.error("GET_MICROCONTROLLER_SERIAL_NUMBER returned None")
+            return None
+
+        data = result.data
+        if len(data) != 12:
+            log.error("GET_MICROCONTROLLER_SERIAL_NUMBER expected 12 bytes (received {len(data)})")
+            return None
+
+        des = "".join(f"{v:02x}" for v in data) # Device Electronic Signature
+        self.settings.microcontroller_serial_number = des
+        return SpectrometerResponse(data=des)
+
     def apply_edc(self, spectrum):
         """
         Use the "pixel side ignored area" for electrical dark correction (EDC).
@@ -1513,7 +1537,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return stable
 
     def get_poll_status(self):
-        # default
         status = PollStatus.IDLE # .UNDEFINED (kludge)
         result = SpectrometerResponse(data=status)
 

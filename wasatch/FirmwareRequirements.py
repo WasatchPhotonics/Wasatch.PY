@@ -17,6 +17,7 @@ class FirmwareRequirements:
 
         self.feature_versions = {
             "imx_stabilization": { "microcontroller": { "min": "1.0.7.0" } },
+            "microcontroller_serial_number": { "microcontroller": { "min": "1.0.4.5" } },
         }
 
     def supports(self, feature):
