@@ -1098,6 +1098,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return SpectrometerResponse(data=s)
 
     def get_microcontroller_serial_number(self):
+        return None # disabling until we work out another Beta SiG conflict
+
         if not self.settings.is_arm():
             log.debug("GET_MICROCONTROLLER_SERIAL_NUMBER requires ARM")
             return None
@@ -1112,7 +1114,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
             return None
 
         data = result.data
-        if len(data) != 12:
+        if data is None or len(data) != 12:
             log.error("GET_MICROCONTROLLER_SERIAL_NUMBER expected 12 bytes (received {len(data)})")
             return None
 

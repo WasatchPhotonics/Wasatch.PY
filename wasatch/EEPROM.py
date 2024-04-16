@@ -363,7 +363,7 @@ class EEPROM:
         self.bad_pixels.sort()
 
         if self.format >= 5:
-            self.product_configuration       = self.unpack((5,  30, 16), "s", "product_config")
+            self.product_configuration       = self.unpack((5,  30, 16), "s", "product_configuration")
         if self.format >= 7:
             self.subformat                   = self.unpack((5,  63,  1), "B", "subformat")
 
@@ -738,9 +738,10 @@ class EEPROM:
         else:
             struct.pack_into(data_type, buf, start_byte, value)
 
-        # extra = "" if label is None else (" (%s)" % label)
-        # log.debug("Packed (%d, %2d, %2d) '%s' value %s -> %s%s", 
-        #     page, start_byte, length, data_type, value, buf[start_byte:end_byte], extra)
+        if True:
+            extra = "" if label is None else (" (%s)" % label)
+            log.debug("Packed (%d, %2d, %2d) '%s' value %s -> %s%s", 
+                page, start_byte, length, data_type, value, buf[start_byte:end_byte], extra)
 
     ##
     # If asked to regenerate, return a digest of the contents that WOULD BE 
