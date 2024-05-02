@@ -1,6 +1,11 @@
 # Changelog
 
 - 2024-??-?? 2.1.64
+    - added wasatch.FirmwareRequirements
+    - added wasatch.PollStatus
+    - added FID.get_poll_status() and .is_sensor_stable()
+    - added util.vercmp()
+    - added microcontroller serial number
 - 2024-03-23 2.1.63
     - CSVLoader 
         - store x-axes in ProcessedReading rather than metadata

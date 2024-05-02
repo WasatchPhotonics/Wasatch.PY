@@ -363,7 +363,7 @@ class EEPROM:
         self.bad_pixels.sort()
 
         if self.format >= 5:
-            self.product_configuration       = self.unpack((5,  30, 16), "s", "product_config")
+            self.product_configuration       = self.unpack((5,  30, 16), "s", "product_configuration")
         if self.format >= 7:
             self.subformat                   = self.unpack((5,  63,  1), "B", "subformat")
 
@@ -738,25 +738,30 @@ class EEPROM:
         else:
             struct.pack_into(data_type, buf, start_byte, value)
 
-        # extra = "" if label is None else (" (%s)" % label)
-        # log.debug("Packed (%d, %2d, %2d) '%s' value %s -> %s%s", 
-        #     page, start_byte, length, data_type, value, buf[start_byte:end_byte], extra)
+        if True:
+            extra = "" if label is None else (" (%s)" % label)
+            log.debug("Packed (%d, %2d, %2d) '%s' value %s -> %s%s", 
+                page, start_byte, length, data_type, value, buf[start_byte:end_byte], extra)
 
     ##
     # If asked to regenerate, return a digest of the contents that WOULD BE 
     # WRITTEN from current settings in memory.
     def generate_digest(self, regenerate=False):
         buffers = self.buffers
-        if regenerate:
-            self.generate_write_buffers()
-            buffers = self.write_buffers
+        digest = 'invalid'
+        try:
+            if regenerate:
+                self.generate_write_buffers()
+                buffers = self.write_buffers
 
-        h = hashlib.new("md5")
-        for buf in buffers:
-            h.update(bytes(buf))
-        digest = h.hexdigest()
+            h = hashlib.new("md5")
+            for buf in buffers:
+                h.update(bytes(buf))
+            digest = h.hexdigest()
+        except: 
+            log.error(f"exception generating EEPROM digest...using '{digest}'", exc_info=1)
 
-        log.debug("EEPROM MD5 digest = %s (regenerate = %s)", digest, regenerate)
+        log.debug(f"EEPROM MD5 digest {digest} (regenerate {regenerate})")
         return digest
 
     def to_dict(self):
@@ -951,6 +956,9 @@ class EEPROM:
              + self.laser_power_coeffs[3] * mW * mW * mW
 
         return perc
+
+    def is_valid_serial_number(self):
+        return re.match(r"^[-+a-z0-9_ ]{1,16}$", self.serial_number, re.IGNORECASE)
 
     # ##########################################################################
     #                                                                          #

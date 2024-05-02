@@ -8,15 +8,16 @@ import os
 from datetime import datetime
 from . import utils
 
-from .SpectrometerState import SpectrometerState
-from .DetectorRegions   import DetectorRegions
-from .MockUSBDevice     import MockUSBDevice
-from .RealUSBDevice     import RealUSBDevice
-from .HardwareInfo      import HardwareInfo
-from .DetectorROI       import DetectorROI
-from .FPGAOptions       import FPGAOptions
-from .DeviceID          import DeviceID
-from .EEPROM            import EEPROM
+from .FirmwareRequirements import FirmwareRequirements
+from .SpectrometerState    import SpectrometerState
+from .DetectorRegions      import DetectorRegions
+from .MockUSBDevice        import MockUSBDevice
+from .RealUSBDevice        import RealUSBDevice
+from .HardwareInfo         import HardwareInfo
+from .DetectorROI          import DetectorROI
+from .FPGAOptions          import FPGAOptions
+from .DeviceID             import DeviceID
+from .EEPROM               import EEPROM
 
 log = logging.getLogger(__name__)
 
@@ -48,6 +49,8 @@ class SpectrometerSettings:
         # permanent attributes
         self.microcontroller_firmware_version = None
         self.fpga_firmware_version = None
+        self.detector_serial_number = None          # Andor
+        self.microcontroller_serial_number = None   # STM32H7
         self.fpga_options = FPGAOptions()
 
         # semi-permanent attributes
@@ -75,6 +78,8 @@ class SpectrometerSettings:
 
         if d is not None:
             self.load_from_dict(d)
+
+        self.firmware_requirements = FirmwareRequirements(self)
 
     def set_num_connected_devices(self, n):
         self.num_connected_devices = n
@@ -446,7 +451,7 @@ class SpectrometerSettings:
         log.debug("is_ingaas FALSE by default")
         return False
 
-    def is_imx(self): # -> bool 
+    def is_imx(self):
         return self.eeprom is not None and \
                self.eeprom.detector is not None and \
                "imx" in self.eeprom.detector.lower()
@@ -490,6 +495,13 @@ class SpectrometerSettings:
 
     def is_xs(self): # -> bool 
         return self.is_micro()
+
+    def supports_feature(self, feature):
+        return self.firmware_requirements.supports(feature)
+
+    # ##########################################################################
+    # serialization
+    # ##########################################################################
 
     # probably a simpler way to do this...
     def to_dict(self):

@@ -680,3 +680,21 @@ def resize_file(path, nbytes, ensure_no_overwrite=False):
     shutil.move(tpath, path)
 
     return True
+
+def vercmp(a, b, delim="."):
+    """ vercmp("1.2.3.4", "1.2.4.3") -> -1 """
+    if a is None or b is None:
+        return None
+
+    tok_a = str(a).split(delim)
+    tok_b = str(b).split(delim)
+
+    int_a = int(tok_a[0])
+    int_b = int(tok_b[0])
+
+    if   int_a > int_b: return +1
+    elif int_a < int_b: return -1
+    elif len(tok_a) == 1 and len(tok_b) == 1: return 0
+    elif len(tok_a)  > 1 and len(tok_b)  > 1: return vercmp(delim.join(tok_a[1:]), delim.join(tok_b[1:]))
+    elif len(tok_b)  > 1: return -1
+    else: return +1
