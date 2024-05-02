@@ -40,7 +40,7 @@ Rendered API documentation for classes and methods is available here:
 A significant portion of Wasatch.PY's command interface is exposed through key-value
 settings, originally provided to simplify multi-process applications and summarized here:
 
-- [Key-Value Settings](README_SETTINGS.md)
+- [Key-Value Settings](https://github.com/WasatchPhotonics/Wasatch.PY/blob/master/README_SETTINGS.md)
 
 # PyPi
 
@@ -54,13 +54,14 @@ Package info:
 
 - https://pypi.org/project/wasatch/
 
-For more information about PyPi package management, see [README_PYPI](README_PYPI.md).
+For more information about PyPi package management, see [README_PYPI](https://github.com/WasatchPhotonics/Wasatch.PY/blob/master/README_PYPI.md).
 
 # Dependencies
 
-Wasatch.PY normally uses the Python 3.x build of [Miniconda](https://conda.io/miniconda.html)
-for dependencies and package management.  It should work under either 32-bit or 64-bit
-Python.
+Wasatch.PY used to use the Python 3.x build of [Miniconda](https://conda.io/miniconda.html)
+for dependencies and package management. Increasingly however, we just use pip:
+
+    $ pip install -r requirements.txt
 
 # Running the Demo
 
@@ -188,7 +189,7 @@ and [Miniconda](https://conda.io/miniconda.html) (Python 3.x):
 
 A standalone Raspberry Pi "Quick Start" tutorial is available here:
 
-- [README RPI](README_RPI.md)
+- [README RPI](https://github.com/WasatchPhotonics/Wasatch.PY/blob/master/README_RPI.md)
 
 ## Linux
 

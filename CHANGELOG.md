@@ -1,5 +1,7 @@
 # Changelog
 
+- 2024-05-02 2.1.65
+    - updated README links to work on pypi servers
 - 2024-05-02 2.1.64
     - added wasatch.FirmwareRequirements
     - added wasatch.PollStatus
