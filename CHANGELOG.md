@@ -1,6 +1,6 @@
 # Changelog
 
-- 2024-??-?? 2.1.64
+- 2024-05-02 2.1.64
     - added wasatch.FirmwareRequirements
     - added wasatch.PollStatus
     - added FID.get_poll_status() and .is_sensor_stable()
