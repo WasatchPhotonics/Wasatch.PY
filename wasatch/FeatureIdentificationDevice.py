@@ -1152,6 +1152,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.error("IMX EDC hard-coded to 1952px")
             return spectrum
 
+        # @todo: from FPGA 01.4.09+, we should be able to use spectrum [0:4] as 
+        #        TRUE optical dark; also, the "shelf" should be fixed, so the
+        #        entire left edge becomes usable.
+
         # this averages electrical dark over SPACE
         electrical_dark = sum(spectrum[1946:1950]) / 4.0 
 
