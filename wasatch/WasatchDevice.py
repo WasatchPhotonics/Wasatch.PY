@@ -293,7 +293,7 @@ class WasatchDevice(InterfaceDevice):
         # (given sleep()'s precision) for each acquisition.  For true precision
         # this should all go into the firmware anyway.
 
-        auto_enable_laser = tor and tor.enable_laser_before 
+        auto_enable_laser = tor is not None and tor.enable_laser_before 
         log.debug("acquire_spectrum: auto_enable_laser = %s", auto_enable_laser)
 
         dark_reading = SpectrometerResponse()
