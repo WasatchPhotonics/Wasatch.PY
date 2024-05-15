@@ -1,13 +1,28 @@
-[build-system]
-requires = ["flit_core >=3.2,<4"]
-build-backend = "flit_core.buildapi"
-
 [project]
-name = "Wasatch.PY"
-authors = [{name = "Wasatch Photonics", email = "edort@wasatchphotonics.com"}]
-readme = "README.md"
-classifiers = ["License :: OSI Approved :: MIT License"]
-dynamic = ["version", "description"]
+name="Wasatch.PY"
+version="2.1.65"
+dependencies=[  "mkl",
+                "numpy",
+                "six",
+                "psutil",
+                "future",
+                "pygtail",
+                "pyusb",
+                "requests",
+                "pexpect",
+                "seabreeze",
+                "pyudev",
+                "pywin32",
+                "pyftdi",
+                "crcmod",
+                "bleak",
+                ]
 
-[project.urls]
-Home = "https://github.com/WasatchPhotonics/Wasatch.PY"
+[build-system]
+requires=["setuptools","wheel"]
+build-backend="setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where=["."]
+include=["wasatch"]
+namespaces=true
