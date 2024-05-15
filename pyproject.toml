@@ -3,7 +3,7 @@ requires = ["flit_core >=3.2,<4"]
 build-backend = "flit_core.buildapi"
 
 [project]
-name = "wasatch"
+name = "Wasatch.PY"
 authors = [{name = "Wasatch Photonics", email = "edort@wasatchphotonics.com"}]
 readme = "README.md"
 classifiers = ["License :: OSI Approved :: MIT License"]
