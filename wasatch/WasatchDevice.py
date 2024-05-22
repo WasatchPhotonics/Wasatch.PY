@@ -878,17 +878,17 @@ class WasatchDevice(InterfaceDevice):
     # to the device.
     #
     # Essentially this iterates through all the (setting, value) pairs we've
-    # received through change_setting() which have not yet been processed, and
+    # received through change_setting() which have not yet been processed, and <-- MZ: incomplete sentence
     #
     #
-    # Note that WasatchDeviceWrapper.continuous_poll "de-dupes" commands on
+    # Note that WrapperWorker.run "de-dupes" commands on
     # receipt from ENLIGHTEN, so the command stream arising from that source
     # should already be optimized and minimal.  Commands injected manually by
     # calling WasatchDevice.change_setting() do not receive this treatment.
     #
-    # In the normal multi-process (ENLIGHTEN) workflow, this function is called
+    # In the normal multithreaded (ENLIGHTEN) workflow, this function is called
     # at the beginning of acquire_data, itself ticked regularly by
-    # WasatchDeviceWrapper.continuous_poll.
+    # WrapperWorker.run.
     def process_commands(self):
         control_object = "throwaway"
         retval = False
@@ -900,6 +900,9 @@ class WasatchDevice(InterfaceDevice):
             # is this a command used by WasatchDevice itself, and not
             # passed down to FeatureIdentificationDevice?
             if control_object.setting.lower() == "acquire":
+                # MZ: does this ever happen? It looks like the current
+                #     request sent down from WrapperWorker is "acquire_data"
+                #     not "acquire"...
                 log.debug("process_commands: acquire found")
                 retval = True
             else:
