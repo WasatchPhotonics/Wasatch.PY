@@ -2,6 +2,7 @@ import threading
 import logging
 import time
 from queue import Queue
+from datetime import datetime
 
 from .SpectrometerResponse import SpectrometerResponse
 from .SpectrometerRequest  import SpectrometerRequest
@@ -34,6 +35,8 @@ class WrapperWorker(threading.Thread):
     # TODO: Create ABC of hardware device that keeps common functions like handle_requests
     POLLER_WAIT_SEC = 0.05    # .05sec = 50ms = update from hardware device at 20Hz
 
+    DEBUG_SEC = 10 # enforce debug logging for the 1st 10sec after connecting a new spectrometer
+
     def __init__(
             self,
             device_id,
@@ -45,6 +48,7 @@ class WrapperWorker(threading.Thread):
             is_andor,
             is_spi,
             is_ble,
+            log_level,
             parent=None):
 
         threading.Thread.__init__(self)
@@ -58,7 +62,13 @@ class WrapperWorker(threading.Thread):
         self.response_queue = response_queue
         self.settings_queue = settings_queue
         self.message_queue  = message_queue
+        self.log_level      = log_level
+
         self.connected_device = None
+
+        self.thread_start = datetime.now()
+        self.initial_connection_logging = True
+        logging.getLogger().setLevel("DEBUG") # ALWAYS enforce debug logging around spectrometer connections
 
     ##
     # This is essentially the main() loop in a thread.
@@ -208,6 +218,15 @@ class WrapperWorker(threading.Thread):
                     self.response_queue.put_nowait(reading_response) 
                 except:
                     log.error("unable to push Reading %d to GUI", reading_response.data.session_count, exc_info=1)
+
+                # We just successfully sent a reading back to the main thread.
+                # After sending 10sec of such readings, we can disable the default
+                # DEBUG logging and revert to whatever the caller requested.
+                if (self.initial_connection_logging and 
+                        (datetime.now() - self.thread_start).total_seconds() > self.DEBUG_SEC):
+                    log.info(f"relaxing log_level to {self.log_level} after {self.DEBUG_SEC}sec")
+                    logging.getLogger().setLevel(self.log_level)
+                    self.initial_connection_logging = False
 
             else:
                 log.error("received non-failure Reading without spectrum...ignoring?")

@@ -17,6 +17,9 @@ log = logging.getLogger(__name__)
 # Readings and StatusMessages) for multiprocessing-safe device communications
 # and acquisition under Windows and Qt.
 #
+# @todo This document is full of references to continuous_poll(). That method 
+#       no longer exists, and has been replaced by WrapperWorker.run()
+#
 # @par Lifecycle
 #
 # From ENLIGHTEN's standpoint (the original Wasatch.PY caller), here's what's going on:
@@ -223,7 +226,8 @@ class WasatchDeviceWrapper:
             is_ocean       = self.is_ocean,
             is_andor       = self.is_andor,
             is_spi         = self.is_spi,
-            is_ble         = self.is_ble)
+            is_ble         = self.is_ble,
+            log_level      = self.log_level)
         log.debug("device wrapper: Instance created for worker")
 
         self.wrapper_worker.daemon = True
@@ -412,10 +416,6 @@ class WasatchDeviceWrapper:
         # returned potential poison pills or completed averages, but found
         # none of those.  Yet apparently we did read some normal readings.
         # Return the latest of those.
-
-        # MZ: this would be a possible place to revert logging from DEBUG to
-        # whatever was passed (self.log_level), especially if this is the
-        # first reading returned by this thread.
 
         if WasatchDeviceWrapper.DISABLE_RESPONSE_QUEUE:
             self.previous_reading = last_reading

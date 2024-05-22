@@ -1,5 +1,7 @@
 # Changelog
 
+- 2024-05-22 2.1.67
+    - relax thread logging 10sec after successful connection
 - 2024-05-07 2.1.66
     - gave TakeOneRequest a copy-ctor
 - 2024-05-02 2.1.65

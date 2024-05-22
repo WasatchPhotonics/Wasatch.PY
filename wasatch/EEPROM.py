@@ -738,7 +738,7 @@ class EEPROM:
         else:
             struct.pack_into(data_type, buf, start_byte, value)
 
-        if True:
+        if False:
             extra = "" if label is None else (" (%s)" % label)
             log.debug("Packed (%d, %2d, %2d) '%s' value %s -> %s%s", 
                 page, start_byte, length, data_type, value, buf[start_byte:end_byte], extra)
