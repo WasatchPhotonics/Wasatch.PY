@@ -139,6 +139,12 @@ class WasatchDemo:
 
         log.debug("connect: device connected")
 
+        print(f"connected to {device.settings.full_model()} {device.settings.eeprom.serial_number} with {device.settings.pixels()} pixels " +
+              f"from ({device.settings.wavelengths[0]:.2f}, {device.settings.wavelengths[-1]:.2f}nm)" +
+              (   f" ({device.settings.wavenumbers[0]:.2f}, {device.settings.wavenumbers[-1]:.2f}cm⁻¹)" if device.settings.has_excitation() else ""))
+        print(f"Microcontroller firmware version: {device.settings.microcontroller_firmware_version}")
+        print(f"FPGA version: {device.settings.fpga_firmware_version}")
+
         self.device = device
         self.reading_count = 0
 

@@ -1,5 +1,7 @@
 # Changelog
 
+- 2024-05-23 2.1.68
+    - display connected spectrometer properties in demo.py
 - 2024-05-22 2.1.67
     - relax thread logging 10sec after successful connection
 - 2024-05-07 2.1.66
