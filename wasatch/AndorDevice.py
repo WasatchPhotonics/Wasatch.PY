@@ -472,6 +472,8 @@ class AndorDevice(InterfaceDevice):
                    'invert_x_axis',
                    'wavelength_coeffs', 
                    'excitation_nm_float',
+                   'roi_horizontal_end',
+                   'roi_horizontal_start',
                    'raman_intensity_coeffs',
                    'raman_intensity_calibration_order',
                    'startup_temp_degC', 
