@@ -123,7 +123,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.shutdown_requested = False
 
         self.last_spectrum = None
-        self.spectrum_count = 0
         self.prev_pixels = None
 
         # in case of I2C collisions within the spectrometer, e.g. due to battery-LED status
