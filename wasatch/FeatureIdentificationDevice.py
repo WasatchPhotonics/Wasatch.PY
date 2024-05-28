@@ -200,6 +200,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.debug("on Windows, so NOT setting configuration and claiming interface")
         elif "macOS" in platform.platform():
             log.debug("on MacOS, so NOT setting configuration and claiming interface")
+        elif "raspberrypi" in str(os.uname()):
+            log.debug("on Raspberry Pi, so NOT setting configuration and claiming interface")
         else:
             log.debug("on posix, so setting configuration and claiming interface")
 

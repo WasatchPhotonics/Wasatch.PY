@@ -1,5 +1,7 @@
 # Changelog
 
+- 2024-05-28 2.1.68
+    - don't set and claim interface on Raspberry Pi (found to work better on Bullseye)
 - 2024-05-22 2.1.67
     - relax thread logging 10sec after successful connection
     - display connected spectrometer properties in demo.py
