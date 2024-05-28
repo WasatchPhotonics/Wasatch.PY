@@ -1,6 +1,7 @@
 # Changelog
 
-- 2024-05-28 2.1.68
+- 2024-05-24 2.1.68
+    - added horizontal ROI to XL virtual EEPROM
     - Raspberry Pi testing (no change)
 - 2024-05-22 2.1.67
     - relax thread logging 10sec after successful connection
