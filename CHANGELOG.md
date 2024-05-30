@@ -1,5 +1,7 @@
 # Changelog
 
+- 2024-05-30 2.1.69
+    - added avg_resolution to edittable EEPROM fields
 - 2024-05-24 2.1.68
     - added horizontal ROI to XL virtual EEPROM
     - Raspberry Pi testing (no change)
