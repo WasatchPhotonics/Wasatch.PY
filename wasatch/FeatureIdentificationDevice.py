@@ -2199,6 +2199,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         # don't want anything weird when passing over USB
         value = float(max(0, min(100, value)))
+        if value <= 0:
+            return set_laser_enable(False)
 
         # If full power (and allowed), disable modulation and exit
         if value >= 100:
@@ -2212,6 +2214,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         period_us = 1000 if self.settings.state.laser_power_high_resolution else 100
         width_us = int(round(1.0 * value * period_us / 100.0, 0)) # note that value is in range (0, 100) not (0, 1)
+
+        if width_us <= 0:
+            return set_laser_enable(False)
 
         # pulse width can't be longer than period, or shorter than 1us
         width_us = max(1, min(width_us, period_us))
