@@ -1,5 +1,7 @@
 # Changelog
 
+- 2024-06-19 2.1.71
+    - disable applog to stdout if stdout missing
 - 2024-06-12 2.1.70
     - force laser to disable on perc/PWM zero
 - 2024-05-30 2.1.69

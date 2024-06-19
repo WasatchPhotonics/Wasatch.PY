@@ -159,7 +159,7 @@ class MainLogger:
         fh.setFormatter(formatter)
         root_logger.addHandler(fh) 
 
-        if self.enable_stdout:
+        if self.enable_stdout and sys.stdout is not None:
             sys.stdout.reconfigure(encoding='utf-8')
             stream_handler = logging.StreamHandler(sys.stdout)
             stream_handler.setFormatter(formatter)
