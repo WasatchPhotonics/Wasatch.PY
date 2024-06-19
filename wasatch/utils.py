@@ -468,7 +468,7 @@ def coeffs_look_valid(coeffs, count=None):
 
     # check for constants (all coefficients the same value)
     all_const = True
-    log.info(coeffs)
+    # log.debug(coeffs)
     for i in range(1, len(coeffs)):
         if coeffs[0] != coeffs[i]:
             all_const = False
