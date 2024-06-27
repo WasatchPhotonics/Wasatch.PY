@@ -44,12 +44,12 @@ class WrapperWorker(threading.Thread):
             response_queue,
             settings_queue,
             message_queue,
-            is_ocean,
+            is_ocean, # MZ: all these bools should have just been a string "type"
             is_andor,
             is_spi,
             is_ble,
             log_level,
-            parent=None):
+            callback=None):
 
         threading.Thread.__init__(self)
 
@@ -63,12 +63,16 @@ class WrapperWorker(threading.Thread):
         self.settings_queue = settings_queue
         self.message_queue  = message_queue
         self.log_level      = log_level
+        self.callback       = callback
 
         self.connected_device = None
 
         self.thread_start = datetime.now()
         self.initial_connection_logging = True
-        logging.getLogger().setLevel("DEBUG") # ALWAYS enforce debug logging around spectrometer connections
+
+        # enforce debug logging around ENLIGHTEN connections
+        if not self.callback:
+            logging.getLogger().setLevel("DEBUG") 
 
     ##
     # This is essentially the main() loop in a thread.
@@ -186,7 +190,11 @@ class WrapperWorker(threading.Thread):
                 continue
             log.debug(f"response {reading_response} data is {reading_response.data}")
 
-            if reading_response.keep_alive:
+            if self.callback:
+                log.debug("worker returning response via callback")
+                self.callback(reading_response)
+
+            elif reading_response.keep_alive:
                 log.debug("worker is flowing up keep_alive")
                 self.response_queue.put(reading_response) 
 
