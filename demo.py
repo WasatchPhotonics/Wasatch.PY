@@ -140,9 +140,7 @@ class WasatchDemo:
                   f" (Microcontroller {device.settings.microcontroller_firmware_version}," +
                   f" FPGA {device.settings.fpga_firmware_version})")
 
-            k = str(device.device_id)
-            log.info(f"storing device_id {k}")
-            self.devices[k] = device
+            self.devices[str(device.device_id)] = device
 
         return len(self.devices) > 0
 
@@ -250,6 +248,8 @@ class WasatchDemo:
         device_id = reading.device_id
         log.debug(f"received reading from device_id {device_id}")
         device = self.devices[str(reading.device_id)]
+        settings = device.settings
+
         self.reading_count += 1
 
         if self.args.boxcar_half_width > 0:
@@ -258,7 +258,7 @@ class WasatchDemo:
             spectrum = reading.spectrum
 
         if self.args.ascii_art:
-            print("\n".join(wasatch.utils.ascii_spectrum(spectrum, rows=20, cols=80, x_axis=self.device.settings.wavelengths, x_unit="nm")))
+            print("\n".join(wasatch.utils.ascii_spectrum(spectrum, rows=20, cols=80, x_axis=settings.wavelengths, x_unit="nm")))
         else:
             spectrum_min = numpy.amin(spectrum)
             spectrum_max = numpy.amax(spectrum)
@@ -268,7 +268,7 @@ class WasatchDemo:
 
             print("%s: %s %4d  Detector: %5.2f degC  Min: %8.2f  Max: %8.2f  Avg: %8.2f  StdDev: %8.2f  Memory: %11d" % (
                 reading.timestamp,
-                device.settings.eeprom.serial_number,
+                settings.eeprom.serial_number,
                 self.reading_count,
                 reading.detector_temperature_degC,
                 spectrum_min,
@@ -279,8 +279,9 @@ class WasatchDemo:
             log.debug("%s", str(reading))
 
         if self.outfile:
-            self.outfile.write("%s,%.2f,%s\n" % (datetime.datetime.now(),
+            self.outfile.write("%s,%.2f,%s,%s\n" % (datetime.datetime.now(),
                                                  reading.detector_temperature_degC,
+                                                 settings.eeprom.serial_number,
                                                  ",".join(format(x, ".2f") for x in spectrum)))
 
 ################################################################################
