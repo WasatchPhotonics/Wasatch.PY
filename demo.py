@@ -31,7 +31,6 @@ import wasatch
 from wasatch import utils
 from wasatch import applog
 from wasatch.WasatchBus           import WasatchBus
-from wasatch.OceanDevice          import OceanDevice
 from wasatch.WasatchDevice        import WasatchDevice
 from wasatch.WasatchDeviceWrapper import WasatchDeviceWrapper
 from wasatch.RealUSBDevice        import RealUSBDevice
@@ -48,14 +47,16 @@ class WasatchDemo:
 
     def __init__(self, argv=None):
         self.bus     = None
-        self.device  = None
+        self.devices = {}
         self.logger  = None
         self.outfile = None
         self.exiting = False
+        self.reading_count = 0
 
         self.args = self.parse_args(argv)
 
-        self.logger = applog.MainLogger(self.args.log_level)
+        if self.args.log_level != "NEVER":
+            self.logger = applog.MainLogger(self.args.log_level)
         log.info("Wasatch.PY version %s", wasatch.__version__)
 
     ############################################################################
@@ -66,7 +67,7 @@ class WasatchDemo:
 
     def parse_args(self, argv):
         parser = argparse.ArgumentParser(description="Simple demo to acquire spectra from command-line interface")
-        parser.add_argument("--log-level",           type=str, default="INFO", help="logging level [DEBUG,INFO,WARNING,ERROR,CRITICAL]")
+        parser.add_argument("--log-level",           type=str, default="INFO", help="logging level", choices=["DEBUG","INFO","WARNING","ERROR","CRITICAL","NEVER"])
         parser.add_argument("--integration-time-ms", type=int, default=10,     help="integration time (ms, default 10)")
         parser.add_argument("--scans-to-average",    type=int, default=1,      help="scans to average (default 1)")
         parser.add_argument("--boxcar-half-width",   type=int, default=0,      help="boxcar half-width (default 0)")
@@ -83,11 +84,7 @@ class WasatchDemo:
             print("Wasatch.PY %s" % wasatch.__version__)
             sys.exit(0)
 
-        # normalize log level
         args.log_level = args.log_level.upper()
-        if not re.match("^(DEBUG|INFO|ERROR|WARNING|CRITICAL)$", args.log_level):
-            print("Invalid log level: %s (defaulting to INFO)" % args.log_level)
-            args.log_level = "INFO"
 
         return args
         
@@ -98,12 +95,7 @@ class WasatchDemo:
     ############################################################################
 
     def connect(self):
-        """ If the current device is disconnected, and there is a new device, 
-            attempt to connect to it. """
-
-        # if we're already connected, nevermind
-        if self.device is not None:
-            return
+        """ Connect to all discoverable Wasatch spectrometers.  """
 
         # lazy-load a USB bus
         if self.bus is None:
@@ -114,41 +106,45 @@ class WasatchDemo:
             print("No Wasatch USB spectrometers found.")
             return 
 
-        device_id = self.bus.device_ids[0]
-        log.debug("connect: trying to connect to %s", device_id)
-        device_id.device_type = RealUSBDevice(device_id)
+        for device_id in self.bus.device_ids:
+            log.debug("connect: trying to connect to %s", device_id)
 
-        if self.args.non_blocking:
-            # this is still buggy on MacOS
-            log.debug("instantiating WasatchDeviceWrapper (non-blocking)")
-            device = WasatchDeviceWrapper(
-                device_id = device_id,
-                log_queue = self.logger.log_queue,
-                log_level = self.args.log_level)
-        else:
-            log.debug("instantiating WasatchDevice (blocking)")
-            if device_id.vid == 0x24aa:
-                device = WasatchDevice(device_id)
+            if self.args.non_blocking:
+                # Non-blocking means we instantiate a WasatchDeviceWrapper (WDW)
+                # The WDW incapsulates its own threading.Thread (WrapperWorker)
+                # which continuously acquires spectra free-running mode.
+                log.debug("instantiating WasatchDeviceWrapper (non-blocking)")
+                device = WasatchDeviceWrapper(
+                    device_id = device_id,
+                    log_level = self.args.log_level,
+                    callback = self.WrapperWorker_callback)
             else:
-                device = OceanDevice(device_id)
+                # We're going to place blocking calls to spectrometers, so we can
+                # instantiate a plain WasatchDevice (no need for WDW or WrapperWorker)
+                log.debug("instantiating WasatchDevice (blocking)")
+                device = WasatchDevice(device_id)
 
-        ok = device.connect()
-        if not ok:
-            log.critical("connect: can't connect to %s", device_id)
-            return
+            ok = device.connect()
+            if not ok:
+                log.critical("connect: can't connect to %s", device_id)
+                continue
 
-        log.debug("connect: device connected")
+            log.debug("connect: device connected")
+            if device.settings is None:
+                log.error("can't have device without SpectrometerSettings")
+                continue
 
-        print(f"connected to {device.settings.full_model()} {device.settings.eeprom.serial_number} with {device.settings.pixels()} pixels " +
-              f"from ({device.settings.wavelengths[0]:.2f}, {device.settings.wavelengths[-1]:.2f}nm)" +
-              (   f" ({device.settings.wavenumbers[0]:.2f}, {device.settings.wavenumbers[-1]:.2f}cm⁻¹)" if device.settings.has_excitation() else ""))
-        print(f"Microcontroller firmware version: {device.settings.microcontroller_firmware_version}")
-        print(f"FPGA version: {device.settings.fpga_firmware_version}")
+            print(f"connected to {device.settings.full_model()} {device.settings.eeprom.serial_number} with {device.settings.pixels()} pixels " +
+                  f"from ({device.settings.wavelengths[0]:.2f}, {device.settings.wavelengths[-1]:.2f}nm)" +
+                  (   f" ({device.settings.wavenumbers[0]:.2f}, {device.settings.wavenumbers[-1]:.2f}cm⁻¹)" if device.settings.has_excitation() else "") +
+                  f" (Microcontroller {device.settings.microcontroller_firmware_version}," +
+                  f" FPGA {device.settings.fpga_firmware_version})")
 
-        self.device = device
-        self.reading_count = 0
+            k = str(device.device_id)
+            log.info(f"storing device_id {k}")
+            self.devices[k] = device
 
-        return device
+        return len(self.devices) > 0
 
     ############################################################################
     #                                                                          #
@@ -160,15 +156,15 @@ class WasatchDemo:
         log.info("Wasatch.PY %s Demo", wasatch.__version__)
 
         # apply initial settings
-        self.device.change_setting("integration_time_ms", self.args.integration_time_ms)
-        self.device.change_setting("scans_to_average", self.args.scans_to_average)
-        self.device.change_setting("detector_tec_enable", True)
+        for device_id, device in self.devices.items():
+            device.change_setting("integration_time_ms", self.args.integration_time_ms)
+            device.change_setting("scans_to_average", self.args.scans_to_average)
 
         # initialize outfile if one was specified
         if self.args.outfile:
             try:
                 self.outfile = open(self.args.outfile, "w")
-                self.outfile.write("time,temp,%s\n" % ",".join(format(x, ".2f") for x in self.device.settings.wavelengths))
+                self.outfile.write("time,temp,serial,spectrum\n")
             except:
                 log.error("Error initializing %s", self.args.outfile)
                 self.outfile = None
@@ -176,7 +172,9 @@ class WasatchDemo:
         # read spectra until user presses Control-Break
         while not self.exiting:
             start_time = datetime.datetime.now()
-            self.attempt_reading()
+            if not self.args.non_blocking:
+                for device_id, device in self.devices.items():
+                    self.attempt_reading(device)
             end_time = datetime.datetime.now()
 
             if self.args.max > 0 and self.reading_count >= self.args.max:
@@ -191,14 +189,13 @@ class WasatchDemo:
                     try:
                         time.sleep(float(sleep_ms) / 1000)
                     except:
-                        # log.critical("WasatchDemo.run sleep() caught an exception", exc_info=1)
                         self.exiting = True
 
         log.debug("WasatchDemo.run exiting")
 
-    def attempt_reading(self):
+    def attempt_reading(self, device):
         try:
-            reading_response = self.acquire_reading()
+            reading_response = self.acquire_reading(device)
         except:
             log.critical("attempt_reading caught exception", exc_info=1)
             self.exiting = True
@@ -219,23 +216,40 @@ class WasatchDemo:
 
         self.process_reading(reading_response.data)
 
-    def acquire_reading(self):
+    def acquire_reading(self, device):
         # We want the demo to effectively block on new scans, so keep
         # polling the subprocess until a reading is ready.  In other apps,
         # we could do other things (like respond to GUI events) if 
         # device.acquire_data() was None (meaning the next spectrum wasn't
         # yet ready).
         while True:
-            reading = self.device.acquire_data()
+            reading = device.acquire_data()
             if reading is None:
                 log.debug("waiting on next reading")
             else:
                 return reading
 
-    def process_reading(self, reading):
-        if self.args.scans_to_average > 1 and not reading.averaged:
+    def WrapperWorker_callback(self, response):
+        if response is None:
+            log.error("WrapperWorker_callback received null SpectrometerResponse")
             return
 
+        reading = response.data        
+        if reading is None:
+            log.error("WrapperWorker_callback received null Reading")
+            return
+
+        self.process_reading(reading)
+
+    def process_reading(self, reading):
+        if (self.exiting or 
+           (self.args.scans_to_average > 1 and not reading.averaged) or
+           (self.args.max > 0 and self.reading_count >= self.args.max)):
+            return
+
+        device_id = reading.device_id
+        log.debug(f"received reading from device_id {device_id}")
+        device = self.devices[str(reading.device_id)]
         self.reading_count += 1
 
         if self.args.boxcar_half_width > 0:
@@ -252,7 +266,9 @@ class WasatchDemo:
             spectrum_std = numpy.std (spectrum)
             size_in_bytes = psutil.Process(os.getpid()).memory_info().rss
 
-            print("Reading: %4d  Detector: %5.2f degC  Min: %8.2f  Max: %8.2f  Avg: %8.2f  StdDev: %8.2f  Memory: %11d" % (
+            print("%s: %s %4d  Detector: %5.2f degC  Min: %8.2f  Max: %8.2f  Avg: %8.2f  StdDev: %8.2f  Memory: %11d" % (
+                reading.timestamp,
+                device.settings.eeprom.serial_number,
                 self.reading_count,
                 reading.detector_temperature_degC,
                 spectrum_min,
@@ -278,9 +294,11 @@ def signal_handler(signal, frame):
 def clean_shutdown():
     log.debug("Exiting")
     if demo:
-        if demo.args and demo.args.non_blocking and demo.device:
-            log.debug("closing background thread")
-            demo.device.disconnect()
+        if demo.args.non_blocking and len(demo.devices):
+            for device_id, device in demo.devices.items():
+                log.debug(f"closing {device_id}")
+                device.disconnect()
+                time.sleep(1)
 
         if demo.logger:
             log.debug("closing logger")
