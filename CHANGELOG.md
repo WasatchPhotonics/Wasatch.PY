@@ -1,5 +1,7 @@
 # Changelog
 
+- 2024-06-27 2.1.72
+    - temporarily disable GET_LASER_ENABLED on XS
 - 2024-06-19 2.1.71
     - disable applog to stdout if stdout missing
 - 2024-06-12 2.1.70

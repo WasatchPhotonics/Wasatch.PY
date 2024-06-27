@@ -1962,12 +1962,12 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return SpectrometerResponse(data=self.settings.state.selected_laser)
 
     def get_laser_enabled(self):
-        res = self._get_code(0xe2, label="GET_LASER_ENABLED", msb_len=1)
-        flag = 0 != res.data
-
-        if self.device_id.pid == 0x4000:
+        if self.settings.is_xs():
             # MZ: get_laser_enabled not currently robust on SiG :-(
             return SpectrometerResponse(data=self.settings.state.laser_enabled)
+
+        res = self._get_code(0xe2, label="GET_LASER_ENABLED", msb_len=1)
+        flag = 0 != res.data
 
         log.debug(f"get_laser_enabled: {flag} (storing to {self.settings.state})")
         self.settings.state.laser_enabled = flag
@@ -2817,6 +2817,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
             msg = "ambient temperature ARM requires XS"
             log.debug(msg)
             return
+
+        # MZ: just disable for now
+        # return
 
         if self.settings.microcontroller_firmware_version == "1.0.2.9":
             msg = "ambient temperature ARM requires newer firmware"
