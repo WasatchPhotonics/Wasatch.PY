@@ -1,5 +1,8 @@
 # Changelog
 
+- 2024-06-27 2.1.73
+    - update demo.py to support multiple spectrometers
+    - add optional `callback` parameter to WrapperWorker for Inversion of Control (IoC)
 - 2024-06-27 2.1.72
     - temporarily disable GET_LASER_ENABLED on XS
 - 2024-06-19 2.1.71

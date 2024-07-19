@@ -137,9 +137,10 @@ class WasatchDeviceWrapper:
     # could include "FILE:/path/to/dir", etc.  However, device_id is just
     # a string scalar to this class, and actually parsing / using it should be
     # entirely encapsulated within WasatchDevice and lower using DeviceID.
-    def __init__(self, device_id, log_level):
+    def __init__(self, device_id, log_level, callback=None):
         self.device_id = device_id
         self.log_level = log_level
+        self.callback = callback
 
         self.settings_queue = False
         self.response_queue = False
@@ -227,7 +228,8 @@ class WasatchDeviceWrapper:
             is_andor       = self.is_andor,
             is_spi         = self.is_spi,
             is_ble         = self.is_ble,
-            log_level      = self.log_level)
+            log_level      = self.log_level,
+            callback       = self.callback)
         log.debug("device wrapper: Instance created for worker")
 
         self.wrapper_worker.daemon = True
@@ -240,14 +242,25 @@ class WasatchDeviceWrapper:
         self.settings = None
         log.debug("connect: setup connection, returning to controller for settings polling")
 
+        if self.callback:
+            self.wait_for_settings()
+
         return True
 
-    def poll_settings(self): # -> SpectrometerResponse 
+    def wait_for_settings(self):
+        while True:
+            if self.poll_settings():
+                break
+            if (datetime.datetime.now() - self.connect_start_time).total_seconds() > 2:
+                raise Exception("Failed to read SpectrometerSettings")
+            time.sleep(0.1)
+
+    def poll_settings(self): 
         """ @returns SpectrometerResponse(True) on success, (False) otherwise """
         log.debug("polling device settings")
         if not self.settings_queue.empty():
             result = self.settings_queue.get_nowait()
-            if result is None: # shouldn't happen
+            if result is None: 
                 log.critical("poll_settings: failed to retrieve device settings (got None, shouldn't happen)")
                 return SpectrometerResponse(False, error_msg="Failed to retrieve device settings")
 
@@ -283,12 +296,6 @@ class WasatchDeviceWrapper:
         del self.wrapper_worker
 
         self.connected = False
-
-        # MZ: why do we recreate these?
-        self.settings_queue = Queue()
-        self.response_queue = Queue()
-        self.message_queue  = Queue()
-        self.command_queue  = Queue()
 
         return True
 
