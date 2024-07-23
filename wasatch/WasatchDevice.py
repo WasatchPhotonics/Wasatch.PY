@@ -841,7 +841,7 @@ class WasatchDevice(InterfaceDevice):
             self.session_reading_count += 1
             reading.session_count = self.session_reading_count
             reading.sum_count = self.sum_count
-            log.debug(f"take_one_averaged_reading: reading.sum_count now {reading.sum_count}")
+            log.debug(f"take_one_averaged_reading: reading.sum_count now {reading.sum_count}, session_count {reading.session_count}")
 
             # have we completed the averaged reading?
             if sum_locally: 
