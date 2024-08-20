@@ -6,13 +6,7 @@
 #  DESCRIPTION:  Simple cmd-line demo to confirm that Wasatch.PY is working    #
 #                and can connect to and control a spectrometer.                #
 #                                                                              #
-#  ENVIRONMENT:  (if using Miniconda3)                                         #
-#                $ rm -f environment.yml                                       #
-#                $ ln -s environments/conda-linux.yml  (or macos, etc)         #
-#                $ conda env create -n wasatch3                                #
-#                $ conda activate wasatch3                                     #
-#  INVOCATION:                                                                 #
-#                $ python -u demo.py                                           #
+#  INVOCATION:   $ python -u demo.py                                           #
 #                                                                              #
 ################################################################################
 
@@ -22,7 +16,6 @@ import sys
 import time
 import numpy
 import signal
-import psutil
 import logging
 import datetime
 import argparse
@@ -33,7 +26,6 @@ from wasatch import applog
 from wasatch.WasatchBus           import WasatchBus
 from wasatch.WasatchDevice        import WasatchDevice
 from wasatch.WasatchDeviceWrapper import WasatchDeviceWrapper
-from wasatch.RealUSBDevice        import RealUSBDevice
 
 log = logging.getLogger(__name__)
 
@@ -45,7 +37,7 @@ class WasatchDemo:
     #                                                                          #
     ############################################################################
 
-    def __init__(self, argv=None):
+    def __init__(self):
         self.bus     = None
         self.devices = {}
         self.logger  = None
@@ -53,7 +45,7 @@ class WasatchDemo:
         self.exiting = False
         self.reading_count = 0
 
-        self.args = self.parse_args(argv)
+        self.args = self.parse_args()
 
         if self.args.log_level != "NEVER":
             self.logger = applog.MainLogger(self.args.log_level)
@@ -65,7 +57,7 @@ class WasatchDemo:
     #                                                                          #
     ############################################################################
 
-    def parse_args(self, argv):
+    def parse_args(self):
         parser = argparse.ArgumentParser(description="Simple demo to acquire spectra from command-line interface")
         parser.add_argument("--log-level",           type=str, default="INFO", help="logging level", choices=["DEBUG","INFO","WARNING","ERROR","CRITICAL","NEVER"])
         parser.add_argument("--integration-time-ms", type=int, default=10,     help="integration time (ms, default 10)")
@@ -78,8 +70,7 @@ class WasatchDemo:
         parser.add_argument("--ascii-art",           action="store_true",      help="graph spectra in ASCII")
         parser.add_argument("--version",             action="store_true",      help="display Wasatch.PY version and exit")
 
-        # parse argv into dict
-        args = parser.parse_args(argv[1:])
+        args = parser.parse_args()
         if args.version:
             print("Wasatch.PY %s" % wasatch.__version__)
             sys.exit(0)
@@ -100,7 +91,7 @@ class WasatchDemo:
         # lazy-load a USB bus
         if self.bus is None:
             log.debug("instantiating WasatchBus")
-            self.bus = WasatchBus(use_sim = False)
+            self.bus = WasatchBus()
 
         if not self.bus.device_ids:
             print("No Wasatch USB spectrometers found.")
@@ -170,16 +161,30 @@ class WasatchDemo:
         # read spectra until user presses Control-Break
         while not self.exiting:
             start_time = datetime.datetime.now()
+
             if not self.args.non_blocking:
+                # if not non-blocking (i.e., blocking calls to Wasatch.PY), call 
+                # device.acquire_data() directly -- this will block on each 
+                # spectrometer in turn until we have collected one spectrum from each
+                # connected spectromter
                 for device_id, device in self.devices.items():
                     self.attempt_reading(device)
+            else:
+                # if we are non-blocking (meaning each spectrometer is free-
+                # running in its own background thread, then we don't need to do
+                # anything here -- spectra will magically "show up" at 
+                # WasatchDeviceWrapper_callback without us having to do anything,
+                # and all we need to here is check whether we've collected enough
+                # spectra to shutdown
+                pass
+
             end_time = datetime.datetime.now()
 
             if self.args.max > 0 and self.reading_count >= self.args.max:
                 log.debug("max spectra reached, exiting")
                 self.exiting = True
             else:
-                # compute how much longer we should wait before the next reading
+                # compute how much longer we should wait before the next "tick"
                 reading_time_ms = int((end_time - start_time).microseconds / 1000)
                 sleep_ms = self.args.delay_ms - reading_time_ms
                 if sleep_ms > 0:
@@ -215,11 +220,10 @@ class WasatchDemo:
         self.process_reading(reading_response.data)
 
     def acquire_reading(self, device):
-        # We want the demo to effectively block on new scans, so keep
-        # polling the subprocess until a reading is ready.  In other apps,
-        # we could do other things (like respond to GUI events) if 
-        # device.acquire_data() was None (meaning the next spectrum wasn't
-        # yet ready).
+        # We want the demo to effectively block on new scans, so keep polling the
+        # background thread until a reading is ready.  In other apps, we could do
+        # other things (like respond to GUI events) if device.acquire_data() was
+        # None (meaning the next spectrum wasn't yet ready).
         while True:
             reading = device.acquire_data()
             if reading is None:
@@ -264,9 +268,8 @@ class WasatchDemo:
             spectrum_max = numpy.amax(spectrum)
             spectrum_avg = numpy.mean(spectrum)
             spectrum_std = numpy.std (spectrum)
-            size_in_bytes = psutil.Process(os.getpid()).memory_info().rss
 
-            print("%s: %s %4d  Detector: %5.2f degC  Min: %8.2f  Max: %8.2f  Avg: %8.2f  StdDev: %8.2f  Memory: %11d" % (
+            print("%s: %s %4d  Detector: %5.2f degC  Min: %8.2f  Max: %8.2f  Avg: %8.2f  StdDev: %8.2f" % (
                 reading.timestamp,
                 settings.eeprom.serial_number,
                 self.reading_count,
@@ -274,8 +277,7 @@ class WasatchDemo:
                 spectrum_min,
                 spectrum_max,
                 spectrum_avg,
-                spectrum_std,
-                size_in_bytes))
+                spectrum_std))
             log.debug("%s", str(reading))
 
         if self.outfile:
@@ -313,7 +315,7 @@ demo = None
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)
 
-    demo = WasatchDemo(sys.argv)
+    demo = WasatchDemo()
     if demo.connect():
         # Note that on Windows, Control-Break (SIGBREAK) differs from 
         # Control-C (SIGINT); see https://stackoverflow.com/a/1364199
