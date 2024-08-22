@@ -18,6 +18,7 @@ from .InterfaceDevice             import InterfaceDevice
 from .BalanceAcquisition          import BalanceAcquisition
 from .SpectrometerState           import SpectrometerState
 from .ControlObject               import ControlObject
+from .AutoRaman                   import AutoRaman
 from .DeviceID                    import DeviceID
 from .Reading                     import Reading
 
@@ -80,6 +81,8 @@ class WasatchDevice(InterfaceDevice):
         self.last_battery_percentage = 0
 
         self.process_f = self._init_process_funcs()
+
+        self.auto_raman = AutoRaman(self)
 
     # ######################################################################## #
     #                                                                          #
@@ -269,13 +272,24 @@ class WasatchDevice(InterfaceDevice):
     # @return a Reading object
     #
     def acquire_spectrum(self):
-        acquire_response = SpectrometerResponse()
 
         tor = self.take_one_request
         if tor:
             log.debug(f"WasatchDevice.acquire_spectrum: attempting to fulfill {tor}")
         else:
             log.debug(f"WasatchDevice.acquire_spectrum: no TakeOneRequest in effect")
+
+        if tor and tor.auto_raman_request:
+            acquire_response = self.auto_raman.measure(take_one_request=tor)
+        else:
+            acquire_response = self.acquire_spectrum_standard()
+
+        return acquire_response
+
+    def acquire_spectrum_standard(self):
+        acquire_response = SpectrometerResponse()
+
+        tor = self.take_one_request
 
         self.perform_optional_throwaways()
 
