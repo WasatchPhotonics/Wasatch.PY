@@ -1,5 +1,7 @@
 # Changelog
 
+- 2024-08-22 2.2.0
+    - cutting release for ENLIGHTEN 4.1.0
 - 2024-06-27 2.1.73
     - update demo.py to support multiple spectrometers
     - add optional `callback` parameter to WrapperWorker for Inversion of Control (IoC)
