@@ -50,7 +50,9 @@ class Fixture:
 
         args = parser.parse_args()
         if args.debug:
-            logging.getLogger().setLevel("DEBUG")
+            print("setting log level to DEBUG")
+            log.setLevel("DEBUG")
+            log.debug("log level now DEBUG")
 
         return args
         
