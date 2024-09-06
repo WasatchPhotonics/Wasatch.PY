@@ -222,13 +222,13 @@ class AutoRaman:
     ############################################################################
 
     def set_laser_enable(self, flag):
-        self.wasatch_device.hardware.handle_requests([SpectrometerRequest('set_laser_enable', flag)])
+        self.wasatch_device.hardware.handle_requests([SpectrometerRequest('set_laser_enable', args=[flag])])
 
     def set_integration_time_ms(self, ms):
-        self.wasatch_device.hardware.handle_requests([SpectrometerRequest('set_integration_time_ms', ms)])
+        self.wasatch_device.hardware.handle_requests([SpectrometerRequest('set_integration_time_ms', args=[ms])])
 
     def set_gain_db(self, db):
-        self.wasatch_device.hardware.handle_requests([SpectrometerRequest('set_detector_gain', db)])
+        self.wasatch_device.hardware.handle_requests([SpectrometerRequest('set_detector_gain', args=[db])])
 
     def get_spectrum(self):
         res = self.wasatch_device.hardware.handle_requests([SpectrometerRequest("get_line")])[0]
