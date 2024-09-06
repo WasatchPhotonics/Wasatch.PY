@@ -1028,7 +1028,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.settings.eeprom.detector_gain = gain
 
         if self.settings.is_xs():
-            self.queue_message("marquee_info", "sensor is stabilizing")
+            self.queue_message("marquee_info", "sensor is stabilizing (gain)")
             self.settings.state.gain_db = gain
 
         return result
@@ -1193,7 +1193,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
             response.error_lvl = ErrorLevel.low
             response.keep_alive = True
             log.debug(response.error_msg)
-            self.queue_message("marquee_info", "sensor is stabilizing")
+            self.queue_message("marquee_info", "sensor is stabilizing (FW)")
             return response
 
         ########################################################################
@@ -1433,7 +1433,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
             response.error_lvl = ErrorLevel.low
             response.keep_alive = True
             log.debug(response.error_msg)
-            self.queue_message("marquee_info", "sensor is stabilizing")
+            self.queue_message("marquee_info", "sensor is stabilizing (constant)")
             return response
 
         ########################################################################
@@ -1527,7 +1527,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.settings.state.integration_time_ms = ms
 
         if self.settings.is_xs():
-            self.queue_message("marquee_info", "sensor is stabilizing")
+            self.queue_message("marquee_info", "sensor is stabilizing (int time)")
 
         return result
 
@@ -3183,6 +3183,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
         """
         If an upstream queue is defined, send the name-value pair.  Does nothing
         if the caller hasn't provided a queue.
+
+        "setting" is application (caller) dependent, but ENLIGHTEN currently uses
+        "marquee_info" and "marquee_error".
         """
         if self.message_queue is None:
             return SpectrometerResponse(data=False)

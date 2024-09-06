@@ -93,7 +93,7 @@ class AutoRaman:
 
         return SpectrometerResponse(data=reading)
 
-    def get_avg_spectrum(self, int_time, gain_db, num_avg, dummy=True):
+    def get_avg_spectrum(self, int_time, gain_db, num_avg, dummy=True, first=None):
         """ Takes a single throwaway, then averages num_avg spectra """
 
         self.set_integration_time_ms(int_time)
@@ -102,12 +102,19 @@ class AutoRaman:
 
         # perform one throwaway
         if dummy:
+            self.queue_message("optimizing acquisition parameters")
             throwaway = self.get_spectrum()
 
-        sum_spectrum = np.zeros(self.wasatch_device.settings.pixels())
+        if first is None:
+            sum_spectrum = np.zeros(self.wasatch_device.settings.pixels())
+        else:
+            # we were given the "first" spectrum for use in the average
+            sum_spectrum = first
+            num_avg = max(1, num_avg - 1)
+
         for _ in range(num_avg):
             spectrum = np.array(self.get_spectrum())
-            sum_spectrum = sum_spectrum + spectrum
+            sum_spectrum += spectrum
             self.inter_spectrum_delay()
 
         return sum_spectrum / num_avg
@@ -244,9 +251,10 @@ class AutoRaman:
         # decide on number of averages - all times in ms
         # include dark + signal
 
-        num_avg = math.floor(request.max_ms / (2 * int_time))
+        total = math.floor(request.max_ms / int_time)   # total number of sample + dark spectra we have time for
+        num_avg = math.ceil((total + 1) / 2)            # how many darks to collect
         num_avg = max(1, num_avg)
-        expected_ms = num_avg * 2 * int_time
+        expected_ms = int_time * (num_avg + (num_avg - 1)) # darks + remaining samples
         log.debug(f"based on max_ms {request.max_ms} and int_time {int_time} ms, computed num_avg {num_avg} (expected_ms {expected_ms})")
 
         # now get the spectrum with the chosen parameters
@@ -254,14 +262,14 @@ class AutoRaman:
         # (this saves the laser warm up)
 
         # 1. signal - laser is still on
-        log.debug(f"taking {num_avg} averaged Raman spectra")
-        new_spectrum = self.get_avg_spectrum(int_time, gain_db, num_avg, dummy=False)
+        self.queue_message(f"averaging {num_avg} Raman spectra at {int_time}ms")
+        new_spectrum = self.get_avg_spectrum(int_time, gain_db, num_avg, dummy=False, first=spectrum)
 
         # 2. turn laser off
         self.set_laser_enable(False)
 
         # 3. take dark
-        log.debug(f"taking {num_avg} averaged darks")
+        self.queue_message(f"averaging {num_avg} dark spectra at {int_time}ms")
         new_dark = self.get_avg_spectrum(int_time, gain_db, num_avg, dummy=False)
 
         # correct signal minus dark
@@ -281,6 +289,10 @@ class AutoRaman:
     ############################################################################
     # wrappers over stupidly complicated WasatchDevice interface
     ############################################################################
+
+    def queue_message(self, msg):
+        log.debug(msg)
+        self.wasatch_device.hardware.queue_message("marquee_info", msg)
 
     def set_laser_enable(self, flag):
         self.wasatch_device.hardware.handle_requests([SpectrometerRequest('set_laser_enable', args=[flag])])
