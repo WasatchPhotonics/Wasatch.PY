@@ -245,7 +245,7 @@ class WasatchDemo:
 
     def process_reading(self, reading):
         if (self.exiting or 
-            (self.args.scans_to_average > 1 and reading.averaged_count < self.args.scans_to_average) or
+            (self.args.scans_to_average > 1 and not reading.averaged) or
             (self.args.max > 0 and self.reading_count >= self.args.max)):
             return
 

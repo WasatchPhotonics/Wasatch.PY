@@ -332,7 +332,7 @@ class BLEDevice(InterfaceDevice):
                 if self.sum_count >= self.settings.state.scans_to_average:
                     reading.spectrum = [ x / self.sum_count for x in self.summed_spectra ]
                     log.debug("device.take_one_averaged_reading: averaged_spectrum : %s ...", reading.spectrum[0:9])
-                    reading.averaged_count = self.sum_count
+                    reading.averaged = True
 
                     # reset for next average
                     self.summed_spectra = None
@@ -340,7 +340,7 @@ class BLEDevice(InterfaceDevice):
             else:
                 # if averaging isn't enabled...then a single reading is the
                 # "averaged" final measurement (check reading.sum_count to confirm)
-                reading.averaged_count = 1
+                reading.averaged = True
 
         response = SpectrometerResponse()
         response.data = reading

@@ -1,7 +1,7 @@
 class AutoRamanRequest:
     
-    def __init__(self, max_ms         = 10000, 
-                       start_integ_ms = 100, 
+    def __init__(self, max_ms         = 10000,
+                       start_integ_ms = 100,
                        start_gain_db  = 0,
                        max_integ_ms   = 2000,
                        min_integ_ms   = 10,

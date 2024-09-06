@@ -49,7 +49,8 @@ class AutoRaman:
       averaged sample spectra (since it had its own throwaway and presumably
       represents a "stable" reading). This could potentially allow for one more
       averaged dark, depending on max_ms.
-
+    - ENLIGHTEN's laser button should still be able to turn the laser OFF at
+      any point.
     """
 
     INTER_SPECTRA_DELAY_MS = 50
@@ -113,7 +114,7 @@ class AutoRaman:
 
     def get_auto_spectrum(self, request):
         """
-        @returns a Reading with specturm, dark and averaged_count populated
+        @returns a Reading with specturm, dark and sum_count populated
         """
         log.debug(f"get_auto_spectrum: start (max_ms {request.max_ms})")
 
@@ -266,10 +267,11 @@ class AutoRaman:
         # correct signal minus dark
         spectrum = new_spectrum - new_dark
 
-        reading = Reading()
+        reading = Reading(self.wasatch_device.device_id)
         reading.spectrum = spectrum
         reading.dark = new_dark
-        reading.averaged_count = num_avg
+        reading.averaged = True
+        reading.sum_count = num_avg
         reading.new_integration_time_ms = int_time
         reading.new_gain_db = gain_db
 
