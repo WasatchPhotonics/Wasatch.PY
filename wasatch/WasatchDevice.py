@@ -269,22 +269,32 @@ class WasatchDevice(InterfaceDevice):
     # function will "block" while the full 10 measurements are made, and then
     # a single, fully-averaged spectrum will be returned upstream.
     #
-    # @return a Reading object
+    # @return a Reading wrapped in a SpectrometerResponse
     #
     def acquire_spectrum(self):
-
-        tor = self.take_one_request
-        if tor:
-            log.debug(f"WasatchDevice.acquire_spectrum: attempting to fulfill {tor}")
+        if self.take_one_request and self.take_one_request.auto_raman_request:
+            return self.acquire_spectrum_auto_raman()
         else:
-            log.debug(f"WasatchDevice.acquire_spectrum: no TakeOneRequest in effect")
+            return self.acquire_spectrum_standard()
 
-        if tor and tor.auto_raman_request:
-            acquire_response = self.auto_raman.measure(take_one_request=tor)
-        else:
-            acquire_response = self.acquire_spectrum_standard()
+    # YOU ARE HERE
+    def acquire_spectrum_auto_raman(self):
+        """
+        @returns a Reading wrapped in a SpectrometerResponse
+        @todo fold-in a lot of the post-reading sensor measurements 
+              (temperature, interlock etc) provided by acquire_spectrum_standard
+        """
+        log.debug("WasatchDevice.acquire_spectrum_auto_raman: calling AutoRaman.measure")
+        spectrometer_response = self.auto_raman.measure(take_one_request=self.take_one_request)
+        reading = spectrometer_response.data
+        log.debug(f"WasatchDevice.acquire_spectrum_auto_raman: received {reading}")
 
-        return acquire_response
+        # return the completed TakeOneRequest and clear our internal handle
+        # @todo self.take_one_request should probably be a list...
+        reading.take_one_request = self.take_one_request
+        self.take_one_request = None
+
+        return spectrometer_response
 
     def acquire_spectrum_standard(self):
         acquire_response = SpectrometerResponse()
@@ -863,7 +873,7 @@ class WasatchDevice(InterfaceDevice):
                 if self.sum_count >= scans_to_average:
                     reading.spectrum = [ x / self.sum_count for x in self.summed_spectra ]
                     log.debug("take_one_averaged_reading: averaged_spectrum : %s ...", reading.spectrum[0:9])
-                    reading.averaged = True
+                    reading.averaged_count = self.sum_count
 
                     # reset for next average
                     self.summed_spectra = None
@@ -871,7 +881,7 @@ class WasatchDevice(InterfaceDevice):
             else:
                 # if averaging isn't enabled...then a single reading is the
                 # "averaged" final measurement (check reading.sum_count to confirm)
-                reading.averaged = True
+                reading.averaged_count = 1
 
         log.debug("device.take_one_averaged_reading: returning %s", reading)
         # reading.dump_area_scan()

@@ -32,7 +32,7 @@ class Reading:
         self.laser_power               = int(self.rand(0, 100))
         self.laser_power_in_mW         = True
         self.failure                   = None
-        self.averaged                  = False
+        self.averaged_count            = 0
         self.session_count             = self.id
         self.area_scan_row_count       = int(self.rand(0, 1024))
         self.battery_raw               = int(self.rand(0, 4096))

@@ -395,9 +395,8 @@ class WasatchDeviceWrapper:
             # It is the purpose of this function ("get FINAL item...")
             # to PURGE THE QUEUE -- we are not intending to leave any
             # values in the queue (None, bool, or Readings of any kind.
-            if keep_averaged and wrapper_reading.data.averaged:
+            if keep_averaged and wrapper_reading.data.averaged_count > 0:
                 last_averaged = wrapper_reading
-
 
         if last_reading.data is None:
             # log.debug("wrapper worker floating up keep alive last reading")

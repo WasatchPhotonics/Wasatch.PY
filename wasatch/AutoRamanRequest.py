@@ -12,6 +12,7 @@ class AutoRamanRequest:
                        min_counts     = 40000,
                        max_factor     = 5,
                        drop_factor    = 0.5,
+                       laser_delay_ms = 4000,
                        saturation     = 65000):
 
         self.max_ms         = max_ms         
@@ -26,6 +27,7 @@ class AutoRamanRequest:
         self.min_counts     = min_counts     
         self.max_factor     = max_factor     
         self.drop_factor    = drop_factor    
+        self.laser_delay_ms = laser_delay_ms
         self.saturation     = saturation     
 
     def __repr__(self):

@@ -24,11 +24,12 @@ class Fixture:
     def __init__(self):
         self.bus     = None
         self.device  = None
-        self.logger  = None
         self.outfile = None
         self.reading_count = 0
 
-        self.args = self.parse_args()
+        self.parse_args()
+
+        self.logger = applog.MainLogger("DEBUG" if self.args.debug else "INFO")
 
     def parse_args(self):
         parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -48,13 +49,7 @@ class Fixture:
         parser.add_argument("--drop-factor",    type=float,    default=0.5,   help="factor when scaling down")
         parser.add_argument("--saturation",     type=int,      default=65000, help="counts")
 
-        args = parser.parse_args()
-        if args.debug:
-            print("setting log level to DEBUG")
-            log.setLevel("DEBUG")
-            log.debug("log level now DEBUG")
-
-        return args
+        self.args = parser.parse_args()
         
     def connect(self):
         """ Connect to all discoverable Wasatch spectrometers.  """
@@ -110,23 +105,24 @@ class Fixture:
         # block on completion of the TakeOneRequest (ignore keepalives)
         while True:
             log.debug("calling WasatchDevice.acquire_data")
-            reading = self.device.acquire_data()
+            reading = self.device.acquire_data().data
             log.debug(f"WasatchDevice.acquire_data returned {reading}")
             if reading is not None:
                 break
+
+            time.sleep(1)
 
         elapsed_sec = (datetime.datetime.now() - start_time).total_seconds()
         print(f"Auto-Raman measurement completed in {elapsed_sec:.2f} sec")
 
         # process Reading
-        reading = reading_response.data
         settings = self.device.settings
 
         # ASCII-Art
-        print("\n".join(wasatch.utils.ascii_spectrum(spectrum, rows=20, cols=80, x_axis=settings.wavenumbers, x_unit="cm⁻¹")))
+        print("\n".join(wasatch.utils.ascii_spectrum(reading.spectrum, rows=20, cols=80, x_axis=settings.wavenumbers, x_unit="cm⁻¹")))
 
         if self.outfile:
-            self.outfile.write("{datetime.datetime.now()}, {aar}, {', '.join([f'.2f' for x in spectrum])}\n")
+            self.outfile.write("{datetime.datetime.now()}, {aar}, {', '.join([f'.2f' for x in reading.spectrum])}\n")
 
 # main()
 fixture = Fixture()

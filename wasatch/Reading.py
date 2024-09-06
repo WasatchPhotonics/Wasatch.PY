@@ -26,7 +26,7 @@ class Reading:
         self.laser_power_perc          = 0      
         self.laser_power_mW            = 0
         self.failure                   = None
-        self.averaged                  = False
+        self.averaged_count            = 0
         self.session_count             = 0      # can treat as reading_id
         self.area_scan_row_count       = -1
         self.area_scan_data            = None
@@ -43,10 +43,10 @@ class Reading:
         self.dark                      = None
 
     def __str__(self):
-        return "wasatch.Reading {device_id %s, spectrum %s, averaged %s, session_count %d, area_scan_row_count %d, timestamp %s, timestamp_complete %s, failure %s, laser_enabled %s, ambient %s, take_one_request %s }" % (
+        return "wasatch.Reading {device_id %s, spectrum %s, averaged_count %d, session_count %d, area_scan_row_count %d, timestamp %s, timestamp_complete %s, failure %s, laser_enabled %s, ambient %s, take_one_request %s }" % (
             self.device_id, 
             "None" if self.spectrum is None else ("%d values" % len(self.spectrum)),
-            self.averaged, 
+            self.averaged_count, 
             self.session_count,
             self.area_scan_row_count,
             self.timestamp, 
