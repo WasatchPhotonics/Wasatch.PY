@@ -1,5 +1,9 @@
 # Changelog
 
+- 2024-??-?? 2.1.74
+    - fixed get_detector_gain on XS
+    - reduced number of implicit throwaways after acquisition parameter changes
+    - added AutoRaman via TakeOneRequest
 - 2024-06-27 2.1.73
     - update demo.py to support multiple spectrometers
     - add optional `callback` parameter to WrapperWorker for Inversion of Control (IoC)

@@ -953,12 +953,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.error(msg)
             return SpectrometerResponse(error_lvl=ErrorLevel.medium,error_msg=msg,keep_alive=True)
 
-        if self.settings.is_xs():
-            msb = result[0] # big-endian, SAME as set_detector_gain
-            lsb = result[1] # this adds confusion, but is an improvement :-/
-        else:
-            lsb = result[0] # little-endian, OPPOSITE of set_detector_gain
-            msb = result[1]
+        lsb = result[0] # little-endian, OPPOSITE of set_detector_gain
+        msb = result[1]
 
         raw = (msb << 8) | lsb
 
@@ -1028,11 +1024,12 @@ class FeatureIdentificationDevice(InterfaceDevice):
         log.debug("Send Detector Gain: 0x%04x (%s)", raw, gain)
         result = self._send_code(0xb7, raw, label="SET_DETECTOR_GAIN")
 
-        self.add_throwaway(gain != self.settings.eeprom.detector_gain)
+        self.require_throwaway(gain != self.settings.eeprom.detector_gain)
         self.settings.eeprom.detector_gain = gain
 
         if self.settings.is_xs():
             self.queue_message("marquee_info", "sensor is stabilizing")
+            self.settings.state.gain_db = gain
 
         return result
 
@@ -1295,8 +1292,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # error-check the received spectrum
         ########################################################################
 
-        log.debug("get_line: completed in %.2f sec (vs integration time %d ms)",
-            (datetime.datetime.now() - acquisition_timestamp).total_seconds(),
+        log.debug("get_line: completed in %d ms (vs integration time %d ms)",
+            round((datetime.datetime.now() - acquisition_timestamp).total_seconds() * 1000, 0),
             self.settings.state.integration_time_ms)
 
         log.debug("get_line: pixels %d, endpoints %s, block %d, spectrum %s ...",
@@ -1499,10 +1496,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
         response.data = SpectrumAndRow(spectrum, area_scan_row_count) 
         return response
 
-    def add_throwaway(self, flag):
-        if flag and self.settings.is_xs():
+    def require_throwaway(self, flag):
+        if flag and self.settings.is_xs() and self.remaining_throwaways < 1:
             log.debug("queuing throwaways")
-            self.remaining_throwaways += 2
+            self.remaining_throwaways += 1
 
     def set_integration_time_ms(self, ms: float):
         """
@@ -1526,7 +1523,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         result = self._send_code(0xB2, lsw, msw, label="SET_INTEGRATION_TIME_MS")
         log.debug("SET_INTEGRATION_TIME_MS: now %d", ms)
 
-        self.add_throwaway(ms != self.settings.state.integration_time_ms)
+        self.require_throwaway(ms != self.settings.state.integration_time_ms)
         self.settings.state.integration_time_ms = ms
 
         if self.settings.is_xs():
@@ -1552,7 +1549,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
             if result is not None:
                 status = result.data
         self.settings.state.poll_status = status
-        log.debug(f"get_poll_status: status 0x{status:02x}")
+        # log.debug(f"get_poll_status: status 0x{status:02x}")
         return result
 
     # ##########################################################################

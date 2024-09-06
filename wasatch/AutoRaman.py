@@ -3,6 +3,8 @@ import math
 import numpy as np
 import logging
 
+from datetime import datetime
+
 from .SpectrometerResponse import SpectrometerResponse
 from .SpectrometerRequest  import SpectrometerRequest
 from .Reading              import Reading
@@ -10,6 +12,16 @@ from .Reading              import Reading
 log = logging.getLogger(__name__)
 
 class AutoRaman:
+    """
+    This class encapsulates Dieter's Auto-Raman algorithm, which optimizes 
+    integration time (and gain on XS series spectrometers) to achieve a
+    target window of counts, then uses the configured measurement time
+    to maximize scan averaging at with those acquisition parameters.
+
+    As calling software will not necessarily expect the configured "default" 
+    integration time and gain to change, the class restores those to previous
+    levels after a measurement.
+    """
 
     INTER_SPECTRA_DELAY_MS = 50
 
@@ -33,12 +45,23 @@ class AutoRaman:
             log.error("measure requires AutoRamanRequest")
             return None
 
-        # YOU ARE HERE
+        # cache initial state
+        self.start_time = datetime.now()
+        initial_int_time = self.wasatch_device.settings.state.integration_time_ms
+        initial_gain_db = self.wasatch_device.settings.state.gain_db
+        log.debug(f"get_auto_spectrum: caching initial state ({initial_int_time}ms, {initial_gain_db}dB)")
+
+        # generate auto-Raman measurement
         reading = self.get_auto_spectrum(take_one_request.auto_raman_request)
+
+        # restore initial state
+        log.debug(f"get_auto_spectrum: restoring initial state")
+        self.set_integration_time_ms(initial_int_time)
+        self.set_gain_db(initial_gain_db)
 
         return SpectrometerResponse(data=reading)
 
-    def get_avg_spectrum_with_dummy(self, int_time, gain_db, num_avg):
+    def get_avg_spectrum(self, int_time, gain_db, num_avg, dummy=True):
         """ Takes a single throwaway, then averages num_avg spectra """
 
         self.set_integration_time_ms(int_time)
@@ -46,7 +69,8 @@ class AutoRaman:
         self.inter_spectrum_delay()
 
         # perform one throwaway
-        throwaway = self.get_spectrum()
+        if dummy:
+            throwaway = self.get_spectrum()
 
         sum_spectrum = np.zeros(self.wasatch_device.settings.pixels())
         for _ in range(num_avg):
@@ -60,6 +84,7 @@ class AutoRaman:
         """
         @returns a Reading with specturm, dark and averaged_count populated
         """
+        log.debug(f"get_auto_spectrum: start (max_ms {request.max_ms})")
 
         int_time = request.start_integ_ms
         gain_db = request.start_gain_db
@@ -73,7 +98,7 @@ class AutoRaman:
         # get one Raman spectrum to start (no dark)
         log.debug(f"taking initial spectrum (integ {int_time}, gain {gain_db})")
         self.set_laser_enable(True)
-        spectrum = self.get_avg_spectrum_with_dummy(int_time, gain_db, num_avg=1)
+        spectrum = self.get_avg_spectrum(int_time, gain_db, num_avg=1)
 
         max_signal = spectrum.max()
 
@@ -84,7 +109,7 @@ class AutoRaman:
 
             loop_count += 1
             scale_factor = request.target_counts / max_signal
-            log.debug("loop {loop_count}: counts {max_signal}, scale {scale_factor}")
+            log.debug(f"loop {loop_count}: counts {max_signal}, scale {scale_factor:.2f}")
 
             # We distribute scaling among integration time and linear gain
             #
@@ -154,7 +179,7 @@ class AutoRaman:
                         int_time += 1 
                     else:
                         # failover to increasing gain
-                        if gain_db < request.max_gain_db:
+                        if self.wasatch_device.settings.is_xs() and (gain_db < request.max_gain_db):
                             gain_db += 0.1 
                         else: 
                             quit_loop = True
@@ -162,7 +187,7 @@ class AutoRaman:
                     # was supposed to shrink
 
                     # prefer to shrink gain
-                    if gain_db > request.min_gain_db:
+                    if self.wasatch_device.settings.is_xs() and (gain_db > request.min_gain_db):
                         gain_db -= 0.1 
                     else:
                         # fail-over to shrinking integration
@@ -171,40 +196,41 @@ class AutoRaman:
                         else:
                             quit_loop = True
 
-            log.debug(f"integ now {int_time}, gain now {gain_db} (linear {gain_linear})")
+            log.debug(f"integ now {int_time}, gain now {gain_db} (linear {gain_linear:.4f})")
 
             log.debug(f"Taking spectrum #{loop_count}")
-            spectrum = self.get_avg_spectrum_with_dummy(int_time, gain_db, num_avg=1)
+            spectrum = self.get_avg_spectrum(int_time, gain_db, num_avg=1)
             max_signal = spectrum.max()
 
             if max_signal < request.max_counts and max_signal > request.min_counts:
-                log.debug("achieved window")
+                log.debug("===> achieved window")
                 quit_loop = True
             elif max_signal < request.min_counts and int_time >= request.max_integ_ms and gain_db >= request.max_gain_db:
                 log.debug("can't achieve window within acquisition parameter limits")
                 quit_loop = True
 
         # decide on number of averages - all times in ms
-        # include dark + signal + laser warm up
-        # note: also include one dummy scan each (dark and signal)...
+        # include dark + signal
 
-        num_avg = round((request.max_ms - request.laser_delay_ms) / (2 * int_time)) - 1
+        num_avg = math.floor(request.max_ms / (2 * int_time))
         num_avg = max(1, num_avg)
+        expected_ms = num_avg * 2 * int_time
+        log.debug(f"based on max_ms {request.max_ms} and int_time {int_time} ms, computed num_avg {num_avg} (expected_ms {expected_ms})")
 
         # now get the spectrum with the chosen parameters
         # take two averaged spectra here: avg signal first, then turn laser off, then take dark
         # (this saves the laser warm up)
 
         # 1. signal - laser is still on
-        log.debug("taking {num_avg} averaged Raman spectra")
-        new_spectrum = self.get_avg_spectrum_with_dummy(int_time, gain_db, num_avg)
+        log.debug(f"taking {num_avg} averaged Raman spectra")
+        new_spectrum = self.get_avg_spectrum(int_time, gain_db, num_avg, dummy=False)
 
         # 2. turn laser off
         self.set_laser_enable(False)
 
         # 3. take dark
-        log.debug("taking {num_avg} averaged darks")
-        new_dark = self.get_avg_spectrum_with_dummy(int_time, gain_db, num_avg)
+        log.debug(f"taking {num_avg} averaged darks")
+        new_dark = self.get_avg_spectrum(int_time, gain_db, num_avg, dummy=False)
 
         # correct signal minus dark
         spectrum = new_spectrum - new_dark
@@ -225,15 +251,18 @@ class AutoRaman:
         self.wasatch_device.hardware.handle_requests([SpectrometerRequest('set_laser_enable', args=[flag])])
 
     def set_integration_time_ms(self, ms):
-        self.wasatch_device.hardware.handle_requests([SpectrometerRequest('set_integration_time_ms', args=[ms])])
+        if ms != self.wasatch_device.settings.state.integration_time_ms:
+            self.wasatch_device.hardware.handle_requests([SpectrometerRequest('set_integration_time_ms', args=[ms])])
 
     def set_gain_db(self, db):
-        self.wasatch_device.hardware.handle_requests([SpectrometerRequest('set_detector_gain', args=[db])])
+        if self.wasatch_device.settings.is_xs():
+            if db != self.wasatch_device.settings.state.gain_db:
+                self.wasatch_device.hardware.handle_requests([SpectrometerRequest('set_detector_gain', args=[db])])
 
     def get_spectrum(self):
-        res = self.wasatch_device.hardware.handle_requests([SpectrometerRequest("get_line")])[0]
-        if res is None or isinstance(res, bool) or res.error_msg != '':
-            raise res
-        spectrum = res.data.spectrum
+        result = self.wasatch_device.hardware.handle_requests([SpectrometerRequest("get_line")])[0]
+        if result is None or isinstance(result, bool) or result.error_msg != '':
+            raise(Exception(f"get_spectrum returned {result}"))
+        spectrum = result.data.spectrum
         self.inter_spectrum_delay()
         return np.array(spectrum)
