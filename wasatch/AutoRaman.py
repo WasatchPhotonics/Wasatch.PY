@@ -21,6 +21,35 @@ class AutoRaman:
     As calling software will not necessarily expect the configured "default" 
     integration time and gain to change, the class restores those to previous
     levels after a measurement.
+
+    @par Design Considerations
+
+    Mark made the following changes from Dieter's original algo:
+
+    - don't take throwaways during averaged signal or dark collections, 
+      as acquisition parameters aren't changing and sensor should be
+      stable
+    - don't include laser warning delay when computing num_avg, since
+      laser is already enabled and firing
+
+    Mark also made the following decisions regarding ENLIGHTEN integration:
+
+    - return the optimized integration time and gain back to ENLIGHTEN 
+      in the Reading object so they will be the new GUI settings if the 
+      user simply hits "Play" to resume free-running spectra.
+    - ENLIGHTEN will override the init_int_time and init_gain defaults
+      in AutoRamanRequest so that if the user hits "Auto-Raman Measurement"
+      a second time, the previous settings will be used as the new starting
+      point, and (ideally) the initial spectrum will determine that no further 
+      optimization is required.
+
+    Points to consider:
+    
+    - consider rolling the "last optimization" measurement directly into the
+      averaged sample spectra (since it had its own throwaway and presumably
+      represents a "stable" reading). This could potentially allow for one more
+      averaged dark, depending on max_ms.
+
     """
 
     INTER_SPECTRA_DELAY_MS = 50
@@ -37,11 +66,11 @@ class AutoRaman:
     def inter_spectrum_delay(self):
         time.sleep(self.INTER_SPECTRA_DELAY_MS / 1000)
 
-    def measure(self, take_one_request):
+    def measure(self, auto_raman_request):
         """
         @returns a Reading wrapped in a SpectrometerResponse
         """
-        if take_one_request is None or take_one_request.auto_raman_request is None:
+        if auto_raman_request is None:
             log.error("measure requires AutoRamanRequest")
             return None
 
@@ -52,12 +81,14 @@ class AutoRaman:
         log.debug(f"get_auto_spectrum: caching initial state ({initial_int_time}ms, {initial_gain_db}dB)")
 
         # generate auto-Raman measurement
-        reading = self.get_auto_spectrum(take_one_request.auto_raman_request)
+        reading = self.get_auto_spectrum(auto_raman_request)
 
-        # restore initial state
-        log.debug(f"get_auto_spectrum: restoring initial state")
-        self.set_integration_time_ms(initial_int_time)
-        self.set_gain_db(initial_gain_db)
+        # for now, don't restore initial state -- send optimized values back in 
+        # Reading so ENLIGHTEN can update GUI appropriately
+        if False:
+            log.debug(f"get_auto_spectrum: restoring initial state")
+            self.set_integration_time_ms(initial_int_time)
+            self.set_gain_db(initial_gain_db)
 
         return SpectrometerResponse(data=reading)
 
@@ -239,6 +270,8 @@ class AutoRaman:
         reading.spectrum = spectrum
         reading.dark = new_dark
         reading.averaged_count = num_avg
+        reading.new_integration_time_ms = int_time
+        reading.new_gain_db = gain_db
 
         log.debug("done")
         return reading

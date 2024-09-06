@@ -277,7 +277,6 @@ class WasatchDevice(InterfaceDevice):
         else:
             return self.acquire_spectrum_standard()
 
-    # YOU ARE HERE
     def acquire_spectrum_auto_raman(self):
         """
         @returns a Reading wrapped in a SpectrometerResponse
@@ -285,7 +284,7 @@ class WasatchDevice(InterfaceDevice):
               (temperature, interlock etc) provided by acquire_spectrum_standard
         """
         log.debug("WasatchDevice.acquire_spectrum_auto_raman: calling AutoRaman.measure")
-        spectrometer_response = self.auto_raman.measure(take_one_request=self.take_one_request)
+        spectrometer_response = self.auto_raman.measure(self.take_one_request.auto_raman_request)
         reading = spectrometer_response.data
         log.debug(f"WasatchDevice.acquire_spectrum_auto_raman: received {reading}")
 

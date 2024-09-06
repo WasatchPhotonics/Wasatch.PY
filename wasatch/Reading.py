@@ -38,6 +38,10 @@ class Reading:
         self.laser_tec_enabled         = False
         self.take_one_request          = None
 
+        # currently only populated by AutoRaman
+        self.new_integration_time_ms   = None
+        self.new_gain_db               = None
+
         # for the rare case (BatchCollection with LaserMode "Spectrum") where the 
         # driver is asked to collect a dark just before enabling the laser
         self.dark                      = None
