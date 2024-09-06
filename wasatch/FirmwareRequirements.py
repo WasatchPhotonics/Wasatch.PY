@@ -49,3 +49,6 @@ class FirmwareRequirements:
 
         log.debug(f"supports: {feature} supported")
         return True
+
+    def __repr__(self):
+        return "Firmware Requirements"
