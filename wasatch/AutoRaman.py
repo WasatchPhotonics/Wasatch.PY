@@ -75,11 +75,13 @@ class AutoRaman:
             log.error("measure requires AutoRamanRequest")
             return None
 
+        log.debug(f"measure: auto_raman_request {auto_raman_request}")
+
         # cache initial state
         self.start_time = datetime.now()
         initial_int_time = self.wasatch_device.settings.state.integration_time_ms
         initial_gain_db = self.wasatch_device.settings.state.gain_db
-        log.debug(f"get_auto_spectrum: caching initial state ({initial_int_time}ms, {initial_gain_db}dB)")
+        log.debug(f"measure: caching initial state ({initial_int_time}ms, {initial_gain_db}dB)")
 
         # generate auto-Raman measurement
         reading = self.get_auto_spectrum(auto_raman_request)
@@ -87,7 +89,7 @@ class AutoRaman:
         # for now, don't restore initial state -- send optimized values back in 
         # Reading so ENLIGHTEN can update GUI appropriately
         if False:
-            log.debug(f"get_auto_spectrum: restoring initial state")
+            log.debug(f"measure: restoring initial state")
             self.set_integration_time_ms(initial_int_time)
             self.set_gain_db(initial_gain_db)
 
@@ -177,12 +179,15 @@ class AutoRaman:
                     scale_factor = request.max_factor
                 
                 # increase int time first
+                log.debug(f"get_auto_spectrum: scaling int_time {int_time} UP by scale_factor {scale_factor:.2f}")
                 int_time *= scale_factor
 
                 # check int time does not exceed maximum
                 if int_time > request.max_integ_ms:
                     # however much int time exceeds the max, transfer scaling to gain
-                    gain_linear *= int_time / request.max_integ_ms
+                    gain_factor = int_time / request.max_integ_ms
+                    log.debug(f"get_auto_spectrum: scaling gain_linear {gain_linear} UP by gain_factor {gain_factor:.2f}")
+                    gain_linear *= gain_factor
                     int_time = request.max_integ_ms
 
             elif scale_factor < 1.0:
@@ -192,12 +197,15 @@ class AutoRaman:
                     scale_factor = request.drop_factor
 
                 # decrease gain first (INCREASE int time first implies DECREASE int time last)
+                log.debug(f"get_auto_spectrum: scaling gain_linear {gain_linear:.2f} DOWN by scale_factor {scale_factor:.2f}")
                 gain_linear *= scale_factor
 
                 # check we did not drop below min gain
                 if gain_linear < min_gain_linear:
                     # dump the overshoot into decreasing int time
-                    int_time *= gain_linear / min_gain_linear
+                    int_factor = gain_linear / min_gain_linear
+                    log.debug(f"get_auto_spectrum: scaling int_time {int_time} DOWN by int_factor {int_factor:.2f}")
+                    int_time *= int_factor
                     gain_linear = min_gain_linear
 
             # gain is rounded to 0.1 dB
@@ -235,14 +243,14 @@ class AutoRaman:
                         else:
                             quit_loop = True
 
-            log.debug(f"integ now {int_time}, gain now {gain_db} (linear {gain_linear:.4f})")
+            log.debug(f"integ now {int_time}, gain now {gain_db:.1f} (linear {gain_linear:.4f})")
 
             log.debug(f"Taking spectrum #{loop_count}")
             spectrum = self.get_avg_spectrum(int_time, gain_db, num_avg=1)
             max_signal = spectrum.max()
 
             if max_signal < request.max_counts and max_signal > request.min_counts:
-                log.debug("===> achieved window")
+                log.debug(f"===> achieved window (max_signal {max_signal} in range ({request.min_counts}, {request.max_counts}))")
                 quit_loop = True
             elif max_signal < request.min_counts and int_time >= request.max_integ_ms and gain_db >= request.max_gain_db:
                 log.debug("can't achieve window within acquisition parameter limits")
@@ -254,6 +262,7 @@ class AutoRaman:
         total = math.floor(request.max_ms / int_time)   # total number of sample + dark spectra we have time for
         num_avg = math.ceil((total + 1) / 2)            # how many darks to collect
         num_avg = max(1, num_avg)
+        num_avg = min(num_avg, request.max_avg)
         expected_ms = int_time * (num_avg + (num_avg - 1)) # darks + remaining samples
         log.debug(f"based on max_ms {request.max_ms} and int_time {int_time} ms, computed num_avg {num_avg} (expected_ms {expected_ms})")
 
