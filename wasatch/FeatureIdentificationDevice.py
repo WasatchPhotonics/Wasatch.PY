@@ -2252,11 +2252,26 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.error("unable to control laser: EEPROM reports no laser installed")
             return SpectrometerResponse(data=None,error_msg="no laser installed")
 
-        return self._get_code(0xe8, label="GET_LASER_TEC_SETPOINT")
+        # is this little-endian?
+        lsb_len = 2 if self.settings.is_xs() else 1
+
+        return self._get_code(0xe8, lsb_len=lsb_len, label="GET_LASER_TEC_SETPOINT") 
 
     def set_laser_temperature_setpoint_raw(self, value: int):
         log.debug(f"Send laser temperature setpoint raw: 0x{value:03x}")
         return self._send_code(0xe7, value, label="SET_LASER_TEC_SETPOINT")
+
+    def set_laser_warning_delay_sec(self, value):
+        if not self.settings.is_xs():
+            log.error("laser warning delay only configurable on XS")
+            return
+        return self._send_code(0x8a, value, label="SET_LASER_WARNING_DELAY_SEC")
+
+    def get_laser_warning_delay_sec(self):
+        if not self.settings.is_xs():
+            log.error("laser warning delay only configurable on XS")
+            return 0
+        return self._get_code(0x8b, lsb_len=1, label="GET_LASER_WARNING_DELAY_SEC")
 
     ############################################################################
     # digital pot on 220250 Rev4A+
