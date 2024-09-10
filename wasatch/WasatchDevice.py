@@ -303,18 +303,24 @@ class WasatchDevice(InterfaceDevice):
         self.perform_optional_throwaways()
 
         ########################################################################
-        # Batch Collection and Auto-Raman silliness
+        # Batch Collection silliness
         ########################################################################
 
-        # We could move this up into ENLIGHTEN.BatchCollection: have it enable
-        # the laser, wait a bit, and then send the "acquire" command.  But since
-        # WasatchDeviceWrapper.continuous_poll ticks at its own interval, that
-        # would introduce timing interference, and different acquisitions would
-        # realistically end up with different warm-up times for lasers (all "at
-        # least" the configured time, but some longer than others).  Instead,
-        # for now I'm putting this delay here, so it will be exactly the same
-        # (given sleep()'s precision) for each acquisition.  For true precision
-        # this should all go into the firmware anyway.
+        # Note that BatchCollection's "auto-enable laser" is not nearly as
+        # involved as the Auto-Raman performed by acquire_spectrum_auto_raman.
+        # BatchCollection uses TakeOneRequest.enable_laser_before, 
+        # .disable_laser_after, .take_dark, .laser_warmup_ms and .scans_to_average
+        # to take an averaged, dark-corrected Raman measurement WITH FIXED 
+        # ACQUISITION PARAMETERS (integration time, gain). It does not perform 
+        # any optimization of integration time or gain. 
+        #
+        # By implication then, we should simplify this by changing 
+        # BatchCollection to use AutoRamanRequest, adding a checkbox to 
+        # BatchCollection to allow # optimization; if unchecked, min/max integ 
+        # and gain will equal start integ/gain, and no optimization will occur. 
+        # Then we can remove all the auto laser stuff from the following code.
+        #
+        # This has been captured in https://github.com/WasatchPhotonics/ENLIGHTEN/issues/474
 
         auto_enable_laser = tor is not None and tor.enable_laser_before 
         log.debug("acquire_spectrum: auto_enable_laser = %s", auto_enable_laser)
