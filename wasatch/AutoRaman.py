@@ -77,6 +77,14 @@ class AutoRaman:
 
         log.debug(f"measure: auto_raman_request {auto_raman_request}")
 
+        # validate AutoRamanRequest
+        if (auto_raman_request.start_integ_ms < auto_raman_request.max_integ_ms and
+            auto_raman_request.start_gain_db > 0):
+            log.error("AutoRaman does not support requests with non-zero gain and "
+                    + "start_integ_ms ({auto_raman_request.start_integ_ms}) < "
+                    + "max_integ_ms ({auto_raman_request.max_integ_ms})")
+            auto_raman_request.start_gain_db = 0
+
         # cache initial state
         self.start_time = datetime.now()
         initial_int_time = self.wasatch_device.settings.state.integration_time_ms
@@ -136,9 +144,18 @@ class AutoRaman:
 
         num_avg = 1
 
+        # enable the laser and wait for it to fire
+        self.set_laser_enable(True)
+        warning_delay_sec = self.get_laser_warning_delay_sec()
+        log.debug(f"waiting {warning_delay_sec}sec for laser warning delay to expire")
+        time.sleep(warning_delay_sec)
+
+        laser_warmup_sec = self.wasatch_device.settings.eeprom.laser_warmup_sec
+        log.debug(f"waiting {laser_warmup_sec}sec for laser to stabilize")
+        time.sleep(laser_warmup_sec)
+
         # get one Raman spectrum to start (no dark)
         log.debug(f"taking initial spectrum (integ {int_time}, gain {gain_db})")
-        self.set_laser_enable(True)
         spectrum = self.get_avg_spectrum(int_time, gain_db, num_avg=1)
 
         max_signal = spectrum.max()
@@ -302,6 +319,9 @@ class AutoRaman:
     def queue_message(self, msg):
         log.debug(msg)
         self.wasatch_device.hardware.queue_message("marquee_info", msg)
+
+    def get_laser_warning_delay_sec(self):
+        return self.wasatch_device.hardware.handle_requests([SpectrometerRequest('get_laser_warning_delay_sec')]).data
 
     def set_laser_enable(self, flag):
         self.wasatch_device.hardware.handle_requests([SpectrometerRequest('set_laser_enable', args=[flag])])
