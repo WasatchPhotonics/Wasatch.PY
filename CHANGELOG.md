@@ -1,6 +1,6 @@
 # Changelog
 
-- 2024-??-?? 2.2.1
+- 2024-09-12 2.2.1
     - fixed get_detector_gain on XS
     - reduced number of implicit throwaways after acquisition parameter changes
     - added AutoRaman via TakeOneRequest
