@@ -1,5 +1,10 @@
 # Changelog
 
+- 2024-09-12 2.2.2
+    - added set/get_laser_warning_delay through change_settings
+    - updated reset_fpga to restore key FPGA settings
+    - enriched AutoRaman status messages
+    - AutoRaman bugfix
 - 2024-09-12 2.2.1
     - fixed get_detector_gain on XS
     - reduced number of implicit throwaways after acquisition parameter changes

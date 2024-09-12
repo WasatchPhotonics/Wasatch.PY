@@ -147,11 +147,11 @@ class AutoRaman:
         # enable the laser and wait for it to fire
         self.set_laser_enable(True)
         warning_delay_sec = self.get_laser_warning_delay_sec()
-        log.debug(f"waiting {warning_delay_sec}sec for laser warning delay to expire")
+        self.queue_message(f"waiting {warning_delay_sec}sec for laser to fire")
         time.sleep(warning_delay_sec)
 
         laser_warmup_sec = self.wasatch_device.settings.eeprom.laser_warmup_sec
-        log.debug(f"waiting {laser_warmup_sec}sec for laser to stabilize")
+        self.queue_message(f"waiting {laser_warmup_sec}sec for laser to stabilize")
         time.sleep(laser_warmup_sec)
 
         # get one Raman spectrum to start (no dark)
@@ -321,7 +321,11 @@ class AutoRaman:
         self.wasatch_device.hardware.queue_message("marquee_info", msg)
 
     def get_laser_warning_delay_sec(self):
-        return self.wasatch_device.hardware.handle_requests([SpectrometerRequest('get_laser_warning_delay_sec')]).data
+        response = self.wasatch_device.hardware.handle_requests([SpectrometerRequest('get_laser_warning_delay_sec')])[0]
+        log.debug(f"get_laser_warning_delay_sec: response {response}")
+        if response is None or response.data is None:
+            return 5
+        return response.data
 
     def set_laser_enable(self, flag):
         self.wasatch_device.hardware.handle_requests([SpectrometerRequest('set_laser_enable', args=[flag])])

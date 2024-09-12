@@ -1048,13 +1048,13 @@ class WasatchDevice(InterfaceDevice):
                     try:
                         self.change_setting(cmd, *request.args, **request.kwargs)
                     except Exception as e:
-                        log.error(f"error {e} with trying to set setting {cmd} with args and kwargs {request.args} and {request.kwargs}")
+                        log.error(f"error {e} with trying to set setting {cmd} with args and kwargs {request.args} and {request.kwargs}", exc_info=1)
                         return []
                 elif request.args == [] and request.kwargs == {}:
                     responses.append(proc_func())
                 else:
                     responses.append(proc_func(*request.args, **request.kwargs))
             except Exception as e:
-                log.error(f"error in handling request {request} of {e}")
+                log.error(f"error in handling request {request} of {e}", exc_info=1)
                 responses.append(SpectrometerResponse(error_msg="error processing cmd", error_lvl=ErrorLevel.medium))
         return responses
