@@ -27,6 +27,7 @@ class Reading:
         self.laser_power_mW            = 0
         self.failure                   = None
         self.averaged                  = False
+        self.sum_count                 = 0
         self.session_count             = 0      # can treat as reading_id
         self.area_scan_row_count       = -1
         self.area_scan_data            = None
@@ -37,6 +38,10 @@ class Reading:
         self.laser_is_firing           = False  # per interlock board, not laser_enable
         self.laser_tec_enabled         = False
         self.take_one_request          = None
+
+        # currently only populated by AutoRaman
+        self.new_integration_time_ms   = None
+        self.new_gain_db               = None
 
         # for the rare case (BatchCollection with LaserMode "Spectrum") where the 
         # driver is asked to collect a dark just before enabling the laser

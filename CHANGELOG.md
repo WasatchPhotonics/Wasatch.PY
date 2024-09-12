@@ -1,5 +1,9 @@
 # Changelog
 
+- 2024-??-?? 2.2.1
+    - fixed get_detector_gain on XS
+    - reduced number of implicit throwaways after acquisition parameter changes
+    - added AutoRaman via TakeOneRequest
 - 2024-08-22 2.2.0
     - cutting release for ENLIGHTEN 4.1.0
 - 2024-06-27 2.1.73

@@ -307,8 +307,10 @@ class WasatchDeviceWrapper:
         if self.closing or not self.connected:
             return None
 
-        if not self.message_queue.empty():
-            return self.message_queue.get_nowait()
+        msg = None
+        while not self.message_queue.empty():
+            msg = self.message_queue.get_nowait()
+        return msg
 
     ##
     # This method is called by the Controller.  It checks the response_queue it 
@@ -397,7 +399,6 @@ class WasatchDeviceWrapper:
             # values in the queue (None, bool, or Readings of any kind.
             if keep_averaged and wrapper_reading.data.averaged:
                 last_averaged = wrapper_reading
-
 
         if last_reading.data is None:
             # log.debug("wrapper worker floating up keep alive last reading")

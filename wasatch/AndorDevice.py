@@ -329,7 +329,6 @@ class AndorDevice(InterfaceDevice):
                 log.debug("completed take_one")
                 self.change_setting("cancel_take_one", True)
 
-
         log.debug("device.take_one_averaged_reading: returning %s", reading)
         if reading.spectrum is not None and reading.spectrum != []:
             self.failure_count = 0

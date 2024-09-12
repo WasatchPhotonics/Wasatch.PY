@@ -953,12 +953,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.error(msg)
             return SpectrometerResponse(error_lvl=ErrorLevel.medium,error_msg=msg,keep_alive=True)
 
-        if self.settings.is_xs():
-            msb = result[0] # big-endian, SAME as set_detector_gain
-            lsb = result[1] # this adds confusion, but is an improvement :-/
-        else:
-            lsb = result[0] # little-endian, OPPOSITE of set_detector_gain
-            msb = result[1]
+        lsb = result[0] # little-endian, OPPOSITE of set_detector_gain
+        msb = result[1]
 
         raw = (msb << 8) | lsb
 
@@ -1028,11 +1024,12 @@ class FeatureIdentificationDevice(InterfaceDevice):
         log.debug("Send Detector Gain: 0x%04x (%s)", raw, gain)
         result = self._send_code(0xb7, raw, label="SET_DETECTOR_GAIN")
 
-        self.add_throwaway(gain != self.settings.eeprom.detector_gain)
+        self.require_throwaway(gain != self.settings.eeprom.detector_gain)
         self.settings.eeprom.detector_gain = gain
 
         if self.settings.is_xs():
-            self.queue_message("marquee_info", "sensor is stabilizing")
+            self.queue_message("marquee_info", "sensor is stabilizing (gain)")
+            self.settings.state.gain_db = gain
 
         return result
 
@@ -1196,7 +1193,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
             response.error_lvl = ErrorLevel.low
             response.keep_alive = True
             log.debug(response.error_msg)
-            self.queue_message("marquee_info", "sensor is stabilizing")
+            self.queue_message("marquee_info", "sensor is stabilizing (FW)")
             return response
 
         ########################################################################
@@ -1295,8 +1292,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # error-check the received spectrum
         ########################################################################
 
-        log.debug("get_line: completed in %.2f sec (vs integration time %d ms)",
-            (datetime.datetime.now() - acquisition_timestamp).total_seconds(),
+        log.debug("get_line: completed in %d ms (vs integration time %d ms)",
+            round((datetime.datetime.now() - acquisition_timestamp).total_seconds() * 1000, 0),
             self.settings.state.integration_time_ms)
 
         log.debug("get_line: pixels %d, endpoints %s, block %d, spectrum %s ...",
@@ -1436,7 +1433,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
             response.error_lvl = ErrorLevel.low
             response.keep_alive = True
             log.debug(response.error_msg)
-            self.queue_message("marquee_info", "sensor is stabilizing")
+            self.queue_message("marquee_info", "sensor is stabilizing (constant)")
             return response
 
         ########################################################################
@@ -1499,10 +1496,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
         response.data = SpectrumAndRow(spectrum, area_scan_row_count) 
         return response
 
-    def add_throwaway(self, flag):
-        if flag and self.settings.is_xs():
+    def require_throwaway(self, flag):
+        if flag and self.settings.is_xs() and self.remaining_throwaways < 1:
             log.debug("queuing throwaways")
-            self.remaining_throwaways += 2
+            self.remaining_throwaways += 1
 
     def set_integration_time_ms(self, ms: float):
         """
@@ -1526,11 +1523,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
         result = self._send_code(0xB2, lsw, msw, label="SET_INTEGRATION_TIME_MS")
         log.debug("SET_INTEGRATION_TIME_MS: now %d", ms)
 
-        self.add_throwaway(ms != self.settings.state.integration_time_ms)
+        self.require_throwaway(ms != self.settings.state.integration_time_ms)
         self.settings.state.integration_time_ms = ms
 
         if self.settings.is_xs():
-            self.queue_message("marquee_info", "sensor is stabilizing")
+            self.queue_message("marquee_info", "sensor is stabilizing (int time)")
 
         return result
 
@@ -1552,7 +1549,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
             if result is not None:
                 status = result.data
         self.settings.state.poll_status = status
-        log.debug(f"get_poll_status: status 0x{status:02x}")
+        # log.debug(f"get_poll_status: status 0x{status:02x}")
         return result
 
     # ##########################################################################
@@ -2255,11 +2252,26 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.error("unable to control laser: EEPROM reports no laser installed")
             return SpectrometerResponse(data=None,error_msg="no laser installed")
 
-        return self._get_code(0xe8, label="GET_LASER_TEC_SETPOINT")
+        # is this little-endian?
+        lsb_len = 2 if self.settings.is_xs() else 1
+
+        return self._get_code(0xe8, lsb_len=lsb_len, label="GET_LASER_TEC_SETPOINT") 
 
     def set_laser_temperature_setpoint_raw(self, value: int):
         log.debug(f"Send laser temperature setpoint raw: 0x{value:03x}")
         return self._send_code(0xe7, value, label="SET_LASER_TEC_SETPOINT")
+
+    def set_laser_warning_delay_sec(self, value):
+        if not self.settings.is_xs():
+            log.error("laser warning delay only configurable on XS")
+            return
+        return self._send_code(0x8a, value, label="SET_LASER_WARNING_DELAY_SEC")
+
+    def get_laser_warning_delay_sec(self):
+        if not self.settings.is_xs():
+            log.error("laser warning delay only configurable on XS")
+            return 0
+        return self._get_code(0x8b, lsb_len=1, label="GET_LASER_WARNING_DELAY_SEC")
 
     ############################################################################
     # digital pot on 220250 Rev4A+
@@ -3186,6 +3198,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
         """
         If an upstream queue is defined, send the name-value pair.  Does nothing
         if the caller hasn't provided a queue.
+
+        "setting" is application (caller) dependent, but ENLIGHTEN currently uses
+        "marquee_info" and "marquee_error".
         """
         if self.message_queue is None:
             return SpectrometerResponse(data=False)
@@ -3369,11 +3384,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
         process_f["mod_width_us"]                       = lambda x: self.set_mod_width_us(int(round(x)))
 
         # BatchCollection
-       #process_f["free_running_mode"]                  = lambda x: self.settings.state.set("free_running_mode", bool(x))
         process_f["take_one_request"]                   = lambda x: self.settings.state.set("take_one_request", x)
 
         # Series-XS
-       #f["raman_mode_enable"]                  = lambda x: self.set_raman_mode_enable(bool(x))
+       #f["raman_mode_enable"]                          = lambda x: self.set_raman_mode_enable(bool(x))
         process_f["raman_delay_ms"]                     = lambda x: self.set_raman_delay_ms(int(round(x)))
         process_f["laser_watchdog_sec"]                 = lambda x: self.set_laser_watchdog_sec(int(round(x)))
 
