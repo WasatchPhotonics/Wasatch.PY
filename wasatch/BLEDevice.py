@@ -344,8 +344,8 @@ class BLEDevice(InterfaceDevice):
 
         response = SpectrometerResponse()
         response.data = reading
-        response.progress = self.pixels_read/pixels
-        if response.progress == 1:
+        response.progress = int(round(100 * self.pixels_read / pixels, 0))
+        if response.progress >= 100:
             self.spectrum = [0 for pix in range(pixels)]
             self.pixels_read = 0
 

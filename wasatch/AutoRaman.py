@@ -57,6 +57,8 @@ class AutoRaman:
 
     def __init__(self, wasatch_device):
         self.wasatch_device = wasatch_device
+        self.progress_count = 0
+        self.progress_total = 0
 
     def from_db_to_linear(self, x):
         return 10 ** (x / 20.0)
@@ -76,32 +78,34 @@ class AutoRaman:
             return None
 
         log.debug(f"measure: auto_raman_request {auto_raman_request}")
+        self.wasatch_device.hardware.queue_message("progress_bar", -1)
 
         # validate AutoRamanRequest
-        if (auto_raman_request.start_integ_ms < auto_raman_request.max_integ_ms and
-            auto_raman_request.start_gain_db > 0):
-            log.error("AutoRaman does not support requests with non-zero gain and "
-                    + "start_integ_ms ({auto_raman_request.start_integ_ms}) < "
-                    + "max_integ_ms ({auto_raman_request.max_integ_ms})")
-            auto_raman_request.start_gain_db = 0
+        # if (auto_raman_request.start_integ_ms < auto_raman_request.max_integ_ms and
+        #     auto_raman_request.start_gain_db > 0):
+        #     log.error("AutoRaman does not support requests with non-zero gain and "
+        #             + "start_integ_ms ({auto_raman_request.start_integ_ms}) < "
+        #             + "max_integ_ms ({auto_raman_request.max_integ_ms})")
+        #     auto_raman_request.start_gain_db = 0
 
         # cache initial state
         self.start_time = datetime.now()
-        initial_int_time = self.wasatch_device.settings.state.integration_time_ms
-        initial_gain_db = self.wasatch_device.settings.state.gain_db
-        log.debug(f"measure: caching initial state ({initial_int_time}ms, {initial_gain_db}dB)")
+        initial_laser_warning_delay_sec = self.wasatch_device.settings.state.laser_warning_delay_sec
+
+        # apply requested laser warning delay
+        self.wasatch_device.hardware.set_laser_warning_delay_sec(auto_raman_request.laser_warning_delay_sec)
 
         # generate auto-Raman measurement
         reading = self.get_auto_spectrum(auto_raman_request)
 
-        # for now, don't restore initial state -- send optimized values back in 
-        # Reading so ENLIGHTEN can update GUI appropriately
-        if False:
-            log.debug(f"measure: restoring initial state")
-            self.set_integration_time_ms(initial_int_time)
-            self.set_gain_db(initial_gain_db)
+        # restore previous laser warning delay
+        self.wasatch_device.hardware.set_laser_warning_delay_sec(initial_laser_warning_delay_sec)
 
         return SpectrometerResponse(data=reading)
+
+    def bump_progress_bar(self):
+        self.progress_count += 1
+        self.wasatch_device.hardware.queue_message("progress_bar", 100 * (self.progress_count / self.progress_total))
 
     def get_avg_spectrum(self, int_time, gain_db, num_avg, dummy=True, first=None):
         """ Takes a single throwaway, then averages num_avg spectra """
@@ -112,17 +116,21 @@ class AutoRaman:
 
         # perform one throwaway
         if dummy:
-            self.queue_message("optimizing acquisition parameters")
+            self.wasatch_device.hardware.queue_message("marquee_info", "optimizing acquisition parameters")
             throwaway = self.get_spectrum()
 
         if first is None:
             sum_spectrum = np.zeros(self.wasatch_device.settings.pixels())
+            start = 0
         else:
             # we were given the "first" spectrum for use in the average
             sum_spectrum = first
-            num_avg = max(1, num_avg - 1)
+            start = 1
 
-        for _ in range(num_avg):
+        for _ in range(start, num_avg):
+            if not dummy:
+                self.bump_progress_bar()
+
             spectrum = np.array(self.get_spectrum())
             sum_spectrum += spectrum
             self.inter_spectrum_delay()
@@ -147,12 +155,14 @@ class AutoRaman:
         # enable the laser and wait for it to fire
         self.set_laser_enable(True)
         warning_delay_sec = self.get_laser_warning_delay_sec()
-        self.queue_message(f"waiting {warning_delay_sec}sec for laser to fire")
-        time.sleep(warning_delay_sec)
+        if warning_delay_sec > 0:
+            self.wasatch_device.hardware.queue_message("marquee_info", f"waiting {warning_delay_sec}sec for laser to fire")
+            time.sleep(warning_delay_sec)
 
         laser_warmup_sec = self.wasatch_device.settings.eeprom.laser_warmup_sec
-        self.queue_message(f"waiting {laser_warmup_sec}sec for laser to stabilize")
-        time.sleep(laser_warmup_sec)
+        if laser_warmup_sec > 0:
+            self.wasatch_device.hardware.queue_message("marquee_info", f"waiting {laser_warmup_sec}sec for laser to stabilize")
+            time.sleep(laser_warmup_sec)
 
         # get one Raman spectrum to start (no dark)
         log.debug(f"taking initial spectrum (integ {int_time}, gain {gain_db})")
@@ -280,7 +290,9 @@ class AutoRaman:
         num_avg = math.ceil((total + 1) / 2)            # how many darks to collect
         num_avg = max(1, num_avg)
         num_avg = min(num_avg, request.max_avg)
-        expected_ms = int_time * (num_avg + (num_avg - 1)) # darks + remaining samples
+        self.progress_count = 0
+        self.progress_total = 2 * num_avg - 1           # darks + remaining samples
+        expected_ms = int_time * self.progress_total 
         log.debug(f"based on max_ms {request.max_ms} and int_time {int_time} ms, computed num_avg {num_avg} (expected_ms {expected_ms})")
 
         # now get the spectrum with the chosen parameters
@@ -288,14 +300,14 @@ class AutoRaman:
         # (this saves the laser warm up)
 
         # 1. signal - laser is still on
-        self.queue_message(f"averaging {num_avg} Raman spectra at {int_time}ms")
+        self.wasatch_device.hardware.queue_message("marquee_info", f"averaging {num_avg} Raman spectra at {int_time}ms")
         new_spectrum = self.get_avg_spectrum(int_time, gain_db, num_avg, dummy=False, first=spectrum)
 
         # 2. turn laser off
         self.set_laser_enable(False)
 
         # 3. take dark
-        self.queue_message(f"averaging {num_avg} dark spectra at {int_time}ms")
+        self.wasatch_device.hardware.queue_message("marquee_info", f"averaging {num_avg} dark spectra at {int_time}ms")
         new_dark = self.get_avg_spectrum(int_time, gain_db, num_avg, dummy=False)
 
         # correct signal minus dark
@@ -315,10 +327,6 @@ class AutoRaman:
     ############################################################################
     # wrappers over stupidly complicated WasatchDevice interface
     ############################################################################
-
-    def queue_message(self, msg):
-        log.debug(msg)
-        self.wasatch_device.hardware.queue_message("marquee_info", msg)
 
     def get_laser_warning_delay_sec(self):
         response = self.wasatch_device.hardware.handle_requests([SpectrometerRequest('get_laser_warning_delay_sec')])[0]

@@ -18,7 +18,7 @@ class SpectrometerResponse:
     incomplete: bool    = False
     progress: int       = 0
 
-    def transfer_response(self,old_response):
+    def transfer_response(self, old_response):
         self.data = old_response.data
         self.error_msg = old_response.error_msg
         self.error_lvl = old_response.error_lvl

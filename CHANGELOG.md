@@ -1,5 +1,12 @@
 # Changelog
 
+- 2024-09-17 2.2.3
+    - ensure all queued messages are flowed upstream
+    - AutoRaman
+        - output progress bar updates
+        - support configurable Laser Warning Delay
+        - averaging bugfix
+        - trying to support non-zero initial gain dB
 - 2024-09-12 2.2.2
     - added set/get_laser_warning_delay through change_settings
     - updated reset_fpga to restore key FPGA settings

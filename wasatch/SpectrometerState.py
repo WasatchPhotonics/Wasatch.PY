@@ -48,6 +48,7 @@ class SpectrometerState:
         self.laser_tec_mode = 0  # 0 off, 1 on, 2 auto, 3 auto-on
         self.laser_tec_enabled = False
         self.laser_tec_setpoint = 800
+        self.laser_warning_delay_sec = None
 
         # triggering
         self.trigger_source = self.TRIGGER_SOURCE_INTERNAL

@@ -307,10 +307,8 @@ class WasatchDeviceWrapper:
         if self.closing or not self.connected:
             return None
 
-        msg = None
-        while not self.message_queue.empty():
-            msg = self.message_queue.get_nowait()
-        return msg
+        if not self.message_queue.empty():
+            return self.message_queue.get_nowait()
 
     ##
     # This method is called by the Controller.  It checks the response_queue it 
