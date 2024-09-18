@@ -80,14 +80,6 @@ class AutoRaman:
         log.debug(f"measure: auto_raman_request {auto_raman_request}")
         self.wasatch_device.hardware.queue_message("progress_bar", -1)
 
-        # validate AutoRamanRequest
-        # if (auto_raman_request.start_integ_ms < auto_raman_request.max_integ_ms and
-        #     auto_raman_request.start_gain_db > 0):
-        #     log.error("AutoRaman does not support requests with non-zero gain and "
-        #             + "start_integ_ms ({auto_raman_request.start_integ_ms}) < "
-        #             + "max_integ_ms ({auto_raman_request.max_integ_ms})")
-        #     auto_raman_request.start_gain_db = 0
-
         # cache initial state
         self.start_time = datetime.now()
         initial_laser_warning_delay_sec = self.wasatch_device.settings.state.laser_warning_delay_sec
