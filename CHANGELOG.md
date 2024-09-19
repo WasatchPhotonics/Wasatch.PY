@@ -7,6 +7,8 @@
         - support configurable Laser Warning Delay
         - averaging bugfix
         - trying to support non-zero initial gain dB
+        - enable saving individual spectral components via environment variable
+        - don't perform dark-correction; leave that for caller
 - 2024-09-12 2.2.2
     - added set/get_laser_warning_delay through change_settings
     - updated reset_fpga to restore key FPGA settings
