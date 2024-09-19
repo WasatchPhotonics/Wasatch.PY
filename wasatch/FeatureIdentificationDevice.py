@@ -305,6 +305,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
                     # don't set anything if default setpoint looks way off
                     log.error(f"laser TEC setpoint looks invalid: {self.settings.eeprom.startup_temp_degC}")
 
+            self.get_laser_warning_delay_sec()
+
         # ######################################################################
         # Detector TEC
         # ######################################################################
@@ -2271,7 +2273,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
         if not self.settings.is_xs():
             log.error("laser warning delay only configurable on XS")
             return 0
-        return self._get_code(0x8b, lsb_len=1, label="GET_LASER_WARNING_DELAY_SEC")
+
+        result = self._get_code(0x8b, lsb_len=1, label="GET_LASER_WARNING_DELAY_SEC")
+        self.settings.state.laser_warning_delay_sec = result.data
+        return result
 
     ############################################################################
     # digital pot on 220250 Rev4A+
