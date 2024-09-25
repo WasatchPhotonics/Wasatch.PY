@@ -1131,11 +1131,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
         @verbatim
         Pixels    Count Description
         0-3       4     OB side ignored area
-        4-7       4     Effective pixel side ignored area       <-- "shelf" complicates
+        4-7       4     Effective pixel side ignored area
         8-15      8     Effective margin for color processing
         16-1935   1920  Recording pixel area
         1936-1944 9     Effective margin for color processing
-        1945-1948 4     Effective pixel side ignored area       <-- using these
+        1945-1948 4     Effective pixel side ignored area
         1949-1951 3     Dummy
         @endverbatim
 
@@ -1152,12 +1152,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.error("IMX EDC hard-coded to 1952px")
             return spectrum
 
-        # @todo: from FPGA 01.4.09+, we should be able to use spectrum [0:4] as 
-        #        TRUE optical dark; also, the "shelf" should be fixed, so the
-        #        entire left edge becomes usable.
-
         # this averages electrical dark over SPACE
-        electrical_dark = sum(spectrum[1946:1950]) / 4.0 
+        # dark_pixels = spectrum[4:8] + spectrum[1945:1949]      # effective pixel side ignored areas
+        dark_pixels = spectrum[8:16] + spectrum[1936:1945]       # effictive margin for color processing
+        electrical_dark = sum(dark_pixels) / len(dark_pixels)
 
         # this averages electrical dark over the last ONE SEC
         now = datetime.datetime.now()
@@ -1173,7 +1171,14 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.settings.state.edc_buffer = new_buf
 
         avg_dark = round(total / len(new_buf), 2)
-        return [ v - avg_dark for v in spectrum ]
+        new_spectrum = [ v - avg_dark for v in spectrum ]
+
+        if True:
+            old_mean = sum(    spectrum[16:1936]) / 1920
+            new_mean = sum(new_spectrum[16:1936]) / 1920
+            log.debug(f"apply_edc: len_buf {len(new_buf)}, avg_dark {avg_dark:.2f}, old_mean {old_mean:.2f}, new_mean {new_mean:.2f}, dark_pixels {dark_pixels}")
+
+        return new_spectrum
 
     def get_line(self, trigger: bool = True):
         """
