@@ -1124,13 +1124,13 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
     def apply_edc(self, spectrum):
         """
-        Use the "pixel side ignored area" for electrical dark correction (EDC).
+        Use optically black pixels for electrical dark correction (EDC).
 
         @par IMX385LQR-C datasheet (p8)
 
         @verbatim
         Pixels    Count Description
-        0-3       4     OB side ignored area
+        0-3       4     OB side ignored area                <-- using this
         4-7       4     Effective pixel side ignored area
         8-15      8     Effective margin for color processing
         16-1935   1920  Recording pixel area
@@ -1149,36 +1149,14 @@ class FeatureIdentificationDevice(InterfaceDevice):
             return spectrum
 
         if len(spectrum) != 1952:
-            log.error("IMX EDC hard-coded to 1952px")
+            log.error("IMX EDC hard-coded to expect 1952px")
             return spectrum
 
         # this averages electrical dark over SPACE
-        # dark_pixels = spectrum[4:8] + spectrum[1945:1949]      # effective pixel side ignored areas
-        dark_pixels = spectrum[8:16] + spectrum[1936:1945]       # effictive margin for color processing
-        electrical_dark = sum(dark_pixels) / len(dark_pixels)
+        dark_pixels = spectrum[0:4]
+        avg_dark = round(sum(dark_pixels) / len(dark_pixels), 2)
 
-        # this averages electrical dark over the last ONE SEC
-        now = datetime.datetime.now()
-        too_old = now - datetime.timedelta(seconds=1)
-
-        total = electrical_dark
-        new_buf = [ (now, electrical_dark) ]
-        for pair in self.settings.state.edc_buffer:
-            ts, value = pair
-            if ts >= too_old:
-                total += value
-                new_buf.append( (ts, value) )
-        self.settings.state.edc_buffer = new_buf
-
-        avg_dark = round(total / len(new_buf), 2)
-        new_spectrum = [ v - avg_dark for v in spectrum ]
-
-        if True:
-            old_mean = sum(    spectrum[16:1936]) / 1920
-            new_mean = sum(new_spectrum[16:1936]) / 1920
-            log.debug(f"apply_edc: len_buf {len(new_buf)}, avg_dark {avg_dark:.2f}, old_mean {old_mean:.2f}, new_mean {new_mean:.2f}, dark_pixels {dark_pixels}")
-
-        return new_spectrum
+        return [ v - avg_dark for v in spectrum ]
 
     def get_line(self, trigger: bool = True):
         """
@@ -1394,14 +1372,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         # some detectors have "garbage" pixels at the front or end of every
         # spectrum (sync bytes and what-not)
-        if self.settings.is_micro() and self.settings.state.detector_regions is None:
-            if self.settings.is_imx392():
-                utils.stomp_first(spectrum, 3)
-                utils.stomp_last (spectrum, 17)
-            else:
-                # presumably IMX385
-                utils.stomp_first(spectrum, 3)
-                utils.stomp_last (spectrum, 1)
+        if self.settings.is_imx392() and self.settings.state.detector_regions is None:
+            utils.stomp_first(spectrum, 3)
+            utils.stomp_last (spectrum, 17)
 
         ########################################################################
         # Electrical Dark Correction (EDC, experimental)
