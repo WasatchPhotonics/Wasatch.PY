@@ -1131,12 +1131,12 @@ class FeatureIdentificationDevice(InterfaceDevice):
         @verbatim
         Pixels    Count Description
         0-3       4     OB side ignored area
-        4-8       4     Effective pixel side ignored area       <-- "shelf" complicates
-        9-16      8     Effective margin for color processing
-        17-1936   1920  Recording pixel area
-        1937-1945 9     Effective margin for color processing
-        1946-1949 4     Effective pixel side ignored area       <-- using these
-        1950-1952 3     Dummy
+        4-7       4     Effective pixel side ignored area       <-- "shelf" complicates
+        8-15      8     Effective margin for color processing
+        16-1935   1920  Recording pixel area
+        1936-1944 9     Effective margin for color processing
+        1945-1948 4     Effective pixel side ignored area       <-- using these
+        1949-1951 3     Dummy
         @endverbatim
 
         @todo we might want to make buffer length configurable, either in spectra
