@@ -323,7 +323,7 @@ class WasatchDevice(InterfaceDevice):
         # This has been captured in https://github.com/WasatchPhotonics/ENLIGHTEN/issues/474
 
         auto_enable_laser = tor is not None and tor.enable_laser_before 
-        log.debug("acquire_spectrum: auto_enable_laser = %s", auto_enable_laser)
+        # log.debug("acquire_spectrum: auto_enable_laser = %s", auto_enable_laser)
 
         dark_reading = SpectrometerResponse()
         if auto_enable_laser and tor.take_dark:
@@ -421,7 +421,7 @@ class WasatchDevice(InterfaceDevice):
                         if res.error_msg != '':
                             return res
                         value = res.data
-                        log.debug(f"WasatchDevice.acquire_spectrum: storing {attr} = {value}")
+                        # log.debug(f"WasatchDevice.acquire_spectrum: storing {attr} = {value}")
                         setattr(reading, attr, value)
 
                 if self.hardware.shutdown_requested:
@@ -674,7 +674,7 @@ class WasatchDevice(InterfaceDevice):
         reading = None
         for loop_index in range(loop_count):
 
-            log.debug(f"take_one_averaged_reading: loop_index {loop_index+1} of {loop_count}")
+            # log.debug(f"take_one_averaged_reading: loop_index {loop_index+1} of {loop_count}")
 
             # start a new reading
             # NOTE: reading.timestamp is when reading STARTED, not FINISHED!
@@ -853,7 +853,7 @@ class WasatchDevice(InterfaceDevice):
             # non-TakeOneRequest averages).
 
             if not reading.failure:
-                log.debug("take_one_averaged_reading: not failure")
+                # log.debug("take_one_averaged_reading: not failure")
                 if sum_locally:
                     log.debug("take_one_averaged_reading: summing locally")
                     if self.sum_count == 0:

@@ -1517,7 +1517,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         self.get_poll_status()
         stable = PollStatus.IDLE == self.settings.state.poll_status
-        log.debug(f"is_sensor_stable: sensor {'IS' if stable else 'IS NOT'} stable (poll_status 0x{self.settings.state.poll_status:02x})")
+        # log.debug(f"is_sensor_stable: sensor {'IS' if stable else 'IS NOT'} stable (poll_status 0x{self.settings.state.poll_status:02x})")
         return stable
 
     def get_poll_status(self):
@@ -1638,7 +1638,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # self.settings.state.laser_tec_mode = mode 
 
         enabled = 0 != result.data
-        log.debug(f"get_laser_tec_mode: enabled {enabled}")
+        # log.debug(f"get_laser_tec_mode: enabled {enabled}")
         self.settings.state.laser_tec_enabled = enabled
 
         return result
@@ -1710,7 +1710,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                            4.2553356470494626e-010 ]
                 for i, coeff in enumerate(coeffs):
                     degC += coeff * pow(raw, i)
-                    log.debug(f"get_laser_temperature_degC: degC {degC:g} after adding {coeff} x (pow({raw}, {i}) = {pow(raw, i):g})")
+                    # log.debug(f"get_laser_temperature_degC: degC {degC:g} after adding {coeff} x (pow({raw}, {i}) = {pow(raw, i):g})")
             else:
                 # when not using TEC IC
                 voltage    = 2.5 * raw / 4096
@@ -2301,7 +2301,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
             return SpectrometerResponse(data=False,error_msg="no laser installed")
 
         if not self.settings.eeprom.has_interlock_feedback:
-            log.debug("CAN_LASER_FIRE requires has_interlock_feedback (defaulting True)")
+            # log.debug("CAN_LASER_FIRE requires has_interlock_feedback (defaulting True)")
             return SpectrometerResponse(data=True)
 
         res = self._get_code(0xef, label="CAN_LASER_FIRE", msb_len=1)
@@ -2316,7 +2316,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         @returns SpectrometerResponse
         """
         if not self.settings.eeprom.has_interlock_feedback:
-            log.debug("IS_LASER_FIRING requires has_interlock_feedback (defaulting to laser_enabled)")
+            # log.debug("IS_LASER_FIRING requires has_interlock_feedback (defaulting to laser_enabled)")
             return self.get_laser_enabled()
 
         res = self.get_upper_code(0x0d, label="IS_LASER_FIRING", msb_len=1)

@@ -34,7 +34,7 @@ class FirmwareRequirements:
             if "min" in reqt:
                 min_= reqt["min"]
                 if vercmp(micro_ver, min_) < 0:
-                    log.debug(f"supports: {feature} NOT supported (micro {micro_ver} < required {min_}")
+                    # log.debug(f"supports: {feature} NOT supported (micro {micro_ver} < required {min_}")
                     return False
             # could support "max", list etc
 
@@ -43,11 +43,11 @@ class FirmwareRequirements:
             if "min" in reqt:
                 min_ = reqt["min"]
                 if vercmp(fpga_ver, min_) < 0:
-                    log.debug(f"supports: {feature} NOT supported (fpga {fpga_ver} < required {min_}")
+                    # log.debug(f"supports: {feature} NOT supported (fpga {fpga_ver} < required {min_}")
                     return False
             # could support "max", list etc
 
-        log.debug(f"supports: {feature} supported")
+        # log.debug(f"supports: {feature} supported")
         return True
 
     def __repr__(self):
