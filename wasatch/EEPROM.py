@@ -53,7 +53,7 @@ class EEPROM:
         self.sig_laser_tec               = False
         self.has_interlock_feedback      = False
         self.has_shutter                 = False
-        self.ble_power_enabled           = True
+        self.disable_ble_power           = False
         self.disable_laser_armed_indicator = False
         self.excitation_nm               = 0.0
         self.excitation_nm_float         = 0.0
@@ -402,7 +402,7 @@ class EEPROM:
             self.sig_laser_tec                 = 0 != self.feature_mask & 0x0020
             self.has_interlock_feedback        = 0 != self.feature_mask & 0x0040
             self.has_shutter                   = 0 != self.feature_mask & 0x0080
-            self.ble_power_enabled             = 0 != self.feature_mask & 0x0100
+            self.disable_ble_power             = 0 != self.feature_mask & 0x0100
             self.disable_laser_armed_indicator = 0 != self.feature_mask & 0x0200
         else:
             self.invert_x_axis                 = 0 
@@ -413,7 +413,7 @@ class EEPROM:
             self.sig_laser_tec                 = 0
             self.has_interlock_feedback        = 0
             self.has_shutter                   = 0
-            self.ble_power_enabled             = 0 
+            self.disable_ble_power             = 0 
             self.disable_laser_armed_indicator = 0
 
         # ######################################################################
@@ -457,7 +457,7 @@ class EEPROM:
         mask |= 0x0020 if self.sig_laser_tec                 else 0
         mask |= 0x0040 if self.has_interlock_feedback        else 0
         mask |= 0x0080 if self.has_shutter                   else 0
-        mask |= 0x0100 if self.ble_power_enabled             else 0
+        mask |= 0x0100 if self.disable_ble_power             else 0
         mask |= 0x0200 if self.disable_laser_armed_indicator else 0
         return mask
 
@@ -821,7 +821,7 @@ class EEPROM:
         log.debug("  SiG Laser TEC:    %s", self.sig_laser_tec)
         log.debug("  Int'Lck Feedback: %s", self.has_interlock_feedback)
         log.debug("  Shutter:          %s", self.has_shutter)
-        log.debug("  BLE Power Enable: %s", self.ble_power_enabled)
+        log.debug("  Disable BLE Power:%s", self.disable_ble_power)
         log.debug("  Dis Laser Arm Ind:%s", self.disable_laser_armed_indicator)
         log.debug("  Excitation:       %s nm", self.excitation_nm)
         log.debug("  Excitation (f):   %.2f nm", self.excitation_nm_float)
