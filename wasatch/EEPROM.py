@@ -392,23 +392,27 @@ class EEPROM:
         # ######################################################################
 
         if self.format >= 9:
-            self.invert_x_axis           = 0 != self.feature_mask & 0x0001
-            self.bin_2x2                 = 0 != self.feature_mask & 0x0002
-            self.gen15                   = 0 != self.feature_mask & 0x0004
-            self.cutoff_filter_installed = 0 != self.feature_mask & 0x0008
-            self.hardware_even_odd       = 0 != self.feature_mask & 0x0010
-            self.sig_laser_tec           = 0 != self.feature_mask & 0x0020
-            self.has_interlock_feedback  = 0 != self.feature_mask & 0x0040
-            self.has_shutter             = 0 != self.feature_mask & 0x0080
+            self.invert_x_axis                 = 0 != self.feature_mask & 0x0001
+            self.bin_2x2                       = 0 != self.feature_mask & 0x0002
+            self.gen15                         = 0 != self.feature_mask & 0x0004
+            self.cutoff_filter_installed       = 0 != self.feature_mask & 0x0008
+            self.hardware_even_odd             = 0 != self.feature_mask & 0x0010
+            self.sig_laser_tec                 = 0 != self.feature_mask & 0x0020
+            self.has_interlock_feedback        = 0 != self.feature_mask & 0x0040
+            self.has_shutter                   = 0 != self.feature_mask & 0x0080
+            self.ble_power_enabled             = 0 != self.feature_mask & 0x0100
+            self.disable_laser_armed_indicator = 0 != self.feature_mask & 0x0200
         else:
-            self.invert_x_axis           = 0 
-            self.bin_2x2                 = 0
-            self.gen15                   = 0
-            self.cutoff_filter_installed = 0
-            self.hardware_even_odd       = 0
-            self.sig_laser_tec           = 0
-            self.has_interlock_feedback  = 0
-            self.has_shutter             = 0
+            self.invert_x_axis                 = 0 
+            self.bin_2x2                       = 0
+            self.gen15                         = 0
+            self.cutoff_filter_installed       = 0
+            self.hardware_even_odd             = 0
+            self.sig_laser_tec                 = 0
+            self.has_interlock_feedback        = 0
+            self.has_shutter                   = 0
+            self.ble_power_enabled             = 0
+            self.disable_laser_armed_indicator = 0
 
         # ######################################################################
         # sanity checks
