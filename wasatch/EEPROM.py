@@ -405,16 +405,16 @@ class EEPROM:
             self.disable_ble_power             = 0 != self.feature_mask & 0x0100
             self.disable_laser_armed_indicator = 0 != self.feature_mask & 0x0200
         else:
-            self.invert_x_axis                 = 0 
-            self.bin_2x2                       = 0
-            self.gen15                         = 0
-            self.cutoff_filter_installed       = 0
-            self.hardware_even_odd             = 0
-            self.sig_laser_tec                 = 0
-            self.has_interlock_feedback        = 0
-            self.has_shutter                   = 0
-            self.disable_ble_power             = 0 
-            self.disable_laser_armed_indicator = 0
+            self.invert_x_axis                 = False 
+            self.bin_2x2                       = False
+            self.gen15                         = False
+            self.cutoff_filter_installed       = False
+            self.hardware_even_odd             = False
+            self.sig_laser_tec                 = False
+            self.has_interlock_feedback        = False
+            self.has_shutter                   = False
+            self.disable_ble_power             = False 
+            self.disable_laser_armed_indicator = False
 
         # ######################################################################
         # sanity checks
