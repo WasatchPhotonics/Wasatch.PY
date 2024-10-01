@@ -53,6 +53,8 @@ class EEPROM:
         self.sig_laser_tec               = False
         self.has_interlock_feedback      = False
         self.has_shutter                 = False
+        self.disable_ble_power           = False
+        self.disable_laser_armed_indicator = False
         self.excitation_nm               = 0.0
         self.excitation_nm_float         = 0.0
         self.slit_size_um                = 0
@@ -392,23 +394,27 @@ class EEPROM:
         # ######################################################################
 
         if self.format >= 9:
-            self.invert_x_axis           = 0 != self.feature_mask & 0x0001
-            self.bin_2x2                 = 0 != self.feature_mask & 0x0002
-            self.gen15                   = 0 != self.feature_mask & 0x0004
-            self.cutoff_filter_installed = 0 != self.feature_mask & 0x0008
-            self.hardware_even_odd       = 0 != self.feature_mask & 0x0010
-            self.sig_laser_tec           = 0 != self.feature_mask & 0x0020
-            self.has_interlock_feedback  = 0 != self.feature_mask & 0x0040
-            self.has_shutter             = 0 != self.feature_mask & 0x0080
+            self.invert_x_axis                 = 0 != self.feature_mask & 0x0001
+            self.bin_2x2                       = 0 != self.feature_mask & 0x0002
+            self.gen15                         = 0 != self.feature_mask & 0x0004
+            self.cutoff_filter_installed       = 0 != self.feature_mask & 0x0008
+            self.hardware_even_odd             = 0 != self.feature_mask & 0x0010
+            self.sig_laser_tec                 = 0 != self.feature_mask & 0x0020
+            self.has_interlock_feedback        = 0 != self.feature_mask & 0x0040
+            self.has_shutter                   = 0 != self.feature_mask & 0x0080
+            self.disable_ble_power             = 0 != self.feature_mask & 0x0100
+            self.disable_laser_armed_indicator = 0 != self.feature_mask & 0x0200
         else:
-            self.invert_x_axis           = 0 
-            self.bin_2x2                 = 0
-            self.gen15                   = 0
-            self.cutoff_filter_installed = 0
-            self.hardware_even_odd       = 0
-            self.sig_laser_tec           = 0
-            self.has_interlock_feedback  = 0
-            self.has_shutter             = 0
+            self.invert_x_axis                 = False 
+            self.bin_2x2                       = False
+            self.gen15                         = False
+            self.cutoff_filter_installed       = False
+            self.hardware_even_odd             = False
+            self.sig_laser_tec                 = False
+            self.has_interlock_feedback        = False
+            self.has_shutter                   = False
+            self.disable_ble_power             = False 
+            self.disable_laser_armed_indicator = False
 
         # ######################################################################
         # sanity checks
@@ -443,14 +449,16 @@ class EEPROM:
 
     def generate_feature_mask(self):
         mask = 0
-        mask |= 0x0001 if self.invert_x_axis           else 0
-        mask |= 0x0002 if self.bin_2x2                 else 0
-        mask |= 0x0004 if self.gen15                   else 0
-        mask |= 0x0008 if self.cutoff_filter_installed else 0
-        mask |= 0x0010 if self.hardware_even_odd       else 0
-        mask |= 0x0020 if self.sig_laser_tec           else 0
-        mask |= 0x0040 if self.has_interlock_feedback  else 0
-        mask |= 0x0080 if self.has_shutter             else 0
+        mask |= 0x0001 if self.invert_x_axis                 else 0
+        mask |= 0x0002 if self.bin_2x2                       else 0
+        mask |= 0x0004 if self.gen15                         else 0
+        mask |= 0x0008 if self.cutoff_filter_installed       else 0
+        mask |= 0x0010 if self.hardware_even_odd             else 0
+        mask |= 0x0020 if self.sig_laser_tec                 else 0
+        mask |= 0x0040 if self.has_interlock_feedback        else 0
+        mask |= 0x0080 if self.has_shutter                   else 0
+        mask |= 0x0100 if self.disable_ble_power             else 0
+        mask |= 0x0200 if self.disable_laser_armed_indicator else 0
         return mask
 
     ##
@@ -813,6 +821,8 @@ class EEPROM:
         log.debug("  SiG Laser TEC:    %s", self.sig_laser_tec)
         log.debug("  Int'Lck Feedback: %s", self.has_interlock_feedback)
         log.debug("  Shutter:          %s", self.has_shutter)
+        log.debug("  Disable BLE Power:%s", self.disable_ble_power)
+        log.debug("  Dis Laser Arm Ind:%s", self.disable_laser_armed_indicator)
         log.debug("  Excitation:       %s nm", self.excitation_nm)
         log.debug("  Excitation (f):   %.2f nm", self.excitation_nm_float)
         log.debug("  Laser Warmup Sec: %d", self.laser_warmup_sec)
