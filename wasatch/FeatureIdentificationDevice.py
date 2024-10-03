@@ -1128,9 +1128,14 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.debug("GET_BLE_FIRMWARE_VERSION requires ARM")
             return None
 
-        data = self._get_code(0xff, wValue=0x2d, wLength=32, label="GET_BLE_FIRMWARE_VERSION")
+        result = self._get_code(0xff, wValue=0x2d, wLength=32, label="GET_BLE_FIRMWARE_VERSION")
+        if result is None:
+            return None
+
+        data = result.data
         if data is None:
             return None
+
         s = ""
         for c in data:
             if c == 0:
