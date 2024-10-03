@@ -252,6 +252,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.get_microcontroller_firmware_version()
         self.get_fpga_firmware_version()
         self.get_microcontroller_serial_number()
+        self.get_ble_firmware_version()
 
         # ######################################################################
         # model-specific settings
@@ -1121,6 +1122,27 @@ class FeatureIdentificationDevice(InterfaceDevice):
         des = "".join(f"{v:02x}" for v in data) # Device Electronic Signature
         self.settings.microcontroller_serial_number = des
         return SpectrometerResponse(data=des)
+
+    def get_ble_firmware_version(self):
+        if not self.settings.is_arm():
+            log.debug("GET_BLE_FIRMWARE_VERSION requires ARM")
+            return None
+
+        result = self._get_code(0xff, wValue=0x2d, wLength=32, label="GET_BLE_FIRMWARE_VERSION")
+        if result is None:
+            return None
+
+        data = result.data
+        if data is None:
+            return None
+
+        s = ""
+        for c in data:
+            if c == 0:
+                break
+            s += chr(c)
+        self.settings.ble_firmware_version = s
+        return SpectrometerResponse(data=s)
 
     def apply_edc(self, spectrum):
         """
@@ -3233,6 +3255,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 "get_battery_percentage",
                 "get_battery_register",
                 "get_battery_state_raw",
+                "get_ble_firmware_version",
                 "get_ccd_sensing_threshold",
                 "get_ccd_threshold_sensing_mode",
                 "get_dac",

@@ -1,8 +1,9 @@
 # Changelog
 
-- 2024-??-?? 2.2.4
+- 2024-10-03 2.2.4
     - added EEPROM.disable_ble_power
     - added EEPROM.disable_laser_armed_indicator
+    - added SpectrometerSettings.ble_firmware_version
 - 2024-09-17 2.2.3
     - ensure all queued messages are flowed upstream
     - AutoRaman
