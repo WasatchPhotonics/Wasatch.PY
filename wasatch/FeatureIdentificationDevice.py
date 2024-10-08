@@ -252,6 +252,18 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.get_microcontroller_firmware_version()
         self.get_fpga_firmware_version()
         self.get_microcontroller_serial_number()
+
+        # issue: BL652 may not be fully booted if this was a hotplug. We could
+        #        of course re-poll if None, but the initial SpectrometerSettings
+        #        will already have been used to populate the EEPROMEditor. What
+        #        we really need to do is send a "change" in this setting upstream
+        #        via the MessageQueue, and have a listener in ENLIGHTEN/caller
+        #        for such updates. The way we mainly do this now is by adding
+        #        fields to Reading (like temperature, battery, laser interlock
+        #        etc), since most dynamic (uncommanded) changes in spectrometer 
+        #        state are usually measurement-related. It would be a little 
+        #        weird to add a "dynamic firmware version" to Reading, implying
+        #        that firmware versions might suddenly change mid-runtime...
         self.get_ble_firmware_version()
 
         # ######################################################################
