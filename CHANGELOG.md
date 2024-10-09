@@ -1,6 +1,6 @@
 # Changelog
 
-- 2024-??-?? 2.2.5
+- 2024-10-09 2.2.5
     - added IMX385
     - added EEPROM.ssc_enabled
 - 2024-10-03 2.2.4
