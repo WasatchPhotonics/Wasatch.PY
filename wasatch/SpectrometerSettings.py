@@ -457,6 +457,9 @@ class SpectrometerSettings:
                self.eeprom.detector is not None and \
                "imx" in self.eeprom.detector.lower()
 
+    def is_imx385(self):
+        return self.is_imx() and "imx385" in self.eeprom.detector.lower()
+
     def is_imx392(self): # -> bool 
         return self.is_imx() and "imx392" in self.eeprom.detector.lower()
 
