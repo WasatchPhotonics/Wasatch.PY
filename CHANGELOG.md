@@ -1,5 +1,8 @@
 # Changelog
 
+- 2024-10-09 2.2.5
+    - added IMX385
+    - added EEPROM.ssc_enabled
 - 2024-10-03 2.2.4
     - added EEPROM.disable_ble_power
     - added EEPROM.disable_laser_armed_indicator

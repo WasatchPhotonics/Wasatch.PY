@@ -25,6 +25,7 @@ from .MockUSBDevice        import MockUSBDevice
 from .DetectorROI          import DetectorROI
 from .PollStatus           import PollStatus
 from .EEPROM               import EEPROM
+from .IMX385               import IMX385
 
 log = logging.getLogger(__name__)
 
@@ -131,6 +132,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.retry_max = 3
 
         self.process_f = self._init_process_funcs()
+        self.imx385 = IMX385()
 
     def handle_requests(self, requests: list[SpectrometerRequest]):
         """
@@ -580,6 +582,13 @@ class FeatureIdentificationDevice(InterfaceDevice):
     def _apply_2x2_binning(self, spectrum: list[float]):
         if not self.settings.eeprom.bin_2x2:
             return spectrum
+
+        if self.settings.eeprom.ssc_enabled:
+            return self.imx385.correct(spectrum, self.settings.wavelengths)
+        else:
+            return self._apply_2x2_binning_old(spectrum)
+
+    def _apply_2x2_binning_old(self, spectrum: list[float]):
 
         def bin2x2(a):
             if a is None or len(a) == 0:
@@ -3450,6 +3459,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         process_f["graph_alternating_pixels"]           = lambda x: self.settings.state.set("graph_alternating_pixels", bool(x))
         process_f["swap_alternating_pixels"]            = lambda x: self.settings.state.set("swap_alternating_pixels", bool(x))
         process_f["edc_enable"]                         = lambda x: self.settings.state.set("edc_enabled", bool(x))
+        process_f["ssc_enable"]                         = lambda x: self.settings.eeprom.set("ssc_enabled", bool(x))
         process_f["invert_x_axis"]                      = lambda x: self.settings.eeprom.set("invert_x_axis", bool(x))
         process_f["bin_2x2"]                            = lambda x: self.settings.eeprom.set("bin_2x2", bool(x))
         process_f["wavenumber_correction"]              = lambda x: self.settings.set_wavenumber_correction(float(x))
