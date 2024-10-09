@@ -45,10 +45,14 @@ class IMX385:
             wavelength = wavelengths[i]
 
             color = "red" if i % 2 == 0 else "blue" 
-            green_factor = np.interp(wavelength, self.factors["green"], self.wavelengths)
-            color_factor = np.interp(wavelength, self.factors[ color ], self.wavelengths)
+            green_factor = np.interp(wavelength, self.wavelengths, self.factors["green"])
+            color_factor = np.interp(wavelength, self.wavelengths, self.factors[ color ])
 
             true_intensity = reported_intensity / (green_factor + color_factor)
+
+            if i % 100 == 0:
+                log.debug(f"correct: pixel {i:4d}, wavelength {wavelength:8.2f}nm, reported {reported_intensity:8.2f}, green {green_factor:8.2f}, color {color_factor:8.2f}, true {true_intensity:8.2f}")
+
             corrected.append(true_intensity)
 
         return corrected

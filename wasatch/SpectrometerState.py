@@ -122,6 +122,7 @@ class SpectrometerState:
         # pixel binning
         self.graph_alternating_pixels = False
         self.swap_alternating_pixels = False
+        self.ssc_enabled = False # Sony's Sensor Sensitivity Characteristics
 
         # mechanical articulation (e.g. Sandbox optics); this is currently 
         # treated as an integer with discrete steps
