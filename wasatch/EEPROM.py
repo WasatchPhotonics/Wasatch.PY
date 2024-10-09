@@ -55,6 +55,7 @@ class EEPROM:
         self.has_shutter                 = False
         self.disable_ble_power           = False
         self.disable_laser_armed_indicator = False
+        self.ssc_enabled                 = False    # Sony's Sensor Sensitivity Characteristics
         self.excitation_nm               = 0.0
         self.excitation_nm_float         = 0.0
         self.slit_size_um                = 0
@@ -404,6 +405,7 @@ class EEPROM:
             self.has_shutter                   = 0 != self.feature_mask & 0x0080
             self.disable_ble_power             = 0 != self.feature_mask & 0x0100
             self.disable_laser_armed_indicator = 0 != self.feature_mask & 0x0200
+            self.ssc_enabled                   = 0 != self.feature_mask & 0x0400
         else:
             self.invert_x_axis                 = False 
             self.bin_2x2                       = False
@@ -415,6 +417,7 @@ class EEPROM:
             self.has_shutter                   = False
             self.disable_ble_power             = False 
             self.disable_laser_armed_indicator = False
+            self.ssc_enabled                   = False
 
         # ######################################################################
         # sanity checks
@@ -459,6 +462,7 @@ class EEPROM:
         mask |= 0x0080 if self.has_shutter                   else 0
         mask |= 0x0100 if self.disable_ble_power             else 0
         mask |= 0x0200 if self.disable_laser_armed_indicator else 0
+        mask |= 0x0400 if self.ssc_enabled                   else 0
         return mask
 
     ##
@@ -823,6 +827,7 @@ class EEPROM:
         log.debug("  Shutter:          %s", self.has_shutter)
         log.debug("  Disable BLE Power:%s", self.disable_ble_power)
         log.debug("  Dis Laser Arm Ind:%s", self.disable_laser_armed_indicator)
+        log.debug("  SSC Enabled:     :%s", self.ssc_enabled)
         log.debug("  Excitation:       %s nm", self.excitation_nm)
         log.debug("  Excitation (f):   %.2f nm", self.excitation_nm_float)
         log.debug("  Laser Warmup Sec: %d", self.laser_warmup_sec)

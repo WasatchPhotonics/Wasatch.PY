@@ -583,7 +583,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         if not self.settings.eeprom.bin_2x2:
             return spectrum
 
-        if self.settings.state.ssc_enabled:
+        if self.settings.eeprom.ssc_enabled:
             return self.imx385.correct(spectrum, self.settings.wavelengths)
         else:
             return self._apply_2x2_binning_old(spectrum)
@@ -926,15 +926,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.debug("declining to initialize session integration_time_ms from spectrometer")
 
         return SpectrometerResponse(data=ms)
-
-    def set_ssc_enable(self, flag):
-        """ Sony's Sensor Sensitivity Characteristics 
-            @see wasatch.IMX385
-        """
-        if not isinstance(flag, bool):
-            flag = str(flag).lower() == "true"
-
-        self.settings.state.ssc_enabled = flag
 
     def set_dfu_enable(self):
         """
@@ -3468,7 +3459,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         process_f["graph_alternating_pixels"]           = lambda x: self.settings.state.set("graph_alternating_pixels", bool(x))
         process_f["swap_alternating_pixels"]            = lambda x: self.settings.state.set("swap_alternating_pixels", bool(x))
         process_f["edc_enable"]                         = lambda x: self.settings.state.set("edc_enabled", bool(x))
-        process_f["ssc_enable"]                         = lambda x: self.settings.state.set("ssc_enabled", bool(x))
+        process_f["ssc_enable"]                         = lambda x: self.settings.eeprom.set("ssc_enabled", bool(x))
         process_f["invert_x_axis"]                      = lambda x: self.settings.eeprom.set("invert_x_axis", bool(x))
         process_f["bin_2x2"]                            = lambda x: self.settings.eeprom.set("bin_2x2", bool(x))
         process_f["wavenumber_correction"]              = lambda x: self.settings.set_wavenumber_correction(float(x))
