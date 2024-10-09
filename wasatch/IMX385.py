@@ -44,7 +44,7 @@ class IMX385:
             reported_intensity = spectrum[i]
             wavelength = wavelengths[i]
 
-            color = "red" if i % 2 == 0 else "blue" 
+            color = "blue" if i % 2 == 0 else "red" 
             green_factor = np.interp(wavelength, self.wavelengths, self.factors["green"])
             color_factor = np.interp(wavelength, self.wavelengths, self.factors[ color ])
 
