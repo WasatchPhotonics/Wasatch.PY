@@ -584,13 +584,13 @@ class FeatureIdentificationDevice(InterfaceDevice):
             return spectrum
         elif self.settings.eeprom.ssc_enabled:
             spectrum = self.imx385.correct(spectrum, self.settings.wavelengths)
-            return imx385.bin2x2(spectrum)
+            return self.imx385.bin2x2(spectrum)
         elif self.settings.state.detector_regions is None:
-            return imx385.bin2x2(spectrum)
+            return self.imx385.bin2x2(spectrum)
         else:
             combined = []
             for subspectrum in self.settings.state.detector_regions.split(spectrum):
-                combined.extend(imx385.bin2x2(subspectrum))
+                combined.extend(self.imx385.bin2x2(subspectrum))
             return combined
 
     def _correct_bad_pixels(self, spectrum: list[float]):
