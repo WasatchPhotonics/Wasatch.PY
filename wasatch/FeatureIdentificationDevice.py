@@ -582,32 +582,16 @@ class FeatureIdentificationDevice(InterfaceDevice):
     def _apply_2x2_binning(self, spectrum: list[float]):
         if not self.settings.eeprom.bin_2x2:
             return spectrum
-
-        if self.settings.eeprom.ssc_enabled:
-            return self.imx385.correct(spectrum, self.settings.wavelengths)
+        elif self.settings.eeprom.ssc_enabled:
+            spectrum = self.imx385.correct(spectrum, self.settings.wavelengths)
+            return imx385.bin2x2(spectrum)
+        elif self.settings.state.detector_regions is None:
+            return imx385.bin2x2(spectrum)
         else:
-            return self._apply_2x2_binning_old(spectrum)
-
-    def _apply_2x2_binning_old(self, spectrum: list[float]):
-
-        def bin2x2(a):
-            if a is None or len(a) == 0:
-                return a
-            binned = []
-            for i in range(len(a)-1):
-                binned.append((a[i] + a[i+1]) / 2.0)
-            binned.append(a[-1])
-            return binned
-
-        if self.settings.state.detector_regions is None:
-            log.debug("applying bin_2x2")
-            return bin2x2(spectrum)
-
-        log.debug("applying bin_2x2 to regions")
-        combined = []
-        for subspectrum in self.settings.state.detector_regions.split(spectrum):
-            combined.extend(bin2x2(subspectrum))
-        return combined
+            combined = []
+            for subspectrum in self.settings.state.detector_regions.split(spectrum):
+                combined.extend(imx385.bin2x2(subspectrum))
+            return combined
 
     def _correct_bad_pixels(self, spectrum: list[float]):
         """
