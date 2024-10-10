@@ -319,7 +319,7 @@ class AutoRaman:
 
         # 3. take dark
         self.wasatch_device.hardware.queue_message("marquee_info", f"averaging {num_avg} dark spectra at {int_time}ms")
-        avg_dark = self.get_avg_spectrum(int_time, gain_db, num_avg, throwaway=False, label="dark")
+        avg_dark = self.get_avg_spectrum(int_time, gain_db, num_avg, throwaway=True, label="dark")
         self.save(avg_dark, "averaged dark")
 
         # note that we don't actually perform dark subtraction here -- we return
