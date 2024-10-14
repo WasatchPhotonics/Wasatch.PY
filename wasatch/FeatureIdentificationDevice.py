@@ -593,6 +593,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
             return self.imx385.bin_2x2(spectrum)
         elif mode == IMX385.BIN_4X2:
             return self.imx385.bin_4x2(spectrum)
+        else:
+            # there may be legacy units in the field where this byte is 
+            # uninitialized to 0xff...treat as 0x00 for now
+            log.error("invalid horizontal binning mode {mode}...defaulting to bin_2x2")
+            return self.imx385.bin_2x2(spectrum)
 
     def _correct_bad_pixels(self, spectrum: list[float]):
         """
@@ -3458,7 +3463,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
         process_f["graph_alternating_pixels"]           = lambda x: self.settings.state.set("graph_alternating_pixels", bool(x))
         process_f["swap_alternating_pixels"]            = lambda x: self.settings.state.set("swap_alternating_pixels", bool(x))
         process_f["edc_enable"]                         = lambda x: self.settings.state.set("edc_enabled", bool(x))
-        process_f["ssc_enable"]                         = lambda x: self.settings.eeprom.set("ssc_enabled", bool(x))
         process_f["invert_x_axis"]                      = lambda x: self.settings.eeprom.set("invert_x_axis", bool(x))
         process_f["horiz_binning_enable"]               = lambda x: self.settings.eeprom.set("horiz_binning_enabled", bool(x))
         process_f["wavenumber_correction"]              = lambda x: self.settings.set_wavenumber_correction(float(x))
