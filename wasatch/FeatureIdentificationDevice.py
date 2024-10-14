@@ -580,7 +580,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return True
 
     def _apply_horizontal_binning(self, spectrum: list[float]):
-        if not self.settings.eeprom.enable_horiz_binning:
+        if not self.settings.eeprom.horiz_binning_enabled:
             return spectrum
 
         mode = self.settings.eeprom.horiz_binning_mode
