@@ -293,7 +293,7 @@ class SPIDevice(InterfaceDevice):
                 self.sum_count += 1
                 log.debug("device.take_one_averaged_reading: summed_spectra : %s ...", self.summed_spectra[0:9])
 
-        if self.settings.eeprom.bin_2x2:
+        if self.settings.eeprom.horiz_binning_enabled:
             # perform the 2x2 bin software side
             next_idx_values = reading.spectrum[1:]
             # average all except the last value, which is just appended as is

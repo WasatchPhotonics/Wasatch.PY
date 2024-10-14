@@ -579,19 +579,20 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         return True
 
-    def _apply_2x2_binning(self, spectrum: list[float]):
-        if not self.settings.eeprom.bin_2x2:
+    def _apply_horizontal_binning(self, spectrum: list[float]):
+        if not self.settings.eeprom.enable_horiz_binning:
             return spectrum
-        elif self.settings.eeprom.ssc_enabled:
-            spectrum = self.imx385.correct(spectrum, self.settings.wavelengths)
-            return self.imx385.bin2x2(spectrum)
-        elif self.settings.state.detector_regions is None:
-            return self.imx385.bin2x2(spectrum)
-        else:
-            combined = []
-            for subspectrum in self.settings.state.detector_regions.split(spectrum):
-                combined.extend(self.imx385.bin2x2(subspectrum))
-            return combined
+
+        mode = self.settings.eeprom.horiz_binning_mode
+        if mode == IMX385.BIN_2X2:
+            return self.imx385.bin_2x2(spectrum)
+        elif mode == IMX385.CORRECT_SSC:
+            return self.imx385.correct_ssc(spectrum, self.settings.wavelengths)
+        elif mode == IMX385.CORRECT_SSC_BIN_2X2:
+            spectrum = self.imx385.correct_ssc(spectrum, self.settings.wavelengths)
+            return self.imx385.bin_2x2(spectrum)
+        elif mode == IMX385.BIN_4X2:
+            return self.imx385.bin_4x2(spectrum)
 
     def _correct_bad_pixels(self, spectrum: list[float]):
         """
@@ -1069,9 +1070,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
     def get_sensor_line_length(self):
         value = self.get_upper_code(0x03, label="GET_LINE_LENGTH", lsb_len=2)
-        if value != self.settings.pixels():
-            log.error("GET_LINE_LENGTH opcode result %d != SpectrometerSettings.pixels %d (using opcode result)",
-                value, self.settings.pixels())
+        if value != self.settings.eeprom.actual_pixels_horizontal:
+            log.error("GET_LINE_LENGTH opcode result %d != EEPROM.actual_pixels_horizontal %d (using opcode result)",
+                value, self.settings.eeprom.actual_pixels_horizontal)
         return SpectrometerResponse(data=value)
 
     def get_microcontroller_firmware_version(self):
@@ -1166,6 +1167,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
         1949-1951 3     Dummy
         @endverbatim
 
+        @note that this is called BEFORE horizontal binning, so should still work
+              even with BIN_4X2
+
         @todo we might want to make buffer length configurable, either in spectra
               or by time (consider 10ms vs 1sec integration time)
         """            
@@ -1225,7 +1229,14 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # prepare to read spectrum
         ########################################################################
 
-        pixels = self.settings.pixels()
+        # this is the number of pixels we expect to read-out over USB
+        if self.settings.is_imx385():
+            # Currently, only the IMX385 uses horizontal binning, so for now 
+            # limit code changes to that detector (even though they haven't been
+            # shown to break other hardware)
+            pixels = self.settings.eeprom.actual_pixels_horizontal
+        else:
+            pixels = self.settings.pixels()
 
         # when changing detector ROI, exactly ONE READ should be at the previous length
         # if self.prev_pixels is not None:
@@ -1447,6 +1458,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # Bad Pixel Correction
         ########################################################################
 
+        # Note these are pre-horizontal binning...
         if self.settings.state.bad_pixel_mode == SpectrometerState.BAD_PIXEL_MODE_AVERAGE:
             self._correct_bad_pixels(spectrum)
 
@@ -1466,11 +1478,14 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.debug("swapped alternating pixels: spectrum = %s", spectrum[:10])
 
         ########################################################################
-        # 2x2 binning
+        # horizontal binning
         ########################################################################
 
-        # apply so-called "2x2 pixel binning" 
-        spectrum = self._apply_2x2_binning(spectrum)
+        spectrum = self._apply_horizontal_binning(spectrum)
+
+        # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
+        # Note: len(spectrum) may no longer == eeprom.actual_pixels_horizontal!
+        # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
 
         ########################################################################
         # Graph Alternating Pixels
@@ -3445,7 +3460,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         process_f["edc_enable"]                         = lambda x: self.settings.state.set("edc_enabled", bool(x))
         process_f["ssc_enable"]                         = lambda x: self.settings.eeprom.set("ssc_enabled", bool(x))
         process_f["invert_x_axis"]                      = lambda x: self.settings.eeprom.set("invert_x_axis", bool(x))
-        process_f["bin_2x2"]                            = lambda x: self.settings.eeprom.set("bin_2x2", bool(x))
+        process_f["horiz_binning_enable"]               = lambda x: self.settings.eeprom.set("horiz_binning_enabled", bool(x))
         process_f["wavenumber_correction"]              = lambda x: self.settings.set_wavenumber_correction(float(x))
 
         # heartbeats & connection data

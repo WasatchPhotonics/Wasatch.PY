@@ -136,6 +136,20 @@ class SpectrometerSettings:
             return a + b.strip()
 
     def pixels(self):
+        """ 
+        Shortcut for number of pixels in the "display spectrum", AFTER horizontal
+        binning.
+
+        For Hamamatsu Silicon and InGaAs:
+        - active_pixels_horizontal == actual_pixels_horizontal (1024, 2048 or 512)
+
+        For most XS:
+        - active_pixels_horizontal == actual_pixels_horizontal == 1952
+
+        For 633XS:
+        - actual_pixels_horizontal == 1952 (how many read over USB)
+        - active_pixels_horizontal == 1952 or 974 (with BIN_4X2)
+        """
         if self.state.detector_regions is None:
             return self.eeprom.active_pixels_horizontal
         else:
