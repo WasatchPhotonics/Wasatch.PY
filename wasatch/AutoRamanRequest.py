@@ -13,7 +13,7 @@ class AutoRamanRequest:
     MAX_FACTOR              = 5
     DROP_FACTOR             = 0.5
     SATURATION              = 65000
-    MAX_AVG                 = 10
+    MAX_AVG                 = 100
     LASER_WARNING_DELAY_SEC = 3
     
     def __init__(self, max_ms                  = None,
