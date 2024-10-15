@@ -121,7 +121,6 @@ class AutoRaman:
 
         # perform one throwaway
         if throwaway:
-            self.hardware.queue_message("marquee_info", "optimizing acquisition parameters")
             throwaway = self.get_spectrum()
             self.save(throwaway, f"{label} throwaway")
 
@@ -169,6 +168,7 @@ class AutoRaman:
 
         # enable the laser and wait for it to fire
         self.set_laser_enable(True)
+        self.hardware.queue_message("laser_firing_indicators", True)
         warning_delay_sec = self.get_laser_warning_delay_sec()
         if warning_delay_sec > 0:
             self.hardware.queue_message("marquee_info", f"waiting {warning_delay_sec}sec for laser to fire")
@@ -181,6 +181,7 @@ class AutoRaman:
 
         # get one Raman spectrum to start (no dark)
         log.debug(f"taking initial spectrum (integ {int_time}, gain {gain_db})")
+        self.hardware.queue_message("marquee_info", "optimizing acquisition parameters")
         spectrum = self.get_avg_spectrum(int_time, gain_db, num_avg=1, label="initial", throwaway=True)
 
         max_signal = spectrum.max()
@@ -288,6 +289,7 @@ class AutoRaman:
             log.debug(f"integ now {int_time}, gain now {gain_db:.1f} (linear {gain_linear:.4f})")
 
             log.debug(f"Taking spectrum #{loop_count}")
+            self.hardware.queue_message("marquee_info", "optimizing acquisition parameters")
             spectrum = self.get_avg_spectrum(int_time, gain_db, num_avg=1, label="optimizing", throwaway=True)
             max_signal = spectrum.max()
 
@@ -322,6 +324,7 @@ class AutoRaman:
 
         # 2. turn laser off
         self.set_laser_enable(False)
+        self.hardware.queue_message("laser_firing_indicators", False)
 
         # 3. take dark
         self.hardware.queue_message("marquee_info", f"averaging {num_avg} dark spectra at {int_time}ms")
