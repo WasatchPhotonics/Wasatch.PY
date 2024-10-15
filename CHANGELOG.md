@@ -16,10 +16,11 @@
         - EEPROM.power_timeout_sec 
         - EEPROM.detector_timeout_sec
         - IMX385.bin_4x2
-- 2024-10-09 2.2.5
+- 2024-10-10 2.2.5
     - added IMX385
     - added EEPROM.ssc_enabled
     - added AutoRaman throwaway before dark to let laser fully disable
+    - bugfix in SpectrometerSettings.has_excitation
 - 2024-10-03 2.2.4
     - added EEPROM.disable_ble_power
     - added EEPROM.disable_laser_armed_indicator

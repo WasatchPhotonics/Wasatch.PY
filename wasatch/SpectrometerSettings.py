@@ -156,6 +156,9 @@ class SpectrometerSettings:
             return self.state.detector_regions.total_pixels()
 
     def excitation(self):
+        if self.eeprom.excitation_nm is None or self.eeprom.excitation_nm_float is None:
+            return 0
+
         old = float(self.eeprom.excitation_nm)
         new = self.eeprom.excitation_nm_float
 
