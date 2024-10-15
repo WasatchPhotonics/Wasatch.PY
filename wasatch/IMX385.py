@@ -17,6 +17,7 @@ class IMX385:
     CORRECT_SSC         = 1
     CORRECT_SSC_BIN_2X2 = 2
     BIN_4X2             = 3
+    BIN_4X2_INTERP      = 4
 
     def __init__(self):
         self.load_ssc_factors()
@@ -70,16 +71,38 @@ class IMX385:
         - That would be binning (A+B)/2, and (B+C)/2, etc
         - For 974 binned pixels, each averaging four physical columns
         - Adjacent “bin+step” pixels would each overlap by two physical columns
+
+        @par Regarding Wavecal
+
+        Aassume the unit was wavecal'd using bin_2x2. That means the wavelength 
+        assigned to pixel 0 is based on the bin_2x2'd average of pixel 0 and 1, 
+        and may be thought of as the true wavelength of pixel 0.5 (halfway 
+        between pixels 0 and 1).
+
+        Now that we're expanding to 4 pixels, the "true wavelength" of any 
+        4-pixel span will be the bin_2x2'd wavelength of 'start+1' pixel, which 
+        will contain the averaged "true pixels" start+1, and start+2.
         """
         binned, new_x = [], []
         for start in range(0, len(spectrum) - 4, 2):
             binned.append(sum(spectrum[start:start+4])/4.0)
             if x is not None:
-                new_x.append(sum(x[start:start+4])/4.0)
+                new_x.append(x[start+1])
         if x is None:
             return binned 
         else:
             return binned, new_x
+
+    def bin_4x2_interp(self, spectrum, wavelengths):
+        # first do the normal bin_4x2, yielding 974 intensities and wavelengths
+        y, x = self.bin_4x2(spectrum, wavelengths)
+
+        # now interpolate that BACK to the original pixel count
+        y_interp = np.interp(wavelengths, x, y)
+
+        # we don't need to return a modified wavecal, because the original
+        # (presumably bin_2x2'd) wavecal should still be correct
+        return y_interp
 
 # Unit Test
 if __name__ == "__main__":
