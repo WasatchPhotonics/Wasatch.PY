@@ -1,5 +1,7 @@
 # Changelog
 
+- 2024-??-?? 2.2.7
+    - fixed AutoRaman on X series
 - 2024-10-14 2.2.6
     - removed 
         - EEPROM.ssc_enabled

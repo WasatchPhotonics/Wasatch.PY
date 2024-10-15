@@ -58,6 +58,7 @@ class AutoRaman:
 
     def __init__(self, wasatch_device):
         self.wasatch_device = wasatch_device
+
         self.progress_count = 0
         self.progress_total = 0
         self.optimizing = False
@@ -79,6 +80,9 @@ class AutoRaman:
             log.error("measure requires AutoRamanRequest")
             return None
 
+        self.settings = self.wasatch_device.settings
+        self.hardware = self.wasatch_device.hardware
+
         self.optimizing = True
 
         log.debug(f"measure: auto_raman_request {auto_raman_request}")
@@ -86,25 +90,27 @@ class AutoRaman:
 
         # cache initial state
         self.start_time = datetime.now()
-        initial_laser_warning_delay_sec = self.wasatch_device.settings.state.laser_warning_delay_sec
+        initial_laser_warning_delay_sec = self.settings.state.laser_warning_delay_sec
 
         # apply requested laser warning delay
-        self.wasatch_device.hardware.set_laser_warning_delay_sec(auto_raman_request.laser_warning_delay_sec)
+        if self.settings.is_xs():
+            self.hardware.set_laser_warning_delay_sec(auto_raman_request.laser_warning_delay_sec)
 
         # generate auto-Raman measurement
         reading = self.get_auto_spectrum(auto_raman_request)
 
         # restore previous laser warning delay
-        self.wasatch_device.hardware.set_laser_warning_delay_sec(initial_laser_warning_delay_sec)
+        if self.settings.is_xs():
+            self.hardware.set_laser_warning_delay_sec(initial_laser_warning_delay_sec)
 
         return SpectrometerResponse(data=reading)
 
     def bump_progress_bar(self):
         if self.optimizing:
-            self.wasatch_device.hardware.queue_message("progress_bar", -1)
+            self.hardware.queue_message("progress_bar", -1)
         else:
             self.progress_count += 1
-            self.wasatch_device.hardware.queue_message("progress_bar", 100 * (self.progress_count / self.progress_total))
+            self.hardware.queue_message("progress_bar", 100 * (self.progress_count / self.progress_total))
 
     def get_avg_spectrum(self, int_time, gain_db, num_avg, throwaway=True, first=None, label="unknown"):
         """ Takes a single throwaway, then averages num_avg spectra """
@@ -115,12 +121,12 @@ class AutoRaman:
 
         # perform one throwaway
         if throwaway:
-            self.wasatch_device.hardware.queue_message("marquee_info", "optimizing acquisition parameters")
+            self.hardware.queue_message("marquee_info", "optimizing acquisition parameters")
             throwaway = self.get_spectrum()
             self.save(throwaway, f"{label} throwaway")
 
         if first is None:
-            sum_spectrum = np.zeros(self.wasatch_device.settings.pixels())
+            sum_spectrum = np.zeros(self.settings.pixels())
             start = 0
         else:
             # we were given the "first" spectrum for use in the average
@@ -165,12 +171,12 @@ class AutoRaman:
         self.set_laser_enable(True)
         warning_delay_sec = self.get_laser_warning_delay_sec()
         if warning_delay_sec > 0:
-            self.wasatch_device.hardware.queue_message("marquee_info", f"waiting {warning_delay_sec}sec for laser to fire")
+            self.hardware.queue_message("marquee_info", f"waiting {warning_delay_sec}sec for laser to fire")
             time.sleep(warning_delay_sec)
 
-        laser_warmup_sec = self.wasatch_device.settings.eeprom.laser_warmup_sec
+        laser_warmup_sec = self.settings.eeprom.laser_warmup_sec
         if laser_warmup_sec > 0:
-            self.wasatch_device.hardware.queue_message("marquee_info", f"waiting {laser_warmup_sec}sec for laser to stabilize")
+            self.hardware.queue_message("marquee_info", f"waiting {laser_warmup_sec}sec for laser to stabilize")
             time.sleep(laser_warmup_sec)
 
         # get one Raman spectrum to start (no dark)
@@ -262,7 +268,7 @@ class AutoRaman:
                         int_time += 1 
                     else:
                         # failover to increasing gain
-                        if self.wasatch_device.settings.is_xs() and (gain_db < request.max_gain_db):
+                        if self.settings.is_xs() and (gain_db < request.max_gain_db):
                             gain_db += 0.1 
                         else: 
                             quit_loop = True
@@ -270,7 +276,7 @@ class AutoRaman:
                     # was supposed to shrink
 
                     # prefer to shrink gain
-                    if self.wasatch_device.settings.is_xs() and (gain_db > request.min_gain_db):
+                    if self.settings.is_xs() and (gain_db > request.min_gain_db):
                         gain_db -= 0.1 
                     else:
                         # fail-over to shrinking integration
@@ -310,7 +316,7 @@ class AutoRaman:
         # (this saves the laser warm up)
 
         # 1. signal - laser is still on
-        self.wasatch_device.hardware.queue_message("marquee_info", f"averaging {num_avg} Raman spectra at {int_time}ms")
+        self.hardware.queue_message("marquee_info", f"averaging {num_avg} Raman spectra at {int_time}ms")
         avg_sample = self.get_avg_spectrum(int_time, gain_db, num_avg, throwaway=False, first=spectrum, label="signal")
         self.save(avg_sample, "averaged sample")
 
@@ -318,7 +324,7 @@ class AutoRaman:
         self.set_laser_enable(False)
 
         # 3. take dark
-        self.wasatch_device.hardware.queue_message("marquee_info", f"averaging {num_avg} dark spectra at {int_time}ms")
+        self.hardware.queue_message("marquee_info", f"averaging {num_avg} dark spectra at {int_time}ms")
         avg_dark = self.get_avg_spectrum(int_time, gain_db, num_avg, throwaway=True, label="dark")
         self.save(avg_dark, "averaged dark")
 
@@ -326,7 +332,7 @@ class AutoRaman:
         # both the averaged Raman sample and the averaged dark, so that the 
         # caller can decide when / how to perform dark subtraction
 
-        reading = Reading(self.wasatch_device.device_id)
+        reading = Reading(self.hardware.device_id)
         reading.spectrum = avg_sample
         reading.dark = avg_dark
         reading.averaged = True
@@ -342,26 +348,26 @@ class AutoRaman:
     ############################################################################
 
     def get_laser_warning_delay_sec(self):
-        response = self.wasatch_device.hardware.handle_requests([SpectrometerRequest('get_laser_warning_delay_sec')])[0]
+        response = self.hardware.handle_requests([SpectrometerRequest('get_laser_warning_delay_sec')])[0]
         log.debug(f"get_laser_warning_delay_sec: response {response}")
         if response is None or response.data is None:
             return 5
         return response.data
 
     def set_laser_enable(self, flag):
-        self.wasatch_device.hardware.handle_requests([SpectrometerRequest('set_laser_enable', args=[flag])])
+        self.hardware.handle_requests([SpectrometerRequest('set_laser_enable', args=[flag])])
 
     def set_integration_time_ms(self, ms):
-        if ms != self.wasatch_device.settings.state.integration_time_ms:
-            self.wasatch_device.hardware.handle_requests([SpectrometerRequest('set_integration_time_ms', args=[ms])])
+        if ms != self.settings.state.integration_time_ms:
+            self.hardware.handle_requests([SpectrometerRequest('set_integration_time_ms', args=[ms])])
 
     def set_gain_db(self, db):
-        if self.wasatch_device.settings.is_xs():
-            if abs(db - self.wasatch_device.settings.state.gain_db) > 0.05:
-                self.wasatch_device.hardware.handle_requests([SpectrometerRequest('set_detector_gain', args=[db])])
+        if self.settings.is_xs():
+            if abs(db - self.settings.state.gain_db) > 0.05:
+                self.hardware.handle_requests([SpectrometerRequest('set_detector_gain', args=[db])])
 
     def get_spectrum(self):
-        result = self.wasatch_device.hardware.handle_requests([SpectrometerRequest("get_line")])[0]
+        result = self.hardware.handle_requests([SpectrometerRequest("get_line")])[0]
         if result is None or isinstance(result, bool) or result.error_msg != '':
             raise(Exception(f"get_spectrum returned {result}"))
         spectrum = result.data.spectrum
