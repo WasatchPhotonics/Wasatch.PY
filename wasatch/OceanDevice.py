@@ -41,7 +41,7 @@ class OceanDevice(InterfaceDevice):
     ############################################################################
     """
 
-    def __init__(self, device_id, message_queue=None):
+    def __init__(self, device_id, message_queue=None, alert_queue=None):
         super().__init__()
         # if passed a string representation of a DeviceID, deserialize it
         if type(device_id) is str:
@@ -49,6 +49,7 @@ class OceanDevice(InterfaceDevice):
 
         self.device_id      = device_id
         self.message_queue  = message_queue
+        self.alert_queue    = alert_queue
 
         #self.lock = threading.Lock()
 

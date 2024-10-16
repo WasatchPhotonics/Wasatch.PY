@@ -19,6 +19,7 @@ from .SpectrometerResponse import ErrorLevel
 from .SpectrometerState    import SpectrometerState
 from .InterfaceDevice      import InterfaceDevice
 from .DetectorRegions      import DetectorRegions
+from .ControlObject        import ControlObject
 from .StatusMessage        import StatusMessage
 from .RealUSBDevice        import RealUSBDevice
 from .MockUSBDevice        import MockUSBDevice
@@ -77,16 +78,19 @@ class FeatureIdentificationDevice(InterfaceDevice):
     # Lifecycle
     # ##########################################################################
 
-    def __init__(self, device_id: str, message_queue: list = None):
+    def __init__(self, device_id, message_queue=None, alert_queue=None):
         """
         Instantiate a FeatureIdentificationDevice with from the given device_id.
         @param device_id [in] device ID ("USB:0x24aa:0x1000:1:24")
-        @param message_queue [out] if provided, provides an outbound (from FID)
-        queue for writing StatusMessage objects upstream
+        @param message_queue [in] if provided, provides an outbound (from FID 
+               to WrapperWorker) queue for writing StatusMessage objects upstream
+        @param alert_queue [in] if provided, accepts an inbound (from 
+               WrapperWorker to FID) queue for receiving AlertMessage objects 
         """
         super().__init__()
         self.device_id = device_id
         self.message_queue = message_queue
+        self.alert_queue = alert_queue
 
         self.device = None
         if "MOCK" in str(device_id).upper():
@@ -104,6 +108,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         self.settings = SpectrometerSettings(device_id)
         self.eeprom_backup = None
+
+        self.alerts = set()
 
         # ######################################################################
         # these are "driver state" within FeatureIdentificationDevice, and don't
@@ -1044,7 +1050,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.settings.eeprom.detector_gain = gain
 
         if self.settings.is_xs():
-            self.queue_message("marquee_info", "sensor is stabilizing (gain)")
+            # self.queue_message("marquee_info", "sensor is stabilizing (gain)")
             self.settings.state.gain_db = gain
 
         return result
@@ -1216,7 +1222,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
             response.error_lvl = ErrorLevel.low
             response.keep_alive = True
             log.debug(response.error_msg)
-            self.queue_message("marquee_info", "sensor is stabilizing (FW)")
+            self.queue_message("marquee_info", "sensor is stabilizing")
             return response
 
         ########################################################################
@@ -1458,7 +1464,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
             response.error_lvl = ErrorLevel.low
             response.keep_alive = True
             log.debug(response.error_msg)
-            self.queue_message("marquee_info", "sensor is stabilizing (constant)")
+            self.queue_message("marquee_info", "sensor is stabilizing")
             return response
 
         ########################################################################
@@ -1556,7 +1562,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.settings.state.integration_time_ms = ms
 
         if self.settings.is_xs():
-            self.queue_message("marquee_info", "sensor is stabilizing (int time)")
+            # self.queue_message("marquee_info", "sensor is stabilizing (int time)")
+            pass
 
         return result
 
@@ -3237,7 +3244,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return SpectrometerResponse(data=True)
 
     # ##########################################################################
-    # Interprocess Communications
+    # Intraprocess Communications
     # ##########################################################################
 
     # @todo move string-to-enum converter to AppLog
@@ -3260,11 +3267,40 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         msg = StatusMessage(setting, value)
         try:
-            self.message_queue.put(msg) # put_nowait(msg)
+            self.message_queue.put(msg) 
         except:
             log.error("failed to enqueue StatusMessage (%s, %s)", setting, value, exc_info=1)
             return SpectrometerResponse(data=False, error_msg="failed to enqueue messsage")
         return SpectrometerResponse(data=True)
+
+    def check_alert(self, s):
+        log.debug(f"checking for alert {s}")
+        self.refresh_alerts()
+        if s in self.alerts:
+            log.debug(f"found {s} (clearing)")
+            self.alerts.remove(s)
+            return True
+
+    def refresh_alerts(self):
+        if self.alert_queue is None:
+            return
+
+        if self.alert_queue.empty():
+            return
+
+        while not self.alert_queue.empty():
+            alert = self.alert_queue.get_nowait()
+            if alert is None:
+                continue
+            elif isinstance(alert, ControlObject):
+                if alert.value:
+                    log.debug(f"raised alert {alert.setting}")
+                    self.alerts.add(alert.setting)
+                else:
+                    log.debug(f"cleared alert {alert.setting}")
+                    self.alerts.discard(alert.setting)
+            else:
+                log.error(f"non-ControlObject found in alerts_queue: {alert}")
 
     def _init_process_funcs(self):
         """

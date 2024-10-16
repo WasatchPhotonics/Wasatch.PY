@@ -86,7 +86,7 @@ class SPIDevice(InterfaceDevice):
 
     lock = threading.Lock()
 
-    def __init__(self, device_id: DeviceID, message_queue: Queue): # -> None 
+    def __init__(self, device_id, message_queue=None, alert_queue=None):
         super().__init__()
 
         ########################################################################
@@ -128,6 +128,7 @@ class SPIDevice(InterfaceDevice):
 
         self.device_id      = device_id
         self.message_queue  = message_queue
+        self.alert_queue    = alert_queue
 
         self.connected = False
         self.disconnect = False

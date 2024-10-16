@@ -53,7 +53,7 @@ class BLEDevice(InterfaceDevice):
     ############################################################################
     """
 
-    def __init__(self, device_id, message_queue = None):
+    def __init__(self, device_id, message_queue=None, alert_queue=None):
         super().__init__()
         self.device_id = device_id
         self.label = "BLE Device"
@@ -76,8 +76,6 @@ class BLEDevice(InterfaceDevice):
         self.pixels_read = 0
 
         self.process_f = self._init_process_funcs()
-
-
 
     def __str__(self):
         return f"<BLEDevice {self.device_id.name} {self.device_id.address}>"

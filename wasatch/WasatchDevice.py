@@ -44,7 +44,8 @@ class WasatchDevice(InterfaceDevice):
     ##
     # @param device_id      a DeviceID instance OR string label thereof
     # @param message_queue  if provided, used to send status back to caller
-    def __init__(self, device_id: DeviceID, message_queue: Queue = None): # -> None 
+    # @param alert_queue    if provided, used to receive hints and realtime interrupts from caller
+    def __init__(self, device_id, message_queue=None, alert_queue=None):
 
         # if passed a string representation of a DeviceID, deserialize it
         if type(device_id) is str:
@@ -52,6 +53,7 @@ class WasatchDevice(InterfaceDevice):
 
         self.device_id      = device_id
         self.message_queue  = message_queue
+        self.alert_queue    = alert_queue   
 
         self.lock = threading.Lock()
 
@@ -138,7 +140,7 @@ class WasatchDevice(InterfaceDevice):
         dev = None
         try:
             log.debug("connect_fid: instantiating FID with device_id %s pid %s", self.device_id, pid_hex)
-            dev = FeatureIdentificationDevice(device_id=self.device_id, message_queue=self.message_queue)
+            dev = FeatureIdentificationDevice(device_id=self.device_id, message_queue=self.message_queue, alert_queue=self.alert_queue)
             log.debug("connect_fid: instantiated")
 
             try:
