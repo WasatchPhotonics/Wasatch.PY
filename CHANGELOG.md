@@ -1,5 +1,11 @@
 # Changelog
 
+- 2024-??-?? 2.2.8
+    - add alert_queue to allow caller (ENLIGHTEN) to send hints and interrupts 
+      downstream into Wasatch.PY, visible even within long-running operations 
+      like Auto-Raman which are encapsulated within a single call from 
+      WrapperWorker and therefore unsuitable for the normal "command_queue"
+    - added AutoRaman support for new "auto_raman_cancel" alert
 - 2024-10-15 2.2.7
     - fixed AutoRaman on X series
     - added IMX385.bin_4x2_interp

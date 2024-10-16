@@ -98,6 +98,9 @@ class AutoRaman:
 
         # generate auto-Raman measurement
         reading = self.get_auto_spectrum(auto_raman_request)
+        if reading.spectrum is None:
+            log.debug("looks like Auto-Raman measurement was cancelled")
+            self.set_laser_enable(False)
 
         # restore previous laser warning delay
         if self.settings.is_xs():
@@ -115,6 +118,9 @@ class AutoRaman:
     def get_avg_spectrum(self, int_time, gain_db, num_avg, throwaway=True, first=None, label="unknown"):
         """ Takes a single throwaway, then averages num_avg spectra """
 
+        if self.hardware.check_alert("auto_raman_cancel"):
+            return
+
         self.set_integration_time_ms(int_time)
         self.set_gain_db(gain_db)
         self.inter_spectrum_delay()
@@ -123,6 +129,9 @@ class AutoRaman:
         if throwaway:
             throwaway = self.get_spectrum()
             self.save(throwaway, f"{label} throwaway")
+
+        if self.hardware.check_alert("auto_raman_cancel"):
+            return
 
         if first is None:
             sum_spectrum = np.zeros(self.settings.pixels())
@@ -137,6 +146,9 @@ class AutoRaman:
 
             spectrum = np.array(self.get_spectrum())
             self.save(spectrum, f"{label} {i+1}/{num_avg}")
+
+            if self.hardware.check_alert("auto_raman_cancel"):
+                return
 
             sum_spectrum += spectrum
             self.inter_spectrum_delay()
@@ -156,6 +168,8 @@ class AutoRaman:
         @returns a Reading with specturm, dark and sum_count populated
         """
         log.debug(f"get_auto_spectrum: start (max_ms {request.max_ms})")
+
+        reading = Reading(self.hardware.device_id)
 
         int_time = request.start_integ_ms
         gain_db = request.start_gain_db
@@ -183,6 +197,8 @@ class AutoRaman:
         log.debug(f"taking initial spectrum (integ {int_time}, gain {gain_db})")
         self.hardware.queue_message("marquee_info", "optimizing acquisition parameters")
         spectrum = self.get_avg_spectrum(int_time, gain_db, num_avg=1, label="initial", throwaway=True)
+        if spectrum is None:
+            return reading
 
         max_signal = spectrum.max()
 
@@ -291,6 +307,9 @@ class AutoRaman:
             log.debug(f"Taking spectrum #{loop_count}")
             self.hardware.queue_message("marquee_info", "optimizing acquisition parameters")
             spectrum = self.get_avg_spectrum(int_time, gain_db, num_avg=1, label="optimizing", throwaway=True)
+            if spectrum is None:
+                return reading
+
             max_signal = spectrum.max()
 
             if max_signal < request.max_counts and max_signal > request.min_counts:
@@ -320,6 +339,8 @@ class AutoRaman:
         # 1. signal - laser is still on
         self.hardware.queue_message("marquee_info", f"averaging {num_avg} Raman spectra at {int_time}ms")
         avg_sample = self.get_avg_spectrum(int_time, gain_db, num_avg, throwaway=False, first=spectrum, label="signal")
+        if avg_sample is None:
+            return reading
         self.save(avg_sample, "averaged sample")
 
         # 2. turn laser off
@@ -329,13 +350,14 @@ class AutoRaman:
         # 3. take dark
         self.hardware.queue_message("marquee_info", f"averaging {num_avg} dark spectra at {int_time}ms")
         avg_dark = self.get_avg_spectrum(int_time, gain_db, num_avg, throwaway=True, label="dark")
+        if avg_dark is None:
+            return reading
         self.save(avg_dark, "averaged dark")
 
         # note that we don't actually perform dark subtraction here -- we return
         # both the averaged Raman sample and the averaged dark, so that the 
         # caller can decide when / how to perform dark subtraction
 
-        reading = Reading(self.hardware.device_id)
         reading.spectrum = avg_sample
         reading.dark = avg_dark
         reading.averaged = True
