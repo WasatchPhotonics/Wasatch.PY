@@ -142,15 +142,11 @@ class WasatchDeviceWrapper:
         self.log_level = log_level
         self.callback = callback
 
-        self.settings_queue = False
-        self.response_queue = False
-        self.message_queue = False
-        self.command_queue = False
-
         self.settings_queue = Queue() # spectrometer -> GUI (SpectrometerSettings, one-time)
         self.response_queue = Queue() # spectrometer -> GUI (Readings)
         self.message_queue  = Queue() # spectrometer -> GUI (StatusMessages)
         self.command_queue  = Queue() # GUI -> spectrometer (ControlObjects)
+        self.alert_queue    = Queue() # GUI -> spectrometer (ControlObjects)
 
         self.connected    = False
         self.closing      = False   # Don't permit new acquires during close
@@ -220,7 +216,8 @@ class WasatchDeviceWrapper:
         self.closing = False # needed if doing reset and closing previously was True
         self.wrapper_worker = WrapperWorker(
             device_id      = self.device_id,
-            command_queue  = self.command_queue,  # Main --> child
+            command_queue  = self.command_queue,  # Main --> child (dedupable single-threaded spectrometer commands)
+            alert_queue    = self.alert_queue,    # Main --> child (real-time hints and interrupts relating to ongoing commands)
             response_queue = self.response_queue, # Main <-- child \
             settings_queue = self.settings_queue, # Main <-- child  | consolidate into 
             message_queue  = self.message_queue,  # Main <-- child /  SpectrometerMessage?
@@ -309,6 +306,9 @@ class WasatchDeviceWrapper:
 
         if not self.message_queue.empty():
             return self.message_queue.get_nowait()
+
+    def send_alert(self, setting, value):
+        self.alert_queue.put(ControlObject(setting, value))
 
     ##
     # This method is called by the Controller.  It checks the response_queue it 

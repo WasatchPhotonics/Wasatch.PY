@@ -1,6 +1,31 @@
 # Changelog
 
+- 2024-??-?? 2.2.8
+    - add alert_queue to allow caller (ENLIGHTEN) to send hints and interrupts 
+      downstream into Wasatch.PY, visible even within long-running operations 
+      like Auto-Raman which are encapsulated within a single call from 
+      WrapperWorker and therefore unsuitable for the normal "command_queue"
+    - added AutoRaman support for new "auto_raman_cancel" alert
+- 2024-10-15 2.2.7
+    - fixed AutoRaman on X series
+    - added IMX385.bin_4x2_interp
+- 2024-10-14 2.2.6
+    - removed 
+        - EEPROM.ssc_enabled
+    - changed 
+        - EEPROM.LATEST_REV to 16
+        - EEPROM.bin_2x2 --> .horiz_binning_enabled
+        - EEPROM.actual_horizontal to .actual_pixels_horizontal
+        - EEPROM.actual_vertical to .actual_pixels_vertical
+    - added 
+        - EEPROM.horiz_binning_mode
+        - EEPROM.power_timeout_sec 
+        - EEPROM.detector_timeout_sec
+        - IMX385.bin_4x2
 - 2024-10-10 2.2.5
+    - added IMX385
+    - added EEPROM.ssc_enabled
+    - added AutoRaman throwaway before dark to let laser fully disable
     - bugfix in SpectrometerSettings.has_excitation
 - 2024-10-03 2.2.4
     - added EEPROM.disable_ble_power

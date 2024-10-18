@@ -28,7 +28,7 @@ class EEPROM:
     # This was mistakenly set to 15 earlier, probably out of confusion between 
     # ENG-0001 vs ENG-0034 release level (the former WAS at 15, the latter is
     # only now advancing to 15).  Leaving it alone for now.
-    LATEST_REV = 15
+    LATEST_REV = 16
 
     MAX_PAGES = 8
     PAGE_LENGTH = 64
@@ -46,7 +46,7 @@ class EEPROM:
         self.has_laser                   = False
         self.feature_mask                = 0
         self.invert_x_axis               = False
-        self.bin_2x2                     = False
+        self.horiz_binning_enabled       = False
         self.gen15                       = False
         self.cutoff_filter_installed     = False
         self.hardware_even_odd           = False
@@ -68,6 +68,9 @@ class EEPROM:
         self.laser_warmup_sec            = 0
         self.laser_watchdog_sec          = 0
         self.light_source_type           = 0
+        self.power_timeout_sec           = 0
+        self.detector_timeout_sec        = 0
+        self.horiz_binning_mode          = 0
                                          
         self.wavelength_coeffs           = []
         self.degC_to_dac_coeffs          = []
@@ -81,12 +84,12 @@ class EEPROM:
                                          
         self.detector                    = None
         self.detector_serial_number      = None
-        self.active_pixels_horizontal    = 1024
+        self.active_pixels_horizontal    = 1024  # number of pixels AFTER horizontal binning, BEFORE roi_horizontal cropping
         self.active_pixels_vertical      = 0
         self.min_integration_time_ms     = 10
         self.max_integration_time_ms     = 60000
-        self.actual_horizontal           = 0
-        self.actual_vertical             = 0     # not a real EEPROM field, though it should be
+        self.actual_pixels_horizontal    = 0     # number of pixels read-out over USB
+        self.actual_pixels_vertical      = 0     # not a real EEPROM field, though it should be
         self.roi_horizontal_start        = 0
         self.roi_horizontal_end          = 0
         self.roi_vertical_region_1_start = 0
@@ -118,7 +121,7 @@ class EEPROM:
         self.editable = [
             "avg_resolution",
             "bad_pixels",
-            "bin_2x2",
+            "horiz_binning_enabled",
             "calibrated_by",
             "calibration_date",
             "cutoff_filter_installed",
@@ -289,7 +292,7 @@ class EEPROM:
         # ######################################################################
 
         self.detector                        = self.unpack((2,  0, 16), "s", "detector")
-        self.active_pixels_horizontal        = self.unpack((2, 16,  2), "H", "pixels")
+        self.active_pixels_horizontal        = self.unpack((2, 16,  2), "H", "active_pixels_horizontal")
         if self.format >= 10:
             self.laser_warmup_sec            = self.unpack((2, 18,  1), "B", "laser_warmup_sec")
         self.active_pixels_vertical          = self.unpack((2, 19,  2), "H" if self.format >= 4 else "h")
@@ -303,8 +306,8 @@ class EEPROM:
                 self.min_integration_time_ms     = self.unpack((2, 21,  2), "H", "min_integ(ushort)")
                 self.max_integration_time_ms     = self.unpack((2, 23,  2), "H", "max_integ(ushort)") 
 
-        self.actual_horizontal               = self.unpack((2, 25,  2), "H" if self.format >= 4 else "h", "actual_horiz")
-        self.actual_vertical                 = self.active_pixels_vertical  # approximate for now
+        self.actual_pixels_horizontal        = self.unpack((2, 25,  2), "H" if self.format >= 4 else "h", "actual_pixels_horizontal")
+        self.actual_pixels_vertical          = self.active_pixels_vertical  # approximate for now
         self.roi_horizontal_start            = self.unpack((2, 27,  2), "H" if self.format >= 4 else "h")
         self.roi_horizontal_end              = self.unpack((2, 29,  2), "H" if self.format >= 4 else "h")
         self.roi_vertical_region_1_start     = self.unpack((2, 31,  2), "H" if self.format >= 4 else "h")
@@ -347,6 +350,11 @@ class EEPROM:
         if self.format >= 15:
             self.laser_watchdog_sec          = self.unpack((3, 52,  2), "H", "laser_watchdog_sec")
             self.light_source_type           = self.unpack((3, 54,  1), "B", "light_source_type")
+
+        if self.format >= 16:
+            self.power_timeout_sec           = self.unpack((3, 55,  2), "H", "power_timeout_sec")
+            self.detector_timeout_sec        = self.unpack((3, 57,  2), "H", "detector_timeout_sec")
+            self.horiz_binning_mode          = self.unpack((3, 59,  1), "B", "horiz_binning_mode")
 
         # ######################################################################
         # Page 4
@@ -395,7 +403,7 @@ class EEPROM:
 
         if self.format >= 9:
             self.invert_x_axis                 = 0 != self.feature_mask & 0x0001
-            self.bin_2x2                       = 0 != self.feature_mask & 0x0002
+            self.horiz_binning_enabled         = 0 != self.feature_mask & 0x0002
             self.gen15                         = 0 != self.feature_mask & 0x0004
             self.cutoff_filter_installed       = 0 != self.feature_mask & 0x0008
             self.hardware_even_odd             = 0 != self.feature_mask & 0x0010
@@ -406,7 +414,7 @@ class EEPROM:
             self.disable_laser_armed_indicator = 0 != self.feature_mask & 0x0200
         else:
             self.invert_x_axis                 = False 
-            self.bin_2x2                       = False
+            self.horiz_binning_enabled         = False
             self.gen15                         = False
             self.cutoff_filter_installed       = False
             self.hardware_even_odd             = False
@@ -450,7 +458,7 @@ class EEPROM:
     def generate_feature_mask(self):
         mask = 0
         mask |= 0x0001 if self.invert_x_axis                 else 0
-        mask |= 0x0002 if self.bin_2x2                       else 0
+        mask |= 0x0002 if self.horiz_binning_enabled         else 0
         mask |= 0x0004 if self.gen15                         else 0
         mask |= 0x0008 if self.cutoff_filter_installed       else 0
         mask |= 0x0010 if self.hardware_even_odd             else 0
@@ -546,7 +554,7 @@ class EEPROM:
             if len(self.wavelength_coeffs) > 4:
                 coeff = self.wavelength_coeffs[4]
             self.pack((2, 21,  4), "f", coeff)
-        self.pack((2, 25,  2), "H", self.actual_horizontal)
+        self.pack((2, 25,  2), "H", self.actual_pixels_horizontal)
         self.pack((2, 27,  2), "H", self.roi_horizontal_start)
         self.pack((2, 29,  2), "H", self.roi_horizontal_end)
         self.pack((2, 31,  2), "H", self.roi_vertical_region_1_start)
@@ -576,6 +584,9 @@ class EEPROM:
         self.pack((3, 48,  4), "f", self.avg_resolution)
         self.pack((3, 52,  2), "H", self.laser_watchdog_sec)
         self.pack((3, 54,  1), "B", self.light_source_type)
+        self.pack((3, 55,  2), "H", self.power_timeout_sec)
+        self.pack((3, 57,  2), "H", self.detector_timeout_sec)
+        self.pack((3, 59,  1), "B", self.horiz_binning_mode)
 
         # ######################################################################
         # Page 4
@@ -814,7 +825,7 @@ class EEPROM:
         log.debug("  Has Battery:      %s", self.has_battery)
         log.debug("  Has Laser:        %s", self.has_laser)
         log.debug("  Invert X-Axis:    %s", self.invert_x_axis)
-        log.debug("  Bin 2x2:          %s", self.bin_2x2)
+        log.debug("  Horiz Bin Enable: %s", self.horiz_binning_enabled)
         log.debug("  Gen 1.5:          %s", self.gen15)
         log.debug("  Cutoff Filter:    %s", self.cutoff_filter_installed)
         log.debug("  HW Even/Odd:      %s", self.hardware_even_odd)
@@ -828,6 +839,9 @@ class EEPROM:
         log.debug("  Laser Warmup Sec: %d", self.laser_warmup_sec)
         log.debug("  Laser Watchdog:   %d", self.laser_watchdog_sec)
         log.debug("  Light Source:     %d", self.light_source_type)
+        log.debug("  Power Timeout:    %d", self.power_timeout_sec)
+        log.debug("  Detector Timeout: %d", self.detector_timeout_sec)
+        log.debug("  Horiz Bin Mode:   %d", self.horiz_binning_mode)
         log.debug("  Slit size:        %s um", self.slit_size_um)
         log.debug("  Start Integ Time: %d ms", self.startup_integration_time_ms)
         log.debug("  Start Temp:       %.2f degC", self.startup_temp_degC)
@@ -848,11 +862,12 @@ class EEPROM:
         log.debug("  Calibration By:   %s", self.calibrated_by)
         log.debug("")
         log.debug("  Detector name:    %s", self.detector)
-        log.debug("  Active horiz:     %d", self.active_pixels_horizontal)
-        log.debug("  Active vertical:  %d", self.active_pixels_vertical)
+        log.debug("  Active Px Horiz:  %d", self.active_pixels_horizontal)
+        log.debug("  Active Px Vert:   %d", self.active_pixels_vertical)
+        log.debug("  Actual Px Horiz:  %d", self.actual_pixels_horizontal)
+        log.debug("  Actual Px Vert:   %d", self.actual_pixels_vertical)
         log.debug("  Min integration:  %d ms", self.min_integration_time_ms)
         log.debug("  Max integration:  %d ms", self.max_integration_time_ms)
-        log.debug("  Actual Horiz:     %d", self.actual_horizontal)
         log.debug("  ROI Horiz Start:  %d", self.roi_horizontal_start)
         log.debug("  ROI Horiz End:    %d", self.roi_horizontal_end)
         log.debug("  ROI Vert Reg 1:   (%d, %d)", self.roi_vertical_region_1_start, self.roi_vertical_region_1_end)

@@ -47,7 +47,7 @@ class AndorDevice(InterfaceDevice):
     SUCCESS = 20002             #!< see load_error_codes()
     SHUTTER_SPEED_MS = 50       #!< allow time for mechanical shutter to stabilize
 
-    def __init__(self, device_id, message_queue=None): # -> None 
+    def __init__(self, device_id, message_queue=None, alert_queue=None): # -> None 
         # if passed a string representation of a DeviceID, deserialize it
         super().__init__()
         if type(device_id) is str:
@@ -55,6 +55,7 @@ class AndorDevice(InterfaceDevice):
 
         self.device_id      = device_id
         self.message_queue  = message_queue
+        self.alert_queue    = alert_queue
 
         self.load_error_codes()
 

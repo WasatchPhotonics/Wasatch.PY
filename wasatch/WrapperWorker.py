@@ -49,7 +49,8 @@ class WrapperWorker(threading.Thread):
             is_spi,
             is_ble,
             log_level,
-            callback=None):
+            callback=None,
+            alert_queue=None):
 
         threading.Thread.__init__(self)
 
@@ -62,6 +63,7 @@ class WrapperWorker(threading.Thread):
         self.response_queue = response_queue
         self.settings_queue = settings_queue
         self.message_queue  = message_queue
+        self.alert_queue    = alert_queue  
         self.log_level      = log_level
         self.callback       = callback
 
@@ -88,12 +90,14 @@ class WrapperWorker(threading.Thread):
                 log.debug(f"trying to instantiate device of type {device_classes[type_connection]}")
                 self.connected_device = device_classes[type_connection](
                     device_id = self.device_id,
-                    message_queue = self.message_queue)
+                    message_queue = self.message_queue,
+                    alert_queue = self.alert_queue)
             else:
                 log.debug(f"Couldn't recognize device of {self.device_id} {is_options}, trying to instantiate as WasatchDevice")
                 self.connected_device = device_classes[device_classes.index(WasatchDevice)](
                     device_id = self.device_id,
-                    message_queue = self.message_queue)
+                    message_queue = self.message_queue,
+                    alert_queue = self.alert_queue)
         except:
             log.critical("exception instantiating device", exc_info=1)
             return self.settings_queue.put(None) 
