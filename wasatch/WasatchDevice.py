@@ -617,7 +617,7 @@ class WasatchDevice(InterfaceDevice):
             self.hardware.remaining_throwaways = count
             while self.hardware.remaining_throwaways > 0:
                 log.debug(f"more than a second since last measurement, so performing wake-up throwaways ({self.hardware.remaining_throwaways - 1} remaining)")
-                req = SpectrometerRequest("get_line")
+                req = SpectrometerRequest("get_spectrum")
                 res = self.hardware.handle_requests([req])[0]
                 if res.error_msg != '':
                     return res
@@ -667,7 +667,7 @@ class WasatchDevice(InterfaceDevice):
         # clear any pending throwaways
         while self.hardware.remaining_throwaways > 0:
             log.debug(f"clearing stabilization throwaway ({self.hardware.remaining_throwaways - 1} remaining)")
-            req = SpectrometerRequest("get_line")
+            req = SpectrometerRequest("get_spectrum")
             res = self.hardware.handle_requests([req])[0]
             if res.error_msg != '':
                 return res
@@ -709,28 +709,28 @@ class WasatchDevice(InterfaceDevice):
                         row_data = {}
                         while True:
                             log.debug(f"trying to read fast area scan row")
-                            req = SpectrometerRequest("get_line",kwargs={"trigger":first})
+                            req = SpectrometerRequest("get_spectrum",kwargs={"trigger":first})
                             response = self.hardware.handle_requests([req])[0]
                             if response.error_msg != '':
                                 return response
                             spectrum_and_row = response.data
                             first = False
                             if response.poison_pill:
-                                # get_line returned a poison-pill, so we're not 
+                                # get_spectrum returned a poison-pill, so we're not 
                                 # getting any more in this frame...give up and move on
                                 # return False
                                 take_one_response.transfer_response(response)
-                                log.debug(f"get_line returned {spectrum_and_row}, breaking")
+                                log.debug(f"get_spectrum returned {spectrum_and_row}, breaking")
                                 break
                             elif response.keep_alive:
                                 take_one_response.transfer_response(response)
-                                log.debug(f"get_line returned keep alive, passing up")
+                                log.debug(f"get_spectrum returned keep alive, passing up")
                                 return take_one_response
                             elif self.hardware.shutdown_requested:
                                 take_one_response.transfer_response(response)
                                 return take_one_response
                             elif spectrum_and_row.spectrum is None:
-                                log.debug("take_one_averaged_reading: get_line None, sending keepalive for now (area scan fast)")
+                                log.debug("take_one_averaged_reading: get_spectrum None, sending keepalive for now (area scan fast)")
                                 take_one_response.transfer_response(response)
                                 return take_one_response
 
@@ -767,7 +767,7 @@ class WasatchDevice(InterfaceDevice):
                 externally_triggered = self.settings.state.trigger_source == SpectrometerState.TRIGGER_SOURCE_EXTERNAL
                 try:
                     while True:
-                        req = SpectrometerRequest("get_line")
+                        req = SpectrometerRequest("get_spectrum")
                         res = self.hardware.handle_requests([req])[0]
                         if res.error_msg != '':
                             return res
@@ -781,7 +781,7 @@ class WasatchDevice(InterfaceDevice):
                             take_one_response.transfer_response(res)
                             return take_one_response
                         if isinstance(spectrum_and_row, bool):
-                            # get_line returned a poison-pill, so flow it upstream
+                            # get_spectrum returned a poison-pill, so flow it upstream
                             take_one_response.poison_pill = True
                             return take_one_response
 
@@ -792,7 +792,7 @@ class WasatchDevice(InterfaceDevice):
                         if spectrum_and_row is None or spectrum_and_row.spectrum is None:
                             # FeatureIdentificationDevice can return None when waiting
                             # on an external trigger.  
-                            log.debug("take_one_averaged_reading: get_line None, sending keepalive for now")
+                            log.debug("take_one_averaged_reading: get_spectrum None, sending keepalive for now")
                             take_one_response.transfer_response(res)
                             return take_one_response
                         else:
@@ -809,7 +809,7 @@ class WasatchDevice(InterfaceDevice):
                     take_one_response.error_lvl = ErrorLevel.medium
                     take_one_response.keep_alive = True
                     if externally_triggered:
-                        log.debug("caught exception from get_line while externally triggered...sending keepalive")
+                        log.debug("caught exception from get_spectrum while externally triggered...sending keepalive")
                         return take_one_response
 
                     log.critical("Error reading hardware data", exc_info=1)

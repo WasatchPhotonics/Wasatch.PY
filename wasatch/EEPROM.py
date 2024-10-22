@@ -32,7 +32,7 @@ class EEPROM:
 
     MAX_PAGES = 8
     PAGE_LENGTH = 64
-    SUBPAGE_COUNT = 4  # is this used for BLE?
+    SUBPAGE_COUNT = 4  # used for BLE
     MAX_RAMAN_INTENSITY_CALIBRATION_ORDER = 7
 
     DEFAULT_LASER_WATCHDOG_SEC = 10

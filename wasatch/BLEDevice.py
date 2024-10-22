@@ -6,7 +6,7 @@ import threading
 from bleak import BleakClient
 
 from .Reading import Reading
-from wasatch.EEPROM import EEPROM
+from .EEPROM import EEPROM
 from .ControlObject import ControlObject
 from .InterfaceDevice import InterfaceDevice
 from .SpectrometerResponse import ErrorLevel
@@ -16,15 +16,17 @@ from .SpectrometerRequest  import SpectrometerRequest
 
 log = logging.getLogger(__name__)
 
-INT_UUID = "d1a7ff01-af78-4449-a34f-4da1afaf51bc"
-GAIN_UUID = "d1a7ff02-af78-4449-a34f-4da1afaf51bc"
-LASER_STATE_UUID = "d1a7ff03-af78-4449-a34f-4da1afaf51bc"
-DEVICE_ACQUIRE_UUID = "d1a7ff04-af78-4449-a34f-4da1afaf51bc"
-SPECTRUM_PIXELS_UUID = "d1a7ff05-af78-4449-a34f-4da1afaf51bc"
-READ_SPECTRUM_UUID = "d1a7ff06-af78-4449-a34f-4da1afaf51bc"
+#                          ----UNIQ--------(common)------------
+INT_UUID                = "d1a7ff01-af78-4449-a34f-4da1afaf51bc"
+GAIN_UUID               = "d1a7ff02-af78-4449-a34f-4da1afaf51bc"
+LASER_STATE_UUID        = "d1a7ff03-af78-4449-a34f-4da1afaf51bc"
+DEVICE_ACQUIRE_UUID     = "d1a7ff04-af78-4449-a34f-4da1afaf51bc"
+SPECTRUM_PIXELS_UUID    = "d1a7ff05-af78-4449-a34f-4da1afaf51bc"
+READ_SPECTRUM_UUID      = "d1a7ff06-af78-4449-a34f-4da1afaf51bc"
 SELECT_EEPROM_PAGE_UUID = "d1a7ff07-af78-4449-a34f-4da1afaf51bc"
-READ_EEPROM_UUID = "d1a7ff08-af78-4449-a34f-4da1afaf51bc"
-DETECTOR_ROI_UUID = "d1a7ff0A-af78-4449-a34f-4da1afaf51bc"
+READ_EEPROM_UUID        = "d1a7ff08-af78-4449-a34f-4da1afaf51bc"
+DETECTOR_ROI_UUID       = "d1a7ff0A-af78-4449-a34f-4da1afaf51bc"
+
 MAX_RETRIES = 4
 THROWAWAY_SPECTRA = 6
 
@@ -33,12 +35,12 @@ class BLEDevice(InterfaceDevice):
     This is the basic implementation of our interface with BLE Spectrometers.
 
     ##########################################################################
-    This class adopts the external device interface structure
-    This involves receiving a request through the handle_request function
-    A request is processed based on the key in the request
-    The processing function passes the commands to the requested device
+    This class adopts the external device interface structure.
+    This involves receiving a request through the handle_request function.
+    A request is processed based on the key in the request.
+    The processing function passes the commands to the requested device.
     Once it receives a response from the connected device it then passes that
-    back up the chain
+    back up the chain.
                                Enlighten Request
                                        |
                                 handle_requests
@@ -63,15 +65,15 @@ class BLEDevice(InterfaceDevice):
         self.address = self.device_id.address
 
         self.is_ble = True
-        self.is_andor = lambda : False
-        self.loop = asyncio.new_event_loop() #loop
+        self.is_andor = lambda : False 
+        self.loop = asyncio.new_event_loop()
         self.sum_count = 0
         self.performing_acquire = False
         self.disconnect = False
         self.total_pixels_read = 0
         self.session_reading_count = 0
         self.settings = SpectrometerSettings(self.device_id)
-        self.settings.eeprom.detector = "ble"
+        self.settings.eeprom.detector = "ble" # MZ: why?
         self.retry_count = 0
         self.pixels_read = 0
 
@@ -102,20 +104,20 @@ class BLEDevice(InterfaceDevice):
     def _init_process_funcs(self): # -> dict[str, Callable[..., Any]] 
         process_f = {}
 
-        process_f["connect"] = self.connect
-        process_f["disconnect"] = self.close
-        process_f["close"] = self.close
-        process_f["acquire_data"] = self.acquire_data
-        process_f["scans_to_average"] = self.scans_to_average
+        process_f["connect"]            = self.connect
+        process_f["disconnect"]         = self.close
+        process_f["close"]              = self.close
+        process_f["acquire_data"]       = self.acquire_data
+        process_f["scans_to_average"]   = self.scans_to_average
         ##################################################################
-        # What follows is the old init-lambdas that are squashed into process_f
-        # Long term, the upstream requests should be changed to match the new format
-        # This is an easy fix for the time being to make things behave
+        # What follows is the old init-lambdas that are squashed into process_f.
+        # Long term, the upstream requests should be changed to match the new format.
+        # This is an easy fix for the time being to make things behave.
         ##################################################################
-        process_f["integration_time_ms"] = lambda x: asyncio.run_coroutine_threadsafe(self._set_integration_time_ms(x), self.loop)
-        process_f["detector_gain"] = lambda x: asyncio.run_coroutine_threadsafe(self._set_gain(x), self.loop)
-        process_f["laser_enable"] = lambda x: asyncio.run_coroutine_threadsafe(self._set_laser(x), self.loop)
-        process_f["vertical_binning"] = lambda x: asyncio.run_coroutine_threadsafe(self._set_vertical_roi(x), self.loop)
+        process_f["integration_time_ms"]= lambda x: asyncio.run_coroutine_threadsafe(self._set_integration_time_ms(x), self.loop)
+        process_f["detector_gain"]      = lambda x: asyncio.run_coroutine_threadsafe(self._set_gain(x),                self.loop)
+        process_f["laser_enable"]       = lambda x: asyncio.run_coroutine_threadsafe(self._set_laser(x),               self.loop)
+        process_f["vertical_binning"]   = lambda x: asyncio.run_coroutine_threadsafe(self._set_vertical_roi(x),        self.loop)
 
         return process_f
 
@@ -186,8 +188,12 @@ class BLEDevice(InterfaceDevice):
         return SpectrometerResponse(True)
 
     async def _connect_spec(self) -> SpectrometerResponse:
+        log.debug(f"_connect_spec: instantiating BleakClient from device_id {self.device_id} address {self.device_id.address}")
         self.client = BleakClient(self.device_id.address)
+
+        log.debug(f"_connect_spec: awaiting client.connect")
         await self.client.connect()
+
         log.debug(f"Connected: {self.client.is_connected}")
         return SpectrometerResponse(True)
 
@@ -216,13 +222,12 @@ class BLEDevice(InterfaceDevice):
             self.spectrum = [0 for pix in range(pixels)]
 
         if averaging_enabled and not self.settings.state.free_running_mode:
-
             self.sum_count = 0
             loop_count = self.settings.state.scans_to_average
-
         else:
             # we're in free-running mode
             loop_count = 1
+
         reading = None
         for _ in range(0, loop_count):
             reading = Reading(self.device_id)
@@ -356,7 +361,7 @@ class BLEDevice(InterfaceDevice):
             buf = bytearray()
             for j in range(EEPROM.SUBPAGE_COUNT):
                 page_ids = bytearray([i, j])
-                log.debug(f"Writing to tell gateway to get page {i} ands subpage {j}")
+                log.debug(f"Writing SELECT_EEPROM_PAGE(page {i}, subpage {j})")
                 _ = await self.client.write_gatt_char(SELECT_EEPROM_PAGE_UUID, page_ids, response = True)
                 log.debug("Attempting to read page data")
                 response = await self.client.read_gatt_char(READ_EEPROM_UUID)
@@ -365,28 +370,43 @@ class BLEDevice(InterfaceDevice):
             pages.append(buf)
         return pages
 
-
-    def _get_default_data_dir(self): # -> str 
+    def _get_default_data_dir(self) -> str:
         return os.getcwd()
 
     ###############################################################
     # Public Methods
     ###############################################################
 
-    def connect(self): # -> SpectrometerResponse 
+    def connect(self) -> SpectrometerResponse:
+        log.debug("connect: creating thread")
         self.thread = threading.Thread(target=self.loop.run_forever, daemon=True)
+
+        log.debug("connect: starting thread")
         self.thread.start()
-        fut = asyncio.run_coroutine_threadsafe(self._connect_spec(), self.loop)
-        log.debug("asyncio performing connection to device")
-        fut.result()
+
+        log.debug("running _connect_spec on thread")
+        future = asyncio.run_coroutine_threadsafe(self._connect_spec(), self.loop)
+
+        log.debug("awaiting _connect_spec result")
+        future.result()
+
         log.debug("BLEDevice succeeded in connection")
-        fut = asyncio.run_coroutine_threadsafe(self._get_eeprom(), self.loop)
-        self.settings.eeprom.parse(fut.result())
+
+        log.debug("running _get_eeprom on thread")
+        future = asyncio.run_coroutine_threadsafe(self._get_eeprom(), self.loop)
+
+        log.debug("awaiting _get_eeprom result")
+        eeprom_contents = future.result()
+
+        log.debug("processing retrieved EEPROM")
+        self.settings.eeprom.parse(eeprom_contents)
         self.settings.update_wavecal()
         self.label = f"{self.settings.eeprom.serial_number} ({self.settings.eeprom.model})"
+
+        log.debug("connection successful")
         return SpectrometerResponse(True)
 
-    def acquire_data(self): # -> SpectrometerResponse 
+    def acquire_data(self) -> SpectrometerResponse:
         if self.performing_acquire:
             return SpectrometerResponse(True)
         if self.disconnect:
@@ -394,15 +414,15 @@ class BLEDevice(InterfaceDevice):
             return SpectrometerResponse(False)
         self.performing_acquire = True
         self.session_reading_count += 1
-        fut = asyncio.run_coroutine_threadsafe(self._ble_acquire(), self.loop)
+        future = asyncio.run_coroutine_threadsafe(self._ble_acquire(), self.loop)
         self.performing_acquire = False
-        result = fut.result()
+        result = future.result()
         return result
 
     # both this and change_setting are needed
     # change_device_setting is called by the controller
     # while change_setting is being called by the wrapper_worker
-    def change_device_setting(self, setting: str, value: int): # -> None 
+    def change_device_setting(self, setting: str, value: int) -> None:
         control_object = ControlObject(setting, value)
         log.debug("BLEDevice.change_setting: %s", control_object)
 
@@ -416,22 +436,22 @@ class BLEDevice(InterfaceDevice):
             req = SpectrometerRequest(setting, args=[value])
             self.handle_requests([req])
 
-    def get_pid_hex(self): # -> str 
+    def get_pid_hex(self) -> str:
         return str(hex(self.pid))[2:]
 
-    def get_vid_hex(self): # -> str 
+    def get_vid_hex(self) -> str:
         return str(self.vid)
 
-    def to_dict(self): # -> str 
+    def to_dict(self) -> str:
         return str(self)
 
-    def scans_to_average(self, value: int): # -> None 
+    def scans_to_average(self, value: int) -> None:
         self.sum_count = 0
         self.settings.state.scans_to_average = int(value)
 
-    def close(self): # -> None 
+    def close(self) -> None:
         log.info("BLE close called, trying to disconnect spec")
         self.disconnect = True
-        fut = asyncio.run_coroutine_threadsafe(self._disconnect_spec(), self.loop)
-        _ = fut.result()
+        future = asyncio.run_coroutine_threadsafe(self._disconnect_spec(), self.loop)
+        _ = future.result()
         self.loop.stop()
