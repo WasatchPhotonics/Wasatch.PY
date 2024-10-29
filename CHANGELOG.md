@@ -1,5 +1,7 @@
 # Changelog
 
+- 2024-??-?? 2.2.9
+    - add more firmware version checks around new features to avoid breaking old FW
 - 2024-??-?? 2.2.8
     - add alert_queue to allow caller (ENLIGHTEN) to send hints and interrupts 
       downstream into Wasatch.PY, visible even within long-running operations 

@@ -16,8 +16,10 @@ class FirmwareRequirements:
         self.settings = settings
 
         self.feature_versions = {
-            "imx_stabilization": { "microcontroller": { "min": "1.0.7.0" } },
-            "microcontroller_serial_number": { "microcontroller": { "min": "1.0.4.5" } },
+            "imx_stabilization":                { "microcontroller": { "min": "1.0.7.0" } },
+            "microcontroller_serial_number":    { "microcontroller": { "min": "1.0.4.5", "unsupported": [ "11.3.0.37" ] } },
+            "get_ble_firmware_version":         { "microcontroller": { "min": "1.0.4.5", "unsupported": [ "11.3.0.37" ] } },
+            "get_laser_warning_delay_sec":      { "microcontroller": { "min": "1.0.4.5", "unsupported": [ "11.3.0.37" ] } },
         }
 
     def supports(self, feature):
@@ -32,9 +34,12 @@ class FirmwareRequirements:
         if "microcontroller" in reqts:
             reqt = reqts["microcontroller"]
             if "min" in reqt:
-                min_= reqt["min"]
+                min_ = reqt["min"]
                 if vercmp(micro_ver, min_) < 0:
                     # log.debug(f"supports: {feature} NOT supported (micro {micro_ver} < required {min_}")
+                    return False
+            if "unsupported" in reqt:
+                if micro_ver in reqt["unsupported"]:
                     return False
             # could support "max", list etc
 
