@@ -604,6 +604,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
             return self.imx385.bin_4x2(spectrum)
         elif mode == IMX385.BIN_4X2_INTERP:
             return self.imx385.bin_4x2_interp(spectrum, self.settings.wavelengths)
+        elif mode == IMX385.BIN_4X2_AVG:
+            return self.imx385.bin_4x2_avg(spectrum, self.settings.wavelengths)
         else:
             # there may be legacy units in the field where this byte is 
             # uninitialized to 0xff...treat as 0x00 for now
