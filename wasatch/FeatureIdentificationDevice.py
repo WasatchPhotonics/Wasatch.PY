@@ -687,7 +687,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                    bRequest: int, 
                    wValue: int = 0, 
                    wIndex: int = 0, 
-                   data_or_wLength: int = None, 
+                   data_or_wLength = None, 
                    label: str = "", 
                    dry_run: bool = False, 
                    retry_on_error: bool = False, 
@@ -1211,12 +1211,18 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         return [ v - avg_dark for v in spectrum ]
 
-    def get_line(self, trigger: bool = True):
+    def get_line(self, trigger=True, auto_raman_params=None):
+        """ legacy alias """
+        return self.get_spectrum(trigger, auto_raman_params)
+
+    def get_spectrum(self, trigger=True, auto_raman_params=None):
         """
         Send "acquire", then immediately read the bulk endpoint(s).
-        Probably the most important method in this class, more commonly called
-        "getSpectrum" in most drivers.
+        Probably the most important method in this class.
+
         @param trigger (Input) send an initial ACQUIRE
+        @param auto_raman_params (Input) if present, use VR_ACQUIRE_AUTO_RAMAN 
+                 rather than the usual VR_ACQUIRE_CCD
         @returns tuple of (spectrum[], area_scan_row_count) for success
         @returns None when it times-out while waiting for an external trigger
                  (interpret as, "didn't find any fish this time, try again in a bit")
@@ -1227,7 +1233,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         response = SpectrometerResponse()
 
         if not self.is_sensor_stable():
-            response.error_msg = "get_line: leaving sensor alone while stabilizing"
+            response.error_msg = "get_spectrum: leaving sensor alone while stabilizing"
             response.error_lvl = ErrorLevel.low
             response.keep_alive = True
             log.debug(response.error_msg)
@@ -1242,10 +1248,17 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # subsequent lines of data from area scan "fast" mode
 
         acquisition_timestamp = datetime.datetime.now()
+
+        # should we send a trigger?
         if trigger and self.settings.state.trigger_source == SpectrometerState.TRIGGER_SOURCE_INTERNAL:
-            # Only send ACQUIRE (internal SW trigger) if external HW trigger is disabled (default)
-            log.debug("get_line: requesting spectrum")
-            self._send_code(0xad, label="ACQUIRE_SPECTRUM")
+            # yes, send an internal SW trigger
+            log.debug("get_spectrum: requesting spectrum")
+
+            # should that trigger be an ACQUIRE or ACQUIRE_AUTO_RAMAN?
+            if auto_raman_params:
+                self._send_code(0xfd, data_or_wLength=auto_raman_params, label="ACQUIRE_AUTO_RAMAN")
+            else:
+                self._send_code(0xad, label="ACQUIRE_SPECTRUM")
 
         ########################################################################
         # prepare to read spectrum
@@ -1262,7 +1275,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         # when changing detector ROI, exactly ONE READ should be at the previous length
         # if self.prev_pixels is not None:
-        #     log.debug(f"get_line: using one-time prev_pixels value of {self.prev_pixels} rather than {pixels}")
+        #     log.debug(f"get_spectrum: using one-time prev_pixels value of {self.prev_pixels} rather than {pixels}")
         #     pixels = self.prev_pixels
         #     self.prev_pixels = None
 
@@ -1302,10 +1315,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
                         response.error_lvl = ErrorLevel.high
                         response.poison_pill = True # unrecoverable
                         return response
-                    elif self.settings.state.trigger_source == SpectrometerState.TRIGGER_SOURCE_EXTERNAL:
-                        # we don't know how long we'll have to wait for the trigger, so
+                    elif self.settings.state.trigger_source == SpectrometerState.TRIGGER_SOURCE_EXTERNAL or auto_raman_params:
+                        # we don't know how long we'll have to wait for the response, so
                         # just loop and hope
-                        # log.debug("still waiting for external trigger")
+                        # log.debug("still waiting for spectrum")
                         pass
                     else:
                         errors += 1
@@ -1337,16 +1350,16 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # error-check the received spectrum
         ########################################################################
 
-        log.debug("get_line: completed in %d ms (vs integration time %d ms)",
+        log.debug("get_spectrum: completed in %d ms (vs integration time %d ms)",
             round((datetime.datetime.now() - acquisition_timestamp).total_seconds() * 1000, 0),
             self.settings.state.integration_time_ms)
 
-        log.debug("get_line: pixels %d, endpoints %s, block %d, spectrum %s ...",
+        log.debug("get_spectrum: pixels %d, endpoints %s, block %d, spectrum %s ...",
             len(spectrum), endpoints, block_len_bytes, spectrum[0:9])
 
         if len(spectrum) != pixels:
-            log.error("get_line read wrong number of pixels (expected %d, read %d)", pixels, len(spectrum))
-            response.error_msg = f"get_line read wrong number of pixels (expected {pixels}, read {len(spectrum)})"
+            log.error("get_spectrum read wrong number of pixels (expected %d, read %d)", pixels, len(spectrum))
+            response.error_msg = f"get_spectrum read wrong number of pixels (expected {pixels}, read {len(spectrum)})"
             response.error_lvl = ErrorLevel.low
             response.keep_alive = True
             return response
@@ -1417,10 +1430,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
             else:
                 # we DIDN'T find the marker where it was expected, so flag and
                 # go hunting
-                log.error("get_line: missing marker")
+                log.error("get_spectrum: missing marker")
                 for i in range(pixels):
                     if spectrum[i] == marker:
-                        log.error("get_line: marker found at pixel %d", i)
+                        log.error("get_spectrum: marker found at pixel %d", i)
 
         # consider skipping much of the following if in area scan mode
 
@@ -3368,6 +3381,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 "get_laser_warning_delay_sec",
                 "get_laser_watchdog_sec",
                 "get_line",
+                "get_spectrum",
                 "get_microcontroller_firmware_version",
                 "get_mod_delay_us",
                 "get_mod_duration_us",
