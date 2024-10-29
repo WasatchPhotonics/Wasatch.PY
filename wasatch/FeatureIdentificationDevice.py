@@ -258,7 +258,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         # grab firmware versions early
         self.get_microcontroller_firmware_version()
+        log.debug(f"microcontroller firmware version {self.settings.microcontroller_firmware_version}")
         self.get_fpga_firmware_version()
+        log.debug(f"FPGA firmware version {self.settings.fpga_firmware_version}")
+
         self.get_microcontroller_serial_number()
 
         # issue: BL652 may not be fully booted if this was a hotplug. We could
@@ -1149,6 +1152,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.debug("GET_BLE_FIRMWARE_VERSION requires ARM")
             return None
 
+        if not self.settings.supports_feature("get_ble_firmware_version"):
+            log.debug("GET_BLE_FIRMWARE_VERSION not supported on this firmware")
+            return None
+
         result = self._get_code(0xff, wValue=0x2d, wLength=32, label="GET_BLE_FIRMWARE_VERSION")
         if result is None:
             return None
@@ -1425,6 +1432,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         # some detectors have "garbage" pixels at the front or end of every
         # spectrum (sync bytes and what-not)
+        if self.settings.is_imx385() and self.settings.fpga_firmware_version == "01.1.01":
+            utils.stomp_last (spectrum, 2)
         if self.settings.is_imx392() and self.settings.state.detector_regions is None:
             utils.stomp_first(spectrum, 3)
             utils.stomp_last (spectrum, 17)
@@ -2311,6 +2320,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
     def get_laser_warning_delay_sec(self):
         if not self.settings.is_xs():
             msg = "laser warning delay only configurable on XS"
+            log.error(msg)
+            return SpectrometerResponse(data=None, error_msg=msg)
+
+        if not self.settings.supports_feature("get_laser_warning_delay_sec"):
+            msg = "GET_LASER_WARNING_DELAY_SEC not supported on this firmware"
             log.error(msg)
             return SpectrometerResponse(data=None, error_msg=msg)
 
