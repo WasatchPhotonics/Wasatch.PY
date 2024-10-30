@@ -1,5 +1,7 @@
 # Changelog
 
+- 2024-10-30 2.2.11
+    - IMX385.bin_4x2_avg tweak
 - 2024-10-30 2.2.10
     - don't configure laser TEC and laser warning delay unless laser present
 - 2024-10-29 2.2.9
