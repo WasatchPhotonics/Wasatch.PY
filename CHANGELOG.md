@@ -1,5 +1,7 @@
 # Changelog
 
+- 2024-10-30 2.2.10
+    - don't configure laser TEC and laser warning delay unless laser present
 - 2024-10-29 2.2.9
     - add BIN_4X2_AVG
     - add more firmware version checks around new features to avoid breaking old FW
