@@ -256,13 +256,15 @@ class FeatureIdentificationDevice(InterfaceDevice):
         Split-out from physical / bus connect() to simplify MockSpectrometer.
         """
 
-        # grab firmware versions early
+        # grab firmware versions early (and capture in debug log)
         self.get_microcontroller_firmware_version()
-        log.debug(f"microcontroller firmware version {self.settings.microcontroller_firmware_version}")
+        log.debug(f"Microcontroller firmware version {self.settings.microcontroller_firmware_version}")
+
         self.get_fpga_firmware_version()
         log.debug(f"FPGA firmware version {self.settings.fpga_firmware_version}")
 
         self.get_microcontroller_serial_number()
+        log.debug(f"Microcontroller serial number {self.settings.microcontroller_serial_number}")
 
         # issue: BL652 may not be fully booted if this was a hotplug. We could
         #        of course re-poll if None, but the initial SpectrometerSettings
@@ -276,6 +278,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         #        weird to add a "dynamic firmware version" to Reading, implying
         #        that firmware versions might suddenly change mid-runtime...
         self.get_ble_firmware_version()
+        log.debug(f"BLE firmware version {self.settings.ble_firmware_version}")
 
         # ######################################################################
         # model-specific settings
@@ -311,25 +314,27 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # ######################################################################
 
         if self.settings.is_xs():
-            
-            if self.settings.eeprom.sig_laser_tec:
+            if self.settings.eeprom.has_laser:
+                if self.settings.eeprom.sig_laser_tec:
 
-                # sanity-check for reasonable setpoint range (raw 12-bit)
-                if 700 <= self.settings.eeprom.startup_temp_degC <= 900:
-                    log.debug("initializing XS laser TEC setpoint")
+                    # sanity-check for reasonable setpoint range (raw 12-bit)
+                    if 700 <= self.settings.eeprom.startup_temp_degC <= 900:
+                        log.debug("initializing XS laser TEC setpoint")
 
-                    # kludge: for now, use the detector TEC startup setpoint for laser
-                    self.settings.state.laser_tec_setpoint = self.settings.eeprom.startup_temp_degC
-                    self.set_laser_temperature_setpoint_raw(self.settings.state.laser_tec_setpoint)
+                        # kludge: for now, use the detector TEC startup setpoint for laser
+                        self.settings.state.laser_tec_setpoint = self.settings.eeprom.startup_temp_degC
+                        self.set_laser_temperature_setpoint_raw(self.settings.state.laser_tec_setpoint)
 
-                    # this should be the default in firmware, but set anyway
-                    log.debug("initializing XS laser TEC mode -> AUTO")
-                    self.set_laser_tec_mode("AUTO")
-                else:
-                    # don't set anything if default setpoint looks way off
-                    log.error(f"laser TEC setpoint looks invalid: {self.settings.eeprom.startup_temp_degC}")
+                        # this should be the default in firmware, but set anyway
+                        log.debug("initializing XS laser TEC mode -> AUTO")
+                        self.set_laser_tec_mode("AUTO")
+                    else:
+                        # don't set anything if default setpoint looks way off
+                        log.error(f"laser TEC setpoint looks invalid: {self.settings.eeprom.startup_temp_degC}")
 
-            self.get_laser_warning_delay_sec()
+                # load this for software-based Auto-Raman timing
+                log.debug("initializing laser warning delay")
+                self.get_laser_warning_delay_sec()
 
         # ######################################################################
         # Detector TEC
@@ -605,7 +610,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         elif mode == IMX385.BIN_4X2_INTERP:
             return self.imx385.bin_4x2_interp(spectrum, self.settings.wavelengths)
         elif mode == IMX385.BIN_4X2_AVG:
-            return self.imx385.bin_4x2_avg(spectrum, self.settings.wavelengths)
+            return self.imx385.bin_4x2_avg(spectrum)
         else:
             # there may be legacy units in the field where this byte is 
             # uninitialized to 0xff...treat as 0x00 for now
