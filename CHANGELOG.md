@@ -1,5 +1,7 @@
 # Changelog
 
+- 2024-10-31 2.2.12
+    - prefer new EEPROM location for startup laser TEC setpoint
 - 2024-10-30 2.2.11
     - IMX385.bin_4x2_avg tweak
 - 2024-10-30 2.2.10

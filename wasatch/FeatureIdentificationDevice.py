@@ -317,12 +317,17 @@ class FeatureIdentificationDevice(InterfaceDevice):
             if self.settings.eeprom.has_laser:
                 if self.settings.eeprom.sig_laser_tec:
 
+                    # check the new location
+                    setpoint = self.settings.eeprom.startup_laser_tec_setpoint # prefer new
+                    if not setpoint:
+                        setpoint = self.settings.eeprom.startup_temp_degC # default to old
+
                     # sanity-check for reasonable setpoint range (raw 12-bit)
-                    if 700 <= self.settings.eeprom.startup_temp_degC <= 900:
+                    if 700 <= setpoint <= 900:
                         log.debug("initializing XS laser TEC setpoint")
 
                         # kludge: for now, use the detector TEC startup setpoint for laser
-                        self.settings.state.laser_tec_setpoint = self.settings.eeprom.startup_temp_degC
+                        self.settings.state.laser_tec_setpoint = setpoint
                         self.set_laser_temperature_setpoint_raw(self.settings.state.laser_tec_setpoint)
 
                         # this should be the default in firmware, but set anyway

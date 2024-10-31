@@ -61,6 +61,7 @@ class EEPROM:
         self.startup_integration_time_ms = 10
         self.startup_temp_degC           = 15       # normally used for detector TEC; now also used for raw laser TEC on SiG (needs updated in ENG-0034)
         self.startup_triggering_scheme   = 0
+        self.startup_laser_tec_setpoint  = 0
         self.detector_gain               = 1.9
         self.detector_offset             = 0
         self.detector_gain_odd           = 1.9
@@ -262,6 +263,9 @@ class EEPROM:
             self.detector_offset             = self.unpack((0, 52,  2), "h", "offset") # "even pixels" for InGaAs
             self.detector_gain_odd           = self.unpack((0, 54,  4), "f", "gain_odd") # InGaAs-only
             self.detector_offset_odd         = self.unpack((0, 58,  2), "h", "offset_odd") # InGaAs-only
+
+        if self.format >= 16:
+            self.startup_laser_tec_setpoint  = self.unpack((0, 60,  2), "H", "startup_laser_tec_setpoint") & 0xfff # XS-only
 
         # ######################################################################
         # Page 1
@@ -514,6 +518,7 @@ class EEPROM:
         self.pack((0, 52,  2), "h", self.detector_offset)
         self.pack((0, 54,  4), "f", self.detector_gain_odd)
         self.pack((0, 58,  2), "h", self.detector_offset_odd)
+        self.pack((0, 60,  2), "H", self.startup_laser_tec_setpoint)
 
         # ######################################################################
         # Page 1
@@ -850,6 +855,7 @@ class EEPROM:
         log.debug("  Det Offset:       %d", self.detector_offset)
         log.debug("  Det Gain Odd:     %f", self.detector_gain_odd)
         log.debug("  Det Offset Odd:   %d", self.detector_offset_odd)
+        log.debug("  Start Laser TEC:  %d (raw)", self.startup_laser_tec_setpoint)
         log.debug("")
         log.debug("  Wavecal coeffs:   %s", self.wavelength_coeffs)
         log.debug("  degCToDAC coeffs: %s", self.degC_to_dac_coeffs)
