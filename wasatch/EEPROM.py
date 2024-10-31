@@ -518,6 +518,7 @@ class EEPROM:
         self.pack((0, 52,  2), "h", self.detector_offset)
         self.pack((0, 54,  4), "f", self.detector_gain_odd)
         self.pack((0, 58,  2), "h", self.detector_offset_odd)
+        self.pack((0, 60,  2), "H", self.startup_laser_tec_setpoint)
 
         # ######################################################################
         # Page 1
@@ -854,6 +855,7 @@ class EEPROM:
         log.debug("  Det Offset:       %d", self.detector_offset)
         log.debug("  Det Gain Odd:     %f", self.detector_gain_odd)
         log.debug("  Det Offset Odd:   %d", self.detector_offset_odd)
+        log.debug("  Start Laser TEC:  %d (raw)", self.startup_laser_tec_setpoint)
         log.debug("")
         log.debug("  Wavecal coeffs:   %s", self.wavelength_coeffs)
         log.debug("  degCToDAC coeffs: %s", self.degC_to_dac_coeffs)
