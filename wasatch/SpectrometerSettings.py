@@ -68,7 +68,7 @@ class SpectrometerSettings:
         self.wavelengths = None
         self.wavenumbers = None
         self.raman_intensity_factors = None
-        self.linear_pixel_correction = None
+        self.linear_pixel_calibration = None
 
         self.lock_wavecal = False
 
@@ -274,16 +274,16 @@ class SpectrometerSettings:
                     self.raman_intensity_factors = None
         log.debug("factors = %s", self.raman_intensity_factors)
 
-    def set_linear_pixel_correction(self, data):
-        self.linear_pixel_correction = None
+    def set_linear_pixel_calibration(self, data):
+        self.linear_pixel_calibration = None
         try:
             slopes = data[0]
             offsets = data[1]
             if len(slopes) != len(offsets) or len(slopes) != self.pixels():
                 raise ValueError("length mismatch: slopes {len(slopes)}, offsets {len(offsets)}, pixels {self.pixels()}")
-            self.linear_pixel_correction = (slopes, offsets)
+            self.linear_pixel_calibration = (slopes, offsets)
         except:
-            log.error("set_linear_pixel_correction requires 2-element tuple, " +
+            log.error("set_linear_pixel_calibration requires 2-element tuple, " +
                       "where first element is array of slopes and second of " +
                       "offsets, both lengths matching the detector pixel count", exc_info=1)
             return

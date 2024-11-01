@@ -598,11 +598,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         return True
 
-    def _apply_linear_pixel_correction(self, spectrum):
-        if not self.settings.linear_pixel_correction:
+    def _apply_linear_pixel_calibration(self, spectrum):
+        if not self.settings.linear_pixel_calibration:
             return
 
-        (slopes, offsets) = self.settings.linear_pixel_correction
+        (slopes, offsets) = self.settings.linear_pixel_calibration
         smoothed = [] # could be faster in Numpy
         for i, intensity in enumerate(spectrum):
             smoothed.append(intensity * slopes[i] + offsets[i])
@@ -1400,8 +1400,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # implemented, so fix in SW unless EEPROM indicates "already handled"
         if self.settings.is_ingaas():
             if not self.settings.eeprom.hardware_even_odd:
-                if not self.settings.linear_pixel_correction:
-                    self._correct_ingaas_gain_and_offset(spectrum)
+                self._correct_ingaas_gain_and_offset(spectrum)
 
         ########################################################################
         # Area Scan (rare)
@@ -1537,16 +1536,14 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.debug("swapped alternating pixels: spectrum = %s", spectrum[:10])
 
         ########################################################################
-        # Linear Pixel Correction (experimental)
+        # Linear Pixel Calibration (experimental)
         ########################################################################
 
         # should be done AFTER detector inversion (because that's how calibration
         # is generated) and AFTER bad pixel correction
 
-        # this should be done in the FPGA, but older FW didn't have that
-        # implemented, so fix in SW unless EEPROM indicates "already handled"
-        if self.settings.linear_pixel_correction:
-            spectrum = self._apply_linear_pixel_correction(spectrum)
+        if self.settings.linear_pixel_calibration:
+            spectrum = self._apply_linear_pixel_calibration(spectrum)
 
         ########################################################################
         # horizontal binning
@@ -3573,7 +3570,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         process_f["invert_x_axis"]                      = lambda x: self.settings.eeprom.set("invert_x_axis", bool(x))
         process_f["horiz_binning_enable"]               = lambda x: self.settings.eeprom.set("horiz_binning_enabled", bool(x))
         process_f["wavenumber_correction"]              = lambda x: self.settings.set_wavenumber_correction(float(x))
-        process_f["linear_pixel_correction"]            = lambda x: self.settings.set_linear_pixel_correction(x)
+        process_f["linear_pixel_calibration"]           = lambda x: self.settings.set_linear_pixel_calibration(x)
 
         # heartbeats & connection data
         process_f["raise_exceptions"]                   = lambda x: setattr(self, "raise_exceptions", bool(x))
