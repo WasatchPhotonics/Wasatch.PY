@@ -598,6 +598,16 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         return True
 
+    def _apply_linear_pixel_calibration(self, spectrum):
+        if not self.settings.linear_pixel_calibration:
+            return
+
+        (slopes, offsets) = self.settings.linear_pixel_calibration
+        smoothed = [] # could be faster in Numpy
+        for i, intensity in enumerate(spectrum):
+            smoothed.append(intensity * slopes[i] + offsets[i])
+        return smoothed
+
     def _apply_horizontal_binning(self, spectrum: list[float]):
         if not self.settings.eeprom.horiz_binning_enabled:
             return spectrum
@@ -1133,8 +1143,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return SpectrometerResponse(data=s)
 
     def get_microcontroller_serial_number(self):
-        return None # disabling until we work out another Beta SiG conflict
-
         if not self.settings.is_arm():
             log.debug("GET_MICROCONTROLLER_SERIAL_NUMBER requires ARM")
             return None
@@ -1388,8 +1396,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         # this should be done in the FPGA, but older FW didn't have that
         # implemented, so fix in SW unless EEPROM indicates "already handled"
-        if self.settings.is_ingaas() and not self.settings.eeprom.hardware_even_odd:
-            self._correct_ingaas_gain_and_offset(spectrum)
+        if self.settings.is_ingaas():
+            if not self.settings.eeprom.hardware_even_odd:
+                self._correct_ingaas_gain_and_offset(spectrum)
 
         ########################################################################
         # Area Scan (rare)
@@ -1523,6 +1532,16 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 corrected.extend([b, a])
             spectrum = corrected
             log.debug("swapped alternating pixels: spectrum = %s", spectrum[:10])
+
+        ########################################################################
+        # Linear Pixel Calibration (experimental)
+        ########################################################################
+
+        # should be done AFTER detector inversion (because that's how calibration
+        # is generated) and AFTER bad pixel correction
+
+        if self.settings.linear_pixel_calibration:
+            spectrum = self._apply_linear_pixel_calibration(spectrum)
 
         ########################################################################
         # horizontal binning
@@ -2913,7 +2932,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
     # Ambient Temperature
     # ##########################################################################
 
-    ## @see https://www.nxp.com/docs/en/data-sheet/LM75B.pdf
     def get_ambient_temperature_degC(self):
         if self.settings.is_gen15():
             return self.get_ambient_temperature_degC_gen15()
@@ -2928,9 +2946,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
             msg = "ambient temperature ARM requires XS"
             log.debug(msg)
             return
-
-        # MZ: just disable for now
-        # return
 
         if self.settings.microcontroller_firmware_version == "1.0.2.9":
             msg = "ambient temperature ARM requires newer firmware"
@@ -2948,6 +2963,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return SpectrometerResponse(data=degC)
 
     def get_ambient_temperature_degC_gen15(self):
+        """ @see https://www.nxp.com/docs/en/data-sheet/LM75B.pdf """
         if not self.settings.is_gen15():
             msg = "ambient temperature Gen1.5 requires Gen 1.5"
             log.error(msg)
@@ -3549,6 +3565,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         process_f["invert_x_axis"]                      = lambda x: self.settings.eeprom.set("invert_x_axis", bool(x))
         process_f["horiz_binning_enable"]               = lambda x: self.settings.eeprom.set("horiz_binning_enabled", bool(x))
         process_f["wavenumber_correction"]              = lambda x: self.settings.set_wavenumber_correction(float(x))
+        process_f["linear_pixel_calibration"]           = lambda x: self.settings.set_linear_pixel_calibration(x)
 
         # heartbeats & connection data
         process_f["raise_exceptions"]                   = lambda x: setattr(self, "raise_exceptions", bool(x))
