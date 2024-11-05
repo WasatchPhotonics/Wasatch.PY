@@ -2,6 +2,7 @@
 
 - 2024-11-01 2.2.13
     - support for InGaAs linear pixel calibration
+    - re-enable STM32 serial number
 - 2024-10-31 2.2.12
     - prefer new EEPROM location for startup laser TEC setpoint
 - 2024-10-30 2.2.11

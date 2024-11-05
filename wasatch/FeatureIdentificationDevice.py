@@ -1143,8 +1143,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return SpectrometerResponse(data=s)
 
     def get_microcontroller_serial_number(self):
-        return None # disabling until we work out another Beta SiG conflict
-
         if not self.settings.is_arm():
             log.debug("GET_MICROCONTROLLER_SERIAL_NUMBER requires ARM")
             return None
@@ -2934,7 +2932,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
     # Ambient Temperature
     # ##########################################################################
 
-    ## @see https://www.nxp.com/docs/en/data-sheet/LM75B.pdf
     def get_ambient_temperature_degC(self):
         if self.settings.is_gen15():
             return self.get_ambient_temperature_degC_gen15()
@@ -2949,9 +2946,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
             msg = "ambient temperature ARM requires XS"
             log.debug(msg)
             return
-
-        # MZ: just disable for now
-        # return
 
         if self.settings.microcontroller_firmware_version == "1.0.2.9":
             msg = "ambient temperature ARM requires newer firmware"
@@ -2969,6 +2963,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return SpectrometerResponse(data=degC)
 
     def get_ambient_temperature_degC_gen15(self):
+        """ @see https://www.nxp.com/docs/en/data-sheet/LM75B.pdf """
         if not self.settings.is_gen15():
             msg = "ambient temperature Gen1.5 requires Gen 1.5"
             log.error(msg)
