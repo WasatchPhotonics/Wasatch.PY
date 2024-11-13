@@ -25,10 +25,7 @@ log = logging.getLogger(__name__)
 # @see 24LC128 for FX2 (16KB, https://www.microchip.com/en-us/product/24LC128)
 class EEPROM:
 
-    # This was mistakenly set to 15 earlier, probably out of confusion between 
-    # ENG-0001 vs ENG-0034 release level (the former WAS at 15, the latter is
-    # only now advancing to 15).  Leaving it alone for now.
-    LATEST_REV = 16
+    LATEST_REV = 17
 
     MAX_PAGES = 8
     PAGE_LENGTH = 64
@@ -113,7 +110,7 @@ class EEPROM:
         self.product_configuration       = None
 
         self.format                      = EEPROM.LATEST_REV
-        self.subformat                   = 0 # pages 6-7
+        self.subformat                   = 0 # determines format of pages 6-7
 
         self.buffers = []
         self.write_buffers = []
@@ -157,7 +154,7 @@ class EEPROM:
         self.init_raman_intensity_calibration()
         self.init_spline()
         self.init_untethered()
-        self.init_regions()
+        self.init_multi_wavelength()
 
     ## whether the given field is normally editable by users via ENLIGHTEN
     #
@@ -397,9 +394,12 @@ class EEPROM:
         elif self.subformat == 3:
             self.read_untethered()
         elif self.subformat == 4:
-            self.read_regions()
+            log.critical("Subformat 4 has been deprecated")
+        elif self.subformat == 5:
+            self.read_raman_intensity_calibration()
+            self.read_multi_wavelength()
         else:
-            log.debug(f"Unreadable EEPROM subformat {self.subformat}")
+            log.critical(f"Unreadable EEPROM subformat {self.subformat}")
         
         # ######################################################################
         # feature mask
@@ -632,7 +632,10 @@ class EEPROM:
         elif self.subformat == 3:
             self.write_untethered()
         elif self.subformat == 4:
-            self.write_regions()
+            log.critical("Subformat 4 is deprecated")
+        elif self.subformat == 5:
+            self.write_raman_intensity_calibration()
+            self.write_multi_wavelength()
         else:
             log.error(f"Unwriteable EEPROM subformat {self.subformat}")
 
@@ -898,8 +901,8 @@ class EEPROM:
         elif self.subformat == 3:
             self.dump_raman_intensity_calibration()
             self.dump_untethered()
-        elif self.subformat == 4:
-            self.dump_regions()
+        elif self.subformat == 5:
+            self.dump_multi_wavelengths()
 
     # ##########################################################################
     #                                                                          #
@@ -912,8 +915,8 @@ class EEPROM:
 
     ## pixel frame (end is last index, not last+1),
     def get_horizontal_roi(self):
-        start  = self.roi_horizontal_start
-        end    = self.roi_horizontal_end
+        start  = self.get_multi_wavelength("roi_horizontal_start")
+        end    = self.get_multi_wavelength("roi_horizontal_end")
         pixels = self.active_pixels_horizontal
 
         if 0 <= start and start < end and end < pixels:
@@ -964,7 +967,7 @@ class EEPROM:
             log.debug(f"has_raman_intensity_calibration: false because invalid order {self.raman_intensity_calibration_order}")
             return False
             
-        if not utils.coeffs_look_valid(self.raman_intensity_coeffs, count = self.raman_intensity_calibration_order + 1):
+        if not utils.coeffs_look_valid(self.get_multi_wavelength("raman_intensity_coeffs"), count = self.raman_intensity_calibration_order + 1):
             log.debug(f"has_raman_intensity_calibration: false because coeffs look weird")
             return False
 
@@ -996,12 +999,12 @@ class EEPROM:
 
     # ##########################################################################
     #                                                                          #
-    #                                 Subformats                               #
+    #                                Subformats                                #
     #                                                                          #
     # ##########################################################################
 
     # ##########################################################################
-    # Subformat: Raman Intensity Calibration
+    # Subformat 1: Raman Intensity Calibration
     # ##########################################################################
 
     def init_raman_intensity_calibration(self):
@@ -1047,7 +1050,7 @@ class EEPROM:
         log.debug("  Raman Int Coeffs: %s", self.raman_intensity_coeffs)
 
     # ##########################################################################
-    # Subformat: Spline
+    # Subformat 2: Spline
     # ##########################################################################
 
     def init_spline(self):
@@ -1110,7 +1113,7 @@ class EEPROM:
         return # not implemented
 
     # ##########################################################################
-    # Subformat: Untethered
+    # Subformat 3: Untethered
     # ##########################################################################
 
     def init_untethered(self):
@@ -1151,82 +1154,67 @@ class EEPROM:
         log.debug("  Library Count:    %d", self.untethered_library_count)
 
     # ##########################################################################
-    # Subformat: Regions
+    # Subformat 5: Multi-Wavelength
     # ##########################################################################
 
-    # Already have names in standard format:
+    # These functions are used for spectrometers supporting multiple excitations.
     #
-    # -	R1C0-3: Wavecal Coeff 0-3       (Region 1)
-    # -	R1X0: ROI Horizontal Start      (Region 1)
-    # -	R1X1: ROI Horizontal End        (Region 1)
-    # -	R1Y0: ROI Vertical Region 1 Start
-    # -	R1Y1: ROI Vertical Region 1 End
-    # -	R2Y0: ROI Vertical Region 2 Start
-    # -	R2Y1: ROI Vertical Region 2 End
-    # -	R3Y0: ROI Vertical Region 3 Start
-    # -	R3Y1: ROI Vertical Region 3 End
+    # It is over-engineered a little bit, in that if we're going to support 2 of
+    # these 7 attributes, then I want the architecture to scale readily to 4 of
+    # 15 attributes, hence the dictionary.
+    #
+    # OTOH it's under-engineered in that this probably should be its own class.
 
-    def init_regions(self):
-        self.region_count                   = 0
-        self.roi_horiz_region_2_start       = 0
-        self.roi_horiz_region_2_end         = 0
-        self.roi_horiz_region_3_start       = 0
-        self.roi_horiz_region_3_end         = 0
-        self.roi_horiz_region_4_start       = 0
-        self.roi_horiz_region_4_end         = 0
-        self.roi_vertical_region_4_start    = 0
-        self.roi_vertical_region_4_end      = 0
-        self.roi_wavecal_region_2_coeffs    = [ 0, 1, 0, 0 ]
-        self.roi_wavecal_region_3_coeffs    = [ 0, 1, 0, 0 ]
-        self.roi_wavecal_region_4_coeffs    = [ 0, 1, 0, 0 ]
+    def get_multi_wavelength(self, name):
+        a = self.multi_wavelength_values[name]
+        i = self.multi_wavelength_selected
+        log.debug("get_multi_wavelength: requested {name}[{i}]")
+        value = a[i]
+        log.debug("get_multi_wavelength: returning {value}")
+        return value
 
-    def read_regions(self):
-        log.debug("read_regions")
-        self.region_count = self.unpack((7, 0, 1), "B", "region_count")
+    def set_multi_wavelength(self, name, value):
+        a = self.multi_wavelength_values[name]
+        i = self.multi_wavelength_selected
+        log.debug("set_multi_wavelength: setting {name}[{i}] = {value}")
+        a[i] = value
 
-        self.roi_horiz_region_2_start       = self.unpack((6,  0, 2), "H", "roi_horiz_region_2_start")
-        self.roi_horiz_region_2_end         = self.unpack((6,  2, 2), "H", "roi_horiz_region_2_end")
-        self.roi_horiz_region_3_start       = self.unpack((6, 20, 2), "H", "roi_horiz_region_3_start")
-        self.roi_horiz_region_3_end         = self.unpack((6, 22, 2), "H", "roi_horiz_region_3_end")
-        self.roi_horiz_region_4_start       = self.unpack((6, 44, 2), "H", "roi_horiz_region_4_start")
-        self.roi_horiz_region_4_end         = self.unpack((6, 46, 2), "H", "roi_horiz_region_4_end")
-        self.roi_vertical_region_4_start    = self.unpack((6, 40, 2), "H", "roi_vertical_region_4_start")
-        self.roi_vertical_region_4_end      = self.unpack((6, 42, 2), "H", "roi_vertical_region_4_end")
+    def init_multi_wavelength(self):
+        self.multi_wavelength_attributes = { 'excitation_nm_float', 'wavelength_coeffs', 
+                                             'roi_horizontal_start', 'roi_horizontal_end', 
+                                             'avg_resolution', 'raman_intensity_coeffs', 
+                                             'horiz_binning_mode' ]
+        self.multi_wavelength_values = {}
+        self.multi_wavelength_selected = 0 # current index into multi_wavelength_values
 
-        for i in range(4):
-            self.roi_wavecal_region_2_coeffs[i] = self.unpack((6,  4 + i * 4, 4), "f", f"roi_wavecal_region_2_coeffs[{i}]")
-            self.roi_wavecal_region_3_coeffs[i] = self.unpack((6, 24 + i * 4, 4), "f", f"roi_wavecal_region_3_coeffs[{i}]")
-            self.roi_wavecal_region_4_coeffs[i] = self.unpack((6, 48 + i * 4, 4), "f", f"roi_wavecal_region_4_coeffs[{i}]")
+    def read_multi_wavelength(self):
+        # initialize all keys to single-element arrays with the "standard" value as element 0
+        for name in self.multi_wavelength_attributes:
+            self.multi_wavelength_values[name] = [ getattr(name, self) ]
 
-    def write_regions(self):
-        log.debug("write_regions")
+        # read the new set 
+        PAGE = 7
+        self.multi_wavelength_values["excitation_nm_float"    ].append(  self.unpack((PAGE,  0,  4), "f"))
+        self.multi_wavelength_values["roi_horizontal_start"   ].append(  self.unpack((PAGE, 26,  2), "H"))
+        self.multi_wavelength_values["roi_horizontal_end",    ].append(  self.unpack((PAGE, 28,  2), "H"))
+        self.multi_wavelength_values["avg_resolution",        ].append(  self.unpack((PAGE, 30,  4), "f"))
+        self.multi_wavelength_values["horiz_binning_mode"     ].append(  self.unpack((PAGE, 58,  1), "B"))
+        self.multi_wavelength_values["wavelength_coeffs"      ].append([ self.unpack((PAGE,  4 + i * 4,  4), "f") for i in range(5) ])
+        self.multi_wavelength_values["raman_intensity_coeffs" ].append([ self.unpack((PAGE, 34 + i * 4,  4), "f") for i in range(6) ])
 
-        self.pack((7,  0, 1), "B", self.region_count)
-        self.pack((6,  0, 2), "H", self.roi_horiz_region_2_start)
-        self.pack((6,  2, 2), "H", self.roi_horiz_region_2_end)
-        self.pack((6, 20, 2), "H", self.roi_horiz_region_3_start)
-        self.pack((6, 22, 2), "H", self.roi_horiz_region_3_end)
-        self.pack((6, 44, 2), "H", self.roi_horiz_region_4_start)
-        self.pack((6, 46, 2), "H", self.roi_horiz_region_4_end)
-        self.pack((6, 40, 2), "H", self.roi_vertical_region_4_start)
-        self.pack((6, 42, 2), "H", self.roi_vertical_region_4_end)
-                                    
-        for i in range(4):
-            self.pack((6,  4 + i * 4, 4), "f", self.roi_wavecal_region_2_coeffs[i])
-            self.pack((6, 24 + i * 4, 4), "f", self.roi_wavecal_region_3_coeffs[i])
-            self.pack((6, 48 + i * 4, 4), "f", self.roi_wavecal_region_4_coeffs[i])
+    def write_multi_wavelength(self):
+        PAGE = 7
+        INDEX = 1
+        self.pack((PAGE,  0,  4), "f", self.multi_wavelength_values["excitation_nm_float"    ][INDEX])
+        self.pack((PAGE, 26,  2), "H", self.multi_wavelength_values["roi_horizontal_start"   ][INDEX])
+        self.pack((PAGE, 28,  2), "H", self.multi_wavelength_values["roi_horizontal_end"     ][INDEX])
+        self.pack((PAGE, 30,  4), "f", self.multi_wavelength_values["avg_resolution"         ][INDEX])
+        self.pack((PAGE, 58,  1), "B", self.multi_wavelength_values["horiz_binning_mode"     ][INDEX])
+        for i in range(5): self.pack((PAGE,  4 + i * 4,  4), "f", self.multi_wavelength_values["wavelength_coeffs"     ][INDEX][i])
+        for i in range(6): self.pack((PAGE, 34 + i * 4,  4), "f", self.multi_wavelength_values["raman_intensity_coeffs"][INDEX][i])
 
-    def dump_regions(self):
-        log.debug("Regions:")
-        log.debug("  Region Count:             %d", self.region_count)
-        log.debug("  ROI Horiz Region 2 Start: %d", self.roi_horiz_region_2_start)
-        log.debug("  ROI Horiz Region 2 End:   %d", self.roi_horiz_region_2_end)
-        log.debug("  ROI Horiz Region 3 Start: %d", self.roi_horiz_region_3_start)
-        log.debug("  ROI Horiz Region 3 End:   %d", self.roi_horiz_region_3_end)
-        log.debug("  ROI Horiz Region 4 Start: %d", self.roi_horiz_region_4_start)
-        log.debug("  ROI Horiz Region 4 End:   %d", self.roi_horiz_region_4_end)
-        log.debug("  ROI Vert Region 4 Start:  %d", self.roi_vertical_region_4_start)
-        log.debug("  ROI Vert Region 4 End:    %d", self.roi_vertical_region_4_end)
-        log.debug("  Region 2 Wavecal:         %s", self.roi_wavecal_region_2_coeffs)
-        log.debug("  Region 3 Wavecal:         %s", self.roi_wavecal_region_3_coeffs)
-        log.debug("  Region 4 Wavecal:         %s", self.roi_wavecal_region_4_coeffs)
+    def dump_multi_wavelength(self):
+        log.debug("Multi-Wavelength:")
+        for name in self.multi_wavelength_attributes:
+            for i in range(len(self.multi_wavelength_values[name])):
+                log.debug("  #{i} {name} = {self.multi_wavelength_values[name][i]}")

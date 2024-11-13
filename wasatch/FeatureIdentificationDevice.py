@@ -1307,7 +1307,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
         if self.settings.is_micro():
             # we have no idea if Series-XS has to "wake up" the sensor, so wait
             # long enough for 20ms + 8 throwaway frames if need be (IMX385 datasheet p69)
-            timeout_ms = self.settings.state.integration_time_ms * 8 + 500 * self.settings.num_connected_devices + 20
+            if self.settings.state.onboard_averaging:
+                timeout_ms = self.settings.state.integration_time_ms * (self.settings.state.scans_to_average + 7) + 500 * self.settings.num_connected_devices + 20
+            else:
+                timeout_ms = self.settings.state.integration_time_ms * 8 + 500 * self.settings.num_connected_devices + 20
         else:
             timeout_ms = self.settings.state.integration_time_ms * 2 + 1000 * self.settings.num_connected_devices
 
@@ -1588,6 +1591,15 @@ class FeatureIdentificationDevice(InterfaceDevice):
         if flag and self.settings.is_xs() and self.remaining_throwaways < 1:
             log.debug("queuing throwaways")
             self.remaining_throwaways += 1
+
+    def set_scans_to_average(self, n):
+        retval = self._send_code(0xff, 0x62, n, label="SET_SCANS_TO_AVERAGE")
+        self.settings.state.scans_to_average = n
+        self.settings.state.onboard_averaging = True
+        return retval
+
+    def get_scans_to_average(self):
+        return self._get_upper_code(0x63, lsb_len=2)
 
     def set_integration_time_ms(self, ms: float):
         """

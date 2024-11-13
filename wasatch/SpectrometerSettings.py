@@ -137,31 +137,14 @@ class SpectrometerSettings:
             return a + b.strip()
 
     def pixels(self):
-        """ 
-        Shortcut for number of pixels in the "display spectrum", AFTER horizontal
-        binning.
-
-        For Hamamatsu Silicon and InGaAs:
-        - active_pixels_horizontal == actual_pixels_horizontal (1024, 2048 or 512)
-
-        For most XS:
-        - active_pixels_horizontal == actual_pixels_horizontal == 1952
-
-        For 633XS:
-        - actual_pixels_horizontal == 1952 (how many read over USB)
-        - active_pixels_horizontal == 1952 or 974 (with BIN_4X2)
-        """
-        if self.state.detector_regions is None:
-            return self.eeprom.active_pixels_horizontal
-        else:
-            return self.state.detector_regions.total_pixels()
+        return self.eeprom.active_pixels_horizontal
 
     def excitation(self):
-        if self.eeprom.excitation_nm is None or self.eeprom.excitation_nm_float is None:
+        if self.eeprom.excitation_nm is None or self.eeprom.get_multi_wavelength("excitation_nm_float") is None:
             return 0
 
         old = float(self.eeprom.excitation_nm)
-        new = self.eeprom.excitation_nm_float
+        new = self.eeprom.get_multi_wavelength("excitation_nm_float")
 
         # if 'new' looks corrupt or not populated, use old
         if new is None or math.isnan(new):
@@ -239,6 +222,11 @@ class SpectrometerSettings:
     # methods
     # ##########################################################################
 
+    def set_selected_multi_wavelength_index(self, index):
+        self.eeprom.selected_multi_wavelength = index
+        self.update_wavecal()
+        self.update_raman_intensity_factors()
+
     def update_raman_intensity_factors(self):
         """
         @todo Note that WasatchNET.Util.applyRamanCorrection() only generates 
@@ -252,7 +240,7 @@ class SpectrometerSettings:
             return
         if 1 <= self.eeprom.raman_intensity_calibration_order <= EEPROM.MAX_RAMAN_INTENSITY_CALIBRATION_ORDER:
             log.debug("updating raman intensity factors")
-            coeffs = self.eeprom.raman_intensity_coeffs
+            coeffs = self.eeprom.get_multi_wavelength("raman_intensity_coeffs")
             log.debug("coeffs = %s", coeffs)
             if coeffs is not None:
                 try:
@@ -293,49 +281,6 @@ class SpectrometerSettings:
         self.update_wavecal()
 
     ##
-    # called by FID.post_connect
-    def init_regions(self):
-        ee = self.eeprom
-        if ee.region_count == 0 or ee.region_count > 4:
-            log.debug(f"detector regions not configured (subformat {ee.subformat}, region_count {ee.region_count})")
-            return
-
-        log.debug("initializing detector regions")
-        self.state.detector_regions = DetectorRegions()
-        for region in range(self.eeprom.region_count):
-            y0, y1, x0, x1 = (None, None, None, None)
-            if region == 0:
-                x0 = ee.roi_horizontal_start
-                x1 = ee.roi_horizontal_end
-                y0 = ee.roi_vertical_region_1_start
-                y1 = ee.roi_vertical_region_1_end
-            elif region == 1:
-                x0 = ee.roi_horiz_region_2_start
-                x1 = ee.roi_horiz_region_2_end
-                y0 = ee.roi_vertical_region_2_start
-                y1 = ee.roi_vertical_region_2_end
-            elif region == 2:
-                x0 = ee.roi_horiz_region_3_start
-                x1 = ee.roi_horiz_region_3_end
-                y0 = ee.roi_vertical_region_3_start
-                y1 = ee.roi_vertical_region_3_end
-            elif region == 3:
-                x0 = ee.roi_horiz_region_4_start
-                x1 = ee.roi_horiz_region_4_end
-                y0 = ee.roi_vertical_region_4_start
-                y1 = ee.roi_vertical_region_4_end
-            else:
-                log.error(f"invalid region {region}")
-
-            roi = DetectorROI(region, y0, y1, x0, x1)
-            log.debug(f"adding roi: {roi}")
-            self.state.detector_regions.add(roi)
-
-            if region == 0:
-                log.debug("kludge: only enabling the first for now")
-                roi.enabled = True
-
-    ##
     # Note regions are internally 0-indexed (0-3), although EEPROM fields are 1-indexed.
     #
     # If you want to actually send the ROI downstream to the spectrometer, call
@@ -352,33 +297,10 @@ class SpectrometerSettings:
         self.update_wavecal()
 
     def get_wavecal_coeffs(self):
-        """
-        Return a list of coefficients from EEPROM that define the mapping from pixels to wavelengths.
-
-        The coefficients are returned in ascending degree.
-
-        [A, B, C, D] <--> W(x) = A + B*x + C*x**2 + D*x**3
-        """
-
-        n = self.state.region
-
-        if   n == 1: return self.eeprom.roi_wavecal_region_2_coeffs
-        elif n == 2: return self.eeprom.roi_wavecal_region_3_coeffs
-        elif n == 3: return self.eeprom.roi_wavecal_region_4_coeffs
-
-        # if n is None or n == 0:
-        return self.eeprom.wavelength_coeffs
+        return self.eeprom.get_multi_wavelength("wavelength_coeffs")
 
     def set_wavecal_coeffs(self, coeffs):
-        n = self.state.region
-
-        if n is None or n == 0:
-            self.eeprom.wavelength_coeffs = coeffs
-        elif n == 1: self.eeprom.roi_wavecal_region_2_coeffs = coeffs
-        elif n == 2: self.eeprom.roi_wavecal_region_3_coeffs = coeffs
-        elif n == 3: self.eeprom.roi_wavecal_region_4_coeffs = coeffs
-
-        log.debug(f"stored new coeffs for region {n}: {coeffs}")
+        self.eeprom.set_multi_wavelength("wavelength_coeffs", coeffs)
 
     ##
     # @par Discussion re: SPI models
@@ -435,7 +357,6 @@ class SpectrometerSettings:
         else:
             log.debug("update_wavecal: passed coeffs, so storing to region {self.state.region}")
             self.set_wavecal_coeffs(coeffs)
-
 
         self.wavelengths = utils.generate_wavelengths(self.pixels(), coeffs)
 

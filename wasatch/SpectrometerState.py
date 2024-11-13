@@ -102,6 +102,7 @@ class SpectrometerState:
 
         # scan averaging
         self.scans_to_average = 1
+        self.onboard_averaging = False # whether averaging occurs in HW or SW
 
         # boxcar 
         self.boxcar_half_width = 0
