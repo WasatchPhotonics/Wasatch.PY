@@ -238,6 +238,8 @@ class ProcessedReading:
         if self.settings and self.wavenumbers is None:
             self.wavenumbers = copy(self.settings.wavenumbers)
 
+        log.debug(f"PR.post_laod_cleanup: waveelngths {self.wavelengths[:10]}")
+
         for field in [ "processed", "raw", "dark", "reference", "recordable_dark", "recordable_reference", "wavelengths", "wavenumbers" ]:
             if hasattr(self, field):
                 array = getattr(self, field)

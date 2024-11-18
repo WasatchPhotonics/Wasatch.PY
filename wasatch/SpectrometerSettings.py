@@ -140,11 +140,11 @@ class SpectrometerSettings:
         return self.eeprom.active_pixels_horizontal
 
     def excitation(self):
-        if self.eeprom.excitation_nm is None or self.eeprom.get_multi_wavelength("excitation_nm_float") is None:
+        if self.eeprom.excitation_nm is None or self.eeprom.multi_wavelength_calibration.get("excitation_nm_float") is None:
             return 0
 
         old = float(self.eeprom.excitation_nm)
-        new = self.eeprom.get_multi_wavelength("excitation_nm_float")
+        new = self.eeprom.multi_wavelength_calibration.get("excitation_nm_float")
 
         # if 'new' looks corrupt or not populated, use old
         if new is None or math.isnan(new):
@@ -223,7 +223,7 @@ class SpectrometerSettings:
     # ##########################################################################
 
     def set_selected_multi_wavelength_index(self, index):
-        self.eeprom.selected_multi_wavelength = index
+        self.eeprom.multi_wavelength_calibration.selected_index = index
         self.update_wavecal()
         self.update_raman_intensity_factors()
 
@@ -240,7 +240,7 @@ class SpectrometerSettings:
             return
         if 1 <= self.eeprom.raman_intensity_calibration_order <= EEPROM.MAX_RAMAN_INTENSITY_CALIBRATION_ORDER:
             log.debug("updating raman intensity factors")
-            coeffs = self.eeprom.get_multi_wavelength("raman_intensity_coeffs")
+            coeffs = self.eeprom.multi_wavelength_calibration.get("raman_intensity_coeffs")
             log.debug("coeffs = %s", coeffs)
             if coeffs is not None:
                 try:
@@ -297,10 +297,10 @@ class SpectrometerSettings:
         self.update_wavecal()
 
     def get_wavecal_coeffs(self):
-        return self.eeprom.get_multi_wavelength("wavelength_coeffs")
+        return self.eeprom.multi_wavelength_calibration.get("wavelength_coeffs", default=[0, 0, 0, 0, 0])
 
     def set_wavecal_coeffs(self, coeffs):
-        self.eeprom.set_multi_wavelength("wavelength_coeffs", coeffs)
+        self.eeprom.multi_wavelength_calibration.set("wavelength_coeffs", coeffs)
 
     ##
     # @par Discussion re: SPI models
@@ -354,11 +354,13 @@ class SpectrometerSettings:
 
         if coeffs is None:
             coeffs = self.get_wavecal_coeffs()
+            log.debug(f"SS.update_wavecal: coeffs {coeffs}")
         else:
             log.debug("update_wavecal: passed coeffs, so storing to region {self.state.region}")
             self.set_wavecal_coeffs(coeffs)
 
         self.wavelengths = utils.generate_wavelengths(self.pixels(), coeffs)
+        log.debug(f"SS.update_wavecal: wavelengths {self.wavelengths[:10]}")
 
         if self.wavelengths is None:
             # this can happen on Stroker Protocol before/without .ini file,

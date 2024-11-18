@@ -399,7 +399,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
             if roi is not None:
                 self.set_vertical_binning(roi)
 
-        self.settings.init_regions()        
+        # self.settings.init_regions()        
 
         # ######################################################################
         # post-connection defaults

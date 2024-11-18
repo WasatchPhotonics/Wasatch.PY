@@ -154,7 +154,7 @@ class EEPROM:
         self.init_raman_intensity_calibration()
         self.init_spline()
         self.init_untethered()
-        self.init_multi_wavelength()
+        self.multi_wavelength_calibration = MultiWavelengthCalibration(self)
 
     ## whether the given field is normally editable by users via ENLIGHTEN
     #
@@ -385,6 +385,10 @@ class EEPROM:
         # Page 6-7
         # ######################################################################
 
+        # always initialize multi_wavelength, because it initializes the base set 
+        # of dependent attributes
+        self.multi_wavelength_calibration.initialize()
+        
         if self.subformat == 0:
             pass
         elif self.subformat == 1:
@@ -397,10 +401,10 @@ class EEPROM:
             log.critical("Subformat 4 has been deprecated")
         elif self.subformat == 5:
             self.read_raman_intensity_calibration()
-            self.read_multi_wavelength()
+            self.multi_wavelength_calibration.read()
         else:
             log.critical(f"Unreadable EEPROM subformat {self.subformat}")
-        
+
         # ######################################################################
         # feature mask
         # ######################################################################
@@ -635,7 +639,7 @@ class EEPROM:
             log.critical("Subformat 4 is deprecated")
         elif self.subformat == 5:
             self.write_raman_intensity_calibration()
-            self.write_multi_wavelength()
+            self.multi_wavelength_calibration.write()
         else:
             log.error(f"Unwriteable EEPROM subformat {self.subformat}")
 
@@ -807,9 +811,11 @@ class EEPROM:
     def json(self, allow_nan=True):
         tmp_buf  = self.buffers
         tmp_data = self.user_data
+        tmp_mwc  = self.multi_wavelength_calibration
 
         self.buffers   = str(self.buffers)
         self.user_data = str(self.user_data)
+        self.multi_wavelength_calibration = self.multi_wavelength_calibration.toJSON()
 
         # this does take an allow_nan argument, but it throws an exception on NaN, 
         # rather than replacing with null :-(
@@ -820,6 +826,7 @@ class EEPROM:
 
         self.buffers   = tmp_buf
         self.user_data = tmp_data
+        self.multi_wavelength_calibration = tmp_mwc
 
         return s
 
@@ -902,7 +909,7 @@ class EEPROM:
             self.dump_raman_intensity_calibration()
             self.dump_untethered()
         elif self.subformat == 5:
-            self.dump_multi_wavelengths()
+            self.multi_wavelength_calibration.dump()
 
     # ##########################################################################
     #                                                                          #
@@ -915,8 +922,8 @@ class EEPROM:
 
     ## pixel frame (end is last index, not last+1),
     def get_horizontal_roi(self):
-        start  = self.get_multi_wavelength("roi_horizontal_start")
-        end    = self.get_multi_wavelength("roi_horizontal_end")
+        start  = self.multi_wavelength_calibration.get("roi_horizontal_start", default=-1)
+        end    = self.multi_wavelength_calibration.get("roi_horizontal_end", default=-1)
         pixels = self.active_pixels_horizontal
 
         if 0 <= start and start < end and end < pixels:
@@ -967,7 +974,7 @@ class EEPROM:
             log.debug(f"has_raman_intensity_calibration: false because invalid order {self.raman_intensity_calibration_order}")
             return False
             
-        if not utils.coeffs_look_valid(self.get_multi_wavelength("raman_intensity_coeffs"), count = self.raman_intensity_calibration_order + 1):
+        if not utils.coeffs_look_valid(self.multi_wavelength_calibration.get("raman_intensity_coeffs"), count = self.raman_intensity_calibration_order + 1):
             log.debug(f"has_raman_intensity_calibration: false because coeffs look weird")
             return False
 
@@ -1153,68 +1160,111 @@ class EEPROM:
         log.debug("  Match Threshold:  %d", self.untethered_match_threshold)
         log.debug("  Library Count:    %d", self.untethered_library_count)
 
-    # ##########################################################################
-    # Subformat 5: Multi-Wavelength
-    # ##########################################################################
+class MultiWavelengthCalibration:
+    """
+    Subformat 5: Multi-Wavelength
 
-    # These functions are used for spectrometers supporting multiple excitations.
-    #
-    # It is over-engineered a little bit, in that if we're going to support 2 of
-    # these 7 attributes, then I want the architecture to scale readily to 4 of
-    # 15 attributes, hence the dictionary.
-    #
-    # OTOH it's under-engineered in that this probably should be its own class.
+    This class is used to manage those attributes which can vary in a single 
+    multi-wavelength spectrometer (for instance, where a compound grating 
+    supports different Raman excitations in different detector ROIs).
 
-    def get_multi_wavelength(self, name):
-        a = self.multi_wavelength_values[name]
-        i = self.multi_wavelength_selected
-        log.debug("get_multi_wavelength: requested {name}[{i}]")
-        value = a[i]
-        log.debug("get_multi_wavelength: returning {value}")
+    Currently the set of such attributes includes laser excitation wavelength,
+    wavelength calibration, horizontal ROI, Raman Intensity Calibration, 
+    average resolution, and horizontal binning mode. (Vertical ROI was 
+    presciently covered in Format 1.)
+    """
+
+    def __init__(self, eeprom):
+        self.eeprom = eeprom
+
+        self.attributes = [ 'excitation_nm_float', 'wavelength_coeffs', 
+                            'roi_horizontal_start', 'roi_horizontal_end', 
+                            'avg_resolution', 'raman_intensity_coeffs', 
+                            'horiz_binning_mode' ]
+        self.values = {}
+        self.selected_index = 0 # e.g., self.values['avg_resolution'][selected_index]
+
+    def initialize(self):
+        """ initialize attributes to single-element arrays with the "standard" value at index 0 """
+        for name in self.attributes:
+            log.debug(f"read: initializing {name}")
+            self.values[name] = [ getattr(self.eeprom, name) ]
+
+    def get(self, name, index=None, element=None, default=None):
+        if name not in self.values:
+            log.debug(f"get: name {name} not in values: {self.values}")
+            return default
+
+        label = f"{name}[{index}]" if element is None else f"{name}[{index}][{element}]"
+
+        a = self.values[name]
+        if index is None:
+            index = self.selected_index
+        if index >= len(a):
+            log.warn(f"MultiWavelength.get: returning {label} 0 because index {index} not in array len {len(a)}")
+            return 0
+
+        if element is None:
+            value = a[index] 
+        else:
+            if isinstance(a[index], list):
+                if element >= len(a[index]):
+                    log.warn(f"MultiWavelength.get: returning {label} 0 because element {element} not in array[{index}] len {len(a[index])}")
+                    return 0
+                else:
+                    value = a[index][element]
+            else:
+                log.warn(f"MultiWavelength.get: returning {label} 0 because array[{index}] is not a list")
+                return 0
+                    
+        log.debug(f"MultiWavelength.get: returning {label} = {value}")
         return value
 
-    def set_multi_wavelength(self, name, value):
-        a = self.multi_wavelength_values[name]
-        i = self.multi_wavelength_selected
-        log.debug("set_multi_wavelength: setting {name}[{i}] = {value}")
-        a[i] = value
+    def set(self, name, value, index=None, element=None):
+        a = self.values[name]
+        if index is None:
+            index = self.selected_index
+        while len(a) - 1 < index:
+            a.append(0)
+        if element is None:
+            label = f"{name}[{index}]"
+            a[index] = value
+        else:
+            label = f"{name}[{index}][{element}]"
+            a[index][element] = value
+        log.debug(f"MultiWavelength.set: set {label} = {value}")
 
-    def init_multi_wavelength(self):
-        self.multi_wavelength_attributes = { 'excitation_nm_float', 'wavelength_coeffs', 
-                                             'roi_horizontal_start', 'roi_horizontal_end', 
-                                             'avg_resolution', 'raman_intensity_coeffs', 
-                                             'horiz_binning_mode' ]
-        self.multi_wavelength_values = {}
-        self.multi_wavelength_selected = 0 # current index into multi_wavelength_values
+    def read(self, page=None):
+        # read the 2nd set as index 1 (can grow this as needed)
+        if page is None:
+            page = 7
+        self.values["excitation_nm_float"    ].append(  self.eeprom.unpack((page,  0,  4), "f"))
+        self.values["roi_horizontal_start"   ].append(  self.eeprom.unpack((page, 26,  2), "H"))
+        self.values["roi_horizontal_end"     ].append(  self.eeprom.unpack((page, 28,  2), "H"))
+        self.values["avg_resolution"         ].append(  self.eeprom.unpack((page, 30,  4), "f"))
+        self.values["horiz_binning_mode"     ].append(  self.eeprom.unpack((page, 58,  1), "B"))
+        self.values["wavelength_coeffs"      ].append([ self.eeprom.unpack((page,  4 + i * 4,  4), "f") for i in range(5) ])
+        self.values["raman_intensity_coeffs" ].append([ self.eeprom.unpack((page, 34 + i * 4,  4), "f") for i in range(6) ])
 
-    def read_multi_wavelength(self):
-        # initialize all keys to single-element arrays with the "standard" value as element 0
-        for name in self.multi_wavelength_attributes:
-            self.multi_wavelength_values[name] = [ getattr(name, self) ]
+    def write(self, index=None, page=None):
+        if page is None:
+            page = 7
+        if index is None:
+            index = 0 
+        self.eeprom.pack((page,  0,  4), "f", self.get("excitation_nm_float",  index))
+        self.eeprom.pack((page, 26,  2), "H", self.get("roi_horizontal_start", index))
+        self.eeprom.pack((page, 28,  2), "H", self.get("roi_horizontal_end",   index))
+        self.eeprom.pack((page, 30,  4), "f", self.get("avg_resolution",       index))
+        self.eeprom.pack((page, 58,  1), "B", self.get("horiz_binning_mode",   index))
+        for i in range(5): self.eeprom.pack((page,  4 + i * 4,  4), "f", self.get("wavelength_coeffs", index, i))
+        for i in range(6): self.eeprom.pack((page, 34 + i * 4,  4), "f", self.get("raman_intensity_coeffs", index, i))
 
-        # read the new set 
-        PAGE = 7
-        self.multi_wavelength_values["excitation_nm_float"    ].append(  self.unpack((PAGE,  0,  4), "f"))
-        self.multi_wavelength_values["roi_horizontal_start"   ].append(  self.unpack((PAGE, 26,  2), "H"))
-        self.multi_wavelength_values["roi_horizontal_end",    ].append(  self.unpack((PAGE, 28,  2), "H"))
-        self.multi_wavelength_values["avg_resolution",        ].append(  self.unpack((PAGE, 30,  4), "f"))
-        self.multi_wavelength_values["horiz_binning_mode"     ].append(  self.unpack((PAGE, 58,  1), "B"))
-        self.multi_wavelength_values["wavelength_coeffs"      ].append([ self.unpack((PAGE,  4 + i * 4,  4), "f") for i in range(5) ])
-        self.multi_wavelength_values["raman_intensity_coeffs" ].append([ self.unpack((PAGE, 34 + i * 4,  4), "f") for i in range(6) ])
-
-    def write_multi_wavelength(self):
-        PAGE = 7
-        INDEX = 1
-        self.pack((PAGE,  0,  4), "f", self.multi_wavelength_values["excitation_nm_float"    ][INDEX])
-        self.pack((PAGE, 26,  2), "H", self.multi_wavelength_values["roi_horizontal_start"   ][INDEX])
-        self.pack((PAGE, 28,  2), "H", self.multi_wavelength_values["roi_horizontal_end"     ][INDEX])
-        self.pack((PAGE, 30,  4), "f", self.multi_wavelength_values["avg_resolution"         ][INDEX])
-        self.pack((PAGE, 58,  1), "B", self.multi_wavelength_values["horiz_binning_mode"     ][INDEX])
-        for i in range(5): self.pack((PAGE,  4 + i * 4,  4), "f", self.multi_wavelength_values["wavelength_coeffs"     ][INDEX][i])
-        for i in range(6): self.pack((PAGE, 34 + i * 4,  4), "f", self.multi_wavelength_values["raman_intensity_coeffs"][INDEX][i])
-
-    def dump_multi_wavelength(self):
+    def dump(self):
         log.debug("Multi-Wavelength:")
-        for name in self.multi_wavelength_attributes:
-            for i in range(len(self.multi_wavelength_values[name])):
-                log.debug("  #{i} {name} = {self.multi_wavelength_values[name][i]}")
+        for name in self.attributes:
+            for i in range(len(self.values[name])):
+                log.debug("  #{i} {name} = {self.values[name][i]}")
+
+    def toJSON(self): 
+        return str(self.__dict__)
+        return json.dumps(self, default=lambda o: o.__dict__, sort_keys=True, indent=4)
