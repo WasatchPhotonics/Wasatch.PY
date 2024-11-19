@@ -920,13 +920,23 @@ class EEPROM:
     def latest_rev(self):
         return EEPROM.LATEST_REV
 
-    ## pixel frame (end is last index, not last+1),
     def get_horizontal_roi(self):
         start  = self.multi_wavelength_calibration.get("roi_horizontal_start", default=-1)
         end    = self.multi_wavelength_calibration.get("roi_horizontal_end", default=-1)
-        pixels = self.active_pixels_horizontal
 
-        if 0 <= start and start < end and end < pixels:
+        if 0 <= start and start < end and end < self.active_pixels_horizontal:
+            return ROI(start, end)
+
+    def get_vertical_roi(self):
+        n = self.multi_wavelength_calibration.selected_calibration + 1
+
+        start = getattr(self, f"roi_vertical_region_{n}_start")
+        end   = getattr(self, f"roi_vertical_region_{n}_end")
+
+        if start > end:
+            end, start = start, end
+
+        if 0 <= start and start < end and end < self.active_pixels_vertical:
             return ROI(start, end)
 
     ## 
@@ -1182,60 +1192,63 @@ class MultiWavelengthCalibration:
                             'avg_resolution', 'raman_intensity_coeffs', 
                             'horiz_binning_mode' ]
         self.values = {}
-        self.selected_index = 0 # e.g., self.values['avg_resolution'][selected_index]
+        self.selected_calibration = 0 # e.g., self.values['avg_resolution'][selected_calibration]
+
+    def is_multi_wavelength(self, name):
+        return name in self.attributes
 
     def initialize(self):
-        """ initialize attributes to single-element arrays with the "standard" value at index 0 """
+        """ initialize attributes to single-element arrays with the "standard" value at calibration 0 """
         for name in self.attributes:
             log.debug(f"read: initializing {name}")
             self.values[name] = [ getattr(self.eeprom, name) ]
 
-    def get(self, name, index=None, element=None, default=None):
+    def get(self, name, calibration=None, index=None, default=None):
         if name not in self.values:
             log.debug(f"get: name {name} not in values: {self.values}")
             return default
 
-        label = f"{name}[{index}]" if element is None else f"{name}[{index}][{element}]"
+        label = f"{name}[{calibration}]" if index is None else f"{name}[{calibration}][{index}]"
 
         a = self.values[name]
-        if index is None:
-            index = self.selected_index
-        if index >= len(a):
-            log.warn(f"MultiWavelength.get: returning {label} 0 because index {index} not in array len {len(a)}")
+        if calibration is None:
+            calibration = self.selected_calibration
+        if calibration >= len(a):
+            log.warn(f"MultiWavelength.get: returning {label} 0 because calibration {calibration} not in array len {len(a)}")
             return 0
 
-        if element is None:
-            value = a[index] 
+        if index is None:
+            value = a[calibration] 
         else:
-            if isinstance(a[index], list):
-                if element >= len(a[index]):
-                    log.warn(f"MultiWavelength.get: returning {label} 0 because element {element} not in array[{index}] len {len(a[index])}")
+            if isinstance(a[calibration], list):
+                if index >= len(a[calibration]):
+                    log.warn(f"MultiWavelength.get: returning {label} 0 because index {index} not in array[calibration {calibration}] len {len(a[calibration])}")
                     return 0
                 else:
-                    value = a[index][element]
+                    value = a[calibration][index]
             else:
-                log.warn(f"MultiWavelength.get: returning {label} 0 because array[{index}] is not a list")
+                log.warn(f"MultiWavelength.get: returning {label} 0 because array[calibration {calibration}] is not a list")
                 return 0
                     
         log.debug(f"MultiWavelength.get: returning {label} = {value}")
         return value
 
-    def set(self, name, value, index=None, element=None):
+    def set(self, name, value, calibration=None, index=None):
         a = self.values[name]
-        if index is None:
-            index = self.selected_index
-        while len(a) - 1 < index:
+        if calibration is None:
+            calibration = self.selected_calibration
+        while len(a) - 1 < cal:
             a.append(0)
-        if element is None:
-            label = f"{name}[{index}]"
-            a[index] = value
+        if index is None:
+            label = f"{name}[{calibration}]"
+            a[calibration] = value
         else:
-            label = f"{name}[{index}][{element}]"
-            a[index][element] = value
+            label = f"{name}[{calibration}][{index}]"
+            a[calibration][index] = value
         log.debug(f"MultiWavelength.set: set {label} = {value}")
 
     def read(self, page=None):
-        # read the 2nd set as index 1 (can grow this as needed)
+        # read the 2nd set as calibration 1 (can grow this as needed)
         if page is None:
             page = 7
         self.values["excitation_nm_float"    ].append(  self.eeprom.unpack((page,  0,  4), "f"))
@@ -1246,18 +1259,18 @@ class MultiWavelengthCalibration:
         self.values["wavelength_coeffs"      ].append([ self.eeprom.unpack((page,  4 + i * 4,  4), "f") for i in range(5) ])
         self.values["raman_intensity_coeffs" ].append([ self.eeprom.unpack((page, 34 + i * 4,  4), "f") for i in range(6) ])
 
-    def write(self, index=None, page=None):
+    def write(self, calibration=None, page=None):
         if page is None:
             page = 7
-        if index is None:
-            index = 0 
-        self.eeprom.pack((page,  0,  4), "f", self.get("excitation_nm_float",  index))
-        self.eeprom.pack((page, 26,  2), "H", self.get("roi_horizontal_start", index))
-        self.eeprom.pack((page, 28,  2), "H", self.get("roi_horizontal_end",   index))
-        self.eeprom.pack((page, 30,  4), "f", self.get("avg_resolution",       index))
-        self.eeprom.pack((page, 58,  1), "B", self.get("horiz_binning_mode",   index))
-        for i in range(5): self.eeprom.pack((page,  4 + i * 4,  4), "f", self.get("wavelength_coeffs", index, i))
-        for i in range(6): self.eeprom.pack((page, 34 + i * 4,  4), "f", self.get("raman_intensity_coeffs", index, i))
+        if calibration is None:
+            calibration = 0 
+        self.eeprom.pack((page,  0,  4), "f", self.get("excitation_nm_float",  calibration))
+        self.eeprom.pack((page, 26,  2), "H", self.get("roi_horizontal_start", calibration))
+        self.eeprom.pack((page, 28,  2), "H", self.get("roi_horizontal_end",   calibration))
+        self.eeprom.pack((page, 30,  4), "f", self.get("avg_resolution",       calibration))
+        self.eeprom.pack((page, 58,  1), "B", self.get("horiz_binning_mode",   calibration))
+        for i in range(5): self.eeprom.pack((page,  4 + i * 4,  4), "f", self.get("wavelength_coeffs", calibration, i))
+        for i in range(6): self.eeprom.pack((page, 34 + i * 4,  4), "f", self.get("raman_intensity_coeffs", calibration, i))
 
     def dump(self):
         log.debug("Multi-Wavelength:")
