@@ -27,6 +27,7 @@ from .DetectorROI          import DetectorROI
 from .PollStatus           import PollStatus
 from .EEPROM               import EEPROM
 from .IMX385               import IMX385
+from .ROI                  import ROI
 
 log = logging.getLogger(__name__)
 
@@ -394,12 +395,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # initialize state.gain_db from EEPROM startup value
         self.settings.state.gain_db = self.settings.eeprom.detector_gain
 
-        if self.settings.is_micro():
-            roi = self.settings.get_vertical_roi()
-            if roi is not None:
-                self.set_vertical_binning(roi)
-
-        # self.settings.init_regions()        
+        self.update_vertical_roi() 
 
         # ######################################################################
         # post-connection defaults
@@ -2588,7 +2584,13 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         return self.set_laser_watchdog_sec(watchdog_sec)
 
-    def set_vertical_binning(self, lines: tuple[int, int]):
+    def update_vertical_roi(self):
+        if self.settings.is_micro():
+            roi = self.settings.get_vertical_roi()
+            if roi is not None:
+                self.set_vertical_binning(roi)
+
+    def set_vertical_binning(self, roi):
         # check for legacy vis since they don't like vertical binning
         if self.settings.fpga_firmware_version == "000-008" and self.settings.microcontroller_firmware_version == "0.1.0.7":
             return SpectrometerResponse(data=False)
@@ -2596,10 +2598,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.debug("Vertical Binning only configurable on Series-XS")
             return SpectrometerResponse(data=False, error_msg="vertical binning not supported")
 
-        try:
-            start = lines[0]
-            end   = lines[1]
-        except:
+        if isinstance(roi, ROI):
+            start, end = roi.start, roi.end
+        elif len(roi) == 2:
+            start, end = roi[0], roi[1]
+        else:
             log.error("set_vertical_binning requires a tuple of (start, stop) lines")
             return SpectrometerResponse(data=False, error_msg="invalid start and stop lines")
 
@@ -3553,6 +3556,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         # regions
         process_f["vertical_binning"]                   = lambda x: self.set_vertical_binning(x)
+        process_f["update_vertical_roi"]                = lambda x: self.update_vertical_roi(x)
         process_f["single_region"]                      = lambda x: self.set_single_region(int(round(x)))
         process_f["clear_regions"]                      = lambda x: self.clear_regions()
         process_f["detector_roi"]                       = lambda x: self.set_detector_roi(x)

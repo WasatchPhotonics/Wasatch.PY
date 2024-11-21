@@ -14,10 +14,10 @@ from .DetectorRegions      import DetectorRegions
 from .MockUSBDevice        import MockUSBDevice
 from .RealUSBDevice        import RealUSBDevice
 from .HardwareInfo         import HardwareInfo
-from .DetectorROI          import DetectorROI
 from .FPGAOptions          import FPGAOptions
 from .DeviceID             import DeviceID
 from .EEPROM               import EEPROM
+from .ROI                  import ROI
 
 log = logging.getLogger(__name__)
 
@@ -140,26 +140,7 @@ class SpectrometerSettings:
         return self.eeprom.active_pixels_horizontal
 
     def excitation(self):
-        if self.eeprom.excitation_nm is None or self.eeprom.multi_wavelength_calibration.get("excitation_nm_float") is None:
-            return 0
-
-        old = float(self.eeprom.excitation_nm)
-        new = self.eeprom.multi_wavelength_calibration.get("excitation_nm_float")
-
-        # if 'new' looks corrupt or not populated, use old
-        if new is None or math.isnan(new):
-            return old
-
-        # if 'new' looks like a reasonable value, use it
-        if 200 <= new and new <= 2500:
-            return new
-
-        # if 'new' value is unreasonable AND NON-ZERO, complain
-        if new != 0.0:
-            log.debug(f"excitation wavelength {new} outside (200, 2500) - suspect corrupt EEPROM, using {old}")
-            return old
-
-        return old
+        return self.eeprom.multi_wavelength_calibration.get("excitation_nm_float", default=0.0)
 
     def is_mml(self): # -> bool 
         if not self.eeprom.has_laser:
@@ -177,20 +158,27 @@ class SpectrometerSettings:
         else:
             return False
 
-    def has_excitation(self): # -> bool 
+    def has_excitation(self):
         return self.excitation() > 0
 
-    def has_vertical_roi(self): # -> bool 
-        start = self.eeprom.roi_vertical_region_1_start
-        stop  = self.eeprom.roi_vertical_region_1_end
-        height = self.eeprom.active_pixels_vertical
-        return start < stop and start >= 0 and stop < height
+    def has_vertical_roi(self): 
+        roi = self.get_vertical_roi()
+        if roi is None:
+            return False
 
-    ## @todo return ROI
+        height = self.eeprom.active_pixels_vertical
+        return roi.start < roi.stop and roi.start >= 0 and roi.stop < height
+
     def get_vertical_roi(self):
-        if self.has_vertical_roi():
-            return (self.eeprom.roi_vertical_region_1_start,
-                    self.eeprom.roi_vertical_region_1_end)
+        calibration = self.eeprom.multi_wavelength_calibration.selected_calibration
+        if calibration == 0:
+            return ROI(self.eeprom.roi_vertical_region_1_start, self.eeprom.roi_vertical_region_1_end)
+        elif calibration == 1:
+            return ROI(self.eeprom.roi_vertical_region_2_start, self.eeprom.roi_vertical_region_2_end)
+        elif calibration == 2:
+            return ROI(self.eeprom.roi_vertical_region_3_start, self.eeprom.roi_vertical_region_3_end)
+        else:
+            log.error(f"get_vertical_roi: invalid calibration {calibration}")
 
     def default_detector_setpoint_degC(self):
         
@@ -222,8 +210,9 @@ class SpectrometerSettings:
     # methods
     # ##########################################################################
 
-    def set_selected_multi_wavelength_index(self, index):
-        self.eeprom.multi_wavelength_calibration.selected_index = index
+    def select_calibration(self, calibration):
+        log.debug("changing Multi-Wavelength Calibration to {calibration}")
+        self.eeprom.multi_wavelength_calibration.selected_calibration = calibration
         self.update_wavecal()
         self.update_raman_intensity_factors()
 

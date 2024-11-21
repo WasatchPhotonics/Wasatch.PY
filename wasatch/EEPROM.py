@@ -927,18 +927,6 @@ class EEPROM:
         if 0 <= start and start < end and end < self.active_pixels_horizontal:
             return ROI(start, end)
 
-    def get_vertical_roi(self):
-        n = self.multi_wavelength_calibration.selected_calibration + 1
-
-        start = getattr(self, f"roi_vertical_region_{n}_start")
-        end   = getattr(self, f"roi_vertical_region_{n}_end")
-
-        if start > end:
-            end, start = start, end
-
-        if 0 <= start and start < end and end < self.active_pixels_vertical:
-            return ROI(start, end)
-
     ## 
     # On a 1024-pixel detector, note the expected / correct result based on the 
     # roi_horizontal_start/stop fields:
@@ -1214,8 +1202,8 @@ class MultiWavelengthCalibration:
         if calibration is None:
             calibration = self.selected_calibration
         if calibration >= len(a):
-            log.warn(f"MultiWavelengthCalibration.get: returning {label} 0 because calibration {calibration} not in array len {len(a)}")
-            return 0
+            log.warn(f"MultiWavelengthCalibration.get: returning default {default} because calibration {calibration} not in {label} array len {len(a)}")
+            return default
 
         if index is None:
             value = a[calibration] 
