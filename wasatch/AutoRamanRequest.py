@@ -74,3 +74,23 @@ class AutoRamanRequest:
         buf.extend([self.saturation       & 0xff, (self.saturation    >> 8) & 0xff])
         buf.extend([self.max_avg          & 0xff                                  ]) 
         return buf
+
+if __name__ == "__main__":
+    aar = AutoRamanRequest(
+        max_ms         = 10000,
+        start_integ_ms = 100,
+        start_gain_db  = 0,
+        max_integ_ms   = 2000,
+        min_integ_ms   = 10,
+        max_gain_db    = 32,
+        min_gain_db    = 0,
+        target_counts  = 45000,
+        max_counts     = 50000,
+        min_counts     = 40000,
+        max_factor     = 5,
+        drop_factor    = 0.8,
+        saturation     = 65000,
+        max_avg        = 100)
+
+    buf = aar.serialize()
+    print("0x" + " ".join([f"{b:02x}" for b in buf]))
