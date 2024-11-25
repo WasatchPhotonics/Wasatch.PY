@@ -210,6 +210,11 @@ class SpectrometerSettings:
     # methods
     # ##########################################################################
 
+    def calibrations(self):
+        if self.eeprom.subformat != 5:
+            return 1
+        return self.eeprom.multi_wavelength_calibration.calibrations
+
     def select_calibration(self, calibration):
         log.debug("changing Multi-Wavelength Calibration to {calibration}")
         self.eeprom.multi_wavelength_calibration.selected_calibration = calibration
@@ -343,13 +348,13 @@ class SpectrometerSettings:
 
         if coeffs is None:
             coeffs = self.get_wavecal_coeffs()
-            log.debug(f"SS.update_wavecal: coeffs {coeffs}")
+            log.debug(f"update_wavecal: coeffs {coeffs}")
         else:
             log.debug("update_wavecal: passed coeffs, so storing to region {self.state.region}")
             self.set_wavecal_coeffs(coeffs)
 
         self.wavelengths = utils.generate_wavelengths(self.pixels(), coeffs)
-        log.debug(f"SS.update_wavecal: wavelengths {self.wavelengths[:10]}")
+        log.debug(f"update_wavecal: wavelengths {self.wavelengths[:10]}")
 
         if self.wavelengths is None:
             # this can happen on Stroker Protocol before/without .ini file,

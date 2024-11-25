@@ -604,11 +604,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
             smoothed.append(intensity * slopes[i] + offsets[i])
         return smoothed
 
-    def _apply_horizontal_binning(self, spectrum: list[float]):
+    def _apply_horizontal_binning(self, spectrum):
         if not self.settings.eeprom.horiz_binning_enabled:
             return spectrum
 
-        mode = self.settings.eeprom.horiz_binning_mode
+        mode = self.settings.eeprom.multi_wavelength_calibration.get("horiz_binning_mode")
         if mode == IMX385.BIN_2X2:
             return self.imx385.bin_2x2(spectrum)
         elif mode == IMX385.CORRECT_SSC:
@@ -628,7 +628,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.error("invalid horizontal binning mode {mode}...defaulting to bin_2x2")
             return self.imx385.bin_2x2(spectrum)
 
-    def _correct_bad_pixels(self, spectrum: list[float]):
+    def _correct_bad_pixels(self, spectrum):
         """
         If a spectrometer has bad_pixels configured in the EEPROM, then average
         over them in the driver.
@@ -1464,6 +1464,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # some detectors have "garbage" pixels at the front or end of every
         # spectrum (sync bytes and what-not)
         if self.settings.is_imx385() and self.settings.fpga_firmware_version == "01.1.01":
+            utils.stomp_first(spectrum, 3)
             utils.stomp_last (spectrum, 2)
         if self.settings.is_imx392() and self.settings.state.detector_regions is None:
             utils.stomp_first(spectrum, 3)
@@ -3556,7 +3557,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         # regions
         process_f["vertical_binning"]                   = lambda x: self.set_vertical_binning(x)
-        process_f["update_vertical_roi"]                = lambda x: self.update_vertical_roi(x)
+        process_f["update_vertical_roi"]                = lambda x: self.update_vertical_roi()
         process_f["single_region"]                      = lambda x: self.set_single_region(int(round(x)))
         process_f["clear_regions"]                      = lambda x: self.clear_regions()
         process_f["detector_roi"]                       = lambda x: self.set_detector_roi(x)

@@ -528,9 +528,10 @@ class EEPROM:
         # Page 1
         # ######################################################################
 
-        if self.wavelength_coeffs is not None:
-            for i in range(min(4, len(self.wavelength_coeffs))):
-                self.pack((1,  0 + i * 4,  4), "f", self.wavelength_coeffs[i])
+        wavelength_coeffs = self.multi_wavelength_calibration.get("wavelength_coeffs")
+        if wavelength_coeffs is not None:
+            for i in range(min(4, len(wavelength_coeffs))):
+                self.pack((1,  0 + i * 4,  4), "f", wavelength_coeffs[i])
                 
         if self.degC_to_dac_coeffs is not None:
             for i in range(min(3, len(self.degC_to_dac_coeffs))):
@@ -560,12 +561,12 @@ class EEPROM:
             self.pack((2, 23,  2), "H", max(0xffff, self.max_integration_time_ms))
         else:
             coeff = 0.0
-            if len(self.wavelength_coeffs) > 4:
-                coeff = self.wavelength_coeffs[4]
+            if len(wavelength_coeffs) > 4:
+                coeff = wavelength_coeffs[4]
             self.pack((2, 21,  4), "f", coeff)
         self.pack((2, 25,  2), "H", self.actual_pixels_horizontal)
-        self.pack((2, 27,  2), "H", self.roi_horizontal_start)
-        self.pack((2, 29,  2), "H", self.roi_horizontal_end)
+        self.pack((2, 27,  2), "H", self.multi_wavelength_calibration.get("roi_horizontal_start"))
+        self.pack((2, 29,  2), "H", self.multi_wavelength_calibration.get("roi_horizontal_end"))
         self.pack((2, 31,  2), "H", self.roi_vertical_region_1_start)
         self.pack((2, 33,  2), "H", self.roi_vertical_region_1_end)
         self.pack((2, 35,  2), "H", self.roi_vertical_region_2_start)
@@ -587,15 +588,15 @@ class EEPROM:
 
         self.pack((3, 28,  4), "f", self.max_laser_power_mW)
         self.pack((3, 32,  4), "f", self.min_laser_power_mW)
-        self.pack((3, 36,  4), "f", self.excitation_nm_float)
+        self.pack((3, 36,  4), "f", self.multi_wavelength_calibration.get("excitation_nm_float"))
         self.pack((3, 40,  4), "I", self.min_integration_time_ms)
         self.pack((3, 44,  4), "I", self.max_integration_time_ms)
-        self.pack((3, 48,  4), "f", self.avg_resolution)
+        self.pack((3, 48,  4), "f", self.multi_wavelength_calibration.get("avg_resolution"))
         self.pack((3, 52,  2), "H", self.laser_watchdog_sec)
         self.pack((3, 54,  1), "B", self.light_source_type)
         self.pack((3, 55,  2), "H", self.power_timeout_sec)
         self.pack((3, 57,  2), "H", self.detector_timeout_sec)
-        self.pack((3, 59,  1), "B", self.horiz_binning_mode)
+        self.pack((3, 59,  1), "B", self.multi_wavelength_calibration.get("horiz_binning_mode"))
 
         # ######################################################################
         # Page 4
@@ -849,14 +850,13 @@ class EEPROM:
         log.debug("  Shutter:          %s", self.has_shutter)
         log.debug("  Disable BLE Power:%s", self.disable_ble_power)
         log.debug("  Dis Laser Arm Ind:%s", self.disable_laser_armed_indicator)
-        log.debug("  Excitation:       %s nm", self.excitation_nm)
-        log.debug("  Excitation (f):   %.2f nm", self.excitation_nm_float)
+        log.debug("  Excitation (f):   %.2f nm", self.multi_wavelength_calibration.get("excitation_nm_float"))
         log.debug("  Laser Warmup Sec: %d", self.laser_warmup_sec)
         log.debug("  Laser Watchdog:   %d", self.laser_watchdog_sec)
         log.debug("  Light Source:     %d", self.light_source_type)
         log.debug("  Power Timeout:    %d", self.power_timeout_sec)
         log.debug("  Detector Timeout: %d", self.detector_timeout_sec)
-        log.debug("  Horiz Bin Mode:   %d", self.horiz_binning_mode)
+        log.debug("  Horiz Bin Mode:   %d", self.multi_wavelength_calibration.get("horiz_binning_mode"))
         log.debug("  Slit size:        %s um", self.slit_size_um)
         log.debug("  Start Integ Time: %d ms", self.startup_integration_time_ms)
         log.debug("  Start Temp:       %.2f degC", self.startup_temp_degC)
@@ -867,7 +867,7 @@ class EEPROM:
         log.debug("  Det Offset Odd:   %d", self.detector_offset_odd)
         log.debug("  Start Laser TEC:  %d (raw)", self.startup_laser_tec_setpoint)
         log.debug("")
-        log.debug("  Wavecal coeffs:   %s", self.wavelength_coeffs)
+        log.debug("  Wavecal coeffs:   %s", self.multi_wavelength_calibration.get("wavelength_coeffs"))
         log.debug("  degCToDAC coeffs: %s", self.degC_to_dac_coeffs)
         log.debug("  adcToDegC coeffs: %s", self.adc_to_degC_coeffs)
         log.debug("  Det temp max:     %s degC", self.max_temp_degC)
@@ -884,8 +884,8 @@ class EEPROM:
         log.debug("  Actual Px Vert:   %d", self.actual_pixels_vertical)
         log.debug("  Min integration:  %d ms", self.min_integration_time_ms)
         log.debug("  Max integration:  %d ms", self.max_integration_time_ms)
-        log.debug("  ROI Horiz Start:  %d", self.roi_horizontal_start)
-        log.debug("  ROI Horiz End:    %d", self.roi_horizontal_end)
+        log.debug("  ROI Horiz Start:  %d", self.multi_wavelength_calibration.get("roi_horizontal_start"))
+        log.debug("  ROI Horiz End:    %d", self.multi_wavelength_calibration.get("roi_horizontal_end"))
         log.debug("  ROI Vert Reg 1:   (%d, %d)", self.roi_vertical_region_1_start, self.roi_vertical_region_1_end)
         log.debug("  ROI Vert Reg 2:   (%d, %d)", self.roi_vertical_region_2_start, self.roi_vertical_region_2_end)
         log.debug("  ROI Vert Reg 3:   (%d, %d)", self.roi_vertical_region_3_start, self.roi_vertical_region_3_end)
@@ -894,7 +894,7 @@ class EEPROM:
         log.debug("  Laser coeffs:     %s", self.laser_power_coeffs)
         log.debug("  Max Laser Power:  %s mW", self.max_laser_power_mW)
         log.debug("  Min Laser Power:  %s mW", self.min_laser_power_mW)
-        log.debug("  Avg Resolution:   %.2f", self.avg_resolution)
+        log.debug("  Avg Resolution:   %.2f", self.multi_wavelength_calibration.get("avg_resolution"))
         log.debug("")
         log.debug("  User Text:        %s", self.user_text)
         log.debug("")
@@ -1180,6 +1180,7 @@ class MultiWavelengthCalibration:
                             'avg_resolution', 'raman_intensity_coeffs', 
                             'horiz_binning_mode' ]
         self.values = {}
+        self.calibrations = 1
         self.selected_calibration = 0 # e.g., self.values['avg_resolution'][selected_calibration]
 
     def is_multi_wavelength(self, name):
@@ -1226,14 +1227,24 @@ class MultiWavelengthCalibration:
             a = self.values[name]
             if calibration is None:
                 calibration = self.selected_calibration
+
             while len(a) - 1 < calibration:
                 a.append(0)
+
+            if self.calibrations < calibration + 1:
+                self.calibrations = calibration + 1
+
             if index is None:
                 label = f"{name}[{calibration}]"
                 a[calibration] = value
+                if calibration == 0:
+                    setattr(self.eeprom, name, value)
             else:
                 label = f"{name}[{calibration}][{index}]"
                 a[calibration][index] = value
+                if calibration == 0:
+                    setattr(self.eeprom, name, a[calibration])
+
             log.debug(f"MultiWavelengthCalibration.set: set {label} = {value}")
         except:
             log.error(f"MultiWavelengthCalibration.set: failed to set name {name}, calibration {calibration}, index {index}, value {value}", exc_info=1)
@@ -1242,6 +1253,9 @@ class MultiWavelengthCalibration:
         if calibration < 1:
             # assume calibration[0] was read with standard eeprom.read
             return
+
+        if self.calibrations < calibration + 1:
+            self.calibrations = calibration + 1
 
         page = 6 + calibration
         log.debug(f"MultiWavelengthCalibration.read: reading calibration {calibration} from page {page}")
@@ -1254,11 +1268,10 @@ class MultiWavelengthCalibration:
         self.values["raman_intensity_coeffs" ].append([ self.eeprom.unpack((page, 34 + i * 4,  4), "f") for i in range(6) ])
 
     def write(self):
-        calibrations = len(self.values["excitation_nm_float"])
-        log.debug(f"MultiWavelengthCalibration.write: found {calibrations} calibrations")
+        log.debug(f"MultiWavelengthCalibration.write: calibrations {self.calibrations}")
 
         # assume calibration[0] output with standard eeprom.write
-        for calibration in range(1, calibrations):
+        for calibration in range(1, self.calibrations):
             page = 6 + calibration
             log.debug(f"MultiWavelengthCalibration.write: writing calibration {calibration} to page {page}")
 
@@ -1272,9 +1285,10 @@ class MultiWavelengthCalibration:
 
     def dump(self):
         log.debug("Multi-Wavelength:")
-        for name in self.attributes:
-            for i in range(len(self.values[name])):
-                log.debug("  #{i} {name} = {self.values[name][i]}")
+        for i in range(self.calibrations):
+            log.debug(f"  Calibration #{i}")
+            for name in self.attributes:
+                log.debug(f"    {name} = {self.get(name, calibration=i)}")
 
     def toJSON(self): 
         return str(self.__dict__)
