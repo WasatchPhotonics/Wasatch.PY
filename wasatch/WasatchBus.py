@@ -47,7 +47,7 @@ class USBBus:
     def update(self, poll = False):
         device_ids = []
         try:
-            log.debug("USBBus.update: instantiating DeviceFinderUSB")
+            # log.debug("USBBus.update: instantiating DeviceFinderUSB")
             device_ids = self.finder.find_usb_devices(poll=True)
         except USBError:
             # MZ: this seems to happen when I run from Git Bash shell
@@ -58,5 +58,5 @@ class USBBus:
         except Exception:
             log.critical("LIBUSB error", exc_info=1)
 
-        log.debug(f"USBBus.update: found {len(device_ids)}")
+        # log.debug(f"USBBus.update: found {len(device_ids)}")
         return device_ids

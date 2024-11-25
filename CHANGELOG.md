@@ -1,5 +1,18 @@
 # Changelog
 
+- 2024-11-25 2.2.14
+    - EEPROM
+        - added subformat 5 (EEPROM.MultiWavelengthCalibration)
+        - bumped rev to 17
+        - deprecated subformat 4 (regions)
+    - SpectrometerSettings
+        - deprecated integer excitation_nm
+        - moved vertical ROI to wasatch.ROI
+        - added calibrations(), select_calibration(n)
+    - FeatureInterfaceDevice
+        - added set/get_scans_to_average
+    - SpectrometerState
+        - added onboard_averaging
 - 2024-11-01 2.2.13
     - support for InGaAs linear pixel calibration
     - re-enable STM32 serial number

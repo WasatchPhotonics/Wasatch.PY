@@ -161,14 +161,14 @@ class DeviceFinderUSB:
         return [DeviceID(device) for device in pyusb_devices]
 
     def find_usb_devices(self, poll = False):
-        log.debug("DeviceFinderUSB.find_usb_devices: starting")
+        # log.debug("DeviceFinderUSB.find_usb_devices: starting")
         device_ids = []
 
         # MZ/ED: If USE_MONITORING is True, I had to disable the call to remove_all in enlighten.Controller
         if self.startup_scan < self.MIN_POLLING_SCANS or not self.USE_MONITORING or poll:
             # our first few scans should always be a bus poll
             # this is because no events will be registered
-            log.debug(f"DeviceFinderUSB.find_usb_devices: just doing a bus poll for startup_scan {self.startup_scan}")
+            # log.debug(f"DeviceFinderUSB.find_usb_devices: just doing a bus poll for startup_scan {self.startup_scan}")
             device_ids = self.bus_polling()
             self.startup_scan += 1
         elif platform.system() == "Windows":
@@ -177,7 +177,7 @@ class DeviceFinderUSB:
             device_ids = self.linux_monitoring()
         else:
             device_ids = self.bus_polling()
-        log.debug(f"DeviceFinderUSB.find_usb_devices: returning {len(device_ids)} devices")
+        # log.debug(f"DeviceFinderUSB.find_usb_devices: returning {len(device_ids)} devices")
         return device_ids
 
     def mac_monitoring(self):
