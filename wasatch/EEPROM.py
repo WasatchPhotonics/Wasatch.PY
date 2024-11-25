@@ -1170,6 +1170,43 @@ class MultiWavelengthCalibration:
     wavelength calibration, horizontal ROI, Raman Intensity Calibration, 
     average resolution, and horizontal binning mode. (Vertical ROI was 
     presciently covered in Format 1.)
+
+    @par Theory of Operation
+
+    A "calibration" is one set of attributes (self.attributes) related to
+    a particular grating region.
+
+    Most of this class architecture could conceivably support many different
+    calibrations. In practice, it is limited to 3, because it is currently
+    using the 3-region Vertical ROI fields included in the original (Rev 1)
+    EEPROM format. 
+
+    It is also practically limited to 2 calibrations because currently it's
+    using one EEPROM page per "extra" calibration, and the "standard 8" pages
+    only has one extra: page 7. This isn't a limitation on XS, which has a much
+    larger EEPROM than X series, so we could easily add more pages to subformat
+    5 if desired.
+
+    Calibration 0 is the "original calibration," and is stored in the "standard"
+    EEPROM pages where such things (wavecal, Raman Intensity, etc) have always
+    been stored. When loaded to memory, they are initially read into the EEPROM 
+    instance properties (.wavecal_coeffs, .excitation_float_nm etc) where they 
+    have always been stored. HOWEVER, this is not where "modern" code should
+    attempt to read or write them, as described below.
+
+    Additional calibrations (1+) are persisted on a single EEPROM page each (p7 
+    for calibration 1). When loaded from EEPROM, they are NOT stored in object
+    properties like Calibration 0, but are stored in a dict by calibration index
+    and their field name. For instance, the laser excitation wavelength of the
+    second calibration (calibration 1) is in values["excitation_nm_float"][1].
+
+    For consistency, working copies of calibration 0 fields are populated to
+    values[name][0]. New code is recommended to access even the old "calibration 
+    0" fields through the provided MultiWavelengthCalibration accessors (get()
+    and set()), as this will make the new code "future-proof" and multi-
+    calibration ready. All known Wasatch.PY and ENLIGHTEN references to 0-
+    calibration properties have been updated to use the new accessors as 
+    reference examples.
     """
 
     def __init__(self, eeprom):
