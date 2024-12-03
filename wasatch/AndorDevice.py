@@ -127,15 +127,18 @@ class AndorDevice(InterfaceDevice):
         # set Andor defaults for important "EEPROM" settings
         # (all but has_cooling can be overridden via config file)
 
-        # Andor API doesn't have access to detector info
-        # Note that we use non-iDus cameras, including the Newton
+        # Andor API doesn't(?) seem to have access to detector info.
+        # Note that we use non-iDus cameras, including the Newton.
         self.settings.eeprom.detector = "iDus" 
-        self.settings.eeprom.wavelength_coeffs = [0,1,0,0]
+
         self.settings.eeprom.has_cooling = True
         self.settings.eeprom.startup_integration_time_ms = 10
         self.settings.eeprom.startup_temp_degC = -60
         self.settings.eeprom.detector_gain = 1
         self.settings.eeprom.detector_gain_odd = 1
+
+        # MultiWavelengthCalibration attributes
+        self.settings.eeprom.multi_wavelength_calibration.set("wavelength_coeffs", [0,1,0,0,0])
 
         self.process_f = self._init_process_funcs()
 
@@ -182,12 +185,6 @@ class AndorDevice(InterfaceDevice):
             assert(self.SUCCESS == result), f"unable to set detector gain, got value of {result}"
             log.debug(f"for {enabled} setting gain to {self.gain_options[0]}")
             return
-
-    # MZ: nothing seems to call this?
-    def _update_wavelength_coeffs(self, coeffs):
-        self.settings.eeprom.wavelength_coeffs = coeffs
-        self.config_values['wavelength_coeffs'] = coeffs
-        self.save_config()
 
     def set_fan_enable(self, x):
         self.check_result(self.driver.SetFanMode(int(x)), f"Andor Fan On {x}")
@@ -382,13 +379,16 @@ class AndorDevice(InterfaceDevice):
         self.init_detector_area() # step 7
 
         if not self._check_config_file():
+            log.debug("stubbing Andor EEPROM")
+            self.settings.eeprom.stubbed = True
             self.config_values = {
                 'detector_serial_number': self.serial,
-                'wavelength_coeffs': [0,1,0,0],
+                'wavelength_coeffs': [0,1,0,0,0],
                 'excitation_nm_float': 0,
                 'raman_intensity_coeffs': [],
                 'raman_intensity_calibration_order': 0,
-                'invert_x_axis': False 
+                'invert_x_axis': False,
+                'stubbed': True
             }
             log.debug(f"connect: config file not found, so defaulting to these: {self.config_values}")
             self.save_config()
@@ -430,7 +430,6 @@ class AndorDevice(InterfaceDevice):
         @param eeprom: if provided, overwrite current settings with those in the 
                passed dict before writing to disk
         """
-        log.debug("save_config: here")
         if eeprom is not None:
             self.update_config_from_eeprom(eeprom)
 
@@ -446,13 +445,13 @@ class AndorDevice(InterfaceDevice):
         # first, copy over any EEPROM fields which have a different name in 
         # wasatch.EEPROM vs the external JSON file 
         for json_name, python_name in self.config_names_to_eeprom.items():
-            self.config_values[json_name] = getattr(eeprom, python_name)
+            self.config_values[json_name] = eeprom.multi_wavelength_calibration.get(python_name)
 
         # now do all the standard attributes of the wasatch.EEPROM, adding 
         # their values into the same dict
-        for python_name, python_value in eeprom.__dict__.items():
+        for python_name in eeprom.__dict__:
             if python_name in self.config_values:
-                self.config_values[python_name] = python_value
+                self.config_values[python_name] = eeprom.multi_wavelength_calibration.get(python_name)
 
     def _load_config_values(self):
         """
@@ -465,10 +464,11 @@ class AndorDevice(InterfaceDevice):
         # handle wp_ prefixes
         for k, v in self.config_names_to_eeprom.items():
             if k in self.config_values:
-                setattr(self.settings.eeprom, v, self.config_values[k])
+                self.settings.eeprom.multi_wavelength_calibration.set(v, self.config_values[k])
 
         # same spelling
         for k in [ 'model', 
+                   'stubbed', 
                    'detector', 
                    'serial_number', 
                    'invert_x_axis',
@@ -481,12 +481,12 @@ class AndorDevice(InterfaceDevice):
                    'startup_temp_degC', 
                    'startup_integration_time_ms' ]:
             if k in self.config_values:
-                setattr(self.settings.eeprom, k, self.config_values[k])
+                self.settings.eeprom.multi_wavelength_calibration.set(k, self.config_values[k])
 
         # default missing-but-obvious fields
         if "raman_intensity_coeffs" in self.config_values:
             if "raman_intensity_calibration_order" not in self.config_values:
-                self.settings.eeprom.raman_intensity_calibration_order = len(self.settings.eeprom.raman_intensity_coeffs) - 1
+                self.settings.eeprom.multi_wavelength_calibration.set("raman_intensity_calibration_order", len(self.settings.eeprom.raman_intensity_coeffs) - 1)
 
         # post-load initialization
         if 'startup_temp_degC' in self.config_values:
@@ -572,9 +572,9 @@ class AndorDevice(InterfaceDevice):
         xPixels = c_int()
         yPixels = c_int()
         self.check_result(self.driver.GetDetector(byref(xPixels), byref(yPixels)), "GetDetector(x, y)")
-        log.debug(f"detector {xPixels.value} width x {yPixels.value} height")
         self.pixels = xPixels.value
         self.height = yPixels.value
+        log.debug(f"detector {self.pixels} width x {self.height} height")
         return SpectrometerResponse(True)
 
     def _obtain_gain_info(self):

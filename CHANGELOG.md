@@ -1,5 +1,11 @@
 # Changelog
 
+- 2024-??-?? 2.2.15
+    - XL Fixes
+        - blank wavecal
+        - flag non-downloaded Andor EEPROMs as 'stubbed'
+        - force integral ROI
+        - allow MultiWavelengthCalibration.set to support any EEPROM property
 - 2024-11-25 2.2.14
     - EEPROM
         - added subformat 5 (EEPROM.MultiWavelengthCalibration)

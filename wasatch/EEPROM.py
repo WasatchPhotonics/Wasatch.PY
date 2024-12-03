@@ -115,6 +115,7 @@ class EEPROM:
         self.buffers = []
         self.write_buffers = []
         self.digest = None
+        self.stubbed = False
 
         self.editable = [
             "avg_resolution",
@@ -1236,8 +1237,12 @@ class MultiWavelengthCalibration:
             self.values[name] = [ getattr(self.eeprom, name) ]
 
     def get(self, name, calibration=None, index=None, default=None):
+        # allow getter to be used for any EEPROM attribute
+        if name not in self.attributes:
+            return getattr(self.eeprom, name)
+
         if name not in self.values:
-            log.debug(f"get: name {name} not in values: {self.values}")
+            log.debug(f"get: name {name} in attributes, but not in values: {self.values}")
             return default
 
         label = f"{name}[{calibration}]" if index is None else f"{name}[{calibration}][{index}]"
@@ -1266,6 +1271,10 @@ class MultiWavelengthCalibration:
         return value
 
     def set(self, name, value, calibration=None, index=None):
+        if name not in self.attributes:
+            setattr(self.eeprom, name, value)
+            return
+
         try:
             a = self.values[name]
             if calibration is None:
