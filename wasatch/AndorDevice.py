@@ -67,6 +67,8 @@ class AndorDevice(InterfaceDevice):
 
         self.immediate_mode = False
 
+        # An AndorDevice has-a SpectrometerSettings, which has-a EEPROM, which 
+        # has-a MultiWavelengthCalibration
         self.settings = SpectrometerSettings(self.device_id)
         self.summed_spectra         = None
         self.sum_count              = 0

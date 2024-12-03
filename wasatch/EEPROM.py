@@ -385,7 +385,7 @@ class EEPROM:
         # Page 6-7
         # ######################################################################
 
-        # always initialize multi_wavelength, because it initializes the base set 
+        # re-initialize multi_wavelength, because it initializes the base set 
         # of dependent attributes
         self.multi_wavelength_calibration.initialize()
         
@@ -850,13 +850,13 @@ class EEPROM:
         log.debug("  Shutter:          %s", self.has_shutter)
         log.debug("  Disable BLE Power:%s", self.disable_ble_power)
         log.debug("  Dis Laser Arm Ind:%s", self.disable_laser_armed_indicator)
-        log.debug("  Excitation (f):   %.2f nm", self.multi_wavelength_calibration.get("excitation_nm_float"))
+        log.debug("  Excitation (f):   %.2f nm", self.multi_wavelength_calibration.get("excitation_nm_float", default=0))
         log.debug("  Laser Warmup Sec: %d", self.laser_warmup_sec)
         log.debug("  Laser Watchdog:   %d", self.laser_watchdog_sec)
         log.debug("  Light Source:     %d", self.light_source_type)
         log.debug("  Power Timeout:    %d", self.power_timeout_sec)
         log.debug("  Detector Timeout: %d", self.detector_timeout_sec)
-        log.debug("  Horiz Bin Mode:   %d", self.multi_wavelength_calibration.get("horiz_binning_mode"))
+        log.debug("  Horiz Bin Mode:   %d", self.multi_wavelength_calibration.get("horiz_binning_mode", default=0))
         log.debug("  Slit size:        %s um", self.slit_size_um)
         log.debug("  Start Integ Time: %d ms", self.startup_integration_time_ms)
         log.debug("  Start Temp:       %.2f degC", self.startup_temp_degC)
@@ -884,8 +884,8 @@ class EEPROM:
         log.debug("  Actual Px Vert:   %d", self.actual_pixels_vertical)
         log.debug("  Min integration:  %d ms", self.min_integration_time_ms)
         log.debug("  Max integration:  %d ms", self.max_integration_time_ms)
-        log.debug("  ROI Horiz Start:  %d", self.multi_wavelength_calibration.get("roi_horizontal_start"))
-        log.debug("  ROI Horiz End:    %d", self.multi_wavelength_calibration.get("roi_horizontal_end"))
+        log.debug("  ROI Horiz Start:  %d", self.multi_wavelength_calibration.get("roi_horizontal_start", default=-1))
+        log.debug("  ROI Horiz End:    %d", self.multi_wavelength_calibration.get("roi_horizontal_end", default=-1))
         log.debug("  ROI Vert Reg 1:   (%d, %d)", self.roi_vertical_region_1_start, self.roi_vertical_region_1_end)
         log.debug("  ROI Vert Reg 2:   (%d, %d)", self.roi_vertical_region_2_start, self.roi_vertical_region_2_end)
         log.debug("  ROI Vert Reg 3:   (%d, %d)", self.roi_vertical_region_3_start, self.roi_vertical_region_3_end)
@@ -894,7 +894,7 @@ class EEPROM:
         log.debug("  Laser coeffs:     %s", self.laser_power_coeffs)
         log.debug("  Max Laser Power:  %s mW", self.max_laser_power_mW)
         log.debug("  Min Laser Power:  %s mW", self.min_laser_power_mW)
-        log.debug("  Avg Resolution:   %.2f", self.multi_wavelength_calibration.get("avg_resolution"))
+        log.debug("  Avg Resolution:   %.2f", self.multi_wavelength_calibration.get("avg_resolution", default=0))
         log.debug("")
         log.debug("  User Text:        %s", self.user_text)
         log.debug("")
@@ -1219,6 +1219,12 @@ class MultiWavelengthCalibration:
         self.values = {}
         self.calibrations = 1
         self.selected_calibration = 0 # e.g., self.values['avg_resolution'][selected_calibration]
+
+        # this won't do anything except copy "defaults" into self.values (which 
+        # will get overwritten when EEPROM.read re-calls self.initialize after 
+        # "better" values are available to assign to self.values), but it helps
+        # non-FID classes like AndorDevice to start with an initialized baseline
+        self.initialize()
 
     def is_multi_wavelength(self, name):
         return name in self.attributes

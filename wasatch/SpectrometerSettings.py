@@ -266,7 +266,7 @@ class SpectrometerSettings:
         self.update_wavecal()
 
     def get_wavecal_coeffs(self):
-        return self.eeprom.multi_wavelength_calibration.get("wavelength_coeffs", default=[0, 0, 0, 0, 0])
+        return self.eeprom.multi_wavelength_calibration.get("wavelength_coeffs", default=[0, 1, 0, 0, 0])
 
     def set_wavecal_coeffs(self, coeffs):
         self.eeprom.multi_wavelength_calibration.set("wavelength_coeffs", coeffs)
@@ -290,9 +290,9 @@ class SpectrometerSettings:
 
         self.wavelengths = utils.generate_wavelengths(self.pixels(), coeffs)
 
-        if self.wavelengths is None:
+        if self.wavelengths is None or self.wavelengths[0] == self.wavelengths[-1]:
             # this can happen on Stroker Protocol before/without .ini file,
-            # or SiG with bad battery / corrupt EEPROM
+            # or SiG with bad battery / corrupt EEPROM, or Andor without config file
             log.debug("no wavecal found - using pixel space")
             self.wavelengths = list(range(self.pixels()))
 
