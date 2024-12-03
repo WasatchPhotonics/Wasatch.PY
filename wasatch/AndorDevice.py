@@ -11,6 +11,7 @@ from .SpectrometerResponse        import SpectrometerResponse
 from .InterfaceDevice             import InterfaceDevice
 from .DeviceID                    import DeviceID
 from .Reading                     import Reading
+from .ROI                         import ROI
 
 log = logging.getLogger(__name__)
 
@@ -149,28 +150,29 @@ class AndorDevice(InterfaceDevice):
     def _init_process_funcs(self):
         process_f = {}
 
-        process_f["connect"] = self.connect
-        process_f["acquire_data"] = self.acquire_data
-        process_f["set_shutter_enable"] = self.set_shutter_enable
-        process_f["set_integration_time_ms"] = self.set_integration_time_ms
-        process_f["get_serial_number"] = self.get_serial_number
-        process_f["init_tec_setpoint"] = self.init_tec_setpoint
-        process_f["set_tec_setpoint"] = self.set_tec_setpoint
-        process_f["init_detector_area"] = self.init_detector_area
-        process_f["scans_to_average"] = self.scans_to_average
-        process_f["high_gain_mode_enable"] = self.high_gain_mode_enable
-        process_f["save_config"] = self.save_config
+        process_f["connect"]                    = self.connect
+        process_f["acquire_data"]               = self.acquire_data
+        process_f["set_shutter_enable"]         = self.set_shutter_enable
+        process_f["set_integration_time_ms"]    = self.set_integration_time_ms
+        process_f["get_serial_number"]          = self.get_serial_number
+        process_f["init_tec_setpoint"]          = self.init_tec_setpoint
+        process_f["set_tec_setpoint"]           = self.set_tec_setpoint
+        process_f["init_detector_area"]         = self.init_detector_area
+        process_f["scans_to_average"]           = self.scans_to_average
+        process_f["high_gain_mode_enable"]      = self.high_gain_mode_enable
+        process_f["save_config"]                = self.save_config
+        process_f["vertical_binning"]           = self.set_vertical_binning
 
         ##################################################################
         # What follows is the old init-lambdas that are squashed into process_f
         # Long term, the upstream requests should be changed to match the new format
         # This is an easy fix for the time being to make things behave
         ##################################################################
-        process_f["integration_time_ms"] = lambda x: self.set_integration_time_ms(x) # conversion from millisec to microsec
-        process_f["fan_enable"] = lambda x: self.set_fan_enable(bool(x))
-        process_f["shutter_enable"] = lambda x: self.set_shutter_enable(bool(x))
-        process_f["detector_tec_enable"]                = lambda x: self.toggle_tec(bool(x))
-        process_f["detector_tec_setpoint_degC"]         = lambda x: self.set_tec_setpoint(int(round(x)))
+        process_f["integration_time_ms"]        = lambda x: self.set_integration_time_ms(x)
+        process_f["fan_enable"]                 = lambda x: self.set_fan_enable(bool(x))
+        process_f["shutter_enable"]             = lambda x: self.set_shutter_enable(bool(x))
+        process_f["detector_tec_enable"]        = lambda x: self.toggle_tec(bool(x))
+        process_f["detector_tec_setpoint_degC"] = lambda x: self.set_tec_setpoint(int(round(x)))
 
         return process_f
 
@@ -392,6 +394,10 @@ class AndorDevice(InterfaceDevice):
                 'raman_intensity_coeffs': [],
                 'raman_intensity_calibration_order': 0,
                 'invert_x_axis': False,
+                'roi_horizontal_start': 0,
+                'roi_horizontal_end': 0,
+                'roi_vertical_region_1_start': 0,
+                'roi_vertical_region_1_end': 0,
                 'stubbed': True
             }
             log.debug(f"connect: config file not found, so defaulting to these: {self.config_values}")
@@ -417,12 +423,54 @@ class AndorDevice(InterfaceDevice):
         # step 17 (WasatchNET doesn't do this)
         self._obtain_gain_info()
 
+        # step 18 (WasatchNET doesn't do this)
+        roi = ROI(self.settings.eeprom.roi_vertical_region_1_start, 
+                  self.settings.eeprom.roi_vertical_region_1_end)
+        if roi.start != 0 and roi.end != 0:
+            # although camera can probably support the (0, 0) case, it's 
+            # convenient to treat as unconfigured defaults
+            self.set_vertical_binning(roi)
+
         # success!
         log.info("AndorDevice successfully connected")
 
         self.connected = True
         self.settings.eeprom.active_pixels_horizontal = self.pixels 
         self.settings.eeprom.has_cooling = True
+        return SpectrometerResponse(data=True)
+
+    def set_vertical_binning(self, roi):
+        """
+        Note that this follows the same (start, end) vertical ROI API as 
+        FeatureInterfaceDevice.set_vertical_binning, and dynamically translates 
+        that into the (middle, height) Andor API.
+        """
+
+        if isinstance(roi, ROI):
+            start, end = roi.start, roi.end
+        elif len(roi) == 2:
+            start, end = roi[0], roi[1]
+        else:
+            log.error("set_vertical_binning requires an ROI object or tuple of (start, stop) lines")
+            return SpectrometerResponse(data=False, error_msg="invalid start and stop lines")
+
+        if start < 0 or end < 0:
+            log.error("set_vertical_binning requires POSITIVE (start, stop) lines")
+            return SpectrometerResponse(data=False, error_msg="invalid start and stop lines")
+
+        # enforce ascending order
+        if start >= end:
+            log.error("set_vertical_binning requires ascending order (ignoring %d, %d)", start, end)
+            return SpectrometerResponse(data=False, error_msg="invalid start and stop lines")
+
+
+        height = end - start
+        center = int(round(height / 2, 0)) + start
+
+        log.debug(f"setting Single-Track vertical binning of ROI (start {start}, end {end}) (center {center}, height {height})")
+        self.check_result(self.driver.SetReadMode(3), "SetReadMode(single-track)")
+        self.check_result(self.driver.SetSingleTrack(center, height), "SetSingleTrack")
+
         return SpectrometerResponse(data=True)
 
     def save_config(self, eeprom=None):
@@ -480,6 +528,8 @@ class AndorDevice(InterfaceDevice):
                    'excitation_nm_float',
                    'roi_horizontal_end',
                    'roi_horizontal_start',
+                   'roi_vertical_region_1_start',
+                   'roi_vertical_region_1_end',
                    'raman_intensity_coeffs',
                    'raman_intensity_calibration_order',
                    'startup_temp_degC', 

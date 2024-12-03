@@ -4,10 +4,10 @@
     - XL Fixes
         - fixed scan averaging
         - fixed detector temperature readout
+        - support vertical ROI (successfully tested (118, 138) ie (center 128, height 20))
         - flag non-downloaded Andor EEPROMs as 'stubbed'
-        - force integral ROI
-        - allow MultiWavelengthCalibration.set to support any EEPROM property
-        - fixed corner-case with blank wavecal
+    - force integral ROI
+    - allow MultiWavelengthCalibration.set to support any EEPROM property
 - 2024-11-25 2.2.14
     - EEPROM
         - added subformat 5 (EEPROM.MultiWavelengthCalibration)
