@@ -27,6 +27,7 @@ from .DetectorROI          import DetectorROI
 from .PollStatus           import PollStatus
 from .EEPROM               import EEPROM
 from .IMX385               import IMX385
+from .ROI                  import ROI
 
 log = logging.getLogger(__name__)
 
@@ -394,12 +395,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # initialize state.gain_db from EEPROM startup value
         self.settings.state.gain_db = self.settings.eeprom.detector_gain
 
-        if self.settings.is_micro():
-            roi = self.settings.get_vertical_roi()
-            if roi is not None:
-                self.set_vertical_binning(roi)
-
-        self.settings.init_regions()        
+        self.update_vertical_roi() 
 
         # ######################################################################
         # post-connection defaults
@@ -608,11 +604,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
             smoothed.append(intensity * slopes[i] + offsets[i])
         return smoothed
 
-    def _apply_horizontal_binning(self, spectrum: list[float]):
+    def _apply_horizontal_binning(self, spectrum):
         if not self.settings.eeprom.horiz_binning_enabled:
             return spectrum
 
-        mode = self.settings.eeprom.horiz_binning_mode
+        mode = self.settings.eeprom.multi_wavelength_calibration.get("horiz_binning_mode")
         if mode == IMX385.BIN_2X2:
             return self.imx385.bin_2x2(spectrum)
         elif mode == IMX385.CORRECT_SSC:
@@ -632,7 +628,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.error("invalid horizontal binning mode {mode}...defaulting to bin_2x2")
             return self.imx385.bin_2x2(spectrum)
 
-    def _correct_bad_pixels(self, spectrum: list[float]):
+    def _correct_bad_pixels(self, spectrum):
         """
         If a spectrometer has bad_pixels configured in the EEPROM, then average
         over them in the driver.
@@ -1307,7 +1303,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
         if self.settings.is_micro():
             # we have no idea if Series-XS has to "wake up" the sensor, so wait
             # long enough for 20ms + 8 throwaway frames if need be (IMX385 datasheet p69)
-            timeout_ms = self.settings.state.integration_time_ms * 8 + 500 * self.settings.num_connected_devices + 20
+            if self.settings.state.onboard_averaging:
+                timeout_ms = self.settings.state.integration_time_ms * (self.settings.state.scans_to_average + 7) + 500 * self.settings.num_connected_devices + 20
+            else:
+                timeout_ms = self.settings.state.integration_time_ms * 8 + 500 * self.settings.num_connected_devices + 20
         else:
             timeout_ms = self.settings.state.integration_time_ms * 2 + 1000 * self.settings.num_connected_devices
 
@@ -1465,6 +1464,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # some detectors have "garbage" pixels at the front or end of every
         # spectrum (sync bytes and what-not)
         if self.settings.is_imx385() and self.settings.fpga_firmware_version == "01.1.01":
+            utils.stomp_first(spectrum, 3)
             utils.stomp_last (spectrum, 2)
         if self.settings.is_imx392() and self.settings.state.detector_regions is None:
             utils.stomp_first(spectrum, 3)
@@ -1588,6 +1588,15 @@ class FeatureIdentificationDevice(InterfaceDevice):
         if flag and self.settings.is_xs() and self.remaining_throwaways < 1:
             log.debug("queuing throwaways")
             self.remaining_throwaways += 1
+
+    def set_scans_to_average(self, n):
+        retval = self._send_code(0xff, 0x62, n, label="SET_SCANS_TO_AVERAGE")
+        self.settings.state.scans_to_average = n
+        self.settings.state.onboard_averaging = True
+        return retval
+
+    def get_scans_to_average(self):
+        return self._get_upper_code(0x63, lsb_len=2)
 
     def set_integration_time_ms(self, ms: float):
         """
@@ -2576,7 +2585,13 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         return self.set_laser_watchdog_sec(watchdog_sec)
 
-    def set_vertical_binning(self, lines: tuple[int, int]):
+    def update_vertical_roi(self):
+        if self.settings.is_micro():
+            roi = self.settings.get_vertical_roi()
+            if roi is not None:
+                self.set_vertical_binning(roi)
+
+    def set_vertical_binning(self, roi):
         # check for legacy vis since they don't like vertical binning
         if self.settings.fpga_firmware_version == "000-008" and self.settings.microcontroller_firmware_version == "0.1.0.7":
             return SpectrometerResponse(data=False)
@@ -2584,10 +2599,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.debug("Vertical Binning only configurable on Series-XS")
             return SpectrometerResponse(data=False, error_msg="vertical binning not supported")
 
-        try:
-            start = lines[0]
-            end   = lines[1]
-        except:
+        if isinstance(roi, ROI):
+            start, end = roi.start, roi.end
+        elif len(roi) == 2:
+            start, end = roi[0], roi[1]
+        else:
             log.error("set_vertical_binning requires a tuple of (start, stop) lines")
             return SpectrometerResponse(data=False, error_msg="invalid start and stop lines")
 
@@ -3541,6 +3557,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         # regions
         process_f["vertical_binning"]                   = lambda x: self.set_vertical_binning(x)
+        process_f["update_vertical_roi"]                = lambda x: self.update_vertical_roi()
         process_f["single_region"]                      = lambda x: self.set_single_region(int(round(x)))
         process_f["clear_regions"]                      = lambda x: self.clear_regions()
         process_f["detector_roi"]                       = lambda x: self.set_detector_roi(x)

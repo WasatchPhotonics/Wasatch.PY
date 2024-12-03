@@ -254,8 +254,8 @@ class SPIDevice(InterfaceDevice):
         self.cmds["Gain dB"         ].value = self.gain_to_ff(eeprom.detector_gain)
         self.cmds["Start Line 0"    ].value = eeprom.roi_vertical_region_1_start
         self.cmds["Stop Line 0"     ].value = eeprom.roi_vertical_region_1_end
-        self.cmds["Start Column 0"  ].value = eeprom.roi_horizontal_start
-        self.cmds["Stop Column 0"   ].value = eeprom.roi_horizontal_end
+        self.cmds["Start Column 0"  ].value = eeprom.multi_wavelength_calibration.get("roi_horizontal_start")
+        self.cmds["Stop Column 0"   ].value = eeprom.multi_wavelength_calibration.get("roi_horizontal_end")
 
         return True
 

@@ -47,7 +47,7 @@ class AndorDevice(InterfaceDevice):
     SUCCESS = 20002             #!< see load_error_codes()
     SHUTTER_SPEED_MS = 50       #!< allow time for mechanical shutter to stabilize
 
-    def __init__(self, device_id, message_queue=None, alert_queue=None): # -> None 
+    def __init__(self, device_id, message_queue=None, alert_queue=None):
         # if passed a string representation of a DeviceID, deserialize it
         super().__init__()
         if type(device_id) is str:
@@ -141,7 +141,7 @@ class AndorDevice(InterfaceDevice):
     # Private Methods
     ###############################################################
 
-    def _init_process_funcs(self): # -> dict[str, Callable[..., Any]] 
+    def _init_process_funcs(self):
         process_f = {}
 
         process_f["connect"] = self.connect
@@ -169,7 +169,7 @@ class AndorDevice(InterfaceDevice):
 
         return process_f
 
-    def high_gain_mode_enable(self, enabled: bool): # -> SpectrometerResponse 
+    def high_gain_mode_enable(self, enabled):
         if enabled:
             result = self.driver.SetPreAmpGain(self.gain_idx[-1])
             assert(self.SUCCESS == result), f"unable to set detector gain, got value of {result}"
@@ -182,21 +182,21 @@ class AndorDevice(InterfaceDevice):
             return
 
     # MZ: nothing seems to call this?
-    def _update_wavelength_coeffs(self, coeffs: list[float]): # -> None 
+    def _update_wavelength_coeffs(self, coeffs):
         self.settings.eeprom.wavelength_coeffs = coeffs
         self.config_values['wavelength_coeffs'] = coeffs
         self.save_config()
 
-    def set_fan_enable(self, x: bool): # -> SpectrometerResponse 
+    def set_fan_enable(self, x):
         self.check_result(self.driver.SetFanMode(int(x)), f"Andor Fan On {x}")
         return SpectrometerResponse()
 
-    def _get_default_data_dir(self): # -> str 
+    def _get_default_data_dir(self):
         if os.name == "nt":
             return os.path.join(os.path.expanduser("~"), "Documents", "EnlightenSpectra")
         return os.path.join(os.environ["HOME"], "EnlightenSpectra")
 
-    def _check_config_file(self): # -> bool 
+    def _check_config_file(self):
         self.config_dir = os.path.join(self._get_default_data_dir(), 'config')
         self.config_file = os.path.join(self.config_dir, self.serial + '.json')
         if not os.path.exists(self.config_dir):
@@ -336,12 +336,12 @@ class AndorDevice(InterfaceDevice):
         # reading.dump_area_scan()
         return SpectrometerResponse(data=reading)
 
-    def _close_ex_shutter(self): # -> SpectrometerResponse 
+    def _close_ex_shutter(self):
         self.check_result(self.driver.SetShutterEx(1, 1, self.SHUTTER_SPEED_MS, self.SHUTTER_SPEED_MS, 2), "SetShutterEx(2)")
         self.settings.state.shutter_enabled = False
         return SpectrometerResponse(True)
 
-    def _open_ex_shutter(self): # -> SpectrometerResponse 
+    def _open_ex_shutter(self):
         self.check_result(self.driver.SetShutterEx(1, 1, self.SHUTTER_SPEED_MS, self.SHUTTER_SPEED_MS, 1), "SetShutterEx(1)")
         self.settings.state.shutter_enabled = True
         return SpectrometerResponse(True)
@@ -358,7 +358,7 @@ class AndorDevice(InterfaceDevice):
             raise RuntimeError(msg)
         log.debug(f"successfully called {func}")
 
-    def connect(self): # -> SpectrometerResponse 
+    def connect(self):
         if self.dll_fail:
             return SpectrometerResponse(False, error_msg="can't find Andor DLL; please confirm Andor Driver Pack 2 installed")
 
@@ -490,17 +490,17 @@ class AndorDevice(InterfaceDevice):
         if 'startup_temp_degC' in self.config_values:
             self.set_tec_setpoint(self.settings.eeprom.startup_temp_degC)
 
-    def acquire_data(self): # -> SpectrometerResponse 
+    def acquire_data(self):
         reading = self._take_one_averaged_reading()
         return reading
 
-    def set_shutter_enable(self, enable: bool): # -> SpectrometerResponse 
+    def set_shutter_enable(self, enable):
         if enable:
             return self._open_ex_shutter()
         else:
             return self._close_ex_shutter()
 
-    def set_integration_time_ms(self, ms: float): # -> SpectrometerResponse 
+    def set_integration_time_ms(self, ms):
         self.integration_time_ms = ms
         log.debug(f"setting integration time to {self.integration_time_ms}ms")
 
@@ -566,7 +566,7 @@ class AndorDevice(InterfaceDevice):
         self.check_result(self.driver.SetTemperature(self.setpoint_deg_c), f"SetTemperature({self.setpoint_deg_c})")
         return SpectrometerResponse(True)
 
-    def init_detector_area(self): # -> SpectrometerResponse 
+    def init_detector_area(self):
         xPixels = c_int()
         yPixels = c_int()
         self.check_result(self.driver.GetDetector(byref(xPixels), byref(yPixels)), "GetDetector(x, y)")
@@ -592,7 +592,7 @@ class AndorDevice(InterfaceDevice):
         self.gain_options = self.gain_options[::-1]
         log.debug(f"obtained gain options for spec, values were {self.gain_options}")
 
-    def init_detector_speed(self): # -> SpectrometerResponse 
+    def init_detector_speed(self):
         speed = c_float()
 
         # for CCDs, set vertical to recommended
@@ -623,7 +623,7 @@ class AndorDevice(InterfaceDevice):
         log.debug(f"set AD channel {ADnumber} with horizontal speed {HSnumber} ({STemp})")
         return SpectrometerResponse(True)
 
-    def scans_to_average(self, value: int): # -> SpectrometerResponse 
+    def scans_to_average(self, value):
         self.sum_count = 0
         self.settings.state.scans_to_average = int(value)
         return SpectrometerResponse(True)

@@ -25,10 +25,7 @@ log = logging.getLogger(__name__)
 # @see 24LC128 for FX2 (16KB, https://www.microchip.com/en-us/product/24LC128)
 class EEPROM:
 
-    # This was mistakenly set to 15 earlier, probably out of confusion between 
-    # ENG-0001 vs ENG-0034 release level (the former WAS at 15, the latter is
-    # only now advancing to 15).  Leaving it alone for now.
-    LATEST_REV = 16
+    LATEST_REV = 17
 
     MAX_PAGES = 8
     PAGE_LENGTH = 64
@@ -113,7 +110,7 @@ class EEPROM:
         self.product_configuration       = None
 
         self.format                      = EEPROM.LATEST_REV
-        self.subformat                   = 0 # pages 6-7
+        self.subformat                   = 0 # determines format of pages 6-7
 
         self.buffers = []
         self.write_buffers = []
@@ -157,7 +154,7 @@ class EEPROM:
         self.init_raman_intensity_calibration()
         self.init_spline()
         self.init_untethered()
-        self.init_regions()
+        self.multi_wavelength_calibration = MultiWavelengthCalibration(self)
 
     ## whether the given field is normally editable by users via ENLIGHTEN
     #
@@ -388,6 +385,10 @@ class EEPROM:
         # Page 6-7
         # ######################################################################
 
+        # always initialize multi_wavelength, because it initializes the base set 
+        # of dependent attributes
+        self.multi_wavelength_calibration.initialize()
+        
         if self.subformat == 0:
             pass
         elif self.subformat == 1:
@@ -397,10 +398,13 @@ class EEPROM:
         elif self.subformat == 3:
             self.read_untethered()
         elif self.subformat == 4:
-            self.read_regions()
+            log.critical("Subformat 4 has been deprecated")
+        elif self.subformat == 5:
+            self.read_raman_intensity_calibration()
+            self.multi_wavelength_calibration.read(calibration=1)
         else:
-            log.debug(f"Unreadable EEPROM subformat {self.subformat}")
-        
+            log.critical(f"Unreadable EEPROM subformat {self.subformat}")
+
         # ######################################################################
         # feature mask
         # ######################################################################
@@ -524,9 +528,10 @@ class EEPROM:
         # Page 1
         # ######################################################################
 
-        if self.wavelength_coeffs is not None:
-            for i in range(min(4, len(self.wavelength_coeffs))):
-                self.pack((1,  0 + i * 4,  4), "f", self.wavelength_coeffs[i])
+        wavelength_coeffs = self.multi_wavelength_calibration.get("wavelength_coeffs")
+        if wavelength_coeffs is not None:
+            for i in range(min(4, len(wavelength_coeffs))):
+                self.pack((1,  0 + i * 4,  4), "f", wavelength_coeffs[i])
                 
         if self.degC_to_dac_coeffs is not None:
             for i in range(min(3, len(self.degC_to_dac_coeffs))):
@@ -556,12 +561,12 @@ class EEPROM:
             self.pack((2, 23,  2), "H", max(0xffff, self.max_integration_time_ms))
         else:
             coeff = 0.0
-            if len(self.wavelength_coeffs) > 4:
-                coeff = self.wavelength_coeffs[4]
+            if len(wavelength_coeffs) > 4:
+                coeff = wavelength_coeffs[4]
             self.pack((2, 21,  4), "f", coeff)
         self.pack((2, 25,  2), "H", self.actual_pixels_horizontal)
-        self.pack((2, 27,  2), "H", self.roi_horizontal_start)
-        self.pack((2, 29,  2), "H", self.roi_horizontal_end)
+        self.pack((2, 27,  2), "H", self.multi_wavelength_calibration.get("roi_horizontal_start"))
+        self.pack((2, 29,  2), "H", self.multi_wavelength_calibration.get("roi_horizontal_end"))
         self.pack((2, 31,  2), "H", self.roi_vertical_region_1_start)
         self.pack((2, 33,  2), "H", self.roi_vertical_region_1_end)
         self.pack((2, 35,  2), "H", self.roi_vertical_region_2_start)
@@ -583,15 +588,15 @@ class EEPROM:
 
         self.pack((3, 28,  4), "f", self.max_laser_power_mW)
         self.pack((3, 32,  4), "f", self.min_laser_power_mW)
-        self.pack((3, 36,  4), "f", self.excitation_nm_float)
+        self.pack((3, 36,  4), "f", self.multi_wavelength_calibration.get("excitation_nm_float"))
         self.pack((3, 40,  4), "I", self.min_integration_time_ms)
         self.pack((3, 44,  4), "I", self.max_integration_time_ms)
-        self.pack((3, 48,  4), "f", self.avg_resolution)
+        self.pack((3, 48,  4), "f", self.multi_wavelength_calibration.get("avg_resolution"))
         self.pack((3, 52,  2), "H", self.laser_watchdog_sec)
         self.pack((3, 54,  1), "B", self.light_source_type)
         self.pack((3, 55,  2), "H", self.power_timeout_sec)
         self.pack((3, 57,  2), "H", self.detector_timeout_sec)
-        self.pack((3, 59,  1), "B", self.horiz_binning_mode)
+        self.pack((3, 59,  1), "B", self.multi_wavelength_calibration.get("horiz_binning_mode"))
 
         # ######################################################################
         # Page 4
@@ -632,7 +637,10 @@ class EEPROM:
         elif self.subformat == 3:
             self.write_untethered()
         elif self.subformat == 4:
-            self.write_regions()
+            log.critical("Subformat 4 is deprecated")
+        elif self.subformat == 5:
+            self.write_raman_intensity_calibration()
+            self.multi_wavelength_calibration.write()
         else:
             log.error(f"Unwriteable EEPROM subformat {self.subformat}")
 
@@ -804,9 +812,11 @@ class EEPROM:
     def json(self, allow_nan=True):
         tmp_buf  = self.buffers
         tmp_data = self.user_data
+        tmp_mwc  = self.multi_wavelength_calibration
 
         self.buffers   = str(self.buffers)
         self.user_data = str(self.user_data)
+        self.multi_wavelength_calibration = self.multi_wavelength_calibration.toJSON()
 
         # this does take an allow_nan argument, but it throws an exception on NaN, 
         # rather than replacing with null :-(
@@ -817,6 +827,7 @@ class EEPROM:
 
         self.buffers   = tmp_buf
         self.user_data = tmp_data
+        self.multi_wavelength_calibration = tmp_mwc
 
         return s
 
@@ -839,14 +850,13 @@ class EEPROM:
         log.debug("  Shutter:          %s", self.has_shutter)
         log.debug("  Disable BLE Power:%s", self.disable_ble_power)
         log.debug("  Dis Laser Arm Ind:%s", self.disable_laser_armed_indicator)
-        log.debug("  Excitation:       %s nm", self.excitation_nm)
-        log.debug("  Excitation (f):   %.2f nm", self.excitation_nm_float)
+        log.debug("  Excitation (f):   %.2f nm", self.multi_wavelength_calibration.get("excitation_nm_float"))
         log.debug("  Laser Warmup Sec: %d", self.laser_warmup_sec)
         log.debug("  Laser Watchdog:   %d", self.laser_watchdog_sec)
         log.debug("  Light Source:     %d", self.light_source_type)
         log.debug("  Power Timeout:    %d", self.power_timeout_sec)
         log.debug("  Detector Timeout: %d", self.detector_timeout_sec)
-        log.debug("  Horiz Bin Mode:   %d", self.horiz_binning_mode)
+        log.debug("  Horiz Bin Mode:   %d", self.multi_wavelength_calibration.get("horiz_binning_mode"))
         log.debug("  Slit size:        %s um", self.slit_size_um)
         log.debug("  Start Integ Time: %d ms", self.startup_integration_time_ms)
         log.debug("  Start Temp:       %.2f degC", self.startup_temp_degC)
@@ -857,7 +867,7 @@ class EEPROM:
         log.debug("  Det Offset Odd:   %d", self.detector_offset_odd)
         log.debug("  Start Laser TEC:  %d (raw)", self.startup_laser_tec_setpoint)
         log.debug("")
-        log.debug("  Wavecal coeffs:   %s", self.wavelength_coeffs)
+        log.debug("  Wavecal coeffs:   %s", self.multi_wavelength_calibration.get("wavelength_coeffs"))
         log.debug("  degCToDAC coeffs: %s", self.degC_to_dac_coeffs)
         log.debug("  adcToDegC coeffs: %s", self.adc_to_degC_coeffs)
         log.debug("  Det temp max:     %s degC", self.max_temp_degC)
@@ -874,8 +884,8 @@ class EEPROM:
         log.debug("  Actual Px Vert:   %d", self.actual_pixels_vertical)
         log.debug("  Min integration:  %d ms", self.min_integration_time_ms)
         log.debug("  Max integration:  %d ms", self.max_integration_time_ms)
-        log.debug("  ROI Horiz Start:  %d", self.roi_horizontal_start)
-        log.debug("  ROI Horiz End:    %d", self.roi_horizontal_end)
+        log.debug("  ROI Horiz Start:  %d", self.multi_wavelength_calibration.get("roi_horizontal_start"))
+        log.debug("  ROI Horiz End:    %d", self.multi_wavelength_calibration.get("roi_horizontal_end"))
         log.debug("  ROI Vert Reg 1:   (%d, %d)", self.roi_vertical_region_1_start, self.roi_vertical_region_1_end)
         log.debug("  ROI Vert Reg 2:   (%d, %d)", self.roi_vertical_region_2_start, self.roi_vertical_region_2_end)
         log.debug("  ROI Vert Reg 3:   (%d, %d)", self.roi_vertical_region_3_start, self.roi_vertical_region_3_end)
@@ -884,7 +894,7 @@ class EEPROM:
         log.debug("  Laser coeffs:     %s", self.laser_power_coeffs)
         log.debug("  Max Laser Power:  %s mW", self.max_laser_power_mW)
         log.debug("  Min Laser Power:  %s mW", self.min_laser_power_mW)
-        log.debug("  Avg Resolution:   %.2f", self.avg_resolution)
+        log.debug("  Avg Resolution:   %.2f", self.multi_wavelength_calibration.get("avg_resolution"))
         log.debug("")
         log.debug("  User Text:        %s", self.user_text)
         log.debug("")
@@ -898,8 +908,8 @@ class EEPROM:
         elif self.subformat == 3:
             self.dump_raman_intensity_calibration()
             self.dump_untethered()
-        elif self.subformat == 4:
-            self.dump_regions()
+        elif self.subformat == 5:
+            self.multi_wavelength_calibration.dump()
 
     # ##########################################################################
     #                                                                          #
@@ -910,13 +920,11 @@ class EEPROM:
     def latest_rev(self):
         return EEPROM.LATEST_REV
 
-    ## pixel frame (end is last index, not last+1),
     def get_horizontal_roi(self):
-        start  = self.roi_horizontal_start
-        end    = self.roi_horizontal_end
-        pixels = self.active_pixels_horizontal
+        start  = self.multi_wavelength_calibration.get("roi_horizontal_start", default=-1)
+        end    = self.multi_wavelength_calibration.get("roi_horizontal_end", default=-1)
 
-        if 0 <= start and start < end and end < pixels:
+        if 0 <= start and start < end and end < self.active_pixels_horizontal:
             return ROI(start, end)
 
     ## 
@@ -964,7 +972,7 @@ class EEPROM:
             log.debug(f"has_raman_intensity_calibration: false because invalid order {self.raman_intensity_calibration_order}")
             return False
             
-        if not utils.coeffs_look_valid(self.raman_intensity_coeffs, count = self.raman_intensity_calibration_order + 1):
+        if not utils.coeffs_look_valid(self.multi_wavelength_calibration.get("raman_intensity_coeffs"), count = self.raman_intensity_calibration_order + 1):
             log.debug(f"has_raman_intensity_calibration: false because coeffs look weird")
             return False
 
@@ -996,12 +1004,12 @@ class EEPROM:
 
     # ##########################################################################
     #                                                                          #
-    #                                 Subformats                               #
+    #                                Subformats                                #
     #                                                                          #
     # ##########################################################################
 
     # ##########################################################################
-    # Subformat: Raman Intensity Calibration
+    # Subformat 1: Raman Intensity Calibration
     # ##########################################################################
 
     def init_raman_intensity_calibration(self):
@@ -1047,7 +1055,7 @@ class EEPROM:
         log.debug("  Raman Int Coeffs: %s", self.raman_intensity_coeffs)
 
     # ##########################################################################
-    # Subformat: Spline
+    # Subformat 2: Spline
     # ##########################################################################
 
     def init_spline(self):
@@ -1110,7 +1118,7 @@ class EEPROM:
         return # not implemented
 
     # ##########################################################################
-    # Subformat: Untethered
+    # Subformat 3: Untethered
     # ##########################################################################
 
     def init_untethered(self):
@@ -1150,83 +1158,175 @@ class EEPROM:
         log.debug("  Match Threshold:  %d", self.untethered_match_threshold)
         log.debug("  Library Count:    %d", self.untethered_library_count)
 
-    # ##########################################################################
-    # Subformat: Regions
-    # ##########################################################################
+class MultiWavelengthCalibration:
+    """
+    Subformat 5: Multi-Wavelength
 
-    # Already have names in standard format:
-    #
-    # -	R1C0-3: Wavecal Coeff 0-3       (Region 1)
-    # -	R1X0: ROI Horizontal Start      (Region 1)
-    # -	R1X1: ROI Horizontal End        (Region 1)
-    # -	R1Y0: ROI Vertical Region 1 Start
-    # -	R1Y1: ROI Vertical Region 1 End
-    # -	R2Y0: ROI Vertical Region 2 Start
-    # -	R2Y1: ROI Vertical Region 2 End
-    # -	R3Y0: ROI Vertical Region 3 Start
-    # -	R3Y1: ROI Vertical Region 3 End
+    This class is used to manage those attributes which can vary in a single 
+    multi-wavelength spectrometer (for instance, where a compound grating 
+    supports different Raman excitations in different detector ROIs).
 
-    def init_regions(self):
-        self.region_count                   = 0
-        self.roi_horiz_region_2_start       = 0
-        self.roi_horiz_region_2_end         = 0
-        self.roi_horiz_region_3_start       = 0
-        self.roi_horiz_region_3_end         = 0
-        self.roi_horiz_region_4_start       = 0
-        self.roi_horiz_region_4_end         = 0
-        self.roi_vertical_region_4_start    = 0
-        self.roi_vertical_region_4_end      = 0
-        self.roi_wavecal_region_2_coeffs    = [ 0, 1, 0, 0 ]
-        self.roi_wavecal_region_3_coeffs    = [ 0, 1, 0, 0 ]
-        self.roi_wavecal_region_4_coeffs    = [ 0, 1, 0, 0 ]
+    Currently the set of such attributes includes laser excitation wavelength,
+    wavelength calibration, horizontal ROI, Raman Intensity Calibration, 
+    average resolution, and horizontal binning mode. (Vertical ROI was 
+    presciently covered in Format 1.)
 
-    def read_regions(self):
-        log.debug("read_regions")
-        self.region_count = self.unpack((7, 0, 1), "B", "region_count")
+    @par Theory of Operation
 
-        self.roi_horiz_region_2_start       = self.unpack((6,  0, 2), "H", "roi_horiz_region_2_start")
-        self.roi_horiz_region_2_end         = self.unpack((6,  2, 2), "H", "roi_horiz_region_2_end")
-        self.roi_horiz_region_3_start       = self.unpack((6, 20, 2), "H", "roi_horiz_region_3_start")
-        self.roi_horiz_region_3_end         = self.unpack((6, 22, 2), "H", "roi_horiz_region_3_end")
-        self.roi_horiz_region_4_start       = self.unpack((6, 44, 2), "H", "roi_horiz_region_4_start")
-        self.roi_horiz_region_4_end         = self.unpack((6, 46, 2), "H", "roi_horiz_region_4_end")
-        self.roi_vertical_region_4_start    = self.unpack((6, 40, 2), "H", "roi_vertical_region_4_start")
-        self.roi_vertical_region_4_end      = self.unpack((6, 42, 2), "H", "roi_vertical_region_4_end")
+    A "calibration" is one set of attributes (self.attributes) related to
+    a particular grating region.
 
-        for i in range(4):
-            self.roi_wavecal_region_2_coeffs[i] = self.unpack((6,  4 + i * 4, 4), "f", f"roi_wavecal_region_2_coeffs[{i}]")
-            self.roi_wavecal_region_3_coeffs[i] = self.unpack((6, 24 + i * 4, 4), "f", f"roi_wavecal_region_3_coeffs[{i}]")
-            self.roi_wavecal_region_4_coeffs[i] = self.unpack((6, 48 + i * 4, 4), "f", f"roi_wavecal_region_4_coeffs[{i}]")
+    Most of this class architecture could conceivably support many different
+    calibrations. In practice, it is limited to 3, because it is currently
+    using the 3-region Vertical ROI fields included in the original (Rev 1)
+    EEPROM format. 
 
-    def write_regions(self):
-        log.debug("write_regions")
+    It is also practically limited to 2 calibrations because currently it's
+    using one EEPROM page per "extra" calibration, and the "standard 8" pages
+    only has one extra: page 7. This isn't a limitation on XS, which has a much
+    larger EEPROM than X series, so we could easily add more pages to subformat
+    5 if desired.
 
-        self.pack((7,  0, 1), "B", self.region_count)
-        self.pack((6,  0, 2), "H", self.roi_horiz_region_2_start)
-        self.pack((6,  2, 2), "H", self.roi_horiz_region_2_end)
-        self.pack((6, 20, 2), "H", self.roi_horiz_region_3_start)
-        self.pack((6, 22, 2), "H", self.roi_horiz_region_3_end)
-        self.pack((6, 44, 2), "H", self.roi_horiz_region_4_start)
-        self.pack((6, 46, 2), "H", self.roi_horiz_region_4_end)
-        self.pack((6, 40, 2), "H", self.roi_vertical_region_4_start)
-        self.pack((6, 42, 2), "H", self.roi_vertical_region_4_end)
-                                    
-        for i in range(4):
-            self.pack((6,  4 + i * 4, 4), "f", self.roi_wavecal_region_2_coeffs[i])
-            self.pack((6, 24 + i * 4, 4), "f", self.roi_wavecal_region_3_coeffs[i])
-            self.pack((6, 48 + i * 4, 4), "f", self.roi_wavecal_region_4_coeffs[i])
+    Calibration 0 is the "original calibration," and is stored in the "standard"
+    EEPROM pages where such things (wavecal, Raman Intensity, etc) have always
+    been stored. When loaded to memory, they are initially read into the EEPROM 
+    instance properties (.wavecal_coeffs, .excitation_float_nm etc) where they 
+    have always been stored. HOWEVER, this is not where "modern" code should
+    attempt to read or write them, as described below.
 
-    def dump_regions(self):
-        log.debug("Regions:")
-        log.debug("  Region Count:             %d", self.region_count)
-        log.debug("  ROI Horiz Region 2 Start: %d", self.roi_horiz_region_2_start)
-        log.debug("  ROI Horiz Region 2 End:   %d", self.roi_horiz_region_2_end)
-        log.debug("  ROI Horiz Region 3 Start: %d", self.roi_horiz_region_3_start)
-        log.debug("  ROI Horiz Region 3 End:   %d", self.roi_horiz_region_3_end)
-        log.debug("  ROI Horiz Region 4 Start: %d", self.roi_horiz_region_4_start)
-        log.debug("  ROI Horiz Region 4 End:   %d", self.roi_horiz_region_4_end)
-        log.debug("  ROI Vert Region 4 Start:  %d", self.roi_vertical_region_4_start)
-        log.debug("  ROI Vert Region 4 End:    %d", self.roi_vertical_region_4_end)
-        log.debug("  Region 2 Wavecal:         %s", self.roi_wavecal_region_2_coeffs)
-        log.debug("  Region 3 Wavecal:         %s", self.roi_wavecal_region_3_coeffs)
-        log.debug("  Region 4 Wavecal:         %s", self.roi_wavecal_region_4_coeffs)
+    Additional calibrations (1+) are persisted on a single EEPROM page each (p7 
+    for calibration 1). When loaded from EEPROM, they are NOT stored in object
+    properties like Calibration 0, but are stored in a dict by calibration index
+    and their field name. For instance, the laser excitation wavelength of the
+    second calibration (calibration 1) is in values["excitation_nm_float"][1].
+
+    For consistency, working copies of calibration 0 fields are populated to
+    values[name][0]. New code is recommended to access even the old "calibration 
+    0" fields through the provided MultiWavelengthCalibration accessors (get()
+    and set()), as this will make the new code "future-proof" and multi-
+    calibration ready. All known Wasatch.PY and ENLIGHTEN references to 0-
+    calibration properties have been updated to use the new accessors as 
+    reference examples.
+    """
+
+    def __init__(self, eeprom):
+        self.eeprom = eeprom
+
+        self.attributes = [ 'excitation_nm_float', 'wavelength_coeffs', 
+                            'roi_horizontal_start', 'roi_horizontal_end', 
+                            'avg_resolution', 'raman_intensity_coeffs', 
+                            'horiz_binning_mode' ]
+        self.values = {}
+        self.calibrations = 1
+        self.selected_calibration = 0 # e.g., self.values['avg_resolution'][selected_calibration]
+
+    def is_multi_wavelength(self, name):
+        return name in self.attributes
+
+    def initialize(self):
+        """ initialize attributes to single-element arrays with the "standard" value at calibration 0 """
+        for name in self.attributes:
+            log.debug(f"read: initializing {name}")
+            self.values[name] = [ getattr(self.eeprom, name) ]
+
+    def get(self, name, calibration=None, index=None, default=None):
+        if name not in self.values:
+            log.debug(f"get: name {name} not in values: {self.values}")
+            return default
+
+        label = f"{name}[{calibration}]" if index is None else f"{name}[{calibration}][{index}]"
+
+        a = self.values[name]
+        if calibration is None:
+            calibration = self.selected_calibration
+        if calibration >= len(a):
+            log.warn(f"MultiWavelengthCalibration.get: returning default {default} because calibration {calibration} not in {label} array len {len(a)}")
+            return default
+
+        if index is None:
+            value = a[calibration] 
+        else:
+            if isinstance(a[calibration], list):
+                if index >= len(a[calibration]):
+                    log.warn(f"MultiWavelengthCalibration.get: returning {label} 0 because index {index} not in array[calibration {calibration}] len {len(a[calibration])}")
+                    return 0
+                else:
+                    value = a[calibration][index]
+            else:
+                log.warn(f"MultiWavelengthCalibration.get: returning {label} 0 because array[calibration {calibration}] is not a list")
+                return 0
+                    
+        log.debug(f"MultiWavelengthCalibration.get: returning {label} = {value}")
+        return value
+
+    def set(self, name, value, calibration=None, index=None):
+        try:
+            a = self.values[name]
+            if calibration is None:
+                calibration = self.selected_calibration
+
+            while len(a) - 1 < calibration:
+                a.append(0)
+
+            if self.calibrations < calibration + 1:
+                self.calibrations = calibration + 1
+
+            if index is None:
+                label = f"{name}[{calibration}]"
+                a[calibration] = value
+                if calibration == 0:
+                    setattr(self.eeprom, name, value)
+            else:
+                label = f"{name}[{calibration}][{index}]"
+                a[calibration][index] = value
+                if calibration == 0:
+                    setattr(self.eeprom, name, a[calibration])
+
+            log.debug(f"MultiWavelengthCalibration.set: set {label} = {value}")
+        except:
+            log.error(f"MultiWavelengthCalibration.set: failed to set name {name}, calibration {calibration}, index {index}, value {value}", exc_info=1)
+
+    def read(self, calibration):
+        if calibration < 1:
+            # assume calibration[0] was read with standard eeprom.read
+            return
+
+        if self.calibrations < calibration + 1:
+            self.calibrations = calibration + 1
+
+        page = 6 + calibration
+        log.debug(f"MultiWavelengthCalibration.read: reading calibration {calibration} from page {page}")
+        self.values["excitation_nm_float"    ].append(  self.eeprom.unpack((page,  0,  4), "f"))
+        self.values["roi_horizontal_start"   ].append(  self.eeprom.unpack((page, 26,  2), "H"))
+        self.values["roi_horizontal_end"     ].append(  self.eeprom.unpack((page, 28,  2), "H"))
+        self.values["avg_resolution"         ].append(  self.eeprom.unpack((page, 30,  4), "f"))
+        self.values["horiz_binning_mode"     ].append(  self.eeprom.unpack((page, 58,  1), "B"))
+        self.values["wavelength_coeffs"      ].append([ self.eeprom.unpack((page,  4 + i * 4,  4), "f") for i in range(5) ])
+        self.values["raman_intensity_coeffs" ].append([ self.eeprom.unpack((page, 34 + i * 4,  4), "f") for i in range(6) ])
+
+    def write(self):
+        log.debug(f"MultiWavelengthCalibration.write: calibrations {self.calibrations}")
+
+        # assume calibration[0] output with standard eeprom.write
+        for calibration in range(1, self.calibrations):
+            page = 6 + calibration
+            log.debug(f"MultiWavelengthCalibration.write: writing calibration {calibration} to page {page}")
+
+            self.eeprom.pack((page,  0,  4), "f", self.get("excitation_nm_float",  calibration))
+            self.eeprom.pack((page, 26,  2), "H", self.get("roi_horizontal_start", calibration))
+            self.eeprom.pack((page, 28,  2), "H", self.get("roi_horizontal_end",   calibration))
+            self.eeprom.pack((page, 30,  4), "f", self.get("avg_resolution",       calibration))
+            self.eeprom.pack((page, 58,  1), "B", self.get("horiz_binning_mode",   calibration))
+            for i in range(5): self.eeprom.pack((page,  4 + i * 4,  4), "f", self.get("wavelength_coeffs", calibration, i))
+            for i in range(6): self.eeprom.pack((page, 34 + i * 4,  4), "f", self.get("raman_intensity_coeffs", calibration, i))
+
+    def dump(self):
+        log.debug("Multi-Wavelength:")
+        for i in range(self.calibrations):
+            log.debug(f"  Calibration #{i}")
+            for name in self.attributes:
+                log.debug(f"    {name} = {self.get(name, calibration=i)}")
+
+    def toJSON(self): 
+        return str(self.__dict__)
+        return json.dumps(self, default=lambda o: o.__dict__, sort_keys=True, indent=4)
