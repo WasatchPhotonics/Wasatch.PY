@@ -227,10 +227,10 @@ class AndorDevice(InterfaceDevice):
 
         return convertedSpec
 
-    def _take_one_averaged_reading(self): # -> SpectrometerResponse 
+    def _take_one_averaged_reading(self):
         averaging_enabled = (self.settings.state.scans_to_average > 1)
 
-        if averaging_enabled and not self.settings.state.free_running_mode:
+        if averaging_enabled:
             # collect the entire averaged spectrum at once (added for
             # BatchCollection with laser delay)
             #
@@ -257,7 +257,7 @@ class AndorDevice(InterfaceDevice):
             if self.tec_enabled:
                 log.debug("TEC enabled, so reading temperature")
 
-                use_float = True    # seems to work on 785XL (WP-01635)
+                use_float = True    # seems to work on 785XL (WP-01635 and WP-01491)
 
                 if use_float:
                     c_temp = c_float()
@@ -268,7 +268,11 @@ class AndorDevice(InterfaceDevice):
 
                 label = self.get_error_code(result)
                 
-                if label in ["DRV_SUCCESS", "DRV_TEMP_STABILIZED", "DRV_TEMP_NOT_REACHED", "DRV_TEMP_DRIFT", "DRV_TEMP_NOT_STABILIZED"]:
+                if label in [ "DRV_SUCCESS", 
+                              "DRV_TEMPERATURE_DRIFT",
+                              "DRV_TEMPERATURE_STABILIZED",
+                              "DRV_TEMPERATURE_NOT_REACHED",
+                              "DRV_TEMPERATURE_NOT_STABILIZED" ]:
                     reading.detector_temperature_degC = c_temp.value
                     log.debug(f"Andor temperature {reading.detector_temperature_degC:.2f} ({label})")
                 else:

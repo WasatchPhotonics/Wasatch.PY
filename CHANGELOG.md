@@ -2,10 +2,12 @@
 
 - 2024-??-?? 2.2.15
     - XL Fixes
-        - blank wavecal
+        - fixed scan averaging
+        - fixed detector temperature readout
         - flag non-downloaded Andor EEPROMs as 'stubbed'
         - force integral ROI
         - allow MultiWavelengthCalibration.set to support any EEPROM property
+        - fixed corner-case with blank wavecal
 - 2024-11-25 2.2.14
     - EEPROM
         - added subformat 5 (EEPROM.MultiWavelengthCalibration)
