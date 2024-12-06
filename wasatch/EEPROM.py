@@ -386,25 +386,21 @@ class EEPROM:
         # Page 6-7
         # ######################################################################
 
-        # re-initialize multi_wavelength, because it initializes the base set 
-        # of dependent attributes
-        self.multi_wavelength_calibration.initialize()
-        
-        if self.subformat == 0:
-            pass
-        elif self.subformat == 1:
+        if self.subformat in [1, 5]:
             self.read_raman_intensity_calibration()
-        elif self.subformat == 2:
+
+        if self.subformat == 2:
             self.read_spline()
-        elif self.subformat == 3:
+
+        if self.subformat == 3:
             self.read_untethered()
-        elif self.subformat == 4:
-            log.critical("Subformat 4 has been deprecated")
-        elif self.subformat == 5:
-            self.read_raman_intensity_calibration()
+
+        # Now that all other data has been loaded, re-initialize and load Multi-
+        # Wavelength Calibration (this way it can copy the "baseline" Raman
+        # intensity calibration, plus append new ones).
+        self.multi_wavelength_calibration.initialize()
+        if self.subformat == 5:
             self.multi_wavelength_calibration.read(calibration=1)
-        else:
-            log.critical(f"Unreadable EEPROM subformat {self.subformat}")
 
         # ######################################################################
         # feature mask
@@ -964,16 +960,15 @@ class EEPROM:
 
         return True
 
-    def has_raman_intensity_calibration(self): # -> bool 
+    def has_raman_intensity_calibration(self):
         if self.format < 6:
             log.debug(f"has_raman_intensity_calibration: false because format {self.format}")
             return False
 
-        if not (0 < self.raman_intensity_calibration_order <= EEPROM.MAX_RAMAN_INTENSITY_CALIBRATION_ORDER):
-            log.debug(f"has_raman_intensity_calibration: false because invalid order {self.raman_intensity_calibration_order}")
-            return False
-            
-        if not utils.coeffs_look_valid(self.multi_wavelength_calibration.get("raman_intensity_coeffs"), count = self.raman_intensity_calibration_order + 1):
+        # could check subformat too
+
+        coeffs = self.multi_wavelength_calibration.get("raman_intensity_coeffs")
+        if not utils.coeffs_look_valid(coeffs):
             log.debug(f"has_raman_intensity_calibration: false because coeffs look weird")
             return False
 
@@ -1230,11 +1225,13 @@ class MultiWavelengthCalibration:
     def is_multi_wavelength(self, name):
         return name in self.attributes
 
-    def initialize(self):
+    def initialize(self, name=None):
         """ initialize attributes to single-element arrays with the "standard" value at calibration 0 """
-        for name in self.attributes:
-            log.debug(f"read: initializing {name}")
+        if name:
             self.values[name] = [ getattr(self.eeprom, name) ]
+        else:
+            for name in self.attributes:
+                self.values[name] = [ getattr(self.eeprom, name) ]
 
     def get(self, name, calibration=None, index=None, default=None):
         # allow getter to be used for any EEPROM attribute

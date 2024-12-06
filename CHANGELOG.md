@@ -8,6 +8,8 @@
         - flag non-downloaded Andor EEPROMs as 'stubbed'
     - force integral ROI
     - allow MultiWavelengthCalibration.set to support any EEPROM property
+    - fixed Raman Intensity Calibration (broke in 2.2.14)
+    - deprecated EEPROM.raman_intensity_calibration_order (manufacturing standardized on 6th-order polynomial)
 - 2024-11-25 2.2.14
     - EEPROM
         - added subformat 5 (EEPROM.MultiWavelengthCalibration)
