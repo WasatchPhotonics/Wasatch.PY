@@ -30,7 +30,7 @@ class EEPROM:
     MAX_PAGES = 8
     PAGE_LENGTH = 64
     SUBPAGE_COUNT = 4  # used for BLE
-    MAX_RAMAN_INTENSITY_CALIBRATION_ORDER = 7
+    RAMAN_INTENSITY_CALIBRATION_ORDER = 5
 
     DEFAULT_LASER_WATCHDOG_SEC = 10
 
@@ -138,7 +138,6 @@ class EEPROM:
             "linearity_coeffs",
             "max_laser_power_mW",
             "min_laser_power_mW",
-            "raman_intensity_calibration_order",
             "raman_intensity_coeffs",
             "roi_horizontal_end",
             "roi_horizontal_start",
@@ -1009,45 +1008,28 @@ class EEPROM:
     # ##########################################################################
 
     def init_raman_intensity_calibration(self):
-        self.raman_intensity_calibration_order = 0
-        self.raman_intensity_coeffs      = []
+        self.raman_intensity_calibration_order = 5
+        self.raman_intensity_coeffs = []
 
     def read_raman_intensity_calibration(self):
         self.raman_intensity_coeffs = []
-        self.raman_intensity_calibration_order = self.unpack((6, 0, 1), "B", "raman_intensity_calibration_order")
-        if 0 == self.raman_intensity_calibration_order:
-            pass
-        elif self.raman_intensity_calibration_order <= EEPROM.MAX_RAMAN_INTENSITY_CALIBRATION_ORDER:
-            order = self.raman_intensity_calibration_order
-            terms = order + 1
-            for i in range(terms):
-                offset = i * 4 + 1
-                self.raman_intensity_coeffs.append(self.unpack((6, offset, 4), "f", "raman_intensity_coeff_%d" % i))
-        else:
-            log.error("Unsupported Raman Intensity Calibration order: %d", self.raman_intensity_calibration_order)
+        order = self.RAMAN_INTENSITY_CALIBRATION_ORDER
+        for i in range(order + 1):
+            offset = i * 4 + 1
+            self.raman_intensity_coeffs.append(self.unpack((6, offset, 4), "f", "raman_intensity_coeff_%d" % i))
 
     def write_raman_intensity_calibration(self):
         self.pack((6, 0,  1), "B", self.raman_intensity_calibration_order)
-        if 0 <= self.raman_intensity_calibration_order <= EEPROM.MAX_RAMAN_INTENSITY_CALIBRATION_ORDER:
-            order = self.raman_intensity_calibration_order
-            terms = order + 1
-            for i in range(EEPROM.MAX_RAMAN_INTENSITY_CALIBRATION_ORDER + 1):
-                offset = i * 4 + 1
-                if i < terms and self.raman_intensity_coeffs is not None and i < len(self.raman_intensity_coeffs):
-                    coeff = self.raman_intensity_coeffs[i]
-                else:
-                    coeff = 0.0
-                # log.debug("packing raman_intensity_coeffs[%d] (offset %d, order %d, terms %d) => %e", i, offset, order, terms, coeff)
-                self.pack((6, offset, 4), "f", coeff)
-        else:
-            log.error("Unsupported Raman Intensity Calibration order: %d", self.raman_intensity_calibration_order)
-            for i in range(EEPROM.MAX_RAMAN_INTENSITY_CALIBRATION_ORDER + 1):
-                offset = i * 4 + 1
-                self.pack((6, offset, 4), "f", 0.0)
+        order = self.RAMAN_INTENSITY_CALIBRATION_ORDER
+        for i in range(order + 1):
+            offset = i * 4 + 1
+            coeff = 0.0
+            if self.raman_intensity_coeffs is not None and i < len(self.raman_intensity_coeffs):
+                coeff = self.raman_intensity_coeffs[i]
+            self.pack((6, offset, 4), "f", coeff)
 
     def dump_raman_intensity_calibration(self):
         log.debug("Raman Intensity Calibration:")
-        log.debug("  Raman Int Order:  %d", self.raman_intensity_calibration_order)
         log.debug("  Raman Int Coeffs: %s", self.raman_intensity_coeffs)
 
     # ##########################################################################

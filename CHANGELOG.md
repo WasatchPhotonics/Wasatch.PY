@@ -1,15 +1,16 @@
 # Changelog
 
-- 2024-??-?? 2.2.15
+- 2024-12-06 2.2.15
     - XL Fixes
         - fixed scan averaging
         - fixed detector temperature readout
         - support vertical ROI (successfully tested (118, 138) ie (center 128, height 20))
         - flag non-downloaded Andor EEPROMs as 'stubbed'
+    - EEPROM
+        - allow MultiWavelengthCalibration.set to support any EEPROM property
+        - fixed Raman Intensity Calibration (broke in 2.2.14)
+        - raman_intensity_calibration_order (standardized on 5th-order polynomial)
     - force integral ROI
-    - allow MultiWavelengthCalibration.set to support any EEPROM property
-    - fixed Raman Intensity Calibration (broke in 2.2.14)
-    - deprecated EEPROM.raman_intensity_calibration_order (manufacturing standardized on 6th-order polynomial)
 - 2024-11-25 2.2.14
     - EEPROM
         - added subformat 5 (EEPROM.MultiWavelengthCalibration)
