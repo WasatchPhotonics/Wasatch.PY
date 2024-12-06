@@ -2604,11 +2604,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
         elif len(roi) == 2:
             start, end = roi[0], roi[1]
         else:
-            log.error("set_vertical_binning requires a tuple of (start, stop) lines")
+            log.error("set_vertical_binning requires an ROI object or tuple of (start, stop) lines")
             return SpectrometerResponse(data=False, error_msg="invalid start and stop lines")
 
         if start < 0 or end < 0:
-            log.error("set_vertical_binning requires a tuple of POSITIVE (start, stop) lines")
+            log.error("set_vertical_binning requires POSITIVE (start, stop) lines")
             return SpectrometerResponse(data=False, error_msg="invalid start and stop lines")
 
         # enforce ascending order (also, note that stop line is "last line binned + 1", so stop must be > start)

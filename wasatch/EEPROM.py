@@ -30,7 +30,7 @@ class EEPROM:
     MAX_PAGES = 8
     PAGE_LENGTH = 64
     SUBPAGE_COUNT = 4  # used for BLE
-    MAX_RAMAN_INTENSITY_CALIBRATION_ORDER = 7
+    RAMAN_INTENSITY_CALIBRATION_ORDER = 5
 
     DEFAULT_LASER_WATCHDOG_SEC = 10
 
@@ -115,6 +115,7 @@ class EEPROM:
         self.buffers = []
         self.write_buffers = []
         self.digest = None
+        self.stubbed = False
 
         self.editable = [
             "avg_resolution",
@@ -137,7 +138,6 @@ class EEPROM:
             "linearity_coeffs",
             "max_laser_power_mW",
             "min_laser_power_mW",
-            "raman_intensity_calibration_order",
             "raman_intensity_coeffs",
             "roi_horizontal_end",
             "roi_horizontal_start",
@@ -385,25 +385,21 @@ class EEPROM:
         # Page 6-7
         # ######################################################################
 
-        # always initialize multi_wavelength, because it initializes the base set 
-        # of dependent attributes
-        self.multi_wavelength_calibration.initialize()
-        
-        if self.subformat == 0:
-            pass
-        elif self.subformat == 1:
+        if self.subformat in [1, 5]:
             self.read_raman_intensity_calibration()
-        elif self.subformat == 2:
+
+        if self.subformat == 2:
             self.read_spline()
-        elif self.subformat == 3:
+
+        if self.subformat == 3:
             self.read_untethered()
-        elif self.subformat == 4:
-            log.critical("Subformat 4 has been deprecated")
-        elif self.subformat == 5:
-            self.read_raman_intensity_calibration()
+
+        # Now that all other data has been loaded, re-initialize and load Multi-
+        # Wavelength Calibration (this way it can copy the "baseline" Raman
+        # intensity calibration, plus append new ones).
+        self.multi_wavelength_calibration.initialize()
+        if self.subformat == 5:
             self.multi_wavelength_calibration.read(calibration=1)
-        else:
-            log.critical(f"Unreadable EEPROM subformat {self.subformat}")
 
         # ######################################################################
         # feature mask
@@ -850,13 +846,13 @@ class EEPROM:
         log.debug("  Shutter:          %s", self.has_shutter)
         log.debug("  Disable BLE Power:%s", self.disable_ble_power)
         log.debug("  Dis Laser Arm Ind:%s", self.disable_laser_armed_indicator)
-        log.debug("  Excitation (f):   %.2f nm", self.multi_wavelength_calibration.get("excitation_nm_float"))
+        log.debug("  Excitation (f):   %.2f nm", self.multi_wavelength_calibration.get("excitation_nm_float", default=0))
         log.debug("  Laser Warmup Sec: %d", self.laser_warmup_sec)
         log.debug("  Laser Watchdog:   %d", self.laser_watchdog_sec)
         log.debug("  Light Source:     %d", self.light_source_type)
         log.debug("  Power Timeout:    %d", self.power_timeout_sec)
         log.debug("  Detector Timeout: %d", self.detector_timeout_sec)
-        log.debug("  Horiz Bin Mode:   %d", self.multi_wavelength_calibration.get("horiz_binning_mode"))
+        log.debug("  Horiz Bin Mode:   %d", self.multi_wavelength_calibration.get("horiz_binning_mode", default=0))
         log.debug("  Slit size:        %s um", self.slit_size_um)
         log.debug("  Start Integ Time: %d ms", self.startup_integration_time_ms)
         log.debug("  Start Temp:       %.2f degC", self.startup_temp_degC)
@@ -884,8 +880,8 @@ class EEPROM:
         log.debug("  Actual Px Vert:   %d", self.actual_pixels_vertical)
         log.debug("  Min integration:  %d ms", self.min_integration_time_ms)
         log.debug("  Max integration:  %d ms", self.max_integration_time_ms)
-        log.debug("  ROI Horiz Start:  %d", self.multi_wavelength_calibration.get("roi_horizontal_start"))
-        log.debug("  ROI Horiz End:    %d", self.multi_wavelength_calibration.get("roi_horizontal_end"))
+        log.debug("  ROI Horiz Start:  %d", self.multi_wavelength_calibration.get("roi_horizontal_start", default=-1))
+        log.debug("  ROI Horiz End:    %d", self.multi_wavelength_calibration.get("roi_horizontal_end", default=-1))
         log.debug("  ROI Vert Reg 1:   (%d, %d)", self.roi_vertical_region_1_start, self.roi_vertical_region_1_end)
         log.debug("  ROI Vert Reg 2:   (%d, %d)", self.roi_vertical_region_2_start, self.roi_vertical_region_2_end)
         log.debug("  ROI Vert Reg 3:   (%d, %d)", self.roi_vertical_region_3_start, self.roi_vertical_region_3_end)
@@ -894,7 +890,7 @@ class EEPROM:
         log.debug("  Laser coeffs:     %s", self.laser_power_coeffs)
         log.debug("  Max Laser Power:  %s mW", self.max_laser_power_mW)
         log.debug("  Min Laser Power:  %s mW", self.min_laser_power_mW)
-        log.debug("  Avg Resolution:   %.2f", self.multi_wavelength_calibration.get("avg_resolution"))
+        log.debug("  Avg Resolution:   %.2f", self.multi_wavelength_calibration.get("avg_resolution", default=0))
         log.debug("")
         log.debug("  User Text:        %s", self.user_text)
         log.debug("")
@@ -963,16 +959,15 @@ class EEPROM:
 
         return True
 
-    def has_raman_intensity_calibration(self): # -> bool 
+    def has_raman_intensity_calibration(self):
         if self.format < 6:
             log.debug(f"has_raman_intensity_calibration: false because format {self.format}")
             return False
 
-        if not (0 < self.raman_intensity_calibration_order <= EEPROM.MAX_RAMAN_INTENSITY_CALIBRATION_ORDER):
-            log.debug(f"has_raman_intensity_calibration: false because invalid order {self.raman_intensity_calibration_order}")
-            return False
-            
-        if not utils.coeffs_look_valid(self.multi_wavelength_calibration.get("raman_intensity_coeffs"), count = self.raman_intensity_calibration_order + 1):
+        # could check subformat too
+
+        coeffs = self.multi_wavelength_calibration.get("raman_intensity_coeffs")
+        if not utils.coeffs_look_valid(coeffs):
             log.debug(f"has_raman_intensity_calibration: false because coeffs look weird")
             return False
 
@@ -1013,45 +1008,28 @@ class EEPROM:
     # ##########################################################################
 
     def init_raman_intensity_calibration(self):
-        self.raman_intensity_calibration_order = 0
-        self.raman_intensity_coeffs      = []
+        self.raman_intensity_calibration_order = 5
+        self.raman_intensity_coeffs = []
 
     def read_raman_intensity_calibration(self):
         self.raman_intensity_coeffs = []
-        self.raman_intensity_calibration_order = self.unpack((6, 0, 1), "B", "raman_intensity_calibration_order")
-        if 0 == self.raman_intensity_calibration_order:
-            pass
-        elif self.raman_intensity_calibration_order <= EEPROM.MAX_RAMAN_INTENSITY_CALIBRATION_ORDER:
-            order = self.raman_intensity_calibration_order
-            terms = order + 1
-            for i in range(terms):
-                offset = i * 4 + 1
-                self.raman_intensity_coeffs.append(self.unpack((6, offset, 4), "f", "raman_intensity_coeff_%d" % i))
-        else:
-            log.error("Unsupported Raman Intensity Calibration order: %d", self.raman_intensity_calibration_order)
+        order = self.RAMAN_INTENSITY_CALIBRATION_ORDER
+        for i in range(order + 1):
+            offset = i * 4 + 1
+            self.raman_intensity_coeffs.append(self.unpack((6, offset, 4), "f", "raman_intensity_coeff_%d" % i))
 
     def write_raman_intensity_calibration(self):
         self.pack((6, 0,  1), "B", self.raman_intensity_calibration_order)
-        if 0 <= self.raman_intensity_calibration_order <= EEPROM.MAX_RAMAN_INTENSITY_CALIBRATION_ORDER:
-            order = self.raman_intensity_calibration_order
-            terms = order + 1
-            for i in range(EEPROM.MAX_RAMAN_INTENSITY_CALIBRATION_ORDER + 1):
-                offset = i * 4 + 1
-                if i < terms and self.raman_intensity_coeffs is not None and i < len(self.raman_intensity_coeffs):
-                    coeff = self.raman_intensity_coeffs[i]
-                else:
-                    coeff = 0.0
-                # log.debug("packing raman_intensity_coeffs[%d] (offset %d, order %d, terms %d) => %e", i, offset, order, terms, coeff)
-                self.pack((6, offset, 4), "f", coeff)
-        else:
-            log.error("Unsupported Raman Intensity Calibration order: %d", self.raman_intensity_calibration_order)
-            for i in range(EEPROM.MAX_RAMAN_INTENSITY_CALIBRATION_ORDER + 1):
-                offset = i * 4 + 1
-                self.pack((6, offset, 4), "f", 0.0)
+        order = self.RAMAN_INTENSITY_CALIBRATION_ORDER
+        for i in range(order + 1):
+            offset = i * 4 + 1
+            coeff = 0.0
+            if self.raman_intensity_coeffs is not None and i < len(self.raman_intensity_coeffs):
+                coeff = self.raman_intensity_coeffs[i]
+            self.pack((6, offset, 4), "f", coeff)
 
     def dump_raman_intensity_calibration(self):
         log.debug("Raman Intensity Calibration:")
-        log.debug("  Raman Int Order:  %d", self.raman_intensity_calibration_order)
         log.debug("  Raman Int Coeffs: %s", self.raman_intensity_coeffs)
 
     # ##########################################################################
@@ -1220,18 +1198,30 @@ class MultiWavelengthCalibration:
         self.calibrations = 1
         self.selected_calibration = 0 # e.g., self.values['avg_resolution'][selected_calibration]
 
+        # this won't do anything except copy "defaults" into self.values (which 
+        # will get overwritten when EEPROM.read re-calls self.initialize after 
+        # "better" values are available to assign to self.values), but it helps
+        # non-FID classes like AndorDevice to start with an initialized baseline
+        self.initialize()
+
     def is_multi_wavelength(self, name):
         return name in self.attributes
 
-    def initialize(self):
+    def initialize(self, name=None):
         """ initialize attributes to single-element arrays with the "standard" value at calibration 0 """
-        for name in self.attributes:
-            log.debug(f"read: initializing {name}")
+        if name:
             self.values[name] = [ getattr(self.eeprom, name) ]
+        else:
+            for name in self.attributes:
+                self.values[name] = [ getattr(self.eeprom, name) ]
 
     def get(self, name, calibration=None, index=None, default=None):
+        # allow getter to be used for any EEPROM attribute
+        if name not in self.attributes:
+            return getattr(self.eeprom, name)
+
         if name not in self.values:
-            log.debug(f"get: name {name} not in values: {self.values}")
+            log.debug(f"get: name {name} in attributes, but not in values: {self.values}")
             return default
 
         label = f"{name}[{calibration}]" if index is None else f"{name}[{calibration}][{index}]"
@@ -1260,6 +1250,10 @@ class MultiWavelengthCalibration:
         return value
 
     def set(self, name, value, calibration=None, index=None):
+        if name not in self.attributes:
+            setattr(self.eeprom, name, value)
+            return
+
         try:
             a = self.values[name]
             if calibration is None:

@@ -228,24 +228,35 @@ class SpectrometerSettings:
         self.raman_intensity_factors = None
         if not self.eeprom.has_raman_intensity_calibration():
             return
-        if 1 <= self.eeprom.raman_intensity_calibration_order <= EEPROM.MAX_RAMAN_INTENSITY_CALIBRATION_ORDER:
-            coeffs = self.eeprom.multi_wavelength_calibration.get("raman_intensity_coeffs")
-            if coeffs is not None:
-                try:
-                    # probably faster numpy way to do this
-                    factors = []
-                    for pixel in range(self.pixels()):
-                        log10_factor = 0.0
-                        for i in range(len(coeffs)):
-                            x_to_i = math.pow(pixel, i)
-                            scaled = coeffs[i] * x_to_i
-                            log10_factor += scaled
-                        expanded = math.pow(10, log10_factor)
-                        factors.append(expanded)
-                    self.raman_intensity_factors = np.array(factors, dtype=np.float64)
-                except:
-                    log.error("exception generating Raman intensity factors (coeffs %s)", coeffs, exc_info=1)
-                    self.raman_intensity_factors = None
+        
+        # Technically, we have an EEPROM field "raman_intensity_calibration_order", 
+        # but I'm choosing not to use it here. We've standardized on a 6th-order
+        # polynomial for several years, and we didn't have room (or desire) to 
+        # support more than 6th-order polynomials in Multi-Wavelength Calibration,
+        # so I'm just drawing a line and saying "all SRM calibrations are 6th
+        # order in the current codebase."
+
+        coeffs = self.eeprom.multi_wavelength_calibration.get("raman_intensity_coeffs")
+        log.debug("update_raman_intensity_factors: coeffs {coeffs}")
+        if coeffs is None or coeffs == []:
+            return
+
+        try:
+            # probably faster numpy way to do this
+            factors = []
+            for pixel in range(self.pixels()):
+                log10_factor = 0.0
+                for i in range(len(coeffs)):
+                    x_to_i = math.pow(pixel, i)
+                    scaled = coeffs[i] * x_to_i
+                    log10_factor += scaled
+                expanded = math.pow(10, log10_factor)
+                factors.append(expanded)
+            self.raman_intensity_factors = np.array(factors, dtype=np.float64)
+        except:
+            log.error(f"exception generating Raman intensity factors (coeffs {coeffs})", exc_info=1)
+            self.raman_intensity_factors = None
+        log.debug("generated {len(self.raman_intensity_factors)} Raman intensity factors")
 
     def set_linear_pixel_calibration(self, data):
         self.linear_pixel_calibration = None
@@ -266,7 +277,7 @@ class SpectrometerSettings:
         self.update_wavecal()
 
     def get_wavecal_coeffs(self):
-        return self.eeprom.multi_wavelength_calibration.get("wavelength_coeffs", default=[0, 0, 0, 0, 0])
+        return self.eeprom.multi_wavelength_calibration.get("wavelength_coeffs", default=[0, 1, 0, 0, 0])
 
     def set_wavecal_coeffs(self, coeffs):
         self.eeprom.multi_wavelength_calibration.set("wavelength_coeffs", coeffs)
@@ -290,9 +301,9 @@ class SpectrometerSettings:
 
         self.wavelengths = utils.generate_wavelengths(self.pixels(), coeffs)
 
-        if self.wavelengths is None:
+        if self.wavelengths is None or self.wavelengths[0] == self.wavelengths[-1]:
             # this can happen on Stroker Protocol before/without .ini file,
-            # or SiG with bad battery / corrupt EEPROM
+            # or SiG with bad battery / corrupt EEPROM, or Andor without config file
             log.debug("no wavecal found - using pixel space")
             self.wavelengths = list(range(self.pixels()))
 

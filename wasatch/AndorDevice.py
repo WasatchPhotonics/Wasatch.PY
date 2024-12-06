@@ -11,6 +11,7 @@ from .SpectrometerResponse        import SpectrometerResponse
 from .InterfaceDevice             import InterfaceDevice
 from .DeviceID                    import DeviceID
 from .Reading                     import Reading
+from .ROI                         import ROI
 
 log = logging.getLogger(__name__)
 
@@ -67,6 +68,8 @@ class AndorDevice(InterfaceDevice):
 
         self.immediate_mode = False
 
+        # An AndorDevice has-a SpectrometerSettings, which has-a EEPROM, which 
+        # has-a MultiWavelengthCalibration
         self.settings = SpectrometerSettings(self.device_id)
         self.summed_spectra         = None
         self.sum_count              = 0
@@ -125,15 +128,18 @@ class AndorDevice(InterfaceDevice):
         # set Andor defaults for important "EEPROM" settings
         # (all but has_cooling can be overridden via config file)
 
-        # Andor API doesn't have access to detector info
-        # Note that we use non-iDus cameras, including the Newton
+        # Andor API doesn't(?) seem to have access to detector info.
+        # Note that we use non-iDus cameras, including the Newton.
         self.settings.eeprom.detector = "iDus" 
-        self.settings.eeprom.wavelength_coeffs = [0,1,0,0]
+
         self.settings.eeprom.has_cooling = True
         self.settings.eeprom.startup_integration_time_ms = 10
         self.settings.eeprom.startup_temp_degC = -60
         self.settings.eeprom.detector_gain = 1
         self.settings.eeprom.detector_gain_odd = 1
+
+        # MultiWavelengthCalibration attributes
+        self.settings.eeprom.multi_wavelength_calibration.set("wavelength_coeffs", [0,1,0,0,0])
 
         self.process_f = self._init_process_funcs()
 
@@ -144,28 +150,29 @@ class AndorDevice(InterfaceDevice):
     def _init_process_funcs(self):
         process_f = {}
 
-        process_f["connect"] = self.connect
-        process_f["acquire_data"] = self.acquire_data
-        process_f["set_shutter_enable"] = self.set_shutter_enable
-        process_f["set_integration_time_ms"] = self.set_integration_time_ms
-        process_f["get_serial_number"] = self.get_serial_number
-        process_f["init_tec_setpoint"] = self.init_tec_setpoint
-        process_f["set_tec_setpoint"] = self.set_tec_setpoint
-        process_f["init_detector_area"] = self.init_detector_area
-        process_f["scans_to_average"] = self.scans_to_average
-        process_f["high_gain_mode_enable"] = self.high_gain_mode_enable
-        process_f["save_config"] = self.save_config
+        process_f["connect"]                    = self.connect
+        process_f["acquire_data"]               = self.acquire_data
+        process_f["set_shutter_enable"]         = self.set_shutter_enable
+        process_f["set_integration_time_ms"]    = self.set_integration_time_ms
+        process_f["get_serial_number"]          = self.get_serial_number
+        process_f["init_tec_setpoint"]          = self.init_tec_setpoint
+        process_f["set_tec_setpoint"]           = self.set_tec_setpoint
+        process_f["init_detector_area"]         = self.init_detector_area
+        process_f["scans_to_average"]           = self.scans_to_average
+        process_f["high_gain_mode_enable"]      = self.high_gain_mode_enable
+        process_f["save_config"]                = self.save_config
+        process_f["vertical_binning"]           = self.set_vertical_binning
 
         ##################################################################
         # What follows is the old init-lambdas that are squashed into process_f
         # Long term, the upstream requests should be changed to match the new format
         # This is an easy fix for the time being to make things behave
         ##################################################################
-        process_f["integration_time_ms"] = lambda x: self.set_integration_time_ms(x) # conversion from millisec to microsec
-        process_f["fan_enable"] = lambda x: self.set_fan_enable(bool(x))
-        process_f["shutter_enable"] = lambda x: self.set_shutter_enable(bool(x))
-        process_f["detector_tec_enable"]                = lambda x: self.toggle_tec(bool(x))
-        process_f["detector_tec_setpoint_degC"]         = lambda x: self.set_tec_setpoint(int(round(x)))
+        process_f["integration_time_ms"]        = lambda x: self.set_integration_time_ms(x)
+        process_f["fan_enable"]                 = lambda x: self.set_fan_enable(bool(x))
+        process_f["shutter_enable"]             = lambda x: self.set_shutter_enable(bool(x))
+        process_f["detector_tec_enable"]        = lambda x: self.toggle_tec(bool(x))
+        process_f["detector_tec_setpoint_degC"] = lambda x: self.set_tec_setpoint(int(round(x)))
 
         return process_f
 
@@ -180,12 +187,6 @@ class AndorDevice(InterfaceDevice):
             assert(self.SUCCESS == result), f"unable to set detector gain, got value of {result}"
             log.debug(f"for {enabled} setting gain to {self.gain_options[0]}")
             return
-
-    # MZ: nothing seems to call this?
-    def _update_wavelength_coeffs(self, coeffs):
-        self.settings.eeprom.wavelength_coeffs = coeffs
-        self.config_values['wavelength_coeffs'] = coeffs
-        self.save_config()
 
     def set_fan_enable(self, x):
         self.check_result(self.driver.SetFanMode(int(x)), f"Andor Fan On {x}")
@@ -228,10 +229,10 @@ class AndorDevice(InterfaceDevice):
 
         return convertedSpec
 
-    def _take_one_averaged_reading(self): # -> SpectrometerResponse 
+    def _take_one_averaged_reading(self):
         averaging_enabled = (self.settings.state.scans_to_average > 1)
 
-        if averaging_enabled and not self.settings.state.free_running_mode:
+        if averaging_enabled:
             # collect the entire averaged spectrum at once (added for
             # BatchCollection with laser delay)
             #
@@ -258,7 +259,7 @@ class AndorDevice(InterfaceDevice):
             if self.tec_enabled:
                 log.debug("TEC enabled, so reading temperature")
 
-                use_float = True    # seems to work on 785XL (WP-01635)
+                use_float = True    # seems to work on 785XL (WP-01635 and WP-01491)
 
                 if use_float:
                     c_temp = c_float()
@@ -269,7 +270,11 @@ class AndorDevice(InterfaceDevice):
 
                 label = self.get_error_code(result)
                 
-                if label in ["DRV_SUCCESS", "DRV_TEMP_STABILIZED", "DRV_TEMP_NOT_REACHED", "DRV_TEMP_DRIFT", "DRV_TEMP_NOT_STABILIZED"]:
+                if label in [ "DRV_SUCCESS", 
+                              "DRV_TEMPERATURE_DRIFT",
+                              "DRV_TEMPERATURE_STABILIZED",
+                              "DRV_TEMPERATURE_NOT_REACHED",
+                              "DRV_TEMPERATURE_NOT_STABILIZED" ]:
                     reading.detector_temperature_degC = c_temp.value
                     log.debug(f"Andor temperature {reading.detector_temperature_degC:.2f} ({label})")
                 else:
@@ -380,13 +385,20 @@ class AndorDevice(InterfaceDevice):
         self.init_detector_area() # step 7
 
         if not self._check_config_file():
+            log.debug("stubbing Andor EEPROM")
+            self.settings.eeprom.stubbed = True
             self.config_values = {
                 'detector_serial_number': self.serial,
-                'wavelength_coeffs': [0,1,0,0],
+                'wavelength_coeffs': [0,1,0,0,0],
                 'excitation_nm_float': 0,
                 'raman_intensity_coeffs': [],
                 'raman_intensity_calibration_order': 0,
-                'invert_x_axis': False 
+                'invert_x_axis': False,
+                'roi_horizontal_start': 0,
+                'roi_horizontal_end': 0,
+                'roi_vertical_region_1_start': 0,
+                'roi_vertical_region_1_end': 0,
+                'stubbed': True
             }
             log.debug(f"connect: config file not found, so defaulting to these: {self.config_values}")
             self.save_config()
@@ -411,12 +423,54 @@ class AndorDevice(InterfaceDevice):
         # step 17 (WasatchNET doesn't do this)
         self._obtain_gain_info()
 
+        # step 18 (WasatchNET doesn't do this)
+        roi = ROI(self.settings.eeprom.roi_vertical_region_1_start, 
+                  self.settings.eeprom.roi_vertical_region_1_end)
+        if roi.start != 0 and roi.end != 0:
+            # although camera can probably support the (0, 0) case, it's 
+            # convenient to treat as unconfigured defaults
+            self.set_vertical_binning(roi)
+
         # success!
         log.info("AndorDevice successfully connected")
 
         self.connected = True
         self.settings.eeprom.active_pixels_horizontal = self.pixels 
         self.settings.eeprom.has_cooling = True
+        return SpectrometerResponse(data=True)
+
+    def set_vertical_binning(self, roi):
+        """
+        Note that this follows the same (start, end) vertical ROI API as 
+        FeatureInterfaceDevice.set_vertical_binning, and dynamically translates 
+        that into the (middle, height) Andor API.
+        """
+
+        if isinstance(roi, ROI):
+            start, end = roi.start, roi.end
+        elif len(roi) == 2:
+            start, end = roi[0], roi[1]
+        else:
+            log.error("set_vertical_binning requires an ROI object or tuple of (start, stop) lines")
+            return SpectrometerResponse(data=False, error_msg="invalid start and stop lines")
+
+        if start < 0 or end < 0:
+            log.error("set_vertical_binning requires POSITIVE (start, stop) lines")
+            return SpectrometerResponse(data=False, error_msg="invalid start and stop lines")
+
+        # enforce ascending order
+        if start >= end:
+            log.error("set_vertical_binning requires ascending order (ignoring %d, %d)", start, end)
+            return SpectrometerResponse(data=False, error_msg="invalid start and stop lines")
+
+
+        height = end - start
+        center = int(round(height / 2, 0)) + start
+
+        log.debug(f"setting Single-Track vertical binning of ROI (start {start}, end {end}) (center {center}, height {height})")
+        self.check_result(self.driver.SetReadMode(3), "SetReadMode(single-track)")
+        self.check_result(self.driver.SetSingleTrack(center, height), "SetSingleTrack")
+
         return SpectrometerResponse(data=True)
 
     def save_config(self, eeprom=None):
@@ -428,7 +482,6 @@ class AndorDevice(InterfaceDevice):
         @param eeprom: if provided, overwrite current settings with those in the 
                passed dict before writing to disk
         """
-        log.debug("save_config: here")
         if eeprom is not None:
             self.update_config_from_eeprom(eeprom)
 
@@ -444,13 +497,13 @@ class AndorDevice(InterfaceDevice):
         # first, copy over any EEPROM fields which have a different name in 
         # wasatch.EEPROM vs the external JSON file 
         for json_name, python_name in self.config_names_to_eeprom.items():
-            self.config_values[json_name] = getattr(eeprom, python_name)
+            self.config_values[json_name] = eeprom.multi_wavelength_calibration.get(python_name)
 
         # now do all the standard attributes of the wasatch.EEPROM, adding 
         # their values into the same dict
-        for python_name, python_value in eeprom.__dict__.items():
+        for python_name in eeprom.__dict__:
             if python_name in self.config_values:
-                self.config_values[python_name] = python_value
+                self.config_values[python_name] = eeprom.multi_wavelength_calibration.get(python_name)
 
     def _load_config_values(self):
         """
@@ -463,10 +516,11 @@ class AndorDevice(InterfaceDevice):
         # handle wp_ prefixes
         for k, v in self.config_names_to_eeprom.items():
             if k in self.config_values:
-                setattr(self.settings.eeprom, v, self.config_values[k])
+                self.settings.eeprom.multi_wavelength_calibration.set(v, self.config_values[k])
 
         # same spelling
         for k in [ 'model', 
+                   'stubbed', 
                    'detector', 
                    'serial_number', 
                    'invert_x_axis',
@@ -474,17 +528,19 @@ class AndorDevice(InterfaceDevice):
                    'excitation_nm_float',
                    'roi_horizontal_end',
                    'roi_horizontal_start',
+                   'roi_vertical_region_1_start',
+                   'roi_vertical_region_1_end',
                    'raman_intensity_coeffs',
                    'raman_intensity_calibration_order',
                    'startup_temp_degC', 
                    'startup_integration_time_ms' ]:
             if k in self.config_values:
-                setattr(self.settings.eeprom, k, self.config_values[k])
+                self.settings.eeprom.multi_wavelength_calibration.set(k, self.config_values[k])
 
         # default missing-but-obvious fields
         if "raman_intensity_coeffs" in self.config_values:
             if "raman_intensity_calibration_order" not in self.config_values:
-                self.settings.eeprom.raman_intensity_calibration_order = len(self.settings.eeprom.raman_intensity_coeffs) - 1
+                self.settings.eeprom.multi_wavelength_calibration.set("raman_intensity_calibration_order", len(self.settings.eeprom.raman_intensity_coeffs) - 1)
 
         # post-load initialization
         if 'startup_temp_degC' in self.config_values:
@@ -570,9 +626,9 @@ class AndorDevice(InterfaceDevice):
         xPixels = c_int()
         yPixels = c_int()
         self.check_result(self.driver.GetDetector(byref(xPixels), byref(yPixels)), "GetDetector(x, y)")
-        log.debug(f"detector {xPixels.value} width x {yPixels.value} height")
         self.pixels = xPixels.value
         self.height = yPixels.value
+        log.debug(f"detector {self.pixels} width x {self.height} height")
         return SpectrometerResponse(True)
 
     def _obtain_gain_info(self):
