@@ -6,8 +6,6 @@
 #  DESCRIPTION:  Simple cmd-line demo to confirm that Wasatch.PY is working    #
 #                and can connect to and control a spectrometer.                #
 #                                                                              #
-#  INVOCATION:   $ python -u demo.py                                           #
-#                                                                              #
 ################################################################################
 
 import os
