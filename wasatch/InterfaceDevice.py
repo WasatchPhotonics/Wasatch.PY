@@ -2,20 +2,19 @@ import logging
 
 from .SpectrometerResponse import SpectrometerResponse
 from .SpectrometerResponse import ErrorLevel
-from .SpectrometerRequest  import SpectrometerRequest
 
 log = logging.getLogger(__name__)
 
 class InterfaceDevice:
-    def __init__(self): # -> None 
+    def __init__(self):
         """
         Any class that communicates to a spectrometer should inherit this class.
         It provides the common functions that avoid repeated code.
         """
-        self.process_f = []
+        self.process_f = {}
         self.remaining_throwaways = 0
 
-    def handle_requests(self, requests: list[SpectrometerRequest]): # -> list[SpectrometerResponse] 
+    def handle_requests(self, requests):
         responses = []
         for request in requests:
             try:

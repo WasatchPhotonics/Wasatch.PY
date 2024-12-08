@@ -11,6 +11,7 @@ from .AndorDevice          import AndorDevice
 from .OceanDevice          import OceanDevice
 from .SPIDevice            import SPIDevice
 from .BLEDevice            import BLEDevice
+from .TCPDevice            import TCPDevice
 from .Reading              import Reading
 
 log = logging.getLogger(__name__)
@@ -48,6 +49,7 @@ class WrapperWorker(threading.Thread):
             is_andor,
             is_spi,
             is_ble,
+            is_tcp,
             log_level,
             callback=None,
             alert_queue=None):
@@ -59,6 +61,7 @@ class WrapperWorker(threading.Thread):
         self.is_andor       = is_andor
         self.is_spi         = is_spi
         self.is_ble         = is_ble
+        self.is_tcp         = is_tcp
         self.command_queue  = command_queue
         self.response_queue = response_queue
         self.settings_queue = settings_queue
@@ -81,9 +84,9 @@ class WrapperWorker(threading.Thread):
     # All communications with the parent thread are routed through
     # one of the three queues (cmd inputs, response outputs, and
     # a one-shot SpectrometerSettings).
-    def run(self): # -> None 
-        is_options = (self.is_ocean, self.is_andor, self.is_ble, self.is_spi)
-        device_classes = (OceanDevice, AndorDevice, BLEDevice, SPIDevice, WasatchDevice)
+    def run(self):
+        is_options = (self.is_ocean, self.is_andor, self.is_ble, self.is_spi, self.is_tcp)
+        device_classes = (OceanDevice, AndorDevice, BLEDevice, SPIDevice, TCPDevice, WasatchDevice)
         try:
             if any(is_options):
                 type_connection = is_options.index(True)
