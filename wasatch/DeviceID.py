@@ -66,46 +66,62 @@ log = logging.getLogger(__name__)
 #
 # So yeah, I think this is useful and a good design.
 #
-# @note USB VID and PID are stored as ints
+# @par USB
+#
+# .vid and .pid are stored as ints
+#
+# @par BLE
+#
+# - populates .serial_number from advertised localName.
+# - populates .bleak_device from BleakScanner
+#
+# @par TCP
+#
+# uses .address and .port
+#
 class DeviceID:
 
     ##
     # Instantiates a DeviceID object from either a usb.device or an
     # existing device_id string representation.
-    def __init__(self, device=None, label=None, directory=None, device_type=None, overrides = None, spectra_options = None):
+    #
+    # @param device is a usb.device from pyusb
+    # @param directory is used with FILE spectrometers
+    def __init__(self, device=None, label=None, directory=None, device_type=None, overrides=None, spectra_options=None):
 
-        self.type      = None
-        self.vid       = None
-        self.pid       = None
-        self.bus       = None
-        self.address   = None
-        self.directory = None
-        self.name      = None
-        self.overrides = overrides
+        self.type          = None   # "USB", "FILE", "MOCK", "BLE", "TCP"
+        self.vid           = None   # USB
+        self.pid           = None   # USB
+        self.bus           = None   # USB
+        self.address       = None   # USB, TCP
+        self.directory     = None   # FILE
+        self.name          = None   # MOCK?
+        self.serial_number = None   # BLE
+
+        self.overrides = overrides                  # MZ: what is this?
         self.device_type = device_type
-        self.spectra_options = spectra_options
+        self.spectra_options = spectra_options      # MZ: what is this?
 
         if label is not None:
             # instantiate from an existing string id
             if label.startswith("USB:"):
                 tok = label.split(":")
-                self.type = "USB"
+                self.type = tok[0]
                 self.vid = int(tok[1][2:])
                 self.pid = int(tok[2][2:])
                 self.bus = int(tok[3])
                 self.address = int(tok[4])
             elif label.startswith("FILE:"):
                 tok = label.split(":")
-                self.type = "FILE"
+                self.type = tok[0]
                 self.directory = tok[1]
             elif label.startswith("BLE:"):
                 tok = label.split(":")
-                self.type = "BLE"
-                self.address = tok[1]
-                self.name = tok[2]
+                self.type = tok[0]
+                self.serial_number = tok[1]
             elif label.startswith("MOCK:"):
                 tok = label.split(":")
-                self.type = "MOCK"
+                self.type = tok[0]
                 self.name = tok[1]
                 self.directory = tok[2]
                 self.vid = int(str(hash(self.name)))
