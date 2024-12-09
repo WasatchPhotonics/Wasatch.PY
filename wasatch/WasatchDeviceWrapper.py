@@ -156,6 +156,7 @@ class WasatchDeviceWrapper:
         self.is_spi       = '0x0403' in str(device_id)
         self.mock         = 'MOCK' in str(device_id).upper()
         self.is_ble       = 'BLE' in str(device_id)
+        self.is_tcp       = 'TCP' in str(device_id)
         self.wrapper_worker = None
         self.connect_start_time = datetime.datetime(year=datetime.MAXYEAR, month=1, day=1)
 
@@ -225,13 +226,14 @@ class WasatchDeviceWrapper:
             is_andor       = self.is_andor,
             is_spi         = self.is_spi,
             is_ble         = self.is_ble,
+            is_tcp         = self.is_tcp,
             log_level      = self.log_level,
             callback       = self.callback)
         log.debug("device wrapper: Instance created for worker")
 
         self.wrapper_worker.daemon = True
-        log.debug("deivce wrapper: Initiating wrapper thread")
 
+        log.debug("deivce wrapper: starting WrapperWorker thread")
         self.wrapper_worker.start()
 
         # expect to read a single post-initialization SpectrometerSettings object off the queue
@@ -253,7 +255,10 @@ class WasatchDeviceWrapper:
             time.sleep(0.1)
 
     def poll_settings(self): 
-        """ @returns SpectrometerResponse(True) on success, (False) otherwise """
+        """ 
+        @returns SpectrometerResponse(True) on success, (False) otherwise 
+        @note this doesn't have a timeout -- that's in enlighten.Controller.check_ready_initialize
+        """
         log.debug("polling device settings")
         if not self.settings_queue.empty():
             result = self.settings_queue.get_nowait()

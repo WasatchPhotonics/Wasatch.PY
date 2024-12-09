@@ -116,13 +116,13 @@ class BLEDevice(InterfaceDevice):
         ##################################################################
         process_f["integration_time_ms"]= lambda x: asyncio.run_coroutine_threadsafe(self._set_integration_time_ms(x), self.loop)
         process_f["detector_gain"]      = lambda x: asyncio.run_coroutine_threadsafe(self._set_gain(x),                self.loop)
-        process_f["laser_enable"]       = lambda x: asyncio.run_coroutine_threadsafe(self._set_laser(x),               self.loop)
+        process_f["laser_enable"]       = lambda x: asyncio.run_coroutine_threadsafe(self._set_laser_enable(x),        self.loop)
         process_f["vertical_binning"]   = lambda x: asyncio.run_coroutine_threadsafe(self._set_vertical_roi(x),        self.loop)
 
         return process_f
 
-    async def _set_laser(self, value: int) -> SpectrometerResponse:
-        log.debug(f"BLE setting laser to {value}")
+    async def _set_laser_enable(self, flag):
+        log.debug(f"setting laser_enable {flag}")
         buf = bytearray()
         laser_mode = 0
         laser_type = 0
@@ -130,9 +130,9 @@ class BLEDevice(InterfaceDevice):
         try:
             buf.append(laser_mode)
             buf.append(laser_type)
-            buf.append(value)
+            buf.append(1 if flag else 0)
             buf.append(laser_watchdog)
-            await self.client.write_gatt_char(LASER_STATE_UUID, buf, response = True)
+            await self.client.write_gatt_char(LASER_STATE_UUID, buf, response=True)
         except Exception as e:
             log.error(f"Error trying to set laser {e}")
             return SpectrometerResponse(False,error_msg="error setting laser",error_lvl=ErrorLevel.high)
