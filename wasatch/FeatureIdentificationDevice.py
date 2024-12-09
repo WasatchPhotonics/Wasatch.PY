@@ -27,6 +27,7 @@ from .DetectorROI          import DetectorROI
 from .PollStatus           import PollStatus
 from .EEPROM               import EEPROM
 from .IMX385               import IMX385
+from .ROI                  import ROI
 
 log = logging.getLogger(__name__)
 
@@ -256,10 +257,15 @@ class FeatureIdentificationDevice(InterfaceDevice):
         Split-out from physical / bus connect() to simplify MockSpectrometer.
         """
 
-        # grab firmware versions early
+        # grab firmware versions early (and capture in debug log)
         self.get_microcontroller_firmware_version()
+        log.debug(f"Microcontroller firmware version {self.settings.microcontroller_firmware_version}")
+
         self.get_fpga_firmware_version()
+        log.debug(f"FPGA firmware version {self.settings.fpga_firmware_version}")
+
         self.get_microcontroller_serial_number()
+        log.debug(f"Microcontroller serial number {self.settings.microcontroller_serial_number}")
 
         # issue: BL652 may not be fully booted if this was a hotplug. We could
         #        of course re-poll if None, but the initial SpectrometerSettings
@@ -273,6 +279,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         #        weird to add a "dynamic firmware version" to Reading, implying
         #        that firmware versions might suddenly change mid-runtime...
         self.get_ble_firmware_version()
+        log.debug(f"BLE firmware version {self.settings.ble_firmware_version}")
 
         # ######################################################################
         # model-specific settings
@@ -308,25 +315,32 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # ######################################################################
 
         if self.settings.is_xs():
-            
-            if self.settings.eeprom.sig_laser_tec:
+            if self.settings.eeprom.has_laser:
+                if self.settings.eeprom.sig_laser_tec:
 
-                # sanity-check for reasonable setpoint range (raw 12-bit)
-                if 700 <= self.settings.eeprom.startup_temp_degC <= 900:
-                    log.debug("initializing XS laser TEC setpoint")
+                    # check the new location
+                    setpoint = self.settings.eeprom.startup_laser_tec_setpoint # prefer new
+                    if not setpoint:
+                        setpoint = self.settings.eeprom.startup_temp_degC # default to old
 
-                    # kludge: for now, use the detector TEC startup setpoint for laser
-                    self.settings.state.laser_tec_setpoint = self.settings.eeprom.startup_temp_degC
-                    self.set_laser_temperature_setpoint_raw(self.settings.state.laser_tec_setpoint)
+                    # sanity-check for reasonable setpoint range (raw 12-bit)
+                    if 700 <= setpoint <= 900:
+                        log.debug("initializing XS laser TEC setpoint")
 
-                    # this should be the default in firmware, but set anyway
-                    log.debug("initializing XS laser TEC mode -> AUTO")
-                    self.set_laser_tec_mode("AUTO")
-                else:
-                    # don't set anything if default setpoint looks way off
-                    log.error(f"laser TEC setpoint looks invalid: {self.settings.eeprom.startup_temp_degC}")
+                        # kludge: for now, use the detector TEC startup setpoint for laser
+                        self.settings.state.laser_tec_setpoint = setpoint
+                        self.set_laser_temperature_setpoint_raw(self.settings.state.laser_tec_setpoint)
 
-            self.get_laser_warning_delay_sec()
+                        # this should be the default in firmware, but set anyway
+                        log.debug("initializing XS laser TEC mode -> AUTO")
+                        self.set_laser_tec_mode("AUTO")
+                    else:
+                        # don't set anything if default setpoint looks way off
+                        log.error(f"laser TEC setpoint looks invalid: {self.settings.eeprom.startup_temp_degC}")
+
+                # load this for software-based Auto-Raman timing
+                log.debug("initializing laser warning delay")
+                self.get_laser_warning_delay_sec()
 
         # ######################################################################
         # Detector TEC
@@ -381,12 +395,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # initialize state.gain_db from EEPROM startup value
         self.settings.state.gain_db = self.settings.eeprom.detector_gain
 
-        if self.settings.is_micro():
-            roi = self.settings.get_vertical_roi()
-            if roi is not None:
-                self.set_vertical_binning(roi)
-
-        self.settings.init_regions()        
+        self.update_vertical_roi() 
 
         # ######################################################################
         # post-connection defaults
@@ -585,11 +594,21 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         return True
 
-    def _apply_horizontal_binning(self, spectrum: list[float]):
+    def _apply_linear_pixel_calibration(self, spectrum):
+        if not self.settings.linear_pixel_calibration:
+            return
+
+        (slopes, offsets) = self.settings.linear_pixel_calibration
+        smoothed = [] # could be faster in Numpy
+        for i, intensity in enumerate(spectrum):
+            smoothed.append(intensity * slopes[i] + offsets[i])
+        return smoothed
+
+    def _apply_horizontal_binning(self, spectrum):
         if not self.settings.eeprom.horiz_binning_enabled:
             return spectrum
 
-        mode = self.settings.eeprom.horiz_binning_mode
+        mode = self.settings.eeprom.multi_wavelength_calibration.get("horiz_binning_mode")
         if mode == IMX385.BIN_2X2:
             return self.imx385.bin_2x2(spectrum)
         elif mode == IMX385.CORRECT_SSC:
@@ -601,13 +620,15 @@ class FeatureIdentificationDevice(InterfaceDevice):
             return self.imx385.bin_4x2(spectrum)
         elif mode == IMX385.BIN_4X2_INTERP:
             return self.imx385.bin_4x2_interp(spectrum, self.settings.wavelengths)
+        elif mode == IMX385.BIN_4X2_AVG:
+            return self.imx385.bin_4x2_avg(spectrum)
         else:
             # there may be legacy units in the field where this byte is 
             # uninitialized to 0xff...treat as 0x00 for now
             log.error("invalid horizontal binning mode {mode}...defaulting to bin_2x2")
             return self.imx385.bin_2x2(spectrum)
 
-    def _correct_bad_pixels(self, spectrum: list[float]):
+    def _correct_bad_pixels(self, spectrum):
         """
         If a spectrometer has bad_pixels configured in the EEPROM, then average
         over them in the driver.
@@ -682,7 +703,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                    bRequest: int, 
                    wValue: int = 0, 
                    wIndex: int = 0, 
-                   data_or_wLength: int = None, 
+                   data_or_wLength = None, 
                    label: str = "", 
                    dry_run: bool = False, 
                    retry_on_error: bool = False, 
@@ -1118,8 +1139,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return SpectrometerResponse(data=s)
 
     def get_microcontroller_serial_number(self):
-        return None # disabling until we work out another Beta SiG conflict
-
         if not self.settings.is_arm():
             log.debug("GET_MICROCONTROLLER_SERIAL_NUMBER requires ARM")
             return None
@@ -1145,6 +1164,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
     def get_ble_firmware_version(self):
         if not self.settings.is_arm():
             log.debug("GET_BLE_FIRMWARE_VERSION requires ARM")
+            return None
+
+        if not self.settings.supports_feature("get_ble_firmware_version"):
+            log.debug("GET_BLE_FIRMWARE_VERSION not supported on this firmware")
             return None
 
         result = self._get_code(0xff, wValue=0x2d, wLength=32, label="GET_BLE_FIRMWARE_VERSION")
@@ -1202,12 +1225,18 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         return [ v - avg_dark for v in spectrum ]
 
-    def get_line(self, trigger: bool = True):
+    def get_line(self, trigger=True, auto_raman_params=None):
+        """ legacy alias """
+        return self.get_spectrum(trigger, auto_raman_params)
+
+    def get_spectrum(self, trigger=True, auto_raman_params=None):
         """
         Send "acquire", then immediately read the bulk endpoint(s).
-        Probably the most important method in this class, more commonly called
-        "getSpectrum" in most drivers.
+        Probably the most important method in this class.
+
         @param trigger (Input) send an initial ACQUIRE
+        @param auto_raman_params (Input) if present, use VR_ACQUIRE_AUTO_RAMAN 
+                 rather than the usual VR_ACQUIRE_CCD
         @returns tuple of (spectrum[], area_scan_row_count) for success
         @returns None when it times-out while waiting for an external trigger
                  (interpret as, "didn't find any fish this time, try again in a bit")
@@ -1218,7 +1247,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         response = SpectrometerResponse()
 
         if not self.is_sensor_stable():
-            response.error_msg = "get_line: leaving sensor alone while stabilizing"
+            response.error_msg = "get_spectrum: leaving sensor alone while stabilizing"
             response.error_lvl = ErrorLevel.low
             response.keep_alive = True
             log.debug(response.error_msg)
@@ -1233,10 +1262,17 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # subsequent lines of data from area scan "fast" mode
 
         acquisition_timestamp = datetime.datetime.now()
+
+        # should we send a trigger?
         if trigger and self.settings.state.trigger_source == SpectrometerState.TRIGGER_SOURCE_INTERNAL:
-            # Only send ACQUIRE (internal SW trigger) if external HW trigger is disabled (default)
-            log.debug("get_line: requesting spectrum")
-            self._send_code(0xad, label="ACQUIRE_SPECTRUM")
+            # yes, send an internal SW trigger
+            log.debug("get_spectrum: requesting spectrum")
+
+            # should that trigger be an ACQUIRE or ACQUIRE_AUTO_RAMAN?
+            if auto_raman_params:
+                self._send_code(0xfd, data_or_wLength=auto_raman_params, label="ACQUIRE_AUTO_RAMAN")
+            else:
+                self._send_code(0xad, label="ACQUIRE_SPECTRUM")
 
         ########################################################################
         # prepare to read spectrum
@@ -1253,7 +1289,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         # when changing detector ROI, exactly ONE READ should be at the previous length
         # if self.prev_pixels is not None:
-        #     log.debug(f"get_line: using one-time prev_pixels value of {self.prev_pixels} rather than {pixels}")
+        #     log.debug(f"get_spectrum: using one-time prev_pixels value of {self.prev_pixels} rather than {pixels}")
         #     pixels = self.prev_pixels
         #     self.prev_pixels = None
 
@@ -1267,7 +1303,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
         if self.settings.is_micro():
             # we have no idea if Series-XS has to "wake up" the sensor, so wait
             # long enough for 20ms + 8 throwaway frames if need be (IMX385 datasheet p69)
-            timeout_ms = self.settings.state.integration_time_ms * 8 + 500 * self.settings.num_connected_devices + 20
+            if self.settings.state.onboard_averaging:
+                timeout_ms = self.settings.state.integration_time_ms * (self.settings.state.scans_to_average + 7) + 500 * self.settings.num_connected_devices + 20
+            else:
+                timeout_ms = self.settings.state.integration_time_ms * 8 + 500 * self.settings.num_connected_devices + 20
         else:
             timeout_ms = self.settings.state.integration_time_ms * 2 + 1000 * self.settings.num_connected_devices
 
@@ -1293,10 +1332,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
                         response.error_lvl = ErrorLevel.high
                         response.poison_pill = True # unrecoverable
                         return response
-                    elif self.settings.state.trigger_source == SpectrometerState.TRIGGER_SOURCE_EXTERNAL:
-                        # we don't know how long we'll have to wait for the trigger, so
+                    elif self.settings.state.trigger_source == SpectrometerState.TRIGGER_SOURCE_EXTERNAL or auto_raman_params:
+                        # we don't know how long we'll have to wait for the response, so
                         # just loop and hope
-                        # log.debug("still waiting for external trigger")
+                        # log.debug("still waiting for spectrum")
                         pass
                     else:
                         errors += 1
@@ -1328,16 +1367,16 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # error-check the received spectrum
         ########################################################################
 
-        log.debug("get_line: completed in %d ms (vs integration time %d ms)",
+        log.debug("get_spectrum: completed in %d ms (vs integration time %d ms)",
             round((datetime.datetime.now() - acquisition_timestamp).total_seconds() * 1000, 0),
             self.settings.state.integration_time_ms)
 
-        log.debug("get_line: pixels %d, endpoints %s, block %d, spectrum %s ...",
+        log.debug("get_spectrum: pixels %d, endpoints %s, block %d, spectrum %s ...",
             len(spectrum), endpoints, block_len_bytes, spectrum[0:9])
 
         if len(spectrum) != pixels:
-            log.error("get_line read wrong number of pixels (expected %d, read %d)", pixels, len(spectrum))
-            response.error_msg = f"get_line read wrong number of pixels (expected {pixels}, read {len(spectrum)})"
+            log.error("get_spectrum read wrong number of pixels (expected %d, read %d)", pixels, len(spectrum))
+            response.error_msg = f"get_spectrum read wrong number of pixels (expected {pixels}, read {len(spectrum)})"
             response.error_lvl = ErrorLevel.low
             response.keep_alive = True
             return response
@@ -1356,8 +1395,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         # this should be done in the FPGA, but older FW didn't have that
         # implemented, so fix in SW unless EEPROM indicates "already handled"
-        if self.settings.is_ingaas() and not self.settings.eeprom.hardware_even_odd:
-            self._correct_ingaas_gain_and_offset(spectrum)
+        if self.settings.is_ingaas():
+            if not self.settings.eeprom.hardware_even_odd:
+                self._correct_ingaas_gain_and_offset(spectrum)
 
         ########################################################################
         # Area Scan (rare)
@@ -1408,10 +1448,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
             else:
                 # we DIDN'T find the marker where it was expected, so flag and
                 # go hunting
-                log.error("get_line: missing marker")
+                log.error("get_spectrum: missing marker")
                 for i in range(pixels):
                     if spectrum[i] == marker:
-                        log.error("get_line: marker found at pixel %d", i)
+                        log.error("get_spectrum: marker found at pixel %d", i)
 
         # consider skipping much of the following if in area scan mode
 
@@ -1423,6 +1463,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         # some detectors have "garbage" pixels at the front or end of every
         # spectrum (sync bytes and what-not)
+        if self.settings.is_imx385() and self.settings.fpga_firmware_version == "01.1.01":
+            utils.stomp_first(spectrum, 3)
+            utils.stomp_last (spectrum, 2)
         if self.settings.is_imx392() and self.settings.state.detector_regions is None:
             utils.stomp_first(spectrum, 3)
             utils.stomp_last (spectrum, 17)
@@ -1491,6 +1534,16 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.debug("swapped alternating pixels: spectrum = %s", spectrum[:10])
 
         ########################################################################
+        # Linear Pixel Calibration (experimental)
+        ########################################################################
+
+        # should be done AFTER detector inversion (because that's how calibration
+        # is generated) and AFTER bad pixel correction
+
+        if self.settings.linear_pixel_calibration:
+            spectrum = self._apply_linear_pixel_calibration(spectrum)
+
+        ########################################################################
         # horizontal binning
         ########################################################################
 
@@ -1535,6 +1588,15 @@ class FeatureIdentificationDevice(InterfaceDevice):
         if flag and self.settings.is_xs() and self.remaining_throwaways < 1:
             log.debug("queuing throwaways")
             self.remaining_throwaways += 1
+
+    def set_scans_to_average(self, n):
+        retval = self._send_code(0xff, 0x62, n, label="SET_SCANS_TO_AVERAGE")
+        self.settings.state.scans_to_average = n
+        self.settings.state.onboard_averaging = True
+        return retval
+
+    def get_scans_to_average(self):
+        return self._get_upper_code(0x63, lsb_len=2)
 
     def set_integration_time_ms(self, ms: float):
         """
@@ -2312,6 +2374,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.error(msg)
             return SpectrometerResponse(data=None, error_msg=msg)
 
+        if not self.settings.supports_feature("get_laser_warning_delay_sec"):
+            msg = "GET_LASER_WARNING_DELAY_SEC not supported on this firmware"
+            log.error(msg)
+            return SpectrometerResponse(data=None, error_msg=msg)
+
         result = self._get_code(0x8b, lsb_len=1, label="GET_LASER_WARNING_DELAY_SEC")
         self.settings.state.laser_warning_delay_sec = result.data
         return result
@@ -2518,7 +2585,13 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         return self.set_laser_watchdog_sec(watchdog_sec)
 
-    def set_vertical_binning(self, lines: tuple[int, int]):
+    def update_vertical_roi(self):
+        if self.settings.is_micro():
+            roi = self.settings.get_vertical_roi()
+            if roi is not None:
+                self.set_vertical_binning(roi)
+
+    def set_vertical_binning(self, roi):
         # check for legacy vis since they don't like vertical binning
         if self.settings.fpga_firmware_version == "000-008" and self.settings.microcontroller_firmware_version == "0.1.0.7":
             return SpectrometerResponse(data=False)
@@ -2526,15 +2599,16 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.debug("Vertical Binning only configurable on Series-XS")
             return SpectrometerResponse(data=False, error_msg="vertical binning not supported")
 
-        try:
-            start = lines[0]
-            end   = lines[1]
-        except:
-            log.error("set_vertical_binning requires a tuple of (start, stop) lines")
+        if isinstance(roi, ROI):
+            start, end = roi.start, roi.end
+        elif len(roi) == 2:
+            start, end = roi[0], roi[1]
+        else:
+            log.error("set_vertical_binning requires an ROI object or tuple of (start, stop) lines")
             return SpectrometerResponse(data=False, error_msg="invalid start and stop lines")
 
         if start < 0 or end < 0:
-            log.error("set_vertical_binning requires a tuple of POSITIVE (start, stop) lines")
+            log.error("set_vertical_binning requires POSITIVE (start, stop) lines")
             return SpectrometerResponse(data=False, error_msg="invalid start and stop lines")
 
         # enforce ascending order (also, note that stop line is "last line binned + 1", so stop must be > start)
@@ -2874,7 +2948,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
     # Ambient Temperature
     # ##########################################################################
 
-    ## @see https://www.nxp.com/docs/en/data-sheet/LM75B.pdf
     def get_ambient_temperature_degC(self):
         if self.settings.is_gen15():
             return self.get_ambient_temperature_degC_gen15()
@@ -2889,9 +2962,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
             msg = "ambient temperature ARM requires XS"
             log.debug(msg)
             return
-
-        # MZ: just disable for now
-        # return
 
         if self.settings.microcontroller_firmware_version == "1.0.2.9":
             msg = "ambient temperature ARM requires newer firmware"
@@ -2909,6 +2979,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return SpectrometerResponse(data=degC)
 
     def get_ambient_temperature_degC_gen15(self):
+        """ @see https://www.nxp.com/docs/en/data-sheet/LM75B.pdf """
         if not self.settings.is_gen15():
             msg = "ambient temperature Gen1.5 requires Gen 1.5"
             log.error(msg)
@@ -3352,6 +3423,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 "get_laser_warning_delay_sec",
                 "get_laser_watchdog_sec",
                 "get_line",
+                "get_spectrum",
                 "get_microcontroller_firmware_version",
                 "get_mod_delay_us",
                 "get_mod_duration_us",
@@ -3485,6 +3557,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         # regions
         process_f["vertical_binning"]                   = lambda x: self.set_vertical_binning(x)
+        process_f["update_vertical_roi"]                = lambda x: self.update_vertical_roi()
         process_f["single_region"]                      = lambda x: self.set_single_region(int(round(x)))
         process_f["clear_regions"]                      = lambda x: self.clear_regions()
         process_f["detector_roi"]                       = lambda x: self.set_detector_roi(x)
@@ -3509,6 +3582,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         process_f["invert_x_axis"]                      = lambda x: self.settings.eeprom.set("invert_x_axis", bool(x))
         process_f["horiz_binning_enable"]               = lambda x: self.settings.eeprom.set("horiz_binning_enabled", bool(x))
         process_f["wavenumber_correction"]              = lambda x: self.settings.set_wavenumber_correction(float(x))
+        process_f["linear_pixel_calibration"]           = lambda x: self.settings.set_linear_pixel_calibration(x)
 
         # heartbeats & connection data
         process_f["raise_exceptions"]                   = lambda x: setattr(self, "raise_exceptions", bool(x))

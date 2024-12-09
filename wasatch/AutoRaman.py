@@ -10,6 +10,8 @@ from .SpectrometerResponse import SpectrometerResponse
 from .SpectrometerRequest  import SpectrometerRequest
 from .Reading              import Reading
 
+from . import utils
+
 log = logging.getLogger(__name__)
 
 class AutoRaman:
@@ -63,6 +65,55 @@ class AutoRaman:
         self.progress_total = 0
         self.optimizing = False
 
+    def measure(self, auto_raman_request):
+        if auto_raman_request.onboard:
+            return self.measure_firmware(auto_raman_request)
+        else:
+            return self.measure_software(auto_raman_request)
+            
+    ############################################################################
+    #                                                                          #
+    #                          Firmware Implementation                         #
+    #                                                                          #
+    ############################################################################
+
+    def measure_firmware(self, auto_raman_request):
+        hardware = self.wasatch_device.hardware
+
+        # marshall the parameters into a binary payload
+        params = auto_raman_request.serialize()
+        log.debug(f"measure_firmware: params {utils.to_hex(params)}")
+
+        # generate a request for FID to execute (note this could be a BLEDevice in the future)
+        req = SpectrometerRequest("get_line", kwargs={"auto_raman_params": params})
+        log.debug(f"measure_firmware: req {req}")
+
+        # perform the measurement -- all the work occurs here
+        hardware.queue_message("progress_bar", -1)
+        result = hardware.handle_requests([req])[0]
+        hardware.queue_message("progress_bar", 100)
+
+        # process the result
+        if result is None or isinstance(result, bool) or result.error_msg != '':
+            raise(Exception(f"get_spectrum returned {result}"))
+        spectrum = result.data.spectrum
+
+        reading = Reading(hardware.device_id)
+        reading.spectrum                = np.array(spectrum)
+        reading.dark                    = None
+        reading.averaged                = True
+        reading.sum_count               = 1         # todo: get_scans_to_average()
+        reading.new_integration_time_ms = None      # todo: get_integration_time_ms()
+        reading.new_gain_db             = None      # todo: get_detector_gain()
+
+        return SpectrometerResponse(data=reading)
+
+    ############################################################################
+    #                                                                          #
+    #                          Software Implementation                         #
+    #                                                                          #
+    ############################################################################
+
     def from_db_to_linear(self, x):
         return 10 ** (x / 20.0)
 
@@ -72,7 +123,7 @@ class AutoRaman:
     def inter_spectrum_delay(self):
         time.sleep(self.INTER_SPECTRA_DELAY_MS / 1000)
 
-    def measure(self, auto_raman_request):
+    def measure_software(self, auto_raman_request):
         """
         @returns a Reading wrapped in a SpectrometerResponse
         """

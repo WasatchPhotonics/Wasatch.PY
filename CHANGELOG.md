@@ -1,6 +1,45 @@
 # Changelog
 
-- 2024-??-?? 2.2.8
+- 2024-12-06 2.2.15
+    - XL Fixes
+        - fixed scan averaging
+        - fixed detector temperature readout
+        - support vertical ROI (successfully tested (118, 138) ie (center 128, height 20))
+        - flag non-downloaded Andor EEPROMs as 'stubbed'
+    - EEPROM
+        - allow MultiWavelengthCalibration.set to support any EEPROM property
+        - fixed Raman Intensity Calibration (broke in 2.2.14)
+        - raman_intensity_calibration_order (standardized on 5th-order polynomial)
+    - force integral ROI
+- 2024-11-25 2.2.14
+    - EEPROM
+        - added subformat 5 (EEPROM.MultiWavelengthCalibration)
+        - bumped rev to 17
+        - deprecated subformat 4 (regions)
+    - SpectrometerSettings
+        - deprecated integer excitation_nm
+        - moved vertical ROI to wasatch.ROI
+        - added calibrations(), select_calibration(n)
+    - FeatureInterfaceDevice
+        - added set/get_scans_to_average
+    - SpectrometerState
+        - added onboard_averaging
+- 2024-11-01 2.2.13
+    - support for InGaAs linear pixel calibration
+    - re-enable STM32 serial number
+- 2024-10-31 2.2.12
+    - prefer new EEPROM location for startup laser TEC setpoint
+- 2024-10-30 2.2.11
+    - IMX385.bin_4x2_avg tweak
+- 2024-10-30 2.2.10
+    - don't configure laser TEC and laser warning delay unless laser present
+- 2024-10-29 2.2.9
+    - add BIN_4X2_AVG
+    - add more firmware version checks around new features to avoid breaking old FW
+    - Auto-Raman
+        - support new onboard Auto-Raman opcode and parameters
+        - start refresh of BLEDevice
+- 2024-10-16 2.2.8
     - add alert_queue to allow caller (ENLIGHTEN) to send hints and interrupts 
       downstream into Wasatch.PY, visible even within long-running operations 
       like Auto-Raman which are encapsulated within a single call from 

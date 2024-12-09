@@ -5,12 +5,11 @@ log = logging.getLogger(__name__)
 
 ##
 # Represents a persistent unique identifier for a spectrometer device
-# (USB or otherwise) which should remain valid for connected devices
+# (USB, BLE, TCP, whatever) which should remain valid for connected devices
 # in spite of hotplug events around them.
 #
-# @par Class Justification
+# @par Statement of the Problem
 #
-# That is to say, this DeviceID is a solution to the following problem.
 # Assume we have four WP-785 spectrometers: A, B, C and D.  We connect
 # A, B and C, then launch ENLIGHTEN.  A is the first on the USB chain, so
 # in a positional listing A would be #1, B is #2, C is #3.
@@ -48,8 +47,8 @@ log = logging.getLogger(__name__)
 # longer needed, and we can probably replace the old --bus-order option with
 # --serial-number instead.
 #
-# More to the point, the current architecture is such that _ENLIGHTEN_ calls 
-# WasatchBus to detect hotplug events, and then _ENLIGHTEN_ instantiates a new 
+# More to the point, the current architecture is such that ENLIGHTEN calls 
+# WasatchBus to detect hotplug events, and then ENLIGHTEN instantiates a new 
 # WasatchDeviceWrapper to support the new bus device.  That means there really
 # ought to be a way to pass the "id" of the device, which was detected by 
 # WasatchBus, down into WasatchDeviceWrapper (and hence WasatchDevice and 
@@ -119,6 +118,11 @@ class DeviceID:
                 tok = label.split(":")
                 self.type = tok[0]
                 self.serial_number = tok[1]
+            elif label.startswith("TCP:"):
+                tok = label.split(":")
+                self.type = "TCP"
+                self.address = tok[1]
+                self.port = int(tok[2])
             elif label.startswith("MOCK:"):
                 tok = label.split(":")
                 self.type = tok[0]
@@ -132,7 +136,11 @@ class DeviceID:
                 raise Exception("DeviceID: invalid device_id label %s" % label)
 
         elif device is not None:
+            # MZ: This needs redesigned. Currently it assumes that any "device" 
+            #     is implicitly USB.
+
             # instantiate from a PyUSB Device
+            log.debug(f"instantiating from device {device}")
             self.type = "USB"
             self.vid = int(device.idVendor)
             self.pid = int(device.idProduct)
@@ -146,13 +154,15 @@ class DeviceID:
         else:
             raise Exception("DeviceID: needs usb.device OR device_id label OR directory")
 
-        #log.debug("instantiated DeviceID: %s", str(self))
+        log.debug("instantiated DeviceID: %s", str(self))
 
     def determine_bus_and_address(self, device):
-        # this seems to work on tested platforms, but is not guaranteed by the 
-        # protocol or library
+        """
+        This is for USB devices. It seems to work on tested platforms, but is not
+        guaranteed by the protocol or library.
+        """
         if hasattr(device, "dev"):
-            self.bus = int(device.dev.bus)
+            self.bus     = int(device.dev.bus)
             self.address = int(device.dev.address)
             self.pid     = int(device.dev.idproduct)
             self.vid     = int(device.dev.idvendor)
@@ -163,7 +173,7 @@ class DeviceID:
             #serial number has ascii null chars that must be removed
             return
         else:
-            self.bus = int(device.bus)
+            self.bus     = int(device.bus)
             self.address = int(device.address)
             self.pid     = int(device.idProduct)
             self.vid     = int(device.idVendor)
@@ -183,7 +193,7 @@ class DeviceID:
         s = str(device)
         m = re.match(r"Bus\s+(\d+)\s+Address\s+(\d+)", s, re.IGNORECASE)
         if m:
-            self.bus = int(m.group(1))
+            self.bus     = int(m.group(1))
             self.address = int(m.group(2))
             return
 
@@ -193,19 +203,22 @@ class DeviceID:
         self.bus = -1
         self.address = -1
 
-    def is_file(self): # -> bool 
+    def is_file(self):
         return self.type.upper() == "FILE"
 
-    def is_usb(self): # -> bool 
+    def is_usb(self):
         return self.type.upper() == "USB"
 
-    def is_mock(self): # -> bool 
+    def is_mock(self):
         return self.type.upper() == "MOCK"
 
-    def is_ble(self): # -> bool 
+    def is_ble(self):
         return self.type.upper() == "BLE"
 
-    def is_andor(self): # -> bool 
+    def is_tcp(self):
+        return self.type.upper() == "TCP"
+
+    def is_andor(self):
         return self.vid == 0x136e
 
     # Surely there is a better way to obtain the 'bus' and 'address' attributes 
@@ -246,12 +259,12 @@ class DeviceID:
     #     return (bus, address)
 
     def get_pid_hex(self):
-        if self.type == "BLE":
+        if self.type in ["BLE", "TCP"]:
             return None
         return "%04x" % self.pid
 
     def get_vid_hex(self):
-        if self.type == "BLE":
+        if self.type in ["BLE", "TCP"]:
             return None
         return "%04x" % self.vid
 
@@ -269,6 +282,8 @@ class DeviceID:
             return f"<Device ID MOCK {self.name} {self.directory}>"
         elif self.type.upper() == "BLE":
             return f"<Device ID BLE {self.name}:{self.address}>"
+        elif self.type.upper() == "TCP":
+            return f"<Device ID {self.type} {self.address}:{self.port}>"
         else:
             raise Exception("unsupported DeviceID type %s" % self.type)
 

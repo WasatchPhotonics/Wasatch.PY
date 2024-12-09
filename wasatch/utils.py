@@ -698,3 +698,6 @@ def vercmp(a, b, delim="."):
     elif len(tok_a)  > 1 and len(tok_b)  > 1: return vercmp(delim.join(tok_a[1:]), delim.join(tok_b[1:]))
     elif len(tok_b)  > 1: return -1
     else: return +1
+
+def to_hex(a):
+    return "[ " + ", ".join([f"0x{v:02x}" for v in a]) + " ]"

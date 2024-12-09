@@ -30,7 +30,8 @@ class AutoRamanRequest:
                        drop_factor             = None,
                        saturation              = None,
                        max_avg                 = None,
-                       laser_warning_delay_sec = None):
+                       laser_warning_delay_sec = None,
+                       onboard                 = False):
 
         # this seems like it could be shorter, but Python doesn't allow 
         # 'max_ms = AutoRamanRequest.MAX_MS` constructor parameters
@@ -50,5 +51,46 @@ class AutoRamanRequest:
         self.max_avg                 = max_avg                 if max_avg                 is not None else self.MAX_AVG
         self.laser_warning_delay_sec = laser_warning_delay_sec if laser_warning_delay_sec is not None else self.LASER_WARNING_DELAY_SEC
 
+        self.onboard = onboard
+
     def __repr__(self):
-        return f"AutoRamanRequest <max_ms {self.max_ms}, start_integ_ms {self.start_integ_ms}, start_gain_db {self.start_gain_db}, max_integ_ms {self.max_integ_ms}, min_integ_ms {self.min_integ_ms}, max_gain_db {self.max_gain_db}, min_gain_db {self.min_gain_db}, target_counts {self.target_counts}, max_counts {self.max_counts}, min_counts {self.min_counts}, max_factor {self.max_factor}, drop_factor {self.drop_factor}, saturation {self.saturation}, max_avg {self.max_avg}, laser_warning_delay_sec {self.laser_warning_delay_sec}>"
+        return f"AutoRamanRequest <onboard {self.onboard}, max_ms {self.max_ms}, start_integ_ms {self.start_integ_ms}, start_gain_db {self.start_gain_db}, max_integ_ms {self.max_integ_ms}, min_integ_ms {self.min_integ_ms}, max_gain_db {self.max_gain_db}, min_gain_db {self.min_gain_db}, target_counts {self.target_counts}, max_counts {self.max_counts}, min_counts {self.min_counts}, max_factor {self.max_factor}, drop_factor {self.drop_factor}, saturation {self.saturation}, max_avg {self.max_avg}, laser_warning_delay_sec {self.laser_warning_delay_sec}>"
+
+    # for use with onboard firmware-based AutoRaman
+    def serialize(self):
+        buf = []
+        buf.extend([self.max_ms           & 0xff, (self.max_ms        >> 8) & 0xff])
+        buf.extend([self.start_integ_ms   & 0xff, (self.start_integ_ms>> 8) & 0xff])
+        buf.extend([self.start_gain_db    & 0xff                                  ])
+        buf.extend([self.max_integ_ms     & 0xff, (self.max_integ_ms  >> 8) & 0xff])
+        buf.extend([self.min_integ_ms     & 0xff, (self.min_integ_ms  >> 8) & 0xff])
+        buf.extend([self.max_gain_db      & 0xff                                  ])
+        buf.extend([self.min_gain_db      & 0xff                                  ])
+        buf.extend([self.target_counts    & 0xff, (self.target_counts >> 8) & 0xff])
+        buf.extend([self.max_counts       & 0xff, (self.max_counts    >> 8) & 0xff])
+        buf.extend([self.min_counts       & 0xff, (self.min_counts    >> 8) & 0xff])
+        buf.extend([self.max_factor       & 0xff                                  ])
+        buf.extend([int(self.drop_factor) & 0xff, int((self.drop_factor - int(self.drop_factor)) * 256)])
+        buf.extend([self.saturation       & 0xff, (self.saturation    >> 8) & 0xff])
+        buf.extend([self.max_avg          & 0xff                                  ]) 
+        return buf
+
+if __name__ == "__main__":
+    aar = AutoRamanRequest(
+        max_ms         = 10000,
+        start_integ_ms = 100,
+        start_gain_db  = 0,
+        max_integ_ms   = 2000,
+        min_integ_ms   = 10,
+        max_gain_db    = 32,
+        min_gain_db    = 0,
+        target_counts  = 45000,
+        max_counts     = 50000,
+        min_counts     = 40000,
+        max_factor     = 5,
+        drop_factor    = 0.8,
+        saturation     = 65000,
+        max_avg        = 100)
+
+    buf = aar.serialize()
+    print("0x" + " ".join([f"{b:02x}" for b in buf]))
