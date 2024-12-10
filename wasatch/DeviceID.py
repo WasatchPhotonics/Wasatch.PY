@@ -63,20 +63,39 @@ log = logging.getLogger(__name__)
 # be uniquely identifiable and addressable from their bus address, WITHOUT making
 # guesses based on position or ordering or claim-state or anything like that.
 #
-# So yeah, I think this is useful and a good design.
+# So yeah, I think this is useful.
 #
 # @par USB
 #
-# .vid and .pid are stored as ints
+# - .vid and .pid are stored as ints
 #
 # @par BLE
 #
 # - populates .serial_number from advertised localName.
 # - populates .bleak_device from BleakScanner
 #
+# Adding the non-pickleable .bleak_device kind of defeats some of the original 
+# purpose of this class, as ideally serialized (stringified) DeviceIDs were 
+# intended to be passable between processes and "re-instantiated" on the 
+# receiving end.
+#
+# However, now that ENLIGHTEN is multi-threaded (instead of multi-process), we
+# don't have to worry about that, and it seems convenient to simply stash a 
+# handle to the Bleak Device directly in the DeviceID, where it can be passed
+# between the following (in typical connection order):
+# 
+# - wasatch.DeviceFinderBLE (BleakScanner emitting the BleakDevice)
+# - enlighten.network.BLEManager (receives via device_id_queue)
+# - enlighten.network.BLEManager.BLESelector (for initial add, and subsequent RSSI updates)
+# - enlighten.network.BLEManager (after user selection and "Connect")
+# - enlighten.Controller.other_device_ids 
+# - wasatch.WasatchDeviceWrapper
+# - wasatch.WrapperWorker
+# - wasatch.BLEDevice (actually create the BleakClient)
+#
 # @par TCP
 #
-# uses .address and .port
+# - uses .address and .port
 #
 class DeviceID:
 
@@ -86,20 +105,31 @@ class DeviceID:
     #
     # @param device is a usb.device from pyusb
     # @param directory is used with FILE spectrometers
-    def __init__(self, device=None, label=None, directory=None, device_type=None, overrides=None, spectra_options=None):
+    def __init__(self, device=None, label=None, directory=None, device_type=None, overrides=None, spectra_options=None, rssi=None):
 
         self.type          = None   # "USB", "FILE", "MOCK", "BLE", "TCP"
+
+        # USB
         self.vid           = None   # USB
         self.pid           = None   # USB
         self.bus           = None   # USB
         self.address       = None   # USB, TCP
+
+        # FILE
         self.directory     = None   # FILE
+
+        # MOCK
         self.name          = None   # MOCK?
+
+        # BLE
         self.serial_number = None   # BLE
+        self.rssi          = rssi
 
         self.overrides = overrides                  # MZ: what is this?
         self.device_type = device_type
         self.spectra_options = spectra_options      # MZ: what is this?
+        
+        self.bleak_device = None
 
         if label is not None:
             # instantiate from an existing string id
@@ -273,22 +303,13 @@ class DeviceID:
     # as a string containing all the relevant bits neccessary to reconstruct
     # the object into a parsed structure while providing a concise, readable
     # and hashable unique key.
-    def __str__(self):
-        if self.type.upper() == "USB":
-            return "<DeviceID USB %s:0x%04x:0x%04x:%d:%d>" % (self.type.upper(), self.vid, self.pid, self.bus, self.address)
-        elif self.type.upper() == "FILE":
-            return "<Device ID FILE %s:%s>" % (self.type.upper(), self.directory)
-        elif self.type.upper() == "MOCK":
-            return f"<Device ID MOCK {self.name} {self.directory}>"
-        elif self.type.upper() == "BLE":
-            return f"<Device ID BLE {self.name}:{self.address}>"
-        elif self.type.upper() == "TCP":
-            return f"<Device ID {self.type} {self.address}:{self.port}>"
-        else:
-            raise Exception("unsupported DeviceID type %s" % self.type)
-
     def __repr__(self):
-        return str(self)
+        if   self.type == "USB":  return f"<DeviceID {self.type}:0x{self.vid:04x}:0x{self.pid:04x}:{self.bus}:{self.address}>"
+        elif self.type == "FILE": return f"<DeviceID {self.type}:{self.directory}>"
+        elif self.type == "MOCK": return f"<DeviceID {self.type}:{self.name}:{self.directory}>"
+        elif self.type == "BLE":  return f"<DeviceID {self.type}:{self.serial_number}> (RSSI {self.rssi})"
+        elif self.type == "TCP":  return f"<DeviceID {self.type}:{self.address}:{self.port}>"
+        else: raise Exception("unsupported DeviceID type %s" % self.type)
 
     def __eq__(self, other):
         return str(self) == str(other)
