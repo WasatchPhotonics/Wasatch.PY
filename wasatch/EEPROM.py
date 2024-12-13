@@ -792,7 +792,7 @@ class EEPROM:
         except: 
             log.error(f"exception generating EEPROM digest...using '{digest}'", exc_info=1)
 
-        log.debug(f"EEPROM MD5 digest {digest} (regenerate {regenerate})")
+        # log.debug(f"EEPROM MD5 digest {digest} (regenerate {regenerate})")
         return digest
 
     def to_dict(self):
@@ -1230,7 +1230,7 @@ class MultiWavelengthCalibration:
         if calibration is None:
             calibration = self.selected_calibration
         if calibration >= len(a):
-            log.warn(f"MultiWavelengthCalibration.get: returning default {default} because calibration {calibration} not in {label} array len {len(a)}")
+            # log.warn(f"MultiWavelengthCalibration.get: returning default {default} because calibration {calibration} not in {label} array len {len(a)}")
             return default
 
         if index is None:
@@ -1246,7 +1246,7 @@ class MultiWavelengthCalibration:
                 log.warn(f"MultiWavelengthCalibration.get: returning {label} 0 because array[calibration {calibration}] is not a list")
                 return 0
                     
-        log.debug(f"MultiWavelengthCalibration.get: returning {label} = {value}")
+        # log.debug(f"MultiWavelengthCalibration.get: returning {label} = {value}")
         return value
 
     def set(self, name, value, calibration=None, index=None):
