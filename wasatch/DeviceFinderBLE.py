@@ -11,13 +11,28 @@ from wasatch.DeviceID  import DeviceID
 
 log = logging.getLogger(__name__)
 
+class DiscoveredBLEDevice:
+    """
+    DeviceFinderBLE pushes these through a Queue back to BLEManager. BLEManager
+    uses a Queue so it can be read from a tickable QTimer and update GUI elements
+    as it reads them.
+
+    The local_name and rssi are display-only (although local_name is used in 
+    constructing the DeviceID). The bleak_ble_device will be pass
+
+    """
+    def __init__(self, device_id, local_name, rssi, bleak_ble_device):
+        self.device_id = device_id
+        self.local_name = local_name
+        self.rssi = rssi
+
 class DeviceFinderBLE:
 
-    def __init__(self, device_id_queue=None, callback=None, search_timeout_sec=30):
+    def __init__(self, discovery_queue=None, discovery_callback=None, search_timeout_sec=30):
 
-        self.device_id_queue = device_id_queue
+        self.discovery_queue = discovery_queue
+        self.discovery_callback = discovery_callback
         self.search_timeout_sec = search_timeout_sec
-        self.callback = callback
 
         self.client = None          # instantiated BleakClient
         self.keep_scanning = True
@@ -89,14 +104,14 @@ class DeviceFinderBLE:
         elapsed_sec = (datetime.now() - self.start_time).total_seconds()
         log.debug(f"connect: initial connection took {elapsed_sec:.2f} sec")
 
-    def detection_callback(self, device, advertisement_data):
+    def detection_callback(self, bleak_ble_device, advertisement_data):
         """
         discovered device 13874014-5EDA-5E6B-220E-605D00FE86DF: WP-01791, 
         advertisement_data AdvertisementData(local_name='WP-01791', 
                                              service_uuids=['0000ff00-0000-1000-8000-00805f9b34fb', 'd1a7ff00-af78-4449-a34f-4da1afaf51bc'], 
                                              tx_power=0, rssi=-67)
         
-        Pushes DeviceID objects onto device_id_queue.
+        Pushes DiscoveredDevice objects onto discovery_queue.
         """
         log.debug("detection_callback: start")
         if not self.keep_scanning:
@@ -109,23 +124,29 @@ class DeviceFinderBLE:
             self.stop_scanning()
             return
         
-        log.debug(f"detection_callback: discovered device {device}, advertisement_data {advertisement_data}")
-        if not self.is_xs(device):
+        log.debug(f"detection_callback: discovered device {bleak_ble_device}, advertisement_data {advertisement_data}")
+        if not self.is_xs(bleak_ble_device):
             log.debug(f"detection_callback: not XS...ignoring")
             return
 
-        device_id = DeviceID(label=f"BLE:{advertisement_data.local_name}", rssi=advertisement_data.rssi)
+        device_id = DeviceID(label=f"BLE:{advertisement_data.local_name}", bleak_ble_device=bleak_ble_device)
         log.debug(f"detection_callback: instantiated {device_id}")
 
+        discovered_device = DiscoveredDevice(
+            device_id = device_id, 
+            local_name = advertisement_data.local_name, 
+            rssi = advertisement_data.rssi)
+        log.debug(f"detection_callback: instantiated {discovered_device}")
+
         returned = False
-        if self.device_id_queue:
-            log.debug(f"detection_callback: returning DeviceID via queue {self.device_id_queue}")
-            self.device_id_queue.put_nowait(device_id)
+        if self.discovery_queue:
+            log.debug(f"detection_callback: returning DiscoveredDevice via queue")
+            self.discovery_queue.put_nowait(discovered_device)
             returned = True
 
-        if self.callback:
-            log.debug(f"detection_callback: returning DeviceID via callback {self.callback}")
-            self.callback(device_id)
+        if self.discovery_callback:
+            log.debug(f"detection_callback: returning DiscoveredDevice via callback")
+            self.discovery_callback(discovered_device)
             returned = True
 
         if not returned:
@@ -136,6 +157,9 @@ class DeviceFinderBLE:
     def stop_scanning(self):
         self.keep_scanning = False
         self.stop_scanning_event.set()
+        
+        # send a "poison-pill" upstream to notify caller that we're no longer scanning
+        self.device_id_queue.put_nowait(None)
 
     ############################################################################
     # Utility

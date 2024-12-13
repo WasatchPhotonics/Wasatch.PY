@@ -105,6 +105,9 @@ class DeviceID:
     #
     # @param device is a usb.device from pyusb
     # @param directory is used with FILE spectrometers
+    # @param device_type: this seems to be currently exclusively used to 
+    #        distinguish between RealUSBDevice and MockUSBDevice (both extending
+    #        AbstractUSBDevice).
     def __init__(self, device=None, label=None, directory=None, device_type=None, overrides=None, spectra_options=None, rssi=None):
 
         self.type          = None   # "USB", "FILE", "MOCK", "BLE", "TCP"
@@ -115,18 +118,18 @@ class DeviceID:
         self.bus           = None   # USB
         self.address       = None   # USB, TCP
 
-        # FILE
-        self.directory     = None   # FILE
-
         # MOCK
         self.name          = None   # MOCK?
+        self.device_type   = device_type
+
+        # FILE
+        self.directory     = None   # FILE
 
         # BLE
         self.serial_number = None   # BLE
         self.rssi          = rssi
 
         self.overrides = overrides                  # MZ: what is this?
-        self.device_type = device_type
         self.spectra_options = spectra_options      # MZ: what is this?
         
         self.bleak_device = None

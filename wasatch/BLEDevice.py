@@ -1,7 +1,7 @@
 import os
 import logging
 import asyncio
-import threading
+from threading import Thread
 
 from bleak import BleakClient
 
@@ -15,509 +15,254 @@ from wasatch.SpectrometerResponse import SpectrometerResponse, ErrorLevel
 
 log = logging.getLogger(__name__)
 
-class Generic:
-    """ 
-    Encapsulates paired setter and getter accessors for a single Generic
-    attribute, including any per-attribute storage and processing like
-    """
-
-    def __init__(self, name, tier, setter, getter, size, epsilon):
-        self.name    = name
-        self.tier    = tier         # 0, 1 or 2
-        self.setter  = setter
-        self.getter  = getter
-        self.size    = size
-        self.epsilon = epsilon
-
-        self.value = None
-        self.event = asyncio.Event()
-    
-    def serialize(self, value):
-        data = []
-        if self.name == "CCD_GAIN":
-            data.append(int(value) & 0xff)
-            data.append(int((value - int(value)) * 256) & 0xff)
-        else: 
-            # assume big-endian uint[size]            
-            for i in range(self.size):
-                data.append((value >> (8 * (self.size - (i+1)))) & 0xff)
-        return data
-
-    def deserialize(self, data):
-        """ Updates the internal value from the deserialized data """
-        if self.name == "CCD_GAIN":
-            self.value = data[0] + data[1] / 256.0
-        else:
-            self.value = 0
-            for byte in data:
-                self.value <<= 8
-                self.value |= byte
-
-    def generate_write_request(self, value):
-        if self.setter is None:
-            raise RuntimeError(f"Generic {self.name} is read-only")
-        request = [ 0xff for _ in range(self.tier) ]
-        request.append(self.setter)
-        request.extend(self.serialize(value))
-        return request
-
-    def generate_read_request(self):
-        if self.getter is None:
-            raise RuntimeError(f"Generic {self.name} is write-only")
-        request = [ 0xff for _ in range(self.tier) ]
-        request.append(self.getter)
-        return request
-
-class Generics:
-    """ Facade to access all Generic attributes in the BLE interface """
-
-    RESPONSE_ERRORS = [ 'OK', 'NO_RESPONSE_FROM_HOST', 'FPGA_READ_FAILURE', 'INVALID_ATTRIBUTE', 'UNSUPPORTED_COMMAND' ]
-
-    def __init__(self):
-        self.seq = 0
-        self.generics = {}
-        self.callbacks = {}
-
-    def next_seq(self, callback=None):
-        self.seq = (self.seq + 1) % 256
-        if self.seq in self.callbacks:
-            raise RuntimeError("seq {self.seq} has unprocessed callback {self.callbacks[self.seq]}")
-        elif callback:
-            self.callbacks[self.seq] = callback
-        return self.seq
-
-    def get_callback(self, seq):
-        return self.callbacks.pop(seq)
-
-    def add(self, name, tier, setter, getter, size, epsilon=0):
-        self.generics[name] = Generic(name, tier, setter, getter, size, epsilon)
-
-    def generate_write_request(self, name, value):
-        return self.generics[name].generate_write_request(value)
-
-    def generate_read_request(self, name):
-        return self.generics[name].generate_read_request()
-
-    def get_value(self, name):
-        return self.generics[name].value
-
-    async def wait(self, name):
-        await self.generics[name].event.wait()
-        self.generics[name].event.clear()
-
-    async def process_response(self, name, data):
-        generic = self.generics[name]
-        generic.deserialize(data)
-        generic.event.set()
-
-    async def notification_callback(self, sender, data):
-        # log.debug(f"{datetime.now()} received GENERIC notification from sender {sender}, data {to_hex(data)}")
-        if len(data) < 3:
-            raise RuntimeError(f"received GENERIC response with only {len(data)} bytes")
-
-        seq, err, result = data[0], data[1], data[2:]
-
-        response_error = self.RESPONSE_ERRORS[err]
-        if response_error != "OK":
-            raise RuntimeError(f"GENERIC notification included error code {err} ({response_error}); data {to_hex(data)}")
-
-        # pass the response data, minus the sequence and error-code header, to 
-        # the registered callback function for that sequence ID
-        callback = self.get_callback(seq)
-        await callback(result)
-        
-    def equals(self, name, expected):
-        actual  = self.generics[name].value
-        epsilon = self.generics[name].epsilon
-        delta   = abs(actual - expected)
-        # print("Generics.equals: name {name}, actual {actual}, expected {expected}, delta {delta}, epsilon {epsilon}")
-        return delta <= epsilon
-
 class BLEDevice(InterfaceDevice):
     """
-    This is the basic implementation of our interface with BLE Spectrometers.
+    This class is the BLE counterpart to our USB WasatchDevice, likewise
+    servicing requests from WrapperWorker in a dedicated spectrometer Thread.
 
-    ##########################################################################
-    This class adopts the external device interface structure.
-    This involves receiving a request through the handle_request function.
-    A request is processed based on the key in the request.
-    The processing function passes the commands to the requested device.
-    Once it receives a response from the connected device it then passes that
-    back up the chain.
-                               Enlighten Request
-                                       |
-                                handle_requests
-                                       |
-                                 ------------
-                                /   /  |  \  \
-             { get_laser status, acquire, set_laser_watchdog, etc....}
-                                \   \  |  /  /
-                                 ------------
-                                       |
-                               {self.bleak_call}
-    ############################################################################
+    WrapperWorker <--> InterfaceDevice 
+                       <>+-- WasatchDevice <-> pyusb (X, XM, XS USB spectrometers)
+                         `-- BLEDevice <-----> bleak (XS BLE spectrometers)
+                         `-- TCPDevice <-----> socket (network spectrometers)
+                         `-- SPIDevice <-----> pyftdi (industrial spectrometers)
+                         `-- OceanDevice <---> pyseabreeze (3rd-party spectrometers)
+
+    # Architecture
+
+    BLEManager instantiates a DeviceFinderBLE to generate a list of available
+    spectrometers.
+
+    DeviceFinderBLE instantiates a BleakScanner, and passes DiscoveredBLEDevices
+    (local_name, rssi and DeviceID (containing bleak.BLEDevice)) back to 
+    BLEManager so the user can pick one.
+
+    BLEManager adds the selected wasatch.DeviceID to Controller.other_device_ids,
+    which will presently pass it to a new WasatchDeviceWrapper and associated
+    WrapperWorker thread.
+
+    The WrapperWorker will then instantiate a wasatch.BLEDevice with the 
+    wasatch.DeviceID. The wasatch.BLEDevice will use the DeviceID's embedded
+    bleak.BLEDevice to instantiate a BleakClient, which will be used for 
+    subsequent communications.
+
+    # Concurrency
+
+    Legacy ENLIGHTEN WrapperWorker.run <--> wasatch.InterfaceDevice communication
+    normally occurs within a threading.Thread, using what we would now call 
+    "traditional" (synchronous) Python function calls. That works fine for USB 
+    and even TCP/IP devices, as both pyusb.ctrl_transfer and socket.recv/send 
+    expose typical "blocking" procedural APIs. (Python didn't even get an async
+    keyword until 2015.)
+
+    However, BLE is all about asynchronous communication, and the Bleak package
+    only offers an async API (as well they should). Therefore we need to wrap
+    calls to the Bleak objects using asyncio.
+
+    With regard to BLEManager <--> DeviceFinderBLE, BLEManager creates the 
+    asyncio scan_loop, allowing DeviceFinderBLE to expose an asynchronous API 
+    (public async methods).
+
+    That begs the question of how we should handle WrapperWorker <--> 
+    wasatch.BLEDevice communication. Should wasatch.BLEDevice likewise expose
+    an asynchronous API, similar to what DeviceFinderBLE does, and let 
+    WrapperWorker manage the asyncio run-loop?
+
+    After reflection, I think not. Right now we have a reasonably robust 
+    WrapperWorker which is successfully talking to WP USB (WasatchDevice),
+    Andor USB (AndorDevice), TCP/IP (TCPDevice), and historically even SPI 
+    (SPIDevice) and 3rd-party (OceanDevice) products. I don't want to "screw" 
+    with WrapperWorker to make it friendly for BLE, but maybe break something
+    else.
+
+    So WrapperWorker is going to stay "synchronous", and we will let 
+    wasatch.BLEDevice manage its own asyncio.run_loop for turning WrapperWorker 
+    requests into await-able async calls.
+
+    # wasatch.DeviceID
+
+    The bleak.BLEDevice is attached to the wasatch.DeviceID because we have 
+    existing infrastructure in enlighten.Controller to maintain a set of 
+    .other_device_ids (DeviceID objects) it can check to connect to "non-self-
+    discovery" spectrometers. Currently those include WISP TCP/IP spectrometers
+    and BLE spectrometers, both of which require some level of user-interaction
+    to detect/find. 
+
+    Controller then passes the wasatch.DeviceID into wasatch.WasatchDeviceWrapper
+    (and wasatch.WrapperWorker) to properly conenct to the requested device. WISP
+    needs IP addr:port, so those go into DeviceID, and BLE needs bleak.BLEDevice, 
+    hence the extra attributes in DeviceID.
+    
+    @par bleak.BleakScanner
+
+    bleak.BleakScanner issues a series of notifications including 
+    (bleak.backends.device.BLEDevice, bleak.backends.scanner.AdvertisementData).
+
+    AdvertisementData contains these useful attributes:
+        - local_name            <-- WP-12345
+        - rssi                  <-- 
+        - manufacturer_data
+        - platform_data
+        - service_data
+        - service_uuids
+        - tx_power
+
+    wasatch.DeviceFinderBLE generate a wasatch.DeviceID with both displayable
+    (local_name/serial_number and rssi) and hidden (bleak_ble_device) attributes.
+
+    wasatch.DeviceFinderBLE 
+
+    To generate a bleak.BleakClient, we need the bleak.backends.device.BLEDevice from BleakScanner.
+    Therefore, that handle needs to be 
+
+    @todo consider https://github.com/django/asgiref#function-wrappers
     """
 
     WASATCH_SERVICE   = "D1A7FF00-AF78-4449-A34F-4DA1AFAF51BC"
    #DISCOVERY_SERVICE = "0000ff00-0000-1000-8000-00805f9b34fb"
 
-    ############################################################################
-    # static attributes and methods (for sharing with DeviceFinderBLE)
-    ############################################################################
+    LASER_TEC_MODES = ['OFF', 'ON', 'AUTO', 'AUTO_ON']
+
+    ACQUIRE_STATUS_CODES = {
+         0: ("NAK",                         "No error, the spectrum just isn't ready yet"),
+         1: ("ERR_BATT_SOC_INFO_NOT_RCVD",  "Can't read battery, and therefore can't take Auto-Dark or Auto-Raman spectra"),
+         2: ("ERR_BATT_SOC_TOO_LOW",        "Battery is too low to take Auto-Dark or Auto-Raman spectra"),
+         3: ("ERR_LASER_DIS_FLR",           "Failure disabling the laser"),
+         4: ("ERR_LASER_ENA_FLR",           "Failure enabling the laser"),
+         5: ("ERR_IMG_SNSR_IN_BAD_STATE",   "The sensor is not able to take spectra"),
+         6: ("ERR_IMG_SNSR_STATE_TRANS_FLR","The sensor failed to apply acquisition parameters"),
+         7: ("ERR_SPEC_ACQ_SIG_WAIT_TMO",   "The sensor failed to take a spectrum (timeout exceeded)"),
+        32: ("AUTO_OPT_TARGET_RATIO",       "Auto-Raman is in the process of optimizing acquisition parameters"),
+        33: ("AUTO_TAKING_DARK",            "Auto-Dark/Raman is taking dark spectra"),
+        34: ("AUTO_LASER_WARNING_DELAY",    "Auto-Dark/Raman is paused during laser warning delay period"),
+        35: ("AUTO_LASER_WARMUP",           "Auto-Dark/Raman is paused during laser warmup period"),
+        36: ("AUTO_TAKING_RAMAN",           "Auto-Dark/Raman is taking Raman measurements"),
+    }
 
     def __init__(self, device_id, message_queue=None, alert_queue=None):
+        log.debug("init: start")
+
         super().__init__()
         self.device_id = device_id
-        self.label = "BLE Device"
 
-        # MZ: what do bus and address represent in the BLE protocol?
-        self.bus = self.device_id.bus
-        self.address = self.device_id.address
-
-        self.is_ble = True
-        self.is_andor = lambda : False 
-        self.sum_count = 0
-        self.performing_acquire = False
-        self.disconnect = False
-        self.total_pixels_read = 0
-        self.session_reading_count = 0
-        self.settings = SpectrometerSettings(self.device_id)
-        self.settings.eeprom.detector = "ble" # MZ: why?
-        self.retry_count = 0
-        self.pixels_read = 0
-
-        self.process_f = self.init_process_funcs()
-
-        # create an async thread in which to run THIS Bluetooth spectrometer's 
-        # methods
-        #
-        # MZ: I'm not clear if this would be needed when running inside a 
-        #     WrapperWorker thread, but it probably is needed when running 
-        #     BLEDevice from a blocking client.
-        self.loop = asyncio.new_event_loop()
-
-        self.code_by_name = { "INTEGRATION_TIME_MS":     0xff01, 
-                              "GAIN_DB":                 0xff02,
-                              "LASER_STATE":             0xff03,
-                              "ACQUIRE_SPECTRUM":        0xff04,
-                              "SPECTRUM_CMD":            0xff05,
-                              "READ_SPECTRUM":           0xff06,
-                              "EEPROM_CMD":              0xff07,
-                              "EEPROM_DATA":             0xff08,
-                              "BATTERY_STATUS":          0xff09,
+        # Characteristics
+        self.code_by_name = { "LASER_STATE":             0xff03,
+                              "ACQUIRE":                 0xff04,
+                              "BATTERY_STATE":           0xff09,
                               "GENERIC":                 0xff0a }
         self.name_by_uuid = { self.wrap_uuid(code): name for name, code in self.code_by_name.items() }
 
-        self.generics = Generics()                # Tier Setter Getter Size
-        self.generics.add("LASER_TEC_MODE",            0, 0x84,  0x85, 1)
-        self.generics.add("CCD_GAIN",                  0, 0xb7,  0xc5, 2, epsilon=0.01)
-        self.generics.add("INTEGRATION_TIME_MS",       0, 0xb2,  0xbf, 3)
-        self.generics.add("LASER_WARNING_DELAY_SEC",   0, 0x8a,  0x8b, 1)
-        self.generics.add("START_LINE",                1, 0x21,  0x22, 2)
-        self.generics.add("STOP_LINE",                 1, 0x23,  0x24, 2)
-        self.generics.add("AMBIENT_TEMPERATURE_DEG_C", 1, None,  0x2a, 1)
-        self.generics.add("POWER_WATCHDOG_SEC",        1, 0x30,  0x31, 2)
-        self.generics.add("SCANS_TO_AVERAGE",          1, 0x62,  0x63, 2)
+        #                  Name                        Lvl  Set   Get Size
+        self.generics = Generics()
+        self.generics.add("LASER_TEC_MODE",             0, 0x84, 0x85, 1)
+        self.generics.add("GAIN_DB",                    0, 0xb7, 0xc5, 2, epsilon=0.01)
+        self.generics.add("INTEGRATION_TIME_MS",        0, 0xb2, 0xbf, 3)
+        self.generics.add("LASER_WARNING_DELAY_SEC",    0, 0x8a, 0x8b, 1)
+        self.generics.add("EEPROM_DATA",                1, None, 0x01, 1)
+        self.generics.add("START_LINE",                 1, 0x21, 0x22, 2)
+        self.generics.add("STOP_LINE",                  1, 0x23, 0x24, 2)
+        self.generics.add("AMBIENT_TEMPERATURE_DEG_C",  1, None, 0x2a, 1)
+        self.generics.add("POWER_WATCHDOG_SEC",         1, 0x30, 0x31, 2)
+        self.generics.add("SCANS_TO_AVERAGE",           1, 0x62, 0x63, 2)
 
-    def __str__ (self): return f"<BLEDevice {self.device_id.name} {self.device_id.address}>"
+        ########################################################################
+        # things not in ble-util.py
+        ########################################################################
+
+        self.is_ble = True
+        self.is_andor = lambda : False 
+
+        self.settings = SpectrometerSettings(self.device_id)
+
+        log.debug("init: creating scan_loop")
+        self.run_loop = asyncio.new_event_loop()
+
+        log.debug("init: instantiating Thread")
+        self.thread = Thread(target=self.make_run_loop, daemon=True)
+
+        log.debug("init: starting thread")
+        self.thread.start()
+
+        log.debug("init: initializing process funcs")
+        self.process_f = self.init_process_funcs()
+
+        log.debug("init: done")
+
+    def make_run_loop(self):
+        log.debug("make_run_loop: setting run_loop")
+        asyncio.set_event_loop(self.run_loop)
+        
+        log.debug("make_run_loop: running run_loop forever")
+        self.run_loop.run_forever()
+
+        log.debug("make_run_loop: done")
+
+    def  __str__(self): return f"<BLEDevice device_id {self.device_id}>"
     def __hash__(self): return hash(str(self))
     def __repr__(self): return str(self)
-    def __eq__(self, rhs): return hash(self) == hash(rhs)
-    def __ne__(self, rhs): return str (self) != str(rhs)
-    def __lt__(self, rhs): return str (self) <  str(rhs)
+    def  __eq__ (self, rhs): return hash(self) == hash(rhs)
+    def  __ne__ (self, rhs): return str (self) != str(rhs)
+    def  __lt__ (self, rhs): return str (self) <  str(rhs)
 
-    ###############################################################
-    # Private Methods
-    ###############################################################
-
-    def init_process_funcs(self): # -> dict[str, Callable[..., Any]] 
-        process_f = {}
-
-        process_f["connect"]            = self.connect
-        process_f["disconnect"]         = self.close
-        process_f["close"]              = self.close
-        process_f["acquire_data"]       = self.acquire_data
-
-        # MZ: why are these different? do they need to be? do the others?
-        process_f["scans_to_average"]   = lambda n:     asyncio.run_coroutine_threadsafe(self.set_scans_to_average(n),      self.loop)
-        process_f["integration_time_ms"]= lambda ms:    asyncio.run_coroutine_threadsafe(self.set_integration_time_ms(ms),  self.loop)
-        process_f["detector_gain"]      = lambda dB:    asyncio.run_coroutine_threadsafe(self.set_detector_gain(dB),        self.loop)
-        process_f["laser_enable"]       = lambda flag:  asyncio.run_coroutine_threadsafe(self.set_laser_enable(flag),       self.loop)
-        process_f["vertical_binning"]   = lambda roi:   asyncio.run_coroutine_threadsafe(self.set_vertical_roi(roi),        self.loop)
-
-        return process_f
-
-    async def disconnect(self) -> SpectrometerResponse:
-        await self.client.disconnect()
-        return SpectrometerResponse(True)
-
-    async def _connect_spec(self) -> SpectrometerResponse:
-        log.debug(f"_connect_spec: instantiating BleakClient from device_id {self.device_id} address {self.device_id.address}")
-        self.client = BleakClient(self.device_id.address)
-
-        log.debug(f"_connect_spec: awaiting client.connect")
-        await self.client.connect()
-
-        log.debug(f"Connected: {self.client.is_connected}")
-        return SpectrometerResponse(True)
-
-    async def _set_gain(self, value: int) -> SpectrometerResponse:
-        log.debug(f"BLE setting gain to {value}")
-        #value_bytes = int(value).to_bytes(2, byteorder='big')
+    def disconnect(self):
+        log.debug("disconnect: start")
         try:
-            msb = int(value)
-            lsb = int((value - int(value)) * 256) & 0xff
-            value_bytes = ((msb << 8) | lsb).to_bytes(2, byteorder='big')
-            await self.client.write_gatt_char(GAIN_UUID, value_bytes, response = True)
-        except Exception as e:
-            log.error(f"Error trying to write gain {e}")
-            return SpectrometerResponse(False, error_msg="error trying to write gain", error_lvl=ErrorLevel.medium)
+            asyncio.run_coroutine_threadsafe(self.client.disconnect(), self.run_loop)
+        except:
+            log.error("exception calling BleakClient.disconnect", exc_info=1)
+        log.debug("disconnect: done")
         return SpectrometerResponse(True)
-
-    async def _ble_acquire(self) -> SpectrometerResponse:
-        if self.disconnect:
-            log.debug("ble spec is set to disconnect, returning False")
-            return SpectrometerResponse(False)
-        _ = await self.client.write_gatt_char(DEVICE_ACQUIRE_UUID, bytes(0), response = True)
-        pixels = self.settings.eeprom.active_pixels_horizontal
-        request_retry = False
-        averaging_enabled = (self.settings.state.scans_to_average > 1)
-        if self.pixels_read == 0:
-            self.spectrum = [0 for pix in range(pixels)]
-
-        if averaging_enabled and not self.settings.state.free_running_mode:
-            self.sum_count = 0
-            loop_count = self.settings.state.scans_to_average
-        else:
-            # we're in free-running mode
-            loop_count = 1
-
-        reading = None
-        for _ in range(0, loop_count):
-            reading = Reading(self.device_id)
-            reading.integration_time_ms = self.settings.state.integration_time_ms
-            reading.laser_power_perc    = self.settings.state.laser_power_perc
-            reading.laser_power_mW      = self.settings.state.laser_power_mW
-            reading.laser_enabled       = self.settings.state.laser_enabled
-            header_len = 2
-            if self.disconnect:
-                log.debug("ble spec is set to disconnect, returning False")
-                log.info("Disconnecting, stopping spectra acquire and returning None")
-                return SpectrometerResponse(False)
-            if request_retry:
-                self.retry_count += 1
-                if (self.retry_count > MAX_RETRIES):
-                    log.error(f"giving up after {MAX_RETRIES} retries")
-                    return SpectrometerResponse(False)
-
-            delay_ms = int(self.retry_count**5)
-
-            # if this is the first retry, assume that the sensor was
-            # powered-down, and we need to wait for some throwaway
-            # spectra 
-            if (self.retry_count == 1):
-                delay_ms = int(self.settings.state.integration_time_ms * THROWAWAY_SPECTRA)
-
-            log.error(f"Retry requested, so waiting for {delay_ms}ms")
-            if self.disconnect:
-                log.debug("ble spec is set to disconnect, returning False")
-                return SpectrometerResponse(False)
-            await asyncio.sleep(delay_ms)
-
-            request_retry = False
-
-            log.debug(f"requesting spectrum packet starting at pixel {self.pixels_read}")
-            request = self.pixels_read.to_bytes(2, byteorder="big")
-            await self.client.write_gatt_char(SPECTRUM_PIXELS_UUID, request, response = True)
-
-            log.debug(f"reading spectrumChar (pixelsRead {self.pixels_read})")
-            response = await self.client.read_gatt_char(READ_SPECTRUM_UUID)
-
-            # make sure response length is even, and has both header and at least one pixel of data
-            response_len = len(response)
-            if (response_len < header_len or response_len % 2 != 0):
-                log.error(f"received invalid response of {response_len} bytes")
-                request_retry = True
-                continue
-            if self.disconnect:
-                log.debug("ble spec is set to disconnect, returning False")
-                return SpectrometerResponse(False)
-
-            # firstPixel is a big-endian UInt16
-            first_pixel = int((response[0] << 8) | response[1])
-            if (first_pixel > 2048 or first_pixel < 0):
-                log.error(f"received NACK (first_pixel {first_pixel}, retrying")
-                request_retry = True
-                continue
-
-            pixels_in_packet = int((response_len - header_len) / 2)
-
-            log.debug(f"received spectrum packet starting at pixel {first_pixel} with {pixels_in_packet} pixels")
-
-            for i in range(pixels_in_packet):
-                # pixel intensities are little-endian UInt16
-                offset = header_len + i * 2
-                intensity = int((response[offset+1] << 8) | response[offset])
-                self.spectrum[self.pixels_read] = intensity
-                if self.disconnect:
-                    log.debug("ble spec is set to disconnect, returning False")
-                    return SpectrometerResponse(False)
-
-                self.pixels_read += 1
-
-                if self.pixels_read == pixels:
-                    log.debug("read complete spectrum")
-                    self.session_reading_count += 1
-                    if (i + 1 != pixels_in_packet):
-                        log.error(f"ignoring {pixels_in_packet - (i + 1)} trailing pixels")
-                    break
-            response = None
-            #### WHILE LOOP ENDS HERE ####
-            for i in range(4):
-                self.spectrum[i] = self.spectrum[4]
-
-            self.spectrum[pixels-1] = self.spectrum[pixels-2]
-
-            reading.session_count = self.session_reading_count
-            reading.sum_count = self.sum_count
-            log.debug("Spectrometer.takeOneAsync: returning completed spectrum")
-            reading.spectrum = self.spectrum
-
-            if not reading.failure:
-                if averaging_enabled:
-                    if self.sum_count == 0:
-                        self.summed_spectra = [float(i) for i in reading.spectrum]
-                    else:
-                        log.debug("device.take_one_averaged_reading: summing spectra")
-                        for i in range(len(self.summed_spectra)):
-                            self.summed_spectra[i] += reading.spectrum[i]
-                    self.sum_count += 1
-                    log.debug("device.take_one_averaged_reading: summed_spectra : %s ...", self.summed_spectra[0:9])
-
-            # have we completed the averaged reading?
-            if averaging_enabled:
-                if self.sum_count >= self.settings.state.scans_to_average:
-                    reading.spectrum = [ x / self.sum_count for x in self.summed_spectra ]
-                    log.debug("device.take_one_averaged_reading: averaged_spectrum : %s ...", reading.spectrum[0:9])
-                    reading.averaged = True
-
-                    # reset for next average
-                    self.summed_spectra = None
-                    self.sum_count = 0
-            else:
-                # if averaging isn't enabled...then a single reading is the
-                # "averaged" final measurement (check reading.sum_count to confirm)
-                reading.averaged = True
-
-        response = SpectrometerResponse()
-        response.data = reading
-        response.progress = int(round(100 * self.pixels_read / pixels, 0))
-        if response.progress >= 100:
-            self.spectrum = [0 for pix in range(pixels)]
-            self.pixels_read = 0
-
-        return response
-
-    async def _get_eeprom(self) -> list[list[int]]:
-        log.debug("Trying BLE eeprom read")
-        pages = []
-        for i in range(EEPROM.MAX_PAGES):
-            buf = bytearray()
-            for j in range(EEPROM.SUBPAGE_COUNT):
-                page_ids = bytearray([i, j])
-                log.debug(f"Writing SELECT_EEPROM_PAGE(page {i}, subpage {j})")
-                _ = await self.client.write_gatt_char(SELECT_EEPROM_PAGE_UUID, page_ids, response = True)
-                log.debug("Attempting to read page data")
-                response = await self.client.read_gatt_char(READ_EEPROM_UUID)
-                for byte in response:
-                    buf.append(byte)
-            pages.append(buf)
-        return pages
-
-    def _get_default_data_dir(self) -> str:
-        return os.getcwd()
 
     ###############################################################
     # Public Methods
     ###############################################################
 
-    def connect(self) -> SpectrometerResponse:
-        log.debug("connect: creating thread")
-        self.thread = threading.Thread(target=self.loop.run_forever, daemon=True)
+    def connect(self):
+        """
+        This is a synchronous method that WrapperWorker can call.
+        """
+        log.debug("connect: calling connect_async")
+        future = asyncio.run_coroutine_threadsafe(self.connect_async(), self.run_loop)
+        log.debug(f"connect: connect_async future pending ({future})")
+        response = future.result()
+        log.debug(f"connect: back from connect_async (response {response})")
 
-        log.debug("connect: starting thread")
-        self.thread.start()
+        return response
 
-        log.debug("running _connect_spec on thread")
-        future = asyncio.run_coroutine_threadsafe(self._connect_spec(), self.loop)
+    async def connect_async(self):
+        log.debug("connect_async: start")
 
-        log.debug("awaiting _connect_spec result")
-        future.result()
+        ble_device = self.device_id.ble_device
+        if ble_device is None:
+            msg = f"can't connect w/o ble_device (given {self.device_id})"
+            log.critical(f"connect: {msg}")
+            return SpectrometerResponse(False, error_msg=msg)
 
-        log.debug("BLEDevice succeeded in connection")
+        log.debug("connect_async: instantiating BleakClient")
+        self.client = BleakClient(address_or_ble_device=ble_device, 
+                                  disconnected_callback=self.disconnected_callback,
+                                  timeout=self.args.search_timeout_sec)
+        log.debug(f"connect_async: BleakClient instantiated: {self.client}")
 
-        log.debug("running _get_eeprom on thread")
-        future = asyncio.run_coroutine_threadsafe(self._get_eeprom(), self.loop)
+        log.debug(f"connect_async: calling client.connect")
+        await self.client.connect()
 
-        log.debug("awaiting _get_eeprom result")
-        eeprom_contents = future.result()
+        log.debug(f"connect_async: grabbing device information")
+        await self.load_device_information()
 
-        log.debug("processing retrieved EEPROM")
+        log.debug(f"connect_async: loading Characteristics")
+        await self.load_characteristics()
+
+        log.debug("connect_async: processing retrieved EEPROM")
         self.settings.eeprom.parse(eeprom_contents)
         self.settings.update_wavecal()
-        self.label = f"{self.settings.eeprom.serial_number} ({self.settings.eeprom.model})"
 
-        log.debug("connection successful")
+        elapsed_sec = (datetime.now() - self.start_time).total_seconds()
+        log.debug(f"connect_async: initial connection took {elapsed_sec:.2f} sec")
+
+        log.debug("connect_async: connection successful")
+
+        log.debug("connect_async: done")
         return SpectrometerResponse(True)
-
-    def acquire_data(self) -> SpectrometerResponse:
-        if self.performing_acquire:
-            return SpectrometerResponse(True)
-        if self.disconnect:
-            log.debug("ble spec is set to disconnect, returning False")
-            return SpectrometerResponse(False)
-        self.performing_acquire = True
-        self.session_reading_count += 1
-        future = asyncio.run_coroutine_threadsafe(self._ble_acquire(), self.loop)
-        self.performing_acquire = False
-        result = future.result()
-        return result
-
-    # both this and change_setting are needed
-    # change_device_setting is called by the controller
-    # while change_setting is being called by the wrapper_worker
-    def change_device_setting(self, setting: str, value: int) -> None:
-        control_object = ControlObject(setting, value)
-        log.debug("BLEDevice.change_setting: %s", control_object)
-
-        # Since scan averaging lives in WasatchDevice, handle commands which affect
-        # averaging at this level
-        if control_object.setting == "scans_to_average":
-            self.sum_count = 0
-            self.settings.state.scans_to_average = int(value)
-            return
-        else:
-            req = SpectrometerRequest(setting, args=[value])
-            self.handle_requests([req])
-
-    def get_pid_hex(self) -> str:
-        return str(hex(self.pid))[2:]
-
-    def get_vid_hex(self) -> str:
-        return str(self.vid)
-
-    def to_dict(self) -> str:
-        return str(self)
-
-    def close(self) -> None:
-        log.info("BLE close called, trying to disconnect spec")
-        self.disconnect = True
-
-        # MZ: I guess this is the equivalent to 'await' in a non-async method?
-        future = asyncio.run_coroutine_threadsafe(self.disconnect(), self.loop)
-        _ = future.result()
-
-        self.loop.stop()
 
     ############################################################################
     # 
@@ -586,11 +331,11 @@ class BLEDevice(InterfaceDevice):
     def battery_notification(self, sender, data):
         charging = data[0] != 0
         perc = int(data[1])
-        print(f"{datetime.now()} received BATTERY_STATUS notification: level {perc}%, charging {charging} (data {data})")
+        log.debug(f"received BATTERY_STATUS notification: level {perc}%, charging {charging} (data {data})")
 
     def laser_state_notification(self, sender, data):
         status = self.parse_laser_state(data)
-        print(f"{datetime.now()} received LASER_STATE notification: sender {sender}, data {data}: {status}")
+        log.debug(f"received LASER_STATE notification: sender {sender}, data {data}: {status}")
 
     async def read_char(self, name, min_len=None, quiet=False):
         uuid = self.get_uuid_by_name(name)
@@ -656,7 +401,7 @@ class BLEDevice(InterfaceDevice):
         """
         @bug mode and type should be settable to 0xff (same with watchdog)
         """
-        print(f"setting laser enable {flag}")
+        log.debug(f"setting laser enable {flag}")
         self.laser_enable = flag
         await self.sync_laser_state()
 
@@ -697,7 +442,7 @@ class BLEDevice(InterfaceDevice):
 
     async def set_integration_time_ms(self, ms):
         # using dedicated Characteristic, although 2nd-tier version now exists
-        print(f"setting integration time to {ms}ms")
+        log.debug(f"setting integration time to {ms}ms")
         data = [ 0x00,               # fixed
                  (ms >> 16) & 0xff,  # MSB
                  (ms >>  8) & 0xff,
@@ -709,25 +454,25 @@ class BLEDevice(InterfaceDevice):
 
     async def set_gain_db(self, db):
         # using dedicated Characteristic, although 2nd-tier version now exists
-        print(f"setting gain to {db}dB")
+        log.debug(f"setting gain to {db}dB")
         msb = int(db) & 0xff
         lsb = int((db - int(db)) * 256) & 0xff
         await self.write_char("GAIN_DB", [msb, lsb])
         return SpectrometerResponse(True)
 
     async def set_scans_to_average(self, n):
-        print(f"setting scan averaging to {n}")
+        log.debug(f"setting scan averaging to {n}")
         await self.write_char("GENERIC", self.generics.generate_write_request("SCANS_TO_AVERAGE", n))
         self.scans_to_average = n
         return SpectrometerResponse(True)
 
     async def set_start_line(self, n):
-        print(f"setting start line to {n}")
+        log.debug(f"setting start line to {n}")
         await self.write_char("GENERIC", self.generics.generate_write_request("START_LINE", n))
         return SpectrometerResponse(True)
 
     async def set_stop_line(self, n):
-        print(f"setting stop line to {n}")
+        log.debug(f"setting stop line to {n}")
         await self.write_char("GENERIC", self.generics.generate_write_request("STOP_LINE", n))
         return SpectrometerResponse(True)
 
@@ -808,6 +553,19 @@ class BLEDevice(InterfaceDevice):
     # Spectra
     ############################################################################
 
+    def acquire_data(self):
+        log.debug("acquire_data: start")
+
+        log.debug("acquire_data: calling get_spectrum")
+        spectrum = asyncio.run_coroutine_threadsafe(self.get_spectrum, self.run_loop)
+        log.debug(f"acquire_data: back from get_spectrum (spectrum {spectrum})")
+        
+        reading = Reading()
+        reading.spectrum = spectrum
+
+        log.debug("acquire_data: done")
+        return SpectrometerResponse(data=reading)
+
     async def get_spectrum(self):
         header_len = 2 # the 2-byte first_pixel
         pixels_read = 0
@@ -863,7 +621,7 @@ class BLEDevice(InterfaceDevice):
                         else:
                             raise RuntimeError(f"unknown READ_SPECTRUM error_code {error_code}")
                     if len(response) > 3:
-                        print("trailing data after NAK error code: {to_hex(response)}")
+                        log.debug("trailing data after NAK error code: {to_hex(response)}")
                 elif first_pixel != pixels_read:
                     # this still happens on 2.8.7
                     # log.debug(f"WARNING: received unexpected first pixel {first_pixel} (pixels_read {pixels_read})")
@@ -920,12 +678,12 @@ class BLEDevice(InterfaceDevice):
         msg += f"from ({self.wavelengths[0]:.2f}, {self.wavelengths[-1]:.2f}nm)"
         if self.wavenumbers:
             msg += f" ({self.wavenumbers[0]:.2f}, {self.wavenumbers[-1]:.2f}cm⁻¹)"
-        print(msg)
+        log.debug(msg)
 
     def display_eeprom(self):
-        print("EEPROM:")
+        log.debug("EEPROM:")
         for name, value in self.eeprom.items():
-            print(f"  {name:30s} {value}")
+            log.debug(f"  {name:30s} {value}")
 
     def generate_wavecal(self):
         self.pixels = self.eeprom["active_pixels_horizontal"]
@@ -979,13 +737,13 @@ class BLEDevice(InterfaceDevice):
         end_byte   = start_byte + length
 
         if page > len(self.pages):
-            print("error unpacking EEPROM page %d, offset %d, len %d as %s: invalid page (field %s)" % ( 
+            log.error("error unpacking EEPROM page %d, offset %d, len %d as %s: invalid page (field %s)" % ( 
                 page, start_byte, length, data_type, field))
             return
 
         buf = self.pages[page]
         if buf is None or end_byte > len(buf):
-            print("error unpacking EEPROM page %d, offset %d, len %d as %s: buf is %s (field %s)" % ( 
+            log.error("error unpacking EEPROM page %d, offset %d, len %d as %s: buf is %s (field %s)" % ( 
                 page, start_byte, length, data_type, buf, field))
             return
 
@@ -1000,11 +758,29 @@ class BLEDevice(InterfaceDevice):
             try:
                 unpack_result = struct.unpack(data_type, buf[start_byte:end_byte])[0]
             except Exception as ex:
-                print("error unpacking EEPROM page %d, offset %d, len %d as %s (field %s): %s" % (page, start_byte, length, data_type, field, ex))
+                log.error("error unpacking EEPROM page %d, offset %d, len %d as %s (field %s): %s" % (page, start_byte, length, data_type, field, ex))
                 return
 
         # log.debug(f"Unpacked page {page:02d}, offset {start_byte:02d}, len {length:02d}, datatype {data_type}: {unpack_result} {field}")
         self.eeprom[field] = unpack_result
+
+    def init_process_funcs(self): # -> dict[str, Callable[..., Any]] 
+        f = {}
+
+        # synchronous functions without arguments
+        f["connect"]            = self.connect
+        f["disconnect"]         = self.disconnect
+        f["close"]              = self.disconnect
+        f["acquire_data"]       = self.acquire_data
+
+        # asynchronous functions with arguments
+        f["scans_to_average"]   = lambda n:     asyncio.run_coroutine_threadsafe(self.set_scans_to_average(n),      self.run_loop)
+        f["integration_time_ms"]= lambda ms:    asyncio.run_coroutine_threadsafe(self.set_integration_time_ms(ms),  self.run_loop)
+        f["detector_gain"]      = lambda dB:    asyncio.run_coroutine_threadsafe(self.set_detector_gain(dB),        self.run_loop)
+        f["laser_enable"]       = lambda flag:  asyncio.run_coroutine_threadsafe(self.set_laser_enable(flag),       self.run_loop)
+        f["vertical_binning"]   = lambda roi:   asyncio.run_coroutine_threadsafe(self.set_vertical_roi(roi),        self.run_loop)
+
+        return f
 
     ############################################################################
     # Utility
@@ -1029,3 +805,170 @@ class BLEDevice(InterfaceDevice):
         if code is None:
             return
         return self.wrap_uuid(code)
+
+class Generic:
+    """ encapsulates paired setter and getter accessors for a single attribute """
+
+    def __init__(self, name, tier, setter, getter, size, epsilon):
+        self.name    = name
+        self.tier    = tier # 0, 1 or 2
+        self.setter  = setter
+        self.getter  = getter
+        self.size    = size
+        self.epsilon = epsilon
+
+        self.value = None
+        self.event = asyncio.Event()
+    
+    def serialize(self, value):
+        data = []
+        if self.name == "GAIN_DB":
+            data.append(int(value) & 0xff)
+            data.append(int((value - int(value)) * 256) & 0xff)
+        else: 
+            # assume big-endian uint[size]            
+            for i in range(self.size):
+                data.append((value >> (8 * (self.size - (i+1)))) & 0xff)
+        return data
+
+    def deserialize(self, data):
+        # STEP SIXTEEN: deserialize the returned Generic response payload according to the attribute type
+        if self.name == "GAIN_DB":
+            return data[0] + data[1] / 256.0
+        elif self.name == "EEPROM_DATA":
+            return data
+        else:
+            # by default, treat as big-endian uint
+            value = 0
+            for byte in data:
+                value <<= 8
+                value |= byte
+            return value
+
+    def generate_write_request(self, value):
+        if self.setter is None:
+            raise RuntimeError(f"Generic {self.name} is read-only")
+        request = [ 0xff for _ in range(self.tier) ]
+        request.append(self.setter)
+        request.extend(self.serialize(value))
+        return request
+
+    def generate_read_request(self):
+        # STEP THREE: generate the "read request" payload for this attribute
+        if self.getter is None:
+            raise RuntimeError(f"Generic {self.name} is write-only")
+        request = [ 0xff for _ in range(self.tier) ]
+        request.append(self.getter)
+        return request
+
+class Generics:
+    """ Facade to access all Generic attributes in the BLE interface """
+
+    RESPONSE_ERRORS = [ 'OK', 'NO_RESPONSE_FROM_HOST', 'FPGA_READ_FAILURE', 'INVALID_ATTRIBUTE', 'UNSUPPORTED_COMMAND' ]
+
+    def __init__(self):
+        self.seq = 0
+        self.generics = {}
+        self.callbacks = {}
+
+    def next_seq(self, callback=None):
+        self.seq = (self.seq + 1) % 256
+        if self.seq in self.callbacks:
+            raise RuntimeError("seq {self.seq} has unprocessed callback {self.callbacks[self.seq]}")
+        elif callback:
+            # STEP SIX: store the callback function in a table, keyed on the new sequence number
+            self.callbacks[self.seq] = callback
+        return self.seq
+
+    def get_callback(self, seq):
+        # STEP ELEVEN: remove the stored callback from the table, so it won't accidentally be re-used
+        if seq in self.callbacks:
+            return self.callbacks.pop(seq)
+
+        # probably an uncaught acknowledgement from a generic setter like SET_INTEGRATION_TIME_MS
+        debug(f"get_callback: seq {seq} not found in callbacks")
+
+    def add(self, name, tier, setter, getter, size, epsilon=0):
+        self.generics[name] = Generic(name, tier, setter, getter, size, epsilon)
+
+    def generate_write_request(self, name, value):
+        return self.generics[name].generate_write_request(value)
+
+    def generate_read_request(self, name):
+        # STEP TWO: generate the "read request" payload for the named attribute
+        return self.generics[name].generate_read_request()
+
+    def get_value(self, name):
+        return self.generics[name].value
+
+    async def wait(self, name):
+        await self.generics[name].event.wait()
+        self.generics[name].event.clear()
+
+    async def process_acknowledgement(self, data, name):
+        debug(f"received acknowledgement for {name}")
+        generic = self.generics[name]
+        generic.event.set()
+
+    async def process_response(self, name, data):
+        # STEP THIRTEEN: this is the standard callback triggered after receiving
+        # a notification from the Generic Characteristic
+
+        # STEP FOURTEEN: lookup the specific Generic attribute (AMBIENT_TEMPERATURE_DEG_C, etc) associated with this transaction
+        generic = self.generics[name]
+
+        # STEP FIFTEEN: parse the response payload according to the attribute
+        generic.value = generic.deserialize(data)
+
+        # STEP SEVENTEEN: raise the asynchronous "event" flag to tell the 
+        # await'ing requester that the response value is now available and stored
+        # in the Generic object
+        generic.event.set()
+
+    async def notification_callback(self, sender, data):
+        # STEP EIGHT: we have received a response notification from the Generic Characteristic
+
+        debug(f"received GENERIC notification from sender {sender}, data {to_hex(data)}")
+
+        # STEP NINE: extract the sequence number from the notification response
+        result = None
+        if len(data) < 3:
+            seq, err = data[0], data[1]
+        else:
+            seq, err, result = data[0], data[1], data[2:]
+
+        if err < len(self.RESPONSE_ERRORS):
+            response_error = self.RESPONSE_ERRORS[err]
+        else:
+            response_error = f"UNSUPPORTED RESPONSE_ERROR: 0x{err}"
+
+        if response_error != "OK":
+            raise RuntimeError(f"GENERIC notification included error code {err} ({response_error}); data {to_hex(data)}")
+
+        # STEP TEN: lookup the stored callback for this sequence number
+        #
+        # pass the response data, minus the sequence and error-code header, to 
+        # the registered callback function for that sequence ID
+        callback = self.get_callback(seq)
+
+        # STEP TWELVE: actually call the callback
+        if callback:
+            await callback(result)
+        
+    def get_name(self, code):
+        if code == 0xff:
+            return "NEXT_TIER"
+
+        for name, generic in self.generics.items():
+            if code == generic.setter:
+                return f"SET_{name}"
+            elif code == generic.getter:
+                return f"GET_{name}"
+        return "UNKNOWN"
+
+    def equals(self, name, expected):
+        actual  = self.generics[name].value
+        epsilon = self.generics[name].epsilon
+        delta   = abs(actual - expected)
+        return delta <= epsilon
+
