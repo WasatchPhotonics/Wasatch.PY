@@ -1300,15 +1300,17 @@ class FeatureIdentificationDevice(InterfaceDevice):
             endpoints = [0x82, 0x86]
             block_len_bytes = 2048 # 1024 pixels apiece from two endpoints
 
+        max_integ_ms = max(self.settings.state.integration_time_ms, self.settings.state.prev_integration_time_ms)
+
         if self.settings.is_micro():
             # we have no idea if Series-XS has to "wake up" the sensor, so wait
             # long enough for 20ms + 8 throwaway frames if need be (IMX385 datasheet p69)
             if self.settings.state.onboard_averaging:
-                timeout_ms = self.settings.state.integration_time_ms * (self.settings.state.scans_to_average + 7) + 500 * self.settings.num_connected_devices + 20
+                timeout_ms = max_integ_ms * (self.settings.state.scans_to_average + 7) + 500 * self.settings.num_connected_devices + 20
             else:
-                timeout_ms = self.settings.state.integration_time_ms * 8 + 500 * self.settings.num_connected_devices + 20
+                timeout_ms = max_integ_ms * 8 + 500 * self.settings.num_connected_devices + 20
         else:
-            timeout_ms = self.settings.state.integration_time_ms * 2 + 1000 * self.settings.num_connected_devices
+            timeout_ms = max_integ_ms * 2 + 1000 * self.settings.num_connected_devices
 
         self._wait_for_usb_available()
 
@@ -1386,6 +1388,12 @@ class FeatureIdentificationDevice(InterfaceDevice):
         #                   post-process the spectrum
         #
         ########################################################################
+
+        ########################################################################
+        # Success, so update "working" integration time
+        ########################################################################
+
+        self.settings.state.prev_integration_time_ms = self.settings.state.integration_time_ms
 
         ########################################################################
         # Apply InGaAs even/odd gain/offset in software
@@ -1621,6 +1629,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         log.debug("SET_INTEGRATION_TIME_MS: now %d", ms)
 
         self.require_throwaway(ms != self.settings.state.integration_time_ms)
+        self.settings.state.prev_integration_time_ms = self.settings.state.integration_time_ms
         self.settings.state.integration_time_ms = ms
 
         if self.settings.is_xs():

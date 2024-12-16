@@ -71,27 +71,25 @@ log = logging.getLogger(__name__)
 #
 # @par BLE
 #
-# - populates .serial_number from advertised localName.
-# - populates .bleak_device from BleakScanner
+# - populates .bleak_ble_device (bleak.BLEDevice from BleakScanner)
+# - populates .serial_number
 #
-# Adding the non-pickleable .bleak_device kind of defeats some of the original 
-# purpose of this class, as ideally serialized (stringified) DeviceIDs were 
-# intended to be passable between processes and "re-instantiated" on the 
+# Adding the non-pickleable .bleak_ble_device kind of defeats some of the 
+# original intent of this class, as ideally serialized (stringified) DeviceIDs 
+# were intended to be passable between processes and "re-instantiated" on the 
 # receiving end.
 #
 # However, now that ENLIGHTEN is multi-threaded (instead of multi-process), we
 # don't have to worry about that, and it seems convenient to simply stash a 
 # handle to the Bleak Device directly in the DeviceID, where it can be passed
-# between the following (in typical connection order):
+# from DeviceFinderBLE to BLEManager to WasatchDeviceWrapper/WrapperWorker to 
+# BLEDevice.
+#
+# Serial number is tracked in the DeviceID (rather than DiscoveredBLEDevice) 
+# because the current DeviceID architecture is to dynamically generate its 
+# stringified form, based on internal native types. 
 # 
-# - wasatch.DeviceFinderBLE (BleakScanner emitting the BleakDevice)
-# - enlighten.network.BLEManager (receives via device_id_queue)
-# - enlighten.network.BLEManager.BLESelector (for initial add, and subsequent RSSI updates)
-# - enlighten.network.BLEManager (after user selection and "Connect")
-# - enlighten.Controller.other_device_ids 
-# - wasatch.WasatchDeviceWrapper
-# - wasatch.WrapperWorker
-# - wasatch.BLEDevice (actually create the BleakClient)
+# @see BLEDevice for consolidated BLE docs
 #
 # @par TCP
 #
@@ -108,7 +106,7 @@ class DeviceID:
     # @param device_type: this seems to be currently exclusively used to 
     #        distinguish between RealUSBDevice and MockUSBDevice (both extending
     #        AbstractUSBDevice).
-    def __init__(self, device=None, label=None, directory=None, device_type=None, overrides=None, spectra_options=None, rssi=None):
+    def __init__(self, device=None, label=None, directory=None, device_type=None, overrides=None, spectra_options=None, bleak_ble_device=None):
 
         self.type          = None   # "USB", "FILE", "MOCK", "BLE", "TCP"
 
@@ -126,8 +124,8 @@ class DeviceID:
         self.directory     = None   # FILE
 
         # BLE
-        self.serial_number = None   # BLE
-        self.rssi          = rssi
+        self.serial_number = None
+        self.bleak_ble_device = bleak_ble_device
 
         self.overrides = overrides                  # MZ: what is this?
         self.spectra_options = spectra_options      # MZ: what is this?
@@ -202,8 +200,8 @@ class DeviceID:
             if device.dev.product is not None:
                 self.product = device.dev.product.rstrip('\x00')
             if device.dev.serial_number is not None:
-                self.serial  = device.dev.serial_number.rstrip('\x00')
-            #serial number has ascii null chars that must be removed
+                self.serial_number = device.dev.serial_number.rstrip('\x00')
+            # serial number has ascii null chars that must be removed
             return
         else:
             self.bus     = int(device.bus)
@@ -214,8 +212,8 @@ class DeviceID:
                 if device.product is not None:
                     self.product = device.product.rstrip('\x00')
                 if device.serial_number is not None:
-                    self.serial  = device.serial_number.rstrip('\x00')
-                #serial number has ascii null chars that must be removed
+                    self.serial_number = device.serial_number.rstrip('\x00')
+                # serial number has ascii null chars that must be removed
             except Exception as e:
                 log.error(f"While creating device id encountered {e}")
             return
@@ -310,7 +308,7 @@ class DeviceID:
         if   self.type == "USB":  return f"<DeviceID {self.type}:0x{self.vid:04x}:0x{self.pid:04x}:{self.bus}:{self.address}>"
         elif self.type == "FILE": return f"<DeviceID {self.type}:{self.directory}>"
         elif self.type == "MOCK": return f"<DeviceID {self.type}:{self.name}:{self.directory}>"
-        elif self.type == "BLE":  return f"<DeviceID {self.type}:{self.serial_number}> (RSSI {self.rssi})"
+        elif self.type == "BLE":  return f"<DeviceID {self.type}:{self.serial_number}>"
         elif self.type == "TCP":  return f"<DeviceID {self.type}:{self.address}:{self.port}>"
         else: raise Exception("unsupported DeviceID type %s" % self.type)
 

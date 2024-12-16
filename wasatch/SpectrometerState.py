@@ -23,6 +23,7 @@ class SpectrometerState:
 
         # detector
         self.integration_time_ms = 0
+        self.prev_integration_time_ms = 10
         self.ignore_timeouts_until = None
 
         # TEC       @todo rename detector_tec...
