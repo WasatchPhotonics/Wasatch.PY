@@ -79,6 +79,12 @@ class BLEDevice(InterfaceDevice):
     wasatch.BLEDevice manage its own asyncio.run_loop for turning WrapperWorker 
     requests into await-able async calls.
 
+    I am unclear whether it is safe / recommended to have multiple asyncio 
+    run_loops in a single application (especially when that application is built
+    atop PySide6, which has run-loops of its own). I don't know if this helps or
+    hurts, but currently I'm making the BLEDevice run-loop a public singleton so
+    it can be shared across BLEDevice instances, as well as with BLEManager.
+
     # wasatch.DeviceID
 
     The bleak.BLEDevice is attached to the wasatch.DeviceID because we have 
@@ -111,10 +117,12 @@ class BLEDevice(InterfaceDevice):
     DeviceFinderBLE generates a wasatch.DeviceID with both displayable
     (serial_number and rssi) and hidden (bleak_ble_device) attributes.
 
-    wasatch.DeviceFinderBLE 
-
-    To generate a bleak.BleakClient, we need the bleak.backends.device.BLEDevice from BleakScanner.
-    Therefore, that handle needs to be 
+    To generate a bleak.BleakClient, we need the bleak.backends.device.BLEDevice
+    from BleakScanner. Therefore, that handle needs to be be available in 
+    wasatch.BLEDevice. The easiest way to get it there is for 
+    wasatch.DeviceFinderBLE to embed it in the wasatch.DeviceID it writes to the
+    wasatch.DiscoveredBLEDevice that it sends back to enlighten.BLEManager, so
+    BLEManager can write the selected DeviceID to Controller.other_device_ids.
 
     @todo consider https://github.com/django/asgiref#function-wrappers
     """
@@ -141,6 +149,32 @@ class BLEDevice(InterfaceDevice):
         35: ("AUTO_LASER_WARMUP",           "Auto-Dark/Raman is paused during laser warmup period"),
         36: ("AUTO_TAKING_RAMAN",           "Auto-Dark/Raman is taking Raman measurements"),
     }
+
+    # public singleton
+    static_run_loop = None
+    static_thread = None
+
+    @staticmethod
+    def get_run_loop():
+
+        def make_run_loop():
+            log.debug("make_run_loop: setting run_loop")
+            asyncio.set_event_loop(BLEDevice.static_run_loop)
+            log.debug("make_run_loop: running run_loop forever")
+            BLEDevice.static_run_loop.run_forever()
+            log.debug("make_run_loop: done")
+
+        if BLEDevice.static_run_loop is None:
+            log.debug("get_run_loop: instantiating event loop")
+            BLEDevice.static_run_loop = asyncio.new_event_loop()
+
+            log.debug("get_run_loop: instantiating Thread")
+            static_thread = Thread(target=make_run_loop, daemon=True)
+
+            log.debug("get_run_loop: starting thread")
+            static_thread.start()
+
+        return BLEDevice.static_run_loop
 
     def __init__(self, device_id, message_queue=None, alert_queue=None):
         log.debug("init: start")
@@ -180,27 +214,12 @@ class BLEDevice(InterfaceDevice):
         self.settings = SpectrometerSettings(self.device_id)
 
         log.debug("init: creating scan_loop")
-        self.run_loop = asyncio.new_event_loop()
-
-        log.debug("init: instantiating Thread")
-        self.thread = Thread(target=self.make_run_loop, daemon=True)
-
-        log.debug("init: starting thread")
-        self.thread.start()
+        self.run_loop = self.get_run_loop()
 
         log.debug("init: initializing process funcs")
         self.process_f = self.init_process_funcs()
 
         log.debug("init: done")
-
-    def make_run_loop(self):
-        log.debug("make_run_loop: setting run_loop")
-        asyncio.set_event_loop(self.run_loop)
-        
-        log.debug("make_run_loop: running run_loop forever")
-        self.run_loop.run_forever()
-
-        log.debug("make_run_loop: done")
 
     def  __str__(self): return f"<BLEDevice device_id {self.device_id}>"
     def __hash__(self): return hash(str(self))
@@ -344,7 +363,7 @@ class BLEDevice(InterfaceDevice):
                     await self.client.start_notify(char.uuid, self.generics.notification_callback)
                     self.notifications.add(char.uuid)
                 elif name == "ACQUIRE":
-                    self.debug(f"starting {name} notifications")
+                    log.debug(f"starting {name} notifications")
                     await self.client.start_notify(char.uuid, self.acquire_notification)
                     self.notifications.add(char.uuid)
 
@@ -620,7 +639,7 @@ class BLEDevice(InterfaceDevice):
             status = data[2]
             payload = data[3:]
             msg = self.parse_acquire_status(status, payload)
-            self.debug(f"acquire_notification: {msg}")
+            log.debug(f"acquire_notification: {msg}")
             return
 
         ########################################################################
@@ -643,7 +662,7 @@ class BLEDevice(InterfaceDevice):
             self.pixels_read += 1
 
             if self.pixels_read == self.pixels:
-                # self.debug("read complete spectrum")
+                # log.debug("read complete spectrum")
                 if (i + 1 != pixels_in_packet):
                     raise RuntimeError(f"trailing pixels in packet")
 
@@ -664,7 +683,7 @@ class BLEDevice(InterfaceDevice):
             if not keep_waiting and (datetime.now() - start_time).total_seconds() * 1000 > timeout_ms:
                 raise RuntimeError(f"failed to read spectrum within timeout {timeout_ms}ms")
 
-            # self.debug(f"still waiting for spectra ({self.pixels_read}/{self.pixels} read)")
+            # log.debug(f"still waiting for spectra ({self.pixels_read}/{self.pixels} read)")
             await asyncio.sleep(0.2)
 
         ########################################################################
@@ -672,7 +691,7 @@ class BLEDevice(InterfaceDevice):
         ########################################################################
 
         # note, this needs updated for 633XS
-        self.debug("applying 2x2 binning")
+        log.debug("applying 2x2 binning")
         binned = []
         for i in range(len(spectrum)-1):
             binned.append((spectrum[i] + spectrum[i+1]) / 2.0)
@@ -710,14 +729,14 @@ class BLEDevice(InterfaceDevice):
                 request.append(page)
                 request.append(subpage)
 
-                self.debug(f"read_eeprom_pages: querying {name} ({to_hex(request)})")
+                log.debug(f"read_eeprom_pages: querying {name} ({to_hex(request)})")
                 await self.write_char("GENERIC", request, callback=lambda data: self.generics.process_response(name, data))
 
-                self.debug(f"read_eeprom_pages: waiting on {name}")
+                log.debug(f"read_eeprom_pages: waiting on {name}")
                 await self.generics.wait(name)
 
                 data = self.generics.get_value(name)
-                self.debug(f"read_eeprom_pages: received page {page}, subpage {subpage}: {data}")
+                log.debug(f"read_eeprom_pages: received page {page}, subpage {subpage}: {data}")
 
                 for byte in data:
                     buf.append(byte)
