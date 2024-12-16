@@ -16,6 +16,12 @@ from wasatch.SpectrometerResponse import SpectrometerResponse, ErrorLevel
 
 log = logging.getLogger(__name__)
 
+# static, so available class-wide
+def to_hex(a):
+    if a is None:
+        return "[ ]"
+    return "[ " + ", ".join([f"0x{v:02x}" for v in a]) + " ]"
+
 class BLEDevice(InterfaceDevice):
     """
     This class is the BLE counterpart to our USB WasatchDevice, likewise
@@ -231,7 +237,8 @@ class BLEDevice(InterfaceDevice):
     def disconnect(self):
         log.debug("disconnect: start")
         try:
-            asyncio.run_coroutine_threadsafe(self.client.disconnect(), self.run_loop)
+            future = asyncio.run_coroutine_threadsafe(self.client.disconnect(), self.run_loop)
+            response = future.result()
         except:
             log.error("exception calling BleakClient.disconnect", exc_info=1)
         log.debug("disconnect: done")
@@ -279,22 +286,21 @@ class BLEDevice(InterfaceDevice):
         await self.load_characteristics()
 
         log.debug(f"connect_async: reading EEPROM")
-        self.read_eeprom()
+        await self.read_eeprom()
 
         log.debug("connect_async: processing retrieved EEPROM")
-        self.settings.eeprom.parse(self.pages)
         self.settings.update_wavecal()
 
         # grab initial integration time (used for acquisition timeout)
-        self.integration_time_ms = self.eeprom["startup_integration_time_ms"]
+        self.integration_time_ms = self.settings.eeprom.startup_integration_time_ms
 
-        msg  = f"Connected to {self.eeprom.model} {self.eeprom.serial_number} with {self.settings.pixels()} pixels "
+        msg  = f"Connected to {self.settings.eeprom.model} {self.settings.eeprom.serial_number} with {self.settings.pixels()} pixels "
         msg += f"from ({self.settings.wavelengths[0]:.2f}, {self.settings.wavelengths[-1]:.2f}nm)"
         if self.settings.wavenumbers:
             msg += f" ({self.settings.wavenumbers[0]:.2f}, {self.settings.wavenumbers[-1]:.2f}cm⁻¹)"
         log.debug(msg)
 
-        elapsed_sec = (datetime.now() - self.start_time).total_seconds()
+        elapsed_sec = (datetime.now() - start_time).total_seconds()
         log.debug(f"connect_async: connection took {elapsed_sec:.2f} sec")
 
         log.debug("connect_async: done")
@@ -491,8 +497,8 @@ class BLEDevice(InterfaceDevice):
                  (ms >>  8) & 0xff,
                  (ms      ) & 0xff ] # LSB
         await self.write_char("INTEGRATION_TIME_MS", data)
-        self.last_integration_time_ms = self.integration_time_ms
-        self.integration_time_ms = ms
+        self.settings.state.prev_integration_time_ms = self.settings.state.integration_time_ms
+        self.settings.state.integration_time_ms = ms
         return SpectrometerResponse(True)
 
     async def set_gain_db(self, db):
@@ -501,12 +507,13 @@ class BLEDevice(InterfaceDevice):
         msb = int(db) & 0xff
         lsb = int((db - int(db)) * 256) & 0xff
         await self.write_char("GAIN_DB", [msb, lsb])
+        self.settings.state.gain_db = db
         return SpectrometerResponse(True)
 
     async def set_scans_to_average(self, n):
         log.debug(f"setting scan averaging to {n}")
         await self.write_char("GENERIC", self.generics.generate_write_request("SCANS_TO_AVERAGE", n))
-        self.scans_to_average = n
+        self.settings.state.scans_to_average = n
         return SpectrometerResponse(True)
 
     async def set_start_line(self, n):
@@ -600,13 +607,16 @@ class BLEDevice(InterfaceDevice):
         log.debug("acquire_data: start")
 
         log.debug("acquire_data: calling get_spectrum")
-        spectrum = asyncio.run_coroutine_threadsafe(self.get_spectrum, self.run_loop)
+        future = asyncio.run_coroutine_threadsafe(self.get_spectrum(), self.run_loop)
+        spectrum = future.result()
         log.debug(f"acquire_data: back from get_spectrum (spectrum {spectrum})")
+
+        log.debug(f"acquire_data: received spectrum of length {len(spectrum)}: {spectrum[:10]}")
         
         reading = Reading()
         reading.spectrum = spectrum
 
-        log.debug("acquire_data: done")
+        log.debug(f"acquire_data: returning Reading {reading}")
         return SpectrometerResponse(data=reading)
 
     def parse_acquire_status(self, status, payload):
@@ -648,7 +658,9 @@ class BLEDevice(InterfaceDevice):
 
         # validate first_pixel
         if first_pixel != self.pixels_read:
-            raise RuntimeError(f"received first_pixel {first_pixel} when pixels_read {self.pixels_read}")
+            # raise RuntimeError(f"received first_pixel {first_pixel} when pixels_read {self.pixels_read}")
+            log.error(f"received first_pixel {first_pixel} when pixels_read {self.pixels_read} (ignoring)")
+            return
 
         spectral_data = data[2:]
         pixels_in_packet = int(len(spectral_data) / 2)
@@ -661,29 +673,29 @@ class BLEDevice(InterfaceDevice):
             self.spectrum[self.pixels_read] = intensity
             self.pixels_read += 1
 
-            if self.pixels_read == self.pixels:
+            if self.pixels_read == self.settings.pixels():
                 # log.debug("read complete spectrum")
                 if (i + 1 != pixels_in_packet):
                     raise RuntimeError(f"trailing pixels in packet")
 
     async def get_spectrum(self, spectrum_type=0):
         self.pixels_read = 0
-        self.spectrum = [0] * self.pixels
+        self.spectrum = [0] * self.settings.pixels()
 
         # send the ACQUIRE
         await self.write_char("ACQUIRE", [spectrum_type], quiet=True)
 
         # compute timeout
-        timeout_ms = 4 * max(self.last_integration_time_ms, self.integration_time_ms) * self.scans_to_average + 6000 # 4sec latency + 2sec buffer
+        timeout_ms = 4 * max(self.settings.state.prev_integration_time_ms, self.settings.state.integration_time_ms) * self.settings.state.scans_to_average + 6000 # 4sec latency + 2sec buffer
 
         # wait for spectral data to arrive
         keep_waiting = False
         start_time = datetime.now()
-        while self.pixels_read < self.pixels:
+        while self.pixels_read < self.settings.pixels():
             if not keep_waiting and (datetime.now() - start_time).total_seconds() * 1000 > timeout_ms:
                 raise RuntimeError(f"failed to read spectrum within timeout {timeout_ms}ms")
 
-            # log.debug(f"still waiting for spectra ({self.pixels_read}/{self.pixels} read)")
+            # log.debug(f"still waiting for spectra ({self.pixels_read}/{self.settings.pixels()} read)")
             await asyncio.sleep(0.2)
 
         ########################################################################
@@ -693,10 +705,10 @@ class BLEDevice(InterfaceDevice):
         # note, this needs updated for 633XS
         log.debug("applying 2x2 binning")
         binned = []
-        for i in range(len(spectrum)-1):
-            binned.append((spectrum[i] + spectrum[i+1]) / 2.0)
-        binned.append(spectrum[-1])
-        spectrum = binned
+        for i in range(len(self.spectrum)-1):
+            binned.append((self.spectrum[i] + self.spectrum[i+1]) / 2.0)
+        binned.append(self.spectrum[-1])
+        self.spectrum = binned
 
         # @todo add bad-pixel correction
         # @todo add invert_detector
@@ -744,40 +756,6 @@ class BLEDevice(InterfaceDevice):
 
         elapsed_sec = (datetime.now() - start_time).total_seconds()
         print(f"reading eeprom took {elapsed_sec:.2f} sec")
-
-    def unpack_eeprom_field(self, address, data_type, field):
-        page       = address[0]
-        start_byte = address[1]
-        length     = address[2]
-        end_byte   = start_byte + length
-
-        if page > len(self.pages):
-            log.error("error unpacking EEPROM page %d, offset %d, len %d as %s: invalid page (field %s)" % ( 
-                page, start_byte, length, data_type, field))
-            return
-
-        buf = self.pages[page]
-        if buf is None or end_byte > len(buf):
-            log.error("error unpacking EEPROM page %d, offset %d, len %d as %s: buf is %s (field %s)" % ( 
-                page, start_byte, length, data_type, buf, field))
-            return
-
-        if data_type == "s":
-            unpack_result = ""
-            for c in buf[start_byte:end_byte]:
-                if c == 0:
-                    break
-                unpack_result += chr(c)
-        else:
-            unpack_result = 0 
-            try:
-                unpack_result = struct.unpack(data_type, buf[start_byte:end_byte])[0]
-            except Exception as ex:
-                log.error("error unpacking EEPROM page %d, offset %d, len %d as %s (field %s): %s" % (page, start_byte, length, data_type, field, ex))
-                return
-
-        # log.debug(f"Unpacked page {page:02d}, offset {start_byte:02d}, len {length:02d}, datatype {data_type}: {unpack_result} {field}")
-        self.eeprom[field] = unpack_result
 
     def init_process_funcs(self): # -> dict[str, Callable[..., Any]] 
         f = {}
@@ -901,7 +879,7 @@ class Generics:
             return self.callbacks.pop(seq)
 
         # probably an uncaught acknowledgement from a generic setter like SET_INTEGRATION_TIME_MS
-        debug(f"get_callback: seq {seq} not found in callbacks")
+        log.debug(f"get_callback: seq {seq} not found in callbacks")
 
     def add(self, name, tier, setter, getter, size, epsilon=0):
         self.generics[name] = Generic(name, tier, setter, getter, size, epsilon)
@@ -921,7 +899,7 @@ class Generics:
         self.generics[name].event.clear()
 
     async def process_acknowledgement(self, data, name):
-        debug(f"received acknowledgement for {name}")
+        log.debug(f"received acknowledgement for {name}")
         generic = self.generics[name]
         generic.event.set()
 
@@ -943,7 +921,7 @@ class Generics:
     async def notification_callback(self, sender, data):
         # STEP EIGHT: we have received a response notification from the Generic Characteristic
 
-        debug(f"received GENERIC notification from sender {sender}, data {to_hex(data)}")
+        log.debug(f"received GENERIC notification from sender {sender}, data {to_hex(data)}")
 
         # STEP NINE: extract the sequence number from the notification response
         result = None
