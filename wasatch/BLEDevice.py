@@ -159,10 +159,10 @@ class BLEDevice(InterfaceDevice):
          6: ("ERR_IMG_SNSR_STATE_TRANS_FLR","The sensor failed to apply acquisition parameters"),
          7: ("ERR_SPEC_ACQ_SIG_WAIT_TMO",   "The sensor failed to take a spectrum (timeout exceeded)"),
         32: ("AUTO_OPT_TARGET_RATIO",       "Auto-Raman is in the process of optimizing acquisition parameters"),
-        33: ("AUTO_TAKING_DARK",            "Auto-Dark/Raman is taking dark spectra"),
-        34: ("AUTO_LASER_WARNING_DELAY",    "Auto-Dark/Raman is paused during laser warning delay period"),
-        35: ("AUTO_LASER_WARMUP",           "Auto-Dark/Raman is paused during laser warmup period"),
-        36: ("AUTO_TAKING_RAMAN",           "Auto-Dark/Raman is taking Raman measurements"),
+        33: ("TAKING_DARK",                 "taking spectra (no laser)"),
+        34: ("LASER_WARNING_DELAY",         "paused during laser warning delay period"),
+        35: ("LASER_WARMUP",                "paused during laser warmup period"),
+        36: ("TAKING_RAMAN",                "taking spectra (laser enabled)"),
     }
 
     # public singleton
@@ -637,7 +637,7 @@ class BLEDevice(InterfaceDevice):
         laser_firing = laser_state['laser_firing']
         interlock_closed = 'closed (armed)' if laser_state['interlock_closed'] else 'open (safe)'
 
-        amb_temp = await self.get_generic_value("GET_AMBIENT_TEMPERATURE")
+        amb_temp = await self.get_generic_value("AMBIENT_TEMPERATURE_DEG_C")
         return f"Battery {battery_perc} ({battery_charging}), Laser {laser_firing}, Interlock {interlock_closed}, Amb {amb_temp}°C"
 
     ############################################################################
@@ -692,7 +692,8 @@ class BLEDevice(InterfaceDevice):
         elif status in [33, 34, 35, 36]:
             currentStep = int(payload[0] << 8 | payload[1])
             totalSteps  = int(payload[2] << 8 | payload[3])
-            msg += f" (step {currentStep}/{totalSteps})" 
+            if totalSteps > 1:
+                msg += f" (step {currentStep+1}/{totalSteps})" 
 
         return msg
     
