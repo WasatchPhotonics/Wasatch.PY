@@ -291,7 +291,10 @@ class WasatchDevice(InterfaceDevice):
         log.debug(f"WasatchDevice.acquire_spectrum_auto_raman: received {reading}")
 
         # return the completed TakeOneRequest and clear our internal handle
-        # @todo self.take_one_request should probably be a list...
+        #
+        # Note that Auto-Raman doesn't currently support "fast BatchCollection" 
+        # with TakeOneRequest.readings_target. I think that's okay, because that's
+        # not really what Auto-Raman is for.
         reading.take_one_request = self.take_one_request
         self.take_one_request = None
 
@@ -574,9 +577,15 @@ class WasatchDevice(InterfaceDevice):
             log.debug(f"AUTO-RAMAN ==> done")
 
         if tor:
-            log.debug(f"completed {tor}")
             reading.take_one_request = tor
-            self.take_one_request = None
+
+            # was this a "fast BatchCollection" with a streaming multi-reading TakeOneRequest?
+            if tor.readings_target:
+                tor.readings_current += 1
+
+            if not tor.readings_target or tor.readings_current >= tor.readings_target:
+                log.debug(f"completed {tor}")
+                self.take_one_request = None
 
         log.debug("device.acquire_spectrum: returning %s", reading)
         acquire_response.data = reading
