@@ -225,6 +225,8 @@ class BLEDevice(InterfaceDevice):
         log.debug("init: initializing process funcs")
         self.process_f = self.init_process_funcs()
 
+        self.session_reading_count = 0
+        
         log.debug("init: done")
 
     def  __str__(self): return f"<BLEDevice device_id {self.device_id}>"
@@ -275,6 +277,9 @@ class BLEDevice(InterfaceDevice):
                                   disconnected_callback=self.disconnected_callback,
                                   timeout=self.CONNECT_TIMEOUT_SEC)
         log.debug(f"connect_async: BleakClient instantiated: {self.client}")
+
+        # no longer need handle in DeviceID, so clear it to simplify deepcopy etc
+        self.device_id.bleak_ble_device = None
 
         log.debug(f"connect_async: calling client.connect")
         await self.client.connect()
@@ -604,19 +609,19 @@ class BLEDevice(InterfaceDevice):
     ############################################################################
 
     def acquire_data(self):
-        log.debug("acquire_data: start")
-
-        log.debug("acquire_data: calling get_spectrum")
         future = asyncio.run_coroutine_threadsafe(self.get_spectrum(), self.run_loop)
         spectrum = future.result()
-        log.debug(f"acquire_data: back from get_spectrum (spectrum {spectrum})")
 
         log.debug(f"acquire_data: received spectrum of length {len(spectrum)}: {spectrum[:10]}")
+        self.session_reading_count += 1
         
         reading = Reading()
         reading.spectrum = spectrum
+        reading.averaged = True
+        reading.session_count = self.session_reading_count
+        reading.timestamp_complete = datetime.now()
+        reading.device_id = self.device_id
 
-        log.debug(f"acquire_data: returning Reading {reading}")
         return SpectrometerResponse(data=reading)
 
     def parse_acquire_status(self, status, payload):
@@ -880,6 +885,10 @@ class Generics:
 
         # probably an uncaught acknowledgement from a generic setter like SET_INTEGRATION_TIME_MS
         log.debug(f"get_callback: seq {seq} not found in callbacks")
+
+        # @todo: we're getting these from SET_START_LINE / SET_STOP_LINE, where 
+        # the response notification doesn't seem to include the request's SEQ 
+        # number
 
     def add(self, name, tier, setter, getter, size, epsilon=0):
         self.generics[name] = Generic(name, tier, setter, getter, size, epsilon)

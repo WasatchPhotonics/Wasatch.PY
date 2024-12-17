@@ -312,6 +312,9 @@ class DeviceID:
         elif self.type == "TCP":  return f"<DeviceID {self.type}:{self.address}:{self.port}>"
         else: raise Exception("unsupported DeviceID type %s" % self.type)
 
+    # def __deepcopy__(self, memo):
+    #     return str(self)
+
     def __eq__(self, other):
         return str(self) == str(other)
 
