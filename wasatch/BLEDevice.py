@@ -130,6 +130,14 @@ class BLEDevice(InterfaceDevice):
     wasatch.DiscoveredBLEDevice that it sends back to enlighten.BLEManager, so
     BLEManager can write the selected DeviceID to Controller.other_device_ids.
 
+    # Issues
+
+    Bleak Notifications don't seem to work on Windows under Parallels (using a 
+    MacOS host). They work fine from a "real" Dell laptop, so this is probably
+    a Parallels bug.
+
+    # Misc
+
     @todo consider https://github.com/django/asgiref#function-wrappers
     """
 
