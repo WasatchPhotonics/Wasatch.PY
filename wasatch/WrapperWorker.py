@@ -192,9 +192,11 @@ class WrapperWorker(threading.Thread):
             except:
                 log.critical("exception calling WasatchDevice.acquire_data", exc_info=1)
                 continue
+
             if not isinstance(reading_response, SpectrometerResponse):
                 log.error(f"Reading is not type ReadingResponse. Should not get naked responses. Happened with request {req}")
                 continue
+
             log.debug(f"response {reading_response} data is {reading_response.data}")
 
             if self.callback:
