@@ -5,6 +5,7 @@ import logging
 from bleak import BleakClient
 from datetime import datetime
 from threading import Thread
+from functools import partial
 
 from wasatch.EEPROM               import EEPROM
 from wasatch.Reading              import Reading
@@ -420,22 +421,30 @@ class BLEDevice(InterfaceDevice):
             buf.append(byte)
         return buf
 
-    async def write_char(self, name, data, quiet=False, callback=None):
+    async def write_char(self, name, data, quiet=False, callback=None, ack_name=None):
         name = name.upper()
         uuid = self.get_uuid_by_name(name)
         if uuid is None:
             raise RuntimeError(f"invalid characteristic {name}")
+        extra = []
 
         if name == "GENERIC":
+            # STEP FIVE: allocate a new sequence number, and associate it with the passed callback
+            if callback is None and ack_name is not None:
+                # we weren't given an explicit callback, but this GENERIC opcode 
+                # generates an acknowledgement, so setup a lambda to catch it (so
+                # we can block on it before returning)
+                callback = partial(self.generics.process_acknowledgement, name=ack_name)
             seq = self.generics.next_seq(callback)
             prefixed = [ seq ]
             for v in data:
                 prefixed.append(v)
             data = prefixed
+            extra.append(self.expand_path(name, data))
 
         if not quiet:
             code = self.code_by_name.get(name)
-            log.debug(f">> write_char({name} 0x{code:02x}, {to_hex(data)})")
+            log.debug(f">> write_char({name} 0x{code:02x}, {to_hex(data)}){', '.join(extra)}")
 
         if isinstance(data, list):
             data = bytearray(data)
@@ -443,7 +452,30 @@ class BLEDevice(InterfaceDevice):
         # MZ: I'm not sure why all writes require a response, but empirical 
         # testing indicates we reliably get randomly scrambled EEPROM contents 
         # without this.
+
+        # STEP SEVEN: actually write the cmd (or for Generic reads, "read request") to the Peripheral
         await self.client.write_gatt_char(uuid, data, response=True)
+
+        if ack_name is not None:
+            # block on the acknowledgement we created above
+            log.debug(f"write_char: waiting for {ack_name} ack")
+            await self.generics.wait(ack_name)
+
+    def expand_path(self, name, data):
+        if name != "GENERIC":
+            return [ f"0x{v:02x}" for v in data ]
+        path = [ f"SEQ 0x{data[0]:02x}" ]
+        header = True
+        for i in range(1, len(data)):
+            if header:
+                code = data[i]
+                name = self.generics.get_name(code)
+                path.append(name)
+                if code != 0xff:
+                    header = False
+            else:
+                path.append(f"0x{data[i]:02x}")
+        return "[" + ", ".join(path) + "]"
 
     ############################################################################
     # Timeouts
@@ -503,40 +535,54 @@ class BLEDevice(InterfaceDevice):
     ############################################################################
 
     async def set_integration_time_ms(self, ms):
-        # using dedicated Characteristic, although 2nd-tier version now exists
-        log.debug(f"setting integration time to {ms}ms")
-        data = [ 0x00,               # fixed
-                 (ms >> 16) & 0xff,  # MSB
-                 (ms >>  8) & 0xff,
-                 (ms      ) & 0xff ] # LSB
-        await self.write_char("INTEGRATION_TIME_MS", data)
-        self.settings.state.prev_integration_time_ms = self.settings.state.integration_time_ms
-        self.settings.state.integration_time_ms = ms
+        name = "INTEGRATION_TIME_MS"
+        log.debug(f"setting {name} to {ms}ms")
+        try:
+            await self.write_char("GENERIC", self.generics.generate_write_request(name, ms), ack_name=name)
+
+            self.settings.state.prev_integration_time_ms = self.settings.state.integration_time_ms
+            self.settings.state.integration_time_ms = ms
+        except:
+            log.error(f"error setting {name}", exc_info=1)
         return SpectrometerResponse(True)
 
     async def set_gain_db(self, db):
-        # using dedicated Characteristic, although 2nd-tier version now exists
-        log.debug(f"setting gain to {db}dB")
-        msb = int(db) & 0xff
-        lsb = int((db - int(db)) * 256) & 0xff
-        await self.write_char("GAIN_DB", [msb, lsb])
-        self.settings.state.gain_db = db
+        name = "GAIN_DB"
+        log.debug(f"setting {name} to {db}dB")
+        try:
+            await self.write_char("GENERIC", self.generics.generate_write_request(name, db), ack_name=name)
+
+            self.settings.state.gain_db = db
+        except:
+            log.error(f"error setting {name}", exc_info=1)
         return SpectrometerResponse(True)
 
     async def set_scans_to_average(self, n):
-        log.debug(f"setting scan averaging to {n}")
-        await self.write_char("GENERIC", self.generics.generate_write_request("SCANS_TO_AVERAGE", n))
-        self.settings.state.scans_to_average = n
+        name = "SCANS_TO_AVERAGE"
+        log.debug(f"setting {name} to {n}")
+        try:
+            await self.write_char("GENERIC", self.generics.generate_write_request(name, n), ack_name=name)
+            self.settings.state.scans_to_average = n
+        except:
+            log.error(f"error setting {name}", exc_info=1)
         return SpectrometerResponse(True)
 
     async def set_start_line(self, n):
-        log.debug(f"setting start line to {n}")
-        await self.write_char("GENERIC", self.generics.generate_write_request("START_LINE", n))
+        name = "START_LINE"
+        log.debug(f"setting {name} to {n}")
+        try:
+            await self.write_char("GENERIC", self.generics.generate_write_request(name, n))
+        except:
+            log.error(f"error setting {name}", exc_info=1)
         return SpectrometerResponse(True)
 
     async def set_stop_line(self, n):
-        log.debug(f"setting stop line to {n}")
-        await self.write_char("GENERIC", self.generics.generate_write_request("STOP_LINE", n))
+        name = "STOP_LINE"
+        log.debug(f"setting {name} to {n}")
+        try:
+            await self.write_char("GENERIC", self.generics.generate_write_request(name, n))
+        except:
+            log.error(f"error setting {name}", exc_info=1)
         return SpectrometerResponse(True)
 
     async def set_vertical_roi(self, pair):
@@ -696,7 +742,8 @@ class BLEDevice(InterfaceDevice):
         self.spectrum = [0] * self.settings.pixels()
 
         # send the ACQUIRE
-        await self.write_char("ACQUIRE", [spectrum_type], quiet=True)
+        log.debug(f"sending ACQUIRE with type {spectrum_type}")
+        await self.write_char("ACQUIRE", [spectrum_type])
 
         # compute timeout
         timeout_ms = 4 * max(self.settings.state.prev_integration_time_ms, self.settings.state.integration_time_ms) * self.settings.state.scans_to_average + 6000 # 4sec latency + 2sec buffer
