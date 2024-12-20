@@ -5,10 +5,6 @@ import platform
 from functools import partial
 
 if platform.system() == "Darwin":
-    # would like to include in Mac stub
-    # * imports must be at the module level though
-    from ctypes import *
-    from CoreFoundation import *
     import usb.backend.libusb1 as backend
 else:
     import usb.backend.libusb0 as backend

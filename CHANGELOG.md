@@ -1,5 +1,7 @@
 # Changelog
 
+- 2024-??-?? 2.2.16
+    - trace previous integration time, use in computing timeouts
 - 2024-12-06 2.2.15
     - XL Fixes
         - fixed scan averaging
