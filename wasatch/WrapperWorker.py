@@ -150,21 +150,24 @@ class WrapperWorker(threading.Thread):
                         # laser etc in due sequence.  We can break AFTER relaying
                         # applying the queued settings.
                     else:
-                        log.debug("processing command queue: %s", record.setting)
+                        try:
+                            log.debug("processing command queue: %s", record.setting)
 
-                        # basically, this simply moves each de-dupped command from
-                        # WasatchDeviceWrapper.command_queue to WasatchDevice.command_queue,
-                        # where it gets read during the next call to
-                        # WasatchDevice.acquire_data.
-                        if record.setting == "reset":
-                            log.debug(f"calling reset from command queue")
-                        req = SpectrometerRequest(record.setting, args=[record.value])
-                        self.connected_device.handle_requests([req])
- 
-                        # peek in some settings locally
-                        if record.setting == "num_connected_devices":
-                            num_connected_devices = record.value
-
+                            # basically, this simply moves each de-dupped command from
+                            # WasatchDeviceWrapper.command_queue to WasatchDevice.command_queue,
+                            # where it gets read during the next call to
+                            # WasatchDevice.acquire_data.
+                            if record.setting == "reset":
+                                log.debug(f"calling reset from command queue")
+                            req = SpectrometerRequest(record.setting, args=[record.value])
+                            self.connected_device.handle_requests([req])
+     
+                            # peek in some settings locally
+                            if record.setting == "num_connected_devices":
+                                num_connected_devices = record.value
+                        except:
+                            log.error("failed to process record {record}, treating as poison pill", exc_info=1)
+                            received_poison_pill_command = True
             else:
                 log.debug("command queue empty")
 
@@ -264,24 +267,27 @@ class WrapperWorker(threading.Thread):
 
         log.critical("done")
 
-    def dedupe(self, q: Queue): # -> list[ControlObject] 
+    def dedupe(self, q: Queue):
         keep = [] # list, not a set, because we want to keep it ordered
-        while True:
-            if not q.empty():
-                control_object = q.get_nowait() 
+        try:
+            while True:
+                if not q.empty():
+                    control_object = q.get_nowait() 
 
-                # treat None elements (poison pills) same as everything else
-                setting = None if control_object is None else control_object.setting
+                    # treat None elements (poison pills) same as everything else
+                    setting = None if control_object is None else control_object.setting
 
-                # remove previous setting if duplicate
-                new_keep = []
-                for co in keep:
-                    if co.setting != setting:
-                        new_keep.append(co)
-                keep = new_keep
+                    # remove previous setting if duplicate
+                    new_keep = []
+                    for co in keep:
+                        if co.setting != setting:
+                            new_keep.append(co)
+                    keep = new_keep
 
-                # append the setting to the de-dupped list and track index
-                keep.append(control_object)
-            else:
-                break
+                    # append the setting to the de-dupped list and track index
+                    keep.append(control_object)
+                else:
+                    break
+        except:
+            log.error("failed to dedupe command queue", exc_info=1)
         return keep
