@@ -171,7 +171,7 @@ class DeviceID:
             #     is implicitly USB.
 
             # instantiate from a PyUSB Device
-            log.debug(f"instantiating from device {device}")
+            #log.debug(f"instantiating from device {device}")
             self.type = "USB"
             self.vid = int(device.idVendor)
             self.pid = int(device.idProduct)
