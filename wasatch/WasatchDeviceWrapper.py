@@ -381,7 +381,7 @@ class WasatchDeviceWrapper:
                 return wrapper_response
 
             # apparently we read a Reading
-            log.debug("get_final_item: read Reading {wrapper_response.data}")
+            log.debug(f"get_final_item: read Reading {wrapper_response.data}")
             last_response = wrapper_response
             dequeue_count += 1
 
