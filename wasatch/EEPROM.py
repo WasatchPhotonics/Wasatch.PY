@@ -189,7 +189,7 @@ class EEPROM:
     ## 
     # given a set of the 8 buffers read from a spectrometer via USB,
     # parse those into the approrpriate fields and datatypes
-    def parse(self, buffers): # -> bool 
+    def parse(self, buffers):
         if len(buffers) < EEPROM.MAX_PAGES:
             log.error("EEPROM.parse expects at least %d buffers", EEPROM.MAX_PAGES)
             return False

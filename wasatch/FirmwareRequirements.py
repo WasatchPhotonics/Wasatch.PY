@@ -18,7 +18,7 @@ class FirmwareRequirements:
         self.feature_versions = {
             "imx_stabilization":                { "microcontroller": { "min": "1.0.7.0" } },
             "microcontroller_serial_number":    { "microcontroller": { "min": "1.0.4.5", "unsupported": [ "11.3.0.37" ] } },
-            "get_ble_firmware_version":         { "microcontroller": { "min": "1.0.4.5", "unsupported": [ "11.3.0.37" ] } },
+            "get_ble_firmware_version":         { "microcontroller": { "min": "1.0.4.5", "unsupported": [ "11.3.0.37", "1.0.33.7" ] } },
             "get_laser_warning_delay_sec":      { "microcontroller": { "min": "1.0.4.5", "unsupported": [ "11.3.0.37" ] } },
         }
 
