@@ -308,8 +308,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # Automatically disable laser at connection
         # ######################################################################
 
-        if self.settings.eeprom.has_laser:
-            self.set_laser_enable(False)
+        # if self.settings.eeprom.has_laser:
+        #     self.set_laser_enable(False)
 
         # ######################################################################
         # TEC Setpoint
