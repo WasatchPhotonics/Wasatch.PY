@@ -47,7 +47,7 @@ class EEPROM:
         self.gen15                       = False
         self.cutoff_filter_installed     = False
         self.hardware_even_odd           = False
-        self.sig_laser_tec               = False
+        self.sig_laser_tec               = False # better: sig_sml_laser_tec
         self.has_interlock_feedback      = False
         self.has_shutter                 = False
         self.disable_ble_power           = False

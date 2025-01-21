@@ -409,11 +409,12 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
             if self.settings.eeprom.has_laser:
                 has_sml = self.settings.eeprom.has_sml()
-                has_tec = self.settings.eeprom.sig_laser_tec
+                sig_laser_tec = self.settings.eeprom.sig_laser_tec
+                log.debug(f"is_xs {self.settings.is_xs()}, has_laser {self.settings.eeprom.has_laser}, has_sml {has_sml}, sig_laser_tec {sig_laser_tec}")
 
                 # laser watchdog
                 sec = self.settings.eeprom.laser_watchdog_sec
-                if sec <= 0 and has_sml and not has_tec:
+                if sec <= 0 and has_sml and not sig_laser_tec:
                     sec = EEPROM.DEFAULT_LASER_WATCHDOG_SEC
                     log.debug(f"declining to disable laser watchdog for SML w/o TEC, defaulting to {sec}sec")
                 log.debug(f"post-connect: initializing laser watchdog to {sec}sec")
