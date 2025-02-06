@@ -1317,6 +1317,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         else:
             timeout_ms = max_integ_ms * 2 + 1000 * self.settings.num_connected_devices
 
+        timeout_ms = int(timeout_ms)            
+
         self._wait_for_usb_available()
 
         ########################################################################
@@ -1329,7 +1331,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
             data = None
             while data is None:
                 try:
-                    log.debug("waiting for %d bytes (timeout %dms)", block_len_bytes, timeout_ms)
+                    log.debug("waiting for %d bytes (timeout %s ms)", block_len_bytes, timeout_ms)
                     data = self.device_type.read(self.device, endpoint, block_len_bytes, timeout=timeout_ms)
                     log.debug("read %d bytes", len(data))
                 except Exception as exc:
@@ -1346,7 +1348,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                         pass
                     else:
                         errors += 1
-                        log.error(f"Encountered error on read of {exc}")
+                        log.error(f"Encountered error on read of {exc}", exc_info=1)
                         if errors < 3:
                             log.error(f"ignoring error number {errors}")
                         else:
