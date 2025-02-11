@@ -63,46 +63,92 @@ log = logging.getLogger(__name__)
 # be uniquely identifiable and addressable from their bus address, WITHOUT making
 # guesses based on position or ordering or claim-state or anything like that.
 #
-# So yeah, I think this is useful and a good design.
+# So yeah, I think this is useful.
 #
-# @note USB VID and PID are stored as ints
+# @par USB
+#
+# - .vid and .pid are stored as ints
+#
+# @par BLE
+#
+# - populates .bleak_ble_device (bleak.BLEDevice from BleakScanner)
+# - populates .serial_number
+#
+# Adding the non-pickleable .bleak_ble_device kind of defeats some of the 
+# original intent of this class, as ideally serialized (stringified) DeviceIDs 
+# were intended to be passable between processes and "re-instantiated" on the 
+# receiving end.
+#
+# However, now that ENLIGHTEN is multi-threaded (instead of multi-process), we
+# don't have to worry about that, and it seems convenient to simply stash a 
+# handle to the Bleak Device directly in the DeviceID, where it can be passed
+# from DeviceFinderBLE to BLEManager to WasatchDeviceWrapper/WrapperWorker to 
+# BLEDevice.
+#
+# Serial number is tracked in the DeviceID (rather than DiscoveredBLEDevice) 
+# because the current DeviceID architecture is to dynamically generate its 
+# stringified form, based on internal native types. 
+# 
+# @see BLEDevice for consolidated BLE docs
+#
+# @par TCP
+#
+# - uses .address and .port
+#
 class DeviceID:
 
     ##
     # Instantiates a DeviceID object from either a usb.device or an
     # existing device_id string representation.
-    def __init__(self, device=None, label=None, directory=None, device_type=None, overrides=None, spectra_options=None):
+    #
+    # @param device is a usb.device from pyusb
+    # @param directory is used with FILE spectrometers
+    # @param device_type: this seems to be currently exclusively used to 
+    #        distinguish between RealUSBDevice and MockUSBDevice (both extending
+    #        AbstractUSBDevice).
+    def __init__(self, device=None, label=None, directory=None, device_type=None, overrides=None, spectra_options=None, bleak_ble_device=None):
 
-        self.type      = None
-        self.vid       = None
-        self.pid       = None
-        self.bus       = None
-        self.address   = None
-        self.port      = None
-        self.directory = None
-        self.name      = None
-        self.overrides = overrides
-        self.device_type = device_type
-        self.spectra_options = spectra_options
+        self.type          = None   # "USB", "FILE", "MOCK", "BLE", "TCP"
+
+        # USB
+        self.vid           = None   # USB
+        self.pid           = None   # USB
+        self.bus           = None   # USB
+        self.address       = None   # USB, TCP
+
+        # MOCK
+        self.name          = None   # MOCK?
+        self.device_type   = device_type
+
+        # FILE
+        self.directory     = None   # FILE
+
+        # BLE
+        self.serial_number = None
+        self.bleak_ble_device = bleak_ble_device
+
+        self.overrides = overrides                  # MZ: what is this?
+        self.spectra_options = spectra_options      # MZ: what is this?
+        
+        self.bleak_device = None
 
         if label is not None:
             # instantiate from an existing string id
             if label.startswith("USB:"):
                 tok = label.split(":")
-                self.type = "USB"
+                self.type = tok[0]
                 self.vid = int(tok[1][2:])
                 self.pid = int(tok[2][2:])
                 self.bus = int(tok[3])
                 self.address = int(tok[4])
             elif label.startswith("FILE:"):
                 tok = label.split(":")
-                self.type = "FILE"
+                self.type = tok[0]
                 self.directory = tok[1]
             elif label.startswith("BLE:"):
                 tok = label.split(":")
-                self.type = "BLE"
-                self.address = tok[1]
-                self.name = tok[2]
+                self.type = tok[0]
+                self.serial_number = tok[1]
             elif label.startswith("TCP:"):
                 tok = label.split(":")
                 self.type = "TCP"
@@ -110,7 +156,7 @@ class DeviceID:
                 self.port = int(tok[2])
             elif label.startswith("MOCK:"):
                 tok = label.split(":")
-                self.type = "MOCK"
+                self.type = tok[0]
                 self.name = tok[1]
                 self.directory = tok[2]
                 self.vid = int(str(hash(self.name)))
@@ -154,8 +200,8 @@ class DeviceID:
             if device.dev.product is not None:
                 self.product = device.dev.product.rstrip('\x00')
             if device.dev.serial_number is not None:
-                self.serial  = device.dev.serial_number.rstrip('\x00')
-            #serial number has ascii null chars that must be removed
+                self.serial_number = device.dev.serial_number.rstrip('\x00')
+            # serial number has ascii null chars that must be removed
             return
         else:
             self.bus     = int(device.bus)
@@ -166,8 +212,8 @@ class DeviceID:
                 if device.product is not None:
                     self.product = device.product.rstrip('\x00')
                 if device.serial_number is not None:
-                    self.serial  = device.serial_number.rstrip('\x00')
-                #serial number has ascii null chars that must be removed
+                    self.serial_number = device.serial_number.rstrip('\x00')
+                # serial number has ascii null chars that must be removed
             except Exception as e:
                 log.error(f"While creating device id encountered {e}")
             return
@@ -258,22 +304,16 @@ class DeviceID:
     # as a string containing all the relevant bits neccessary to reconstruct
     # the object into a parsed structure while providing a concise, readable
     # and hashable unique key.
-    def __str__(self):
-        if self.type.upper() == "USB":
-            return "<DeviceID USB %s:0x%04x:0x%04x:%d:%d>" % (self.type.upper(), self.vid, self.pid, self.bus, self.address)
-        elif self.type.upper() == "FILE":
-            return "<Device ID FILE %s:%s>" % (self.type.upper(), self.directory)
-        elif self.type.upper() == "MOCK":
-            return f"<Device ID MOCK {self.name} {self.directory}>"
-        elif self.type.upper() == "BLE":
-            return f"<Device ID BLE {self.name}:{self.address}>"
-        elif self.type.upper() == "TCP":
-            return f"<Device ID {self.type} {self.address}:{self.port}>"
-        else:
-            raise Exception("unsupported DeviceID type %s" % self.type)
-
     def __repr__(self):
-        return str(self)
+        if   self.type == "USB":  return f"<DeviceID {self.type}:0x{self.vid:04x}:0x{self.pid:04x}:{self.bus}:{self.address}>"
+        elif self.type == "FILE": return f"<DeviceID {self.type}:{self.directory}>"
+        elif self.type == "MOCK": return f"<DeviceID {self.type}:{self.name}:{self.directory}>"
+        elif self.type == "BLE":  return f"<DeviceID {self.type}:{self.serial_number}>"
+        elif self.type == "TCP":  return f"<DeviceID {self.type}:{self.address}:{self.port}>"
+        else: raise Exception("unsupported DeviceID type %s" % self.type)
+
+    # def __deepcopy__(self, memo):
+    #     return str(self)
 
     def __eq__(self, other):
         return str(self) == str(other)

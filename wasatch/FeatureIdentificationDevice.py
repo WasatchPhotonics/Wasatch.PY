@@ -120,6 +120,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.detector_tec_setpoint_has_been_set = False
         self.last_applied_laser_power = 0.0 # last power level APPLIED to laser, either by turning off (0) or on 
         self.next_applied_laser_power = None # power level to be applied NEXT time the laser is enabled
+        self.has_received_spectrum = False
 
         self.raise_exceptions = False
         self.inject_random_errors = False
@@ -307,8 +308,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # Automatically disable laser at connection
         # ######################################################################
 
-        if self.settings.eeprom.has_laser:
-            self.set_laser_enable(False)
+        # if self.settings.eeprom.has_laser:
+        #     self.set_laser_enable(False)
 
         # ######################################################################
         # TEC Setpoint
@@ -408,11 +409,12 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
             if self.settings.eeprom.has_laser:
                 has_sml = self.settings.eeprom.has_sml()
-                has_tec = self.settings.eeprom.sig_laser_tec
+                sig_laser_tec = self.settings.eeprom.sig_laser_tec
+                log.debug(f"is_xs {self.settings.is_xs()}, has_laser {self.settings.eeprom.has_laser}, has_sml {has_sml}, sig_laser_tec {sig_laser_tec}")
 
                 # laser watchdog
                 sec = self.settings.eeprom.laser_watchdog_sec
-                if sec <= 0 and has_sml and not has_tec:
+                if sec <= 0 and has_sml and not sig_laser_tec:
                     sec = EEPROM.DEFAULT_LASER_WATCHDOG_SEC
                     log.debug(f"declining to disable laser watchdog for SML w/o TEC, defaulting to {sec}sec")
                 log.debug(f"post-connect: initializing laser watchdog to {sec}sec")
@@ -1300,15 +1302,22 @@ class FeatureIdentificationDevice(InterfaceDevice):
             endpoints = [0x82, 0x86]
             block_len_bytes = 2048 # 1024 pixels apiece from two endpoints
 
+        max_integ_ms = max(self.settings.state.integration_time_ms, self.settings.state.prev_integration_time_ms)
+
         if self.settings.is_micro():
             # we have no idea if Series-XS has to "wake up" the sensor, so wait
             # long enough for 20ms + 8 throwaway frames if need be (IMX385 datasheet p69)
             if self.settings.state.onboard_averaging:
-                timeout_ms = self.settings.state.integration_time_ms * (self.settings.state.scans_to_average + 7) + 500 * self.settings.num_connected_devices + 20
+                timeout_ms = max_integ_ms * (self.settings.state.scans_to_average + 7) + 500 * self.settings.num_connected_devices + 20
             else:
-                timeout_ms = self.settings.state.integration_time_ms * 8 + 500 * self.settings.num_connected_devices + 20
+                timeout_ms = max_integ_ms * 8 + 500 * self.settings.num_connected_devices + 20
+
+            if not self.has_received_spectrum:
+                timeout_ms += 10000
         else:
-            timeout_ms = self.settings.state.integration_time_ms * 2 + 1000 * self.settings.num_connected_devices
+            timeout_ms = max_integ_ms * 2 + 1000 * self.settings.num_connected_devices
+
+        timeout_ms = int(timeout_ms)            
 
         self._wait_for_usb_available()
 
@@ -1322,7 +1331,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
             data = None
             while data is None:
                 try:
-                    log.debug("waiting for %d bytes (timeout %dms)", block_len_bytes, timeout_ms)
+                    log.debug("waiting for %d bytes (timeout %s ms)", block_len_bytes, timeout_ms)
                     data = self.device_type.read(self.device, endpoint, block_len_bytes, timeout=timeout_ms)
                     log.debug("read %d bytes", len(data))
                 except Exception as exc:
@@ -1339,7 +1348,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                         pass
                     else:
                         errors += 1
-                        log.error(f"Encountered error on read of {exc}")
+                        log.error(f"Encountered error on read of {exc}", exc_info=1)
                         if errors < 3:
                             log.error(f"ignoring error number {errors}")
                         else:
@@ -1386,6 +1395,13 @@ class FeatureIdentificationDevice(InterfaceDevice):
         #                   post-process the spectrum
         #
         ########################################################################
+
+        ########################################################################
+        # Success, so update "working" integration time
+        ########################################################################
+
+        self.settings.state.prev_integration_time_ms = self.settings.state.integration_time_ms
+        self.has_received_spectrum = True
 
         ########################################################################
         # Apply InGaAs even/odd gain/offset in software
@@ -1621,6 +1637,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         log.debug("SET_INTEGRATION_TIME_MS: now %d", ms)
 
         self.require_throwaway(ms != self.settings.state.integration_time_ms)
+        self.settings.state.prev_integration_time_ms = self.settings.state.integration_time_ms
         self.settings.state.integration_time_ms = ms
 
         if self.settings.is_xs():

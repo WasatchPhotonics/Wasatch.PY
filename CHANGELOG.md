@@ -1,5 +1,8 @@
 # Changelog
 
+- 2025-01-20 2.2.16
+    - trace previous integration time, use in computing timeouts
+    - disable automatic laser shutoff at connection
 - 2024-12-06 2.2.15
     - XL Fixes
         - fixed scan averaging

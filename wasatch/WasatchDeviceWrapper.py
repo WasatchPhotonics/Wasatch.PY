@@ -120,8 +120,6 @@ class WasatchDeviceWrapper:
                                        # contributors can be skipped).  If the most-recent
                                        # frame IS a partial summation contributor, then send it on.
 
-    DISABLE_RESPONSE_QUEUE = False
-
     # ##########################################################################
     #                                                                          #
     #                             Parent Thread                                #
@@ -351,21 +349,16 @@ class WasatchDeviceWrapper:
     # In the currently implementation, it seems unlikely that a "True" will ever
     # be passed up (we're basically converting them to None here).
     def get_final_item(self, keep_averaged=False): # -> SpectrometerResponse 
-        last_reading  = SpectrometerResponse()
-        last_averaged = SpectrometerResponse()
+        last_response = SpectrometerResponse()
+        last_averaged_response = SpectrometerResponse()
         dequeue_count = 0
-
-        # kludge - memory profiling
-        if WasatchDeviceWrapper.DISABLE_RESPONSE_QUEUE and self.previous_reading is not None:
-            self.previous_reading.spectrum = [(1.1 - 0.2 * random.random()) * x for x in self.previous_reading.spectrum]
-            return self.previous_reading
 
         while True:
             # without waiting (don't block), just get the first item off the
             # queue if there is one
-            wrapper_reading = SpectrometerResponse()
+            wrapper_response = SpectrometerResponse()
             if not self.response_queue.empty():
-                wrapper_reading = self.response_queue.get_nowait()
+                wrapper_response = self.response_queue.get_nowait()
             else:
                 # If there is nothing more to read, then we've emptied the queue
                 # log.debug("get_final has nothing more to read, sending up readings")
@@ -373,23 +366,23 @@ class WasatchDeviceWrapper:
 
             # If we come across a keep_alive, ignore it for the moment.
             # for now continue cleaning-out the queue.
-            if wrapper_reading.keep_alive or wrapper_reading.data is None:
+            if wrapper_response.keep_alive or wrapper_response.data is None:
                 # If that keep alive is associated with an error though float it up
-                if wrapper_reading.keep_alive and wrapper_reading.error_msg:
-                    last_reading = wrapper_reading
+                if wrapper_response.keep_alive and wrapper_response.error_msg:
+                    last_response = wrapper_response
                     break
                 log.debug("get_final_item: ignoring keepalive")
                 continue
 
             # If we come across a poison-pill, flow that up immediately --
             # game-over, we're done
-            if wrapper_reading.poison_pill:
+            if wrapper_response.poison_pill:
                 log.critical("get_final_item: poison-pill!")
-                return wrapper_reading
+                return wrapper_response
 
             # apparently we read a Reading
-            log.debug("get_final_item: read Reading %s", str(wrapper_reading.data.session_count))
-            last_reading = wrapper_reading
+            log.debug(f"get_final_item: read Reading {wrapper_response.data}")
+            last_response = wrapper_response
             dequeue_count += 1
 
             # Was this the final spectrum in an averaged sequence?
@@ -400,15 +393,16 @@ class WasatchDeviceWrapper:
             # It is the purpose of this function ("get FINAL item...")
             # to PURGE THE QUEUE -- we are not intending to leave any
             # values in the queue (None, bool, or Readings of any kind.
-            if keep_averaged and wrapper_reading.data.averaged:
-                last_averaged = wrapper_reading
+            if keep_averaged and wrapper_response.data.averaged:
+                # log.debug("keeping last_response as last_averaged_response")
+                last_averaged_response = wrapper_response
 
-        if last_reading.data is None:
-            # log.debug("wrapper worker floating up keep alive last reading")
+        if last_response.data is None:
+            log.debug("wrapper worker floating up keep alive last reading")
             # apparently we didn't read anything...just pass up a keepalive
-            last_averaged = None
-            last_reading.keep_alive = True
-            return last_reading
+            last_averaged_response = None
+            last_response.keep_alive = True
+            return last_response
 
         # apparently we read at least some readings.  For interest, how how many
         # readings did we throw away (not return up to ENLIGHTEN)?
@@ -417,20 +411,18 @@ class WasatchDeviceWrapper:
 
         # if we're doing averaging, and we found one or more averaged readings,
         # return the latest of those
-        if last_averaged.data is not None:
-            if WasatchDeviceWrapper.DISABLE_RESPONSE_QUEUE:
-                self.previous_reading = last_averaged
-            last_reading = None
-            return last_averaged
+        if last_averaged_response.data is not None:
+            # log.debug("returning latest averaged reading")
+            last_response = None
+            return last_averaged_response
 
         # We've had every opportunity short-cut the process: we could have
         # returned potential poison pills or completed averages, but found
         # none of those.  Yet apparently we did read some normal readings.
         # Return the latest of those.
 
-        if WasatchDeviceWrapper.DISABLE_RESPONSE_QUEUE:
-            self.previous_reading = last_reading
-        return last_reading
+        # log.debug("returning last_response")
+        return last_response
 
     ##
     # Add the specified setting and value to the local control queue.
