@@ -5,7 +5,7 @@ class AutoRamanRequest:
     START_GAIN_DB           = 0
     MAX_INTEG_MS            = 2000
     MIN_INTEG_MS            = 10
-    MAX_GAIN_DB             = 32
+    MAX_GAIN_DB             = 30
     MIN_GAIN_DB             = 0
     TARGET_COUNTS           = 45000
     MAX_COUNTS              = 50000
@@ -82,7 +82,7 @@ if __name__ == "__main__":
         start_gain_db  = 0,
         max_integ_ms   = 2000,
         min_integ_ms   = 10,
-        max_gain_db    = 32,
+        max_gain_db    = 30,
         min_gain_db    = 0,
         target_counts  = 45000,
         max_counts     = 50000,
