@@ -1,5 +1,7 @@
 # Changelog
 
+- 2025-02-26 2.2.18
+    - add laser state to Reading from AutoRaman
 - 2025-02-11 2.2.17
     - [#133] merged in Fast BatchCollection fixes, part of ENLIGHTEN [#516]
 - 2025-01-20 2.2.16

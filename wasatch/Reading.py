@@ -62,6 +62,11 @@ class Reading:
             self.take_one_request)
 
     def __init__(self, device_id=None):
+        """
+        @todo add optional spectrometer_settings argument, so classes like 
+              AutoRaman could instantiate the Reading with basic attributes 
+              auto-copied from the current state?
+        """
         self.clear()
 
         self.device_id = str(device_id)

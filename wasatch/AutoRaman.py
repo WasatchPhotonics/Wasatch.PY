@@ -105,6 +105,9 @@ class AutoRaman:
         reading.sum_count               = 1         # todo: get_scans_to_average()
         reading.new_integration_time_ms = None      # todo: get_integration_time_ms()
         reading.new_gain_db             = None      # todo: get_detector_gain()
+        reading.laser_enabled           = True
+        reading.laser_power_perc = hardware.settings.state.laser_power_perc
+        reading.laser_power_mW = hardware.settings.state.laser_power_mW
 
         return SpectrometerResponse(data=reading)
 
@@ -415,6 +418,9 @@ class AutoRaman:
         reading.sum_count = num_avg
         reading.new_integration_time_ms = int_time
         reading.new_gain_db = gain_db
+        reading.laser_enabled = True
+        reading.laser_power_perc = self.hardware.settings.state.laser_power_perc
+        reading.laser_power_mW = self.hardware.settings.state.laser_power_mW
 
         log.debug("done")
         return reading
