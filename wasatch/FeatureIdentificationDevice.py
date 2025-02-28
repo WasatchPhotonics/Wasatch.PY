@@ -1781,12 +1781,14 @@ class FeatureIdentificationDevice(InterfaceDevice):
     ##
     # Laser temperature conversion doesn't use EEPROM coeffs at all.
     #
-    # Wasatch SML products use an IPS Wavelength-Stabilized TO-56
+    # @par IPS
+    #
+    # Some Wasatch SML products use an IPS Wavelength-Stabilized TO-56
     # laser, which internally uses a Betatherm 10K3CG3 thermistor.
     #
     # @see https://www.ipslasers.com/data-sheets/SM-TO-56-Data-Sheet-IPS.pdf
     #
-    # The official conversion from thermistor resistance (in ohms) to degC is:
+    # The official IPS conversion from thermistor resistance (in ohms) to degC is:
     #
     # \verbatim
     # 1 / (   C1
@@ -1804,13 +1806,51 @@ class FeatureIdentificationDevice(InterfaceDevice):
     # TEC IC which buffers the thermistor voltage. This requires the additional
     # empirically-determined static conversion captured below.
     #
-    # Regrettably, the laser thermistor voltage on X series spectrometers
+    # Regrettably, the laser thermistor voltage on 110280 boards 
     # overflows the ADC range, so we don't currently have valid laser 
-    # temperature read-out on X. 
+    # temperature read-out with those PCBs. 
     #
-    # Also, on MML units using the Ondax OEM Module, the cable to the 220060 
+    # @par Ondax MML
+    #
+    # On MML units using the Ondax OEM Module, the cable to the 220060 
     # does not seem to pass-through the thermistor pin, so we don't have
     # laser temperature read-out on those, either. (Nor photodiode...)
+    #
+    # @par RealLight
+    #
+    # RealLight SML thermistors use the following resistance and beta:
+    #
+    #     Thermistor Rt (kΩ / β(25°C)): 10±5% / 3450
+    #
+    # Therefore you can convert the raw thermistor ADC reading to degrees Celsius:
+    #
+    # 1. Convert raw ADC to voltage: 
+    #
+    #   voltage = 2.5 * raw / 4096
+    #
+    # 2. Convert voltage to resistance (assuming 2.5v reference)
+    #
+    #   resistance = 21450.0 * voltage / (2.5 - voltage) 
+    #     
+    # 3. Convert resistance to Kelvin:
+    #
+    #     1/T = (1/T0) + (1/β) * ln(R/R0)
+    #     1 = T((1/T0) + (1/β) * ln(R/10))
+    #     T = 1/((1/T0) + (1/β) * ln(R/10))
+    #
+    # Where:
+    # 
+    #   T:  is the temperature in Kelvin 
+    #   T0: is a reference temperature (usually 25°C or 298.15K) 
+    #   β:  is the beta value of the thermistor (a constant indicating the relationship between resistance and temperature) 
+    #   R:  is the measured resistance of the thermistor 
+    #   R0: is the resistance of the thermistor at the reference temperature T0 
+    #
+    #     Kelvin = 1/((1/298.15) + (1/3450) * ln(resistance/10))
+    #
+    # 4. Convert Kelvin to degrees Celsius:
+    #
+    #     degC = Kelvin - 273.15
     #
     # @param raw    the value read from the thermistor's 12-bit ADC (can be
     #               uint12 or SpectrometerResponse)
