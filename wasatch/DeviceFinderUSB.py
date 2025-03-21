@@ -13,22 +13,29 @@ log = logging.getLogger(__name__)
 
 from .DeviceID import DeviceID
 
-##
-# Generates a list of DeviceID objects for all connected USB Wasatch Photonics 
-# spectrometers.
 class DeviceFinderUSB:
+    """
+    Generates a list of DeviceID objects for all connected USB Wasatch Photonics 
+    spectrometers.
 
-    WASATCH_VID = 0x24aa
-    OCEAN_VID = 0x2457
-    ANDOR_VID = 0x136e
-    FT232_SPI_VID = 0x0403
+    Probably only works with libusb (which rules-out IDS cameras).
+    """
+
+    # VIDs
+    WASATCH_VID         = 0x24aa
+    OCEAN_VID           = 0x2457
+    ANDOR_VID           = 0x136e
+    FT232_SPI_VID       = 0x0403
+
+    VALID_VID_LIST = [ WASATCH_VID, OCEAN_VID, ANDOR_VID, FT232_SPI_VID ]
+    STR_VALID_VIDS = [ f"{vid:04x}" for vid in VALID_VID_LIST ]
+
+    # PIDs
     WP_HAMA_SILICON_PID = 0x1000
-    WP_HAMA_INGAAS_PID = 0x2000
-    WP_ARM_PID = 0x4000
-    VALID_ID_LIST = [WASATCH_VID, OCEAN_VID, ANDOR_VID, FT232_SPI_VID]
-    STR_VALID_IDS = [hex(id)[2:] for id in VALID_ID_LIST]
-    USE_MONITORING = True
+    WP_HAMA_INGAAS_PID  = 0x2000
+    WP_ARM_PID          = 0x4000
 
+    USE_MONITORING = True
     MIN_POLLING_SCANS = 10
 
     def __init__(self):
@@ -36,10 +43,13 @@ class DeviceFinderUSB:
         if platform.system() == "Windows":
             log.debug("configuring for Windows")
             import win32com.client
+
             # see https://docs.microsoft.com/en-us/windows/win32/wmisdk/creating-a-wmi-script
             obj_WMI_service = win32com.client.GetObject("winmgmts:")
+
             # see https://docs.microsoft.com/en-us/windows/win32/wmisdk/querying-with-wql
             raw_wql = "SELECT * FROM __InstanceCreationEvent WITHIN 1 WHERE TargetInstance ISA \'Win32_PnPEntity\'"
+
             # see https://docs.microsoft.com/en-us/windows/win32/wmisdk/monitoring-events
             # while it removes polling the usb bus
             # the polling now shifts to WMI events as the query is a polling operation
@@ -68,7 +78,7 @@ class DeviceFinderUSB:
     #         devices = usb.core.find(find_all=True, idVendor=vid, idProduct=pid)
     #         for device in devices:
     #             count += 1
-    #             log.debug("DeviceListFID: discovered vid 0x%04x, pid 0x%04x (count %d)", vid, pid, count)
+    #             log.debug("DeviceFinderUSB: discovered vid 0x%04x, pid 0x%04x (count %d)", vid, pid, count)
     #
     #             device_id = DeviceID(device=device)
     #             device_ids.append(device_id)
@@ -88,9 +98,9 @@ class DeviceFinderUSB:
             count += 1
             vid = int(device.idVendor)
             pid = int(device.idProduct)
-            log.debug("DeviceListFID: discovered vid 0x%04x, pid 0x%04x (count %d), address %s", vid, pid, count, device.address)
+            log.debug("DeviceFinderUSB: discovered vid 0x%04x, pid 0x%04x (count %d), address %s", vid, pid, count, device.address)
 
-            if vid not in [self.WASATCH_VID, self.OCEAN_VID, self.ANDOR_VID, self.FT232_SPI_VID]:
+            if vid not in self.VALID_VID_LIST:
                 continue
 
             if vid == self.WASATCH_VID and pid not in [ self.WP_HAMA_SILICON_PID, self.WP_HAMA_INGAAS_PID, self.WP_ARM_PID ]:
@@ -107,7 +117,7 @@ class DeviceFinderUSB:
             if device is not None and device.action == "add" and device.get('ID_VENDOR_ID') is not None:
                 device_ids.append(device)
                 log.debug(f"got a udev device add event")
-        valid_devices = [dev for dev in device_ids if dev.get('ID_VENDOR_ID').lower() in self.STR_VALID_IDS]
+        valid_devices = [dev for dev in device_ids if dev.get('ID_VENDOR_ID').lower() in self.STR_VALID_VIDS]
         pyusb_devices = [usb.core.find(idVendor=int(dev.get('ID_VENDOR_ID'), 16), idProduct=int(dev.get('ID_MODEL_ID'), 16)) for dev in valid_devices]
         # if there is an error/can't find pyusb returns none
         # filter those out
@@ -118,12 +128,11 @@ class DeviceFinderUSB:
             log.debug(f"pyudev returned devices of {pyusb_devices}")
         return [DeviceID(device) for device in pyusb_devices]
 
-    # I like this line but think it deserves a comment
-    # map across the STR_VALID_IDS checking if it is in current id string, resulting in a bool array
+    # map across the STR_VALID_VIDS checking if it is in current id string, resulting in a bool array
     # if any true in that bool array then any() is true and thus it will be in the list
-    def id_in_valid_ids(self, dev_id):
-        valid_id_present = map(lambda valid: valid in dev_id, self.STR_VALID_IDS)
-        return any(valid_id_present)
+    def id_in_valid_vids(self, dev_id):
+        valid_vid_present = map(lambda valid: valid in dev_id, self.STR_VALID_VIDS)
+        return any(valid_vid_present)
 
     def windows_monitoring(self): # -> list[DeviceID] 
         device_ids = []
@@ -139,10 +148,10 @@ class DeviceFinderUSB:
             pass
         if device_ids != []:
             log.debug(f"found a WMI event of {device_ids}")
-        valid_ids = [dev_id for dev_id in device_ids if self.id_in_valid_ids(dev_id)] 
-        pids = [re.findall(r'pid_(....)', dev) for dev in valid_ids]
+        valid_vids = [dev_id for dev_id in device_ids if self.id_in_valid_vids(dev_id)] 
+        pids = [re.findall(r'pid_(....)', dev) for dev in valid_vids]
         pids = [id_num[0] for id_num in pids if id_num is not []]
-        vids = [re.findall(r'vid_(....)', dev) for dev in valid_ids]
+        vids = [re.findall(r'vid_(....)', dev) for dev in valid_vids]
         vids = [id_num[0] for id_num in vids if id_num is not []]
         # end by querying just the desired Wasatch Devices via pyusb
         # this provides an easy meshing with our current setup using pyusb devices
@@ -225,4 +234,3 @@ class DeviceFinderUSB:
         matching_dict = CFDictionaryCreateMutable(None, 0,  kCFTypeDictionaryKeyCallBacks, kCFTypeDictionaryValueCallBacks)
         matching_dict["IOProviderClass"] = "IOUSBDevice"
         matching_dict["idVendor"] = 0x24aa # we can have the driver pre filter for wasatch, so I'm utilizing that
-
