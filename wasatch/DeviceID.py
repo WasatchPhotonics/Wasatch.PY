@@ -154,6 +154,8 @@ class DeviceID:
                 self.type = "TCP"
                 self.address = tok[1]
                 self.port = int(tok[2])
+            elif label.startswith("IDSPeak"):
+                self.type = "IDSPeak"
             elif label.startswith("MOCK:"):
                 tok = label.split(":")
                 self.type = tok[0]
@@ -249,6 +251,9 @@ class DeviceID:
     def is_tcp(self):
         return self.type.upper() == "TCP"
 
+    def is_ids_peak(self):
+        return self.type == "IDSPeak"
+
     def is_andor(self):
         return self.vid == 0x136e
 
@@ -290,12 +295,12 @@ class DeviceID:
     #     return (bus, address)
 
     def get_pid_hex(self):
-        if self.type in ["BLE", "TCP"]:
+        if self.type in ["BLE", "TCP", "IDSPeak"]:
             return None
         return "%04x" % self.pid
 
     def get_vid_hex(self):
-        if self.type in ["BLE", "TCP"]:
+        if self.type in ["BLE", "TCP", "IDSPeak"]:
             return None
         return "%04x" % self.vid
 
@@ -310,6 +315,7 @@ class DeviceID:
         elif self.type == "MOCK": return f"<DeviceID {self.type}:{self.name}:{self.directory}>"
         elif self.type == "BLE":  return f"<DeviceID {self.type}:{self.serial_number}>"
         elif self.type == "TCP":  return f"<DeviceID {self.type}:{self.address}:{self.port}>"
+        elif self.type == "IDSPeak": return f"<DeviceID {self.type}>"
         else: raise Exception("unsupported DeviceID type %s" % self.type)
 
     # def __deepcopy__(self, memo):

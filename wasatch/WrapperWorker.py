@@ -12,6 +12,7 @@ from .OceanDevice          import OceanDevice
 from .SPIDevice            import SPIDevice
 from .BLEDevice            import BLEDevice
 from .TCPDevice            import TCPDevice
+from .IDSDevice            import IDSDevice
 from .Reading              import Reading
 
 log = logging.getLogger(__name__)
@@ -50,6 +51,7 @@ class WrapperWorker(threading.Thread):
             is_spi,
             is_ble,
             is_tcp,
+            is_ids,
             log_level,
             callback=None,
             alert_queue=None):
@@ -62,6 +64,7 @@ class WrapperWorker(threading.Thread):
         self.is_spi         = is_spi
         self.is_ble         = is_ble
         self.is_tcp         = is_tcp
+        self.is_ids         = is_ids
         self.command_queue  = command_queue
         self.response_queue = response_queue
         self.settings_queue = settings_queue
@@ -85,8 +88,8 @@ class WrapperWorker(threading.Thread):
     # one of the three queues (cmd inputs, response outputs, and
     # a one-shot SpectrometerSettings).
     def run(self):
-        is_options = (self.is_ocean, self.is_andor, self.is_ble, self.is_spi, self.is_tcp)
-        device_classes = (OceanDevice, AndorDevice, BLEDevice, SPIDevice, TCPDevice, WasatchDevice)
+        is_options = (self.is_ocean, self.is_andor, self.is_ble, self.is_spi, self.is_tcp, self.is_ids)
+        device_classes = (OceanDevice, AndorDevice, BLEDevice, SPIDevice, TCPDevice, IDSDevice, WasatchDevice)
         try:
             if any(is_options):
                 type_connection = is_options.index(True)
@@ -252,9 +255,13 @@ class WrapperWorker(threading.Thread):
                 log.error("received non-failure Reading without spectrum...ignoring?")
 
             # only poll hardware buses at 20Hz
-            sleep_sec = WrapperWorker.POLLER_WAIT_SEC * num_connected_devices
-            log.debug("sleeping %.2f sec", sleep_sec)
-            time.sleep(sleep_sec)
+            try:
+                if not self.connected_device.state.area_scan_enabled:
+                    sleep_sec = WrapperWorker.POLLER_WAIT_SEC * num_connected_devices
+                    log.debug("sleeping %.2f sec", sleep_sec)
+                    time.sleep(sleep_sec)
+            except:
+                pass
 
         ########################################################################
         # we have exited the loop

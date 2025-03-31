@@ -1102,6 +1102,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         value = 1 if flag else 0
         self.settings.state.area_scan_enabled = flag
+        self.settings.state.area_scan_first_trigger_sent = False
         return self._send_code(0xeb, value, label="SET_AREA_SCAN_ENABLE")
 
     def get_sensor_line_length(self):
@@ -1266,8 +1267,16 @@ class FeatureIdentificationDevice(InterfaceDevice):
         acquisition_timestamp = datetime.datetime.now()
 
         # should we send a trigger?
-        if trigger and self.settings.state.trigger_source == SpectrometerState.TRIGGER_SOURCE_INTERNAL:
-            # yes, send an internal SW trigger
+        if self.settings.state.trigger_source != SpectrometerState.TRIGGER_SOURCE_INTERNAL:
+            trigger = False
+        if self.settings.state.area_scan_enabled:
+            if self.settings.state.area_scan_first_trigger_sent:
+                log.debug("get_spectrum: sending FIRST trigger after enabling area scan")
+            else:
+                log.debug("get_spectrum: skipping trigger during area scan")
+                trigger = False
+        if trigger:
+            # send an internal SW trigger
             log.debug("get_spectrum: requesting spectrum")
 
             # should that trigger be an ACQUIRE or ACQUIRE_AUTO_RAMAN?
@@ -1421,55 +1430,15 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         # (before x-axis inversion because line index at FPGA pixel 0)
 
-        # If we're in area scan mode, use first pixel as row index (leave pixel 
+        # If we're in area scan mode, use SECOND pixel as row index (leave pixel 
         # in spectrum).  Do this before any horizontal averaging which might 
-        # corrupt first pixel).  Note that InGaAs don't support DetectorRegions.
+        # corrupt first pixel).
         area_scan_row_count = -1
         if self.settings.state.area_scan_enabled:
-            area_scan_row_count = spectrum[0]
-
-            # for i in range(4):
-            #     spectrum[i] = spectrum[4] # KLUDGE: NRD-dual
-
-            # Leave the row counter in place if we're in "Fast" Area Scan mode,
-            # since downstream software can use it to assemble the final image.
-            # ("Slow" Area Scan mode sent this value back as a separate field in
-            # the Reading, but this isn't possible in Fast mode.  Just delete
-            # Slow mode when Fast is widely deployed.)
-            #
-            if not self.settings.state.area_scan_fast:
-                spectrum[0] = spectrum[1]
-
-        ########################################################################
-        # Start-of-Spectrum Marker (rare)
-        ########################################################################
-
-        # (before x-axis inversion because marker at FPGA pixel 0)
-
-        # Check and track the "start of spectrum" marker.  This is very rare and
-        # only for experimental units.  Currently Wasatch does not have any
-        # "standard" spectrum framing data, although such would be useful. This
-        # is only enabled in FPGAs when trying to debug rare timing issues. The
-        # "Marker" is simply a pixel with the value 0xffff.  On FPGA FW where the
-        # marker is enabled, spectral data is clamped to 0xfffe, meaning such
-        # markers can ONLY appear as the first pixel in a spectrum.
-        #
-        # Would need updated to work with DetectorRegions.
-        if self.settings.has_marker() and not self.settings.state.area_scan_enabled:
-            marker = 0xffff
-            if spectrum[0] == marker:
-                # marker found where expected, so all is good (overwrite for a
-                # clean graph)
-                spectrum[0] = spectrum[1]
+            if spectrum[0] == 0xffff:
+                area_scan_row_count = spectrum[1] 
             else:
-                # we DIDN'T find the marker where it was expected, so flag and
-                # go hunting
-                log.error("get_spectrum: missing marker")
-                for i in range(pixels):
-                    if spectrum[i] == marker:
-                        log.error("get_spectrum: marker found at pixel %d", i)
-
-        # consider skipping much of the following if in area scan mode
+                log.error("first pixel of area scan expected to be 0xffff, read 0x{spectrum[0]:04x}")
 
         ########################################################################
         # Stomp array ends
@@ -1479,18 +1448,20 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         # some detectors have "garbage" pixels at the front or end of every
         # spectrum (sync bytes and what-not)
-        if self.settings.is_imx385() and self.settings.fpga_firmware_version == "01.1.01":
-            utils.stomp_first(spectrum, 3)
-            utils.stomp_last (spectrum, 2)
-        if self.settings.is_imx392() and self.settings.state.detector_regions is None:
-            utils.stomp_first(spectrum, 3)
-            utils.stomp_last (spectrum, 17)
+        if not self.settings.state.area_scan_enabled:
+            if self.settings.is_imx385() and self.settings.fpga_firmware_version == "01.1.01":
+                utils.stomp_first(spectrum, 3)
+                utils.stomp_last (spectrum, 2)
+            if self.settings.is_imx392() and self.settings.state.detector_regions is None:
+                utils.stomp_first(spectrum, 3)
+                utils.stomp_last (spectrum, 17)
 
         ########################################################################
         # Electrical Dark Correction (EDC, experimental)
         ########################################################################
 
-        spectrum = self.apply_edc(spectrum)
+        if not self.settings.state.area_scan_enabled:
+            spectrum = self.apply_edc(spectrum)
 
         ########################################################################
         # Invert X-Axis
@@ -1511,43 +1482,31 @@ class FeatureIdentificationDevice(InterfaceDevice):
         #            on when to perform X-Axis inversion in the
         #                        Order of Operations.
         #
-        if self.settings.eeprom.invert_x_axis and not self.settings.state.area_scan_enabled:
-            spectrum.reverse()
+        if not self.settings.state.area_scan_enabled:
+            if self.settings.eeprom.invert_x_axis:
+                spectrum.reverse()
 
         ########################################################################
         # ignore isolated "flat" spectra on SiG
         ########################################################################
 
-        if self.settings.is_micro() and utils.all_same(spectrum):
-            response.error_msg = "skipping flat spectrum"
-            response.error_lvl = ErrorLevel.low
-            response.keep_alive = True
-            log.debug(response.error_msg)
-            self.queue_message("marquee_info", "sensor is stabilizing")
-            return response
+        if not self.settings.state.area_scan_enabled:
+            if self.settings.is_micro() and utils.all_same(spectrum):
+                response.error_msg = "skipping flat spectrum"
+                response.error_lvl = ErrorLevel.low
+                response.keep_alive = True
+                log.debug(response.error_msg)
+                self.queue_message("marquee_info", "sensor is stabilizing")
+                return response
 
         ########################################################################
         # Bad Pixel Correction
         ########################################################################
 
         # Note these are pre-horizontal binning...
-        if self.settings.state.bad_pixel_mode == SpectrometerState.BAD_PIXEL_MODE_AVERAGE:
-            self._correct_bad_pixels(spectrum)
-
-        ########################################################################
-        # Swap Alternating Pixels (very rare)
-        ########################################################################
-
-        # a prototype model output spectra with alternating pixels swapped, and
-        # this was quicker than changing in firmware
-
-        if self.settings.state.swap_alternating_pixels and self.settings.state.detector_regions is None:
-            log.debug("swapping alternating pixels: spectrum = %s", spectrum[:10])
-            corrected = []
-            for a, b in zip(spectrum[0::2], spectrum[1::2]):
-                corrected.extend([b, a])
-            spectrum = corrected
-            log.debug("swapped alternating pixels: spectrum = %s", spectrum[:10])
+        if not self.settings.state.area_scan_enabled:
+            if self.settings.state.bad_pixel_mode == SpectrometerState.BAD_PIXEL_MODE_AVERAGE:
+                self._correct_bad_pixels(spectrum)
 
         ########################################################################
         # Linear Pixel Calibration (experimental)
@@ -1556,8 +1515,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # should be done AFTER detector inversion (because that's how calibration
         # is generated) and AFTER bad pixel correction
 
-        if self.settings.linear_pixel_calibration:
-            spectrum = self._apply_linear_pixel_calibration(spectrum)
+        if not self.settings.state.area_scan_enabled:
+            if self.settings.linear_pixel_calibration:
+                spectrum = self._apply_linear_pixel_calibration(spectrum)
 
         ########################################################################
         # horizontal binning
@@ -1595,8 +1555,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
             spectrum = smoothed
 
         # Somewhat oddly, we're currently returning a TUPLE of the spectrum and
-        # the area scan row count.  When "Fast" Area Scan is more commonplace 
-        # we'll change this back to just returning the spectrum array directly.
+        # the area scan row count.  
         response.data = SpectrumAndRow(spectrum, area_scan_row_count) 
         return response
 

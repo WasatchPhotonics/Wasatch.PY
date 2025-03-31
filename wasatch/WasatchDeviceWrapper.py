@@ -152,6 +152,7 @@ class WasatchDeviceWrapper:
         self.is_ocean     = '0x2457' in str(device_id)
         self.is_andor     = '0x136e' in str(device_id)
         self.is_spi       = '0x0403' in str(device_id)
+        self.is_ids       = 'IDSPeak' in str(device_id)
         self.mock         = 'MOCK' in str(device_id).upper()
         self.is_ble       = 'BLE' in str(device_id)
         self.is_tcp       = 'TCP' in str(device_id)
@@ -225,6 +226,7 @@ class WasatchDeviceWrapper:
             is_spi         = self.is_spi,
             is_ble         = self.is_ble,
             is_tcp         = self.is_tcp,
+            is_ids         = self.is_ids,
             log_level      = self.log_level,
             callback       = self.callback)
         log.debug("device wrapper: Instance created for worker")
