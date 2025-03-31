@@ -1272,9 +1272,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
         if self.settings.state.area_scan_enabled:
             if self.settings.state.area_scan_first_trigger_sent:
                 log.debug("get_spectrum: sending FIRST trigger after enabling area scan")
+                self.settings.state.area_scan_first_trigger_sent = True
             else:
                 log.debug("get_spectrum: skipping trigger during area scan")
                 trigger = False
+
         if trigger:
             # send an internal SW trigger
             log.debug("get_spectrum: requesting spectrum")

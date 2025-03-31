@@ -15,6 +15,19 @@ TARGET_PIXEL_FORMAT = IPL.PixelFormatName_Mono16 # Mono12 # BGRa8
 log = logging.getLogger(__name__)
 
 class IDSCamera:
+    """
+    This class encapsulates access to the IDS Peak SDK. It is called and used by
+    IDSDevice. IDSDevice "is-an" InterfaceDevice, and is mimicking the same 
+    upstream API as WasatchDevice, TCPDevice, AndorDevice etc. This class, 
+    IDSCamera, is implementing the downstream IDS Peak SDK API.
+
+    We could have done this like AndorDevice and TCPDevice, and merged both into
+    one class (upstream and downsteam APIs). However, I opted to follow the 
+    example of WasatchDevice/FeatureInterfaceDevice and OceanDevice/
+    SeaBreezeWrapper, both of which keep the two separate.
+
+    @see Program Files/IDS/ids_peak/generic_sdk/samples/source/python/start_stop_acquisition_software_trigger/main.py
+    """
 
     INITIALIZED = False
 
