@@ -88,11 +88,10 @@ class IDSDevice(InterfaceDevice):
         return SpectrometerResponse(True)
 
     def get_spectrum(self):
-        log.debug("get_spectrum: calling camera.get_spectrum")
+        self.camera.send_trigger()
         spectrum = self.camera.get_spectrum()
         if spectrum is None:
             log.error("get_spectrum: received None?!")
-        log.debug("get_spectrum: done")
         return spectrum
 
     ############################################################################
