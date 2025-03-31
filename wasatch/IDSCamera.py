@@ -440,6 +440,8 @@ if __name__ == '__main__':
 
     log.debug("getting IDSPeak.DeviceManager instance")
     camera = None
+    use_threading = False
+
     try:
         log.info("main: instantiating Camera")
         camera = IDSCamera()
@@ -452,30 +454,38 @@ if __name__ == '__main__':
         log.info("main: starting camera acquisition")
         camera.start()
 
-        log.info("main: spawning acquisition loop")
-        thread = threading.Thread(target=camera.acquisition_loop, args=())
-        thread.start()
+        if use_threading:
+            log.info("main: spawning acquisition loop")
+            thread = threading.Thread(target=camera.acquisition_loop, args=())
+            thread.start()
 
         log.info("main: monitoring acquisitions")
         try:
             # break loop with ctrl-C
             while True:
-                log.info("main: dropping request into acquisition loop")
-                camera.take_one_request = object()
 
-                # wait for measurement to complete
-                while camera.take_one_request is not None:
-                    time.sleep(0.01)
-                    pass
+                if use_threading:
+                    log.info("main: dropping request into acquisition loop")
+                    camera.take_one_request = object()
+                    while camera.take_one_request is not None:
+                        time.sleep(0.01)
+                        pass
+                else:
+                    log.info("main: taking spectrum")
+                    camera.send_trigger()
+                    camera.get_spectrum()
 
                 log.info("main: measurement completed, sleeping 5sec")
                 time.sleep(5)
+        except Exception as ex:
+            log.error("main: exception during measuremnet loop: {ex}", exc_info=1)
         finally:
             # make sure to always stop the acquisition_thread, otherwise
             # we'd hang, e.g. on KeyboardInterrupt
             log.info("main: shutting down (joining thread)")
             camera.shutdown_in_progress= True
-            thread.join()
+            if use_threading:
+                thread.join()
 
     except KeyboardInterrupt:
         log.critical("User interrupt: Exiting...")
