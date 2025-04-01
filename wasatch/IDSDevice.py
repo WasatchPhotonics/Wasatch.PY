@@ -126,6 +126,7 @@ class IDSDevice(InterfaceDevice):
         reading = Reading(self.device_id)
         reading.spectrum = self.get_spectrum()
         reading.area_scan_image = self.camera.last_area_scan_image
+        log.debug(f"acquire_data: area_scan_image {reading.area_scan_image}")
         return SpectrometerResponse(data=reading)
 
     ############################################################################

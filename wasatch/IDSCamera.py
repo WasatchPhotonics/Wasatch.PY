@@ -59,6 +59,7 @@ class IDSCamera:
         self.start_line = 0
         self.stop_line = 0
         self.integration_time_ms = 15 # seems to be default?
+        self.last_integration_time_ms = 15
 
         self.image_converter_vertical_binning = None
         self.image_converter_area_scan = None
@@ -123,6 +124,7 @@ class IDSCamera:
         self.serial_number = self.node_map.FindNode("DeviceSerialNumber").Value()
         self.width = self.node_map.FindNode("Width").Value()
         self.height = self.node_map.FindNode("Height").Value()
+        self.last_integration_time_ms = self.node_map.FindNode("ExposureTime").Value() / 1000.0
 
         self.start_line = 0
         self.stop_line = self.height - 1
@@ -325,7 +327,7 @@ class IDSCamera:
             log.error("get_spectrum: no datastream?!")
             return None
 
-        timeout_ms = 1000 + 2 * self.integration_time_ms
+        timeout_ms = int(round(1000 + 2 * max(self.integration_time_ms, self.last_integration_time_ms)))
         try:
             log.debug(f"get_spectrum: calling WaitForFinishedBuffer timeout {timeout_ms}ms")
             buffer = self.datastream.WaitForFinishedBuffer(timeout_ms) # takes ms
@@ -350,7 +352,9 @@ class IDSCamera:
             log.debug(f"get_spectrum: converting for area scan")
             converted_area_scan = self.image_converter_area_scan.Convert(image, self.FORMAT_AREA_SCAN)
             data = converted_area_scan.get_numpy_1D().copy()
-            self.last_area_scan_image = AreaScanImage(data, converted_area_scan.Width(), converted_area_scan.Height())
+
+            # ENLIGHTEN will convert to QtGui.QImage.Format_RGB32
+            self.last_area_scan_image = AreaScanImage(data, converted_area_scan.Width(), converted_area_scan.Height(), fmt="RGB32")
 
         # we've converted the original image (possibly twice), so can now release the underlying buffer
         log.debug(f"get_spectrum: releasing buffer")
@@ -403,6 +407,7 @@ class IDSCamera:
         else:
             log.debug(f"get_spectrum: returning {spectrum[:5]}")
 
+        self.last_integration_time_ms = self.integration_time_ms
         log.debug("get_spectrum: done")
         return spectrum
 

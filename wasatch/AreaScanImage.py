@@ -4,3 +4,6 @@ class AreaScanImage:
         self.width = width
         self.height = height
         self.fmt = fmt
+
+    def __repr__(self):
+        return f"AreaScanImage<width {self.width}, height {self.height}, fmt {self.fmt}>"
