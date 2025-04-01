@@ -383,6 +383,9 @@ class SpectrometerSettings:
     def is_andor(self): # -> bool 
         return '0x136e' in str(self.device_id)
 
+    def is_ids(self): 
+        return 'IDSPeak' in str(self.device_id)
+
     def is_sig(self): # -> bool 
         return self.is_micro()
 

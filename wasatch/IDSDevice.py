@@ -48,6 +48,8 @@ class IDSDevice(InterfaceDevice):
         self.settings.eeprom.serial_number = self.camera.serial_number
         self.settings.eeprom.active_pixels_horizontal = self.camera.width
         self.settings.eeprom.active_pixels_vertical = self.camera.height
+        self.settings.eeprom.roi_vertical_region_1_start = 0
+        self.settings.eeprom.roi_vertical_region_1_end   = self.camera.height
 
         # kludges for testing
         self.settings.eeprom.excitation_nm_float = 785 
@@ -63,14 +65,27 @@ class IDSDevice(InterfaceDevice):
             self.camera = None
 
     def set_integration_time_ms(self, ms):
+        """
+        It did not look like we need to stop/start the camera when changing exposure time:
+        cpp/afl_features_live_qtwidgets/backend.cpp BackEnd::SetExposure
+        """
+        log.debug(f"set_integration_time_ms: here")
+        #log.debug(f"set_integration_time_ms: stopping")
+        #self.camera.stop()
+        log.debug(f"set_integration_time_ms: setting integration time {ms}ms")
         self.camera.set_integration_time_ms(ms)
+        #log.debug(f"set_integration_time_ms: starting")
+        #self.camera.start()
+        log.debug(f"set_integration_time_ms: done")
         return SpectrometerResponse(True)
 
     def set_start_line(self, line):
+        log.debug(f"set_start_line: line {line}")
         self.camera.set_start_line(line)
         return SpectrometerResponse(True)
 
     def set_stop_line(self, line):
+        log.debug(f"set_stop_line: line {line}")
         self.camera.set_stop_line(line)
         return SpectrometerResponse(True)
 
@@ -83,15 +98,24 @@ class IDSDevice(InterfaceDevice):
             log.error("set_vertical_binning requires an ROI object or tuple of (start, stop) lines")
             return SpectrometerResponse(data=False, error_msg="invalid start and stop lines")
 
+        log.debug(f"set_vertical_binning: start {start}, end {end}")
         self.set_start_line(start)
-        self.set_stop_line(stop)
+        self.set_stop_line(end)
+        return SpectrometerResponse(True)
+
+    def set_area_scan_enable(self, flag):
+        log.debug(f"set_area_scan_enable: flag {flag}")
+        self.camera.save_area_scan_image = flag
         return SpectrometerResponse(True)
 
     def get_spectrum(self):
+        log.debug(f"get_spectrum: calling send_trigger")
         self.camera.send_trigger()
+        log.debug(f"get_spectrum: calling get_spectrum")
         spectrum = self.camera.get_spectrum()
         if spectrum is None:
             log.error("get_spectrum: received None?!")
+        log.debug(f"get_spectrum: done")
         return spectrum
 
     ############################################################################
@@ -99,12 +123,9 @@ class IDSDevice(InterfaceDevice):
     ############################################################################
 
     def acquire_data(self):
-        """
-        @todo pass along latest PNG for area scan
-        """
         reading = Reading(self.device_id)
-        spectrum = self.get_spectrum()
-        reading.spectrum = spectrum
+        reading.spectrum = self.get_spectrum()
+        reading.area_scan_image = self.camera.last_area_scan_image
         return SpectrometerResponse(data=reading)
 
     ############################################################################
@@ -127,5 +148,6 @@ class IDSDevice(InterfaceDevice):
         process_f["vertical_binning"]    = lambda x: self.set_vertical_binning(x)
         process_f["start_line"]          = lambda x: self.set_start_line(x)
         process_f["stop_line"]           = lambda x: self.set_stop_line(x)
+        process_f["area_scan_enable"]    = lambda x: self.set_area_scan_enable(bool(x))
 
         return process_f

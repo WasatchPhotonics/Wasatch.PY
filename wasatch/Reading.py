@@ -31,6 +31,7 @@ class Reading:
         self.session_count             = 0      # can treat as reading_id
         self.area_scan_row_count       = -1
         self.area_scan_data            = None
+        self.area_scan_png             = None
         self.battery_raw               = None
         self.battery_percentage        = None
         self.battery_charging          = None

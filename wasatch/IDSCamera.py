@@ -1,5 +1,3 @@
-from ids_peak import ids_peak
-
 import threading
 import logging
 import time
@@ -7,10 +5,10 @@ import sys
 import os
 
 from ids_peak import ids_peak as IDSPeak
-from ids_peak_ipl import ids_peak_ipl as IPL
 from ids_peak import ids_peak_ipl_extension as EXT
+from ids_peak_ipl import ids_peak_ipl as IPL
 
-TARGET_PIXEL_FORMAT = IPL.PixelFormatName_Mono16 # Mono12 # BGRa8
+from .AreaScanImage import AreaScanImage
 
 log = logging.getLogger(__name__)
 
@@ -31,6 +29,9 @@ class IDSCamera:
 
     INITIALIZED = False
 
+    FORMAT_VERTICAL_BINNING = IPL.PixelFormatName_Mono16 # Mono12 # BGRa8
+    FORMAT_AREA_SCAN = IPL.PixelFormatName_BGRa8
+
     ############################################################################
     # Lifecycle
     ############################################################################
@@ -42,7 +43,8 @@ class IDSCamera:
         self.long_name = None
         self.datastream = None
 
-        self.save_area_scan = False
+        self.save_area_scan_to_disk = False
+        self.save_area_scan_image = False
         self.take_one_request = None
         self.taking_acquisition = False
         self.shutdown_in_progress = False
@@ -58,7 +60,10 @@ class IDSCamera:
         self.stop_line = 0
         self.integration_time_ms = 15 # seems to be default?
 
-        self.image_converter = None
+        self.image_converter_vertical_binning = None
+        self.image_converter_area_scan = None
+        self.last_area_scan_image = None
+
         try:
             if self.INITIALIZED:
                 log.debug("IDSPeak.Library already initialized")
@@ -163,9 +168,17 @@ class IDSCamera:
 
     def set_integration_time_ms(self, ms):
         # do we need to .stop and .start around this?
-        us = int(round(ms * 1000))
+        log.debug(f"set_integration_time_ms: start")
+        us = ms * 1000.0
+
+        node = self.node_map.FindNode("ExposureTime")
+        us = max(us, node.Minimum())
+        us = min(us, node.Maximum())
+
+        log.debug(f"set_integration_time_ms: setting integration time to {us} µs")
         self.node_map.FindNode("ExposureTime").SetValue(us)
         self.integration_time_ms = ms
+        log.debug(f"set_integration_time_ms: done")
 
     def start(self):
         log.debug("start: starting")
@@ -177,6 +190,7 @@ class IDSCamera:
             log.debug("start: already running")
             return
 
+        self.datastream = None # kludge
         if self.datastream is None:
             log.debug("start: initializing datastream")
             self.datastream = self.device.DataStreams()[0].OpenDataStream()
@@ -202,11 +216,19 @@ class IDSCamera:
             # Pre-allocate conversion buffers to speed up first image conversion
             # while the acquisition is running
             #
-            # NOTE: Lazy-load the image converter
-            if self.image_converter is None:
-                log.debug("start: pre-allocating image converter")
-                self.image_converter = IPL.ImageConverter()
-                self.image_converter.PreAllocateConversion(input_pixel_format, TARGET_PIXEL_FORMAT, self.width, self.height)
+            # NOTE: Lazy-load the image converters
+            if self.image_converter_vertical_binning is None:
+                log.debug("start: pre-allocating image converter for vertical binning")
+                self.image_converter_vertical_binning = IPL.ImageConverter()
+                self.image_converter_vertical_binning.PreAllocateConversion(input_pixel_format, self.FORMAT_VERTICAL_BINNING, self.width, self.height)
+
+                log.debug("start: pre-allocating image converter for area scan")
+                self.image_converter_area_scan = IPL.ImageConverter()
+                self.image_converter_area_scan.PreAllocateConversion(input_pixel_format, self.FORMAT_AREA_SCAN, self.width, self.height)
+                
+                log.debug(f"start: supported conversions from input pixel format {input_pixel_format}:")
+                for fmt in self.image_converter_vertical_binning.SupportedOutputPixelFormatNames(input_pixel_format):
+                    log.debug(f"  {str(fmt)}")
 
             log.debug("start: starting acquisition")
             self.datastream.StartAcquisition()
@@ -297,6 +319,7 @@ class IDSCamera:
         self.node_map.FindNode("TriggerSoftware").WaitUntilDone()
 
     def get_spectrum(self):
+        log.debug("get_spectrum: start")
         cwd = os.getcwd()
         if self.datastream is None:
             log.error("get_spectrum: no datastream?!")
@@ -304,47 +327,72 @@ class IDSCamera:
 
         timeout_ms = 1000 + 2 * self.integration_time_ms
         try:
+            log.debug(f"get_spectrum: calling WaitForFinishedBuffer timeout {timeout_ms}ms")
             buffer = self.datastream.WaitForFinishedBuffer(timeout_ms) # takes ms
+            log.debug(f"get_spectrum: back from WaitForFinishedBuffer")
         except:
             log.error(f"failed on datastream.WaitForFinishedBuffer({timeout_ms}ms)", exc_info=1)
             return None
 
         # Get image from buffer (shallow copy)
+        log.debug(f"get_spectrum: reading buffer")
         image = EXT.BufferToImage(buffer)
+        log.debug(f"get_spectrum: read buffer")
 
         # This creates a deep copy of the image, so the buffer is free to be used again
         # NOTE: Use `ImageConverter`, since the `ConvertTo` function re-allocates
         #       the conversion buffers on every call
-        converted = self.image_converter.Convert(image, TARGET_PIXEL_FORMAT)
+        log.debug(f"get_spectrum: converting for vertical binning")
+        converted_vertical_binning = self.image_converter_vertical_binning.Convert(image, self.FORMAT_VERTICAL_BINNING)
 
+        self.last_area_scan_image = None
+        if self.save_area_scan_image:
+            log.debug(f"get_spectrum: converting for area scan")
+            converted_area_scan = self.image_converter_area_scan.Convert(image, self.FORMAT_AREA_SCAN)
+            data = converted_area_scan.get_numpy_1D().copy()
+            self.last_area_scan_image = AreaScanImage(data, converted_area_scan.Width(), converted_area_scan.Height())
+
+        # we've converted the original image (possibly twice), so can now release the underlying buffer
+        log.debug(f"get_spectrum: releasing buffer")
         self.datastream.QueueBuffer(buffer)
 
-        if self.save_area_scan:
-            pathname = self.next_name(cwd + "/image", ".png")
-            log.debug(f"Saved as {pathname}")
-            IPL.ImageWriter.WriteAsPNG(pathname, converted)
+        if self.save_area_scan_to_disk:
+            log.debug(f"get_spectrum: saving mono png to disk")
+            pathname_mono = self.next_name(cwd + "/image-mono", ".png")
+            IPL.ImageWriter.WriteAsPNG(pathname_mono, converted_vertical_binning)
+            log.debug(f"Saved as {pathname_mono}")
+
+            if self.save_area_scan_image:
+                log.debug(f"get_spectrum: saving area png to disk")
+                pathname_area = self.next_name(cwd + "/image-area", ".png")
+                IPL.ImageWriter.WriteAsPNG(pathname_area, converted_area_scan)
+                log.debug(f"Saved as {pathname_area}")
 
         ########################################################################
         # Vertical Binning
         ########################################################################
 
-        spectrum = [0] * image.Width()
-        log.debug(f"get_spectrum: initialized to {spectrum[:5]}")
+        log.debug(f"get_spectrum: performing vertical binning")
+        first_row = max(0, self.start_line)
+        last_row = min(self.stop_line, converted_vertical_binning.Height() - 1)
+        log.debug(f"get_spectrum: first_row {first_row}, last_row {last_row}")
+        spectrum = [0] * converted_vertical_binning.Width()
         try:
-            for row in range(self.start_line, self.stop_line + 1):
-                pixel_row = IPL.PixelRow(converted, row)
+            for row in range(first_row, last_row + 1):
+                # log.debug(f"get_spectrum: row {row}")
+                pixel_row = IPL.PixelRow(converted_vertical_binning, row)
                 channels = pixel_row.Channels() 
                 channel = channels[0]
                 values = channel.Values 
-                # MZ: Why doesn't this work?
-                # values = IPL.PixelRow(converted, row).Channels()[0].Values
                 for pixel, intensity in enumerate(values):
                     spectrum[pixel] += intensity
         except Exception as e:
             log.error(f"Error vertically binning image: {e}", exc_info=1)
+        log.debug(f"get_spectrum: done binning")
 
-        if self.save_area_scan:
-            pathname_csv = pathname.replace(".png", ".csv")
+        if self.save_area_scan_to_disk:
+            log.debug(f"saving area CSV to disk")
+            pathname_csv = pathname_mono.replace(".png", ".csv")
             with open(pathname_csv, "w") as outfile:
                 for pixel, intensity in enumerate(spectrum):
                     outfile.write(f"{pixel}, {intensity}\n")
@@ -354,6 +402,8 @@ class IDSCamera:
             log.debug(f"get_spectrum: returning {spectrum}")
         else:
             log.debug(f"get_spectrum: returning {spectrum[:5]}")
+
+        log.debug("get_spectrum: done")
         return spectrum
 
     ############################################################################
