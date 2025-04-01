@@ -1,4 +1,5 @@
 import threading
+import platform
 import logging
 import time
 from queue import Queue
@@ -12,8 +13,10 @@ from .OceanDevice          import OceanDevice
 from .SPIDevice            import SPIDevice
 from .BLEDevice            import BLEDevice
 from .TCPDevice            import TCPDevice
-from .IDSDevice            import IDSDevice
 from .Reading              import Reading
+
+if "windows" in platform.platform().lower():
+    from .IDSDevice        import IDSDevice
 
 log = logging.getLogger(__name__)
 
@@ -88,8 +91,13 @@ class WrapperWorker(threading.Thread):
     # one of the three queues (cmd inputs, response outputs, and
     # a one-shot SpectrometerSettings).
     def run(self):
-        is_options = (self.is_ocean, self.is_andor, self.is_ble, self.is_spi, self.is_tcp, self.is_ids)
-        device_classes = (OceanDevice, AndorDevice, BLEDevice, SPIDevice, TCPDevice, IDSDevice, WasatchDevice)
+        if "windows" in platform.platform().lower():
+            is_options = (self.is_ocean, self.is_andor, self.is_ble, self.is_spi, self.is_tcp, self.is_ids)
+            device_classes = (OceanDevice, AndorDevice, BLEDevice, SPIDevice, TCPDevice, IDSDevice, WasatchDevice)
+        else:
+            is_options = (self.is_ocean, self.is_andor, self.is_ble, self.is_spi, self.is_tcp)
+            device_classes = (OceanDevice, AndorDevice, BLEDevice, SPIDevice, TCPDevice, WasatchDevice)
+
         try:
             if any(is_options):
                 type_connection = is_options.index(True)
