@@ -8,7 +8,7 @@ from ids_peak import ids_peak as IDSPeak
 from ids_peak import ids_peak_ipl_extension as EXT
 from ids_peak_ipl import ids_peak_ipl as IPL
 
-from .AreaScanImage import AreaScanImage
+from wasatch.AreaScanImage import AreaScanImage
 
 log = logging.getLogger(__name__)
 
@@ -25,11 +25,76 @@ class IDSCamera:
     SeaBreezeWrapper, both of which keep the two separate.
 
     @see Program Files/IDS/ids_peak/generic_sdk/samples/source/python/start_stop_acquisition_software_trigger/main.py
+
+    @par Image Formats
+
+    Per cpp/multi_camera_live_qtwidgets/acquisitionworker.cpp, it looks like:
+
+    peak::ipl::PixelFormatName::BGRa8    --> QImage::Format_RGB32
+    peak::ipl::PixelFormatName::RGB8     --> QImage::Format_RGB888
+    peak::ipl::PixelFormatName::RGB10p32 --> QImage::Format_BGR30
+    peak::ipl::PixelFormatName::BayerRG8 --> QImage::Format_Grayscale8
+    peak::ipl::PixelFormatName::Mono8    --> QImage::Format_Grayscale8
+    otherwise                            --> QImage::Format_RGB32
+
+    per site-packages/ids_peak_ipl/ids_peak_ipl.py
+
+    PixelFormatName_Invalid
+    PixelFormatName_BayerGR8
+    PixelFormatName_BayerGR10
+    PixelFormatName_BayerGR12
+    PixelFormatName_BayerRG8
+    PixelFormatName_BayerRG10
+    PixelFormatName_BayerRG12
+    PixelFormatName_BayerGB8
+    PixelFormatName_BayerGB10
+    PixelFormatName_BayerGB12
+    PixelFormatName_BayerBG8
+    PixelFormatName_BayerBG10
+    PixelFormatName_BayerBG12
+    PixelFormatName_Mono8
+    PixelFormatName_Mono10
+    PixelFormatName_Mono12
+    PixelFormatName_Mono16
+    PixelFormatName_Confidence8
+    PixelFormatName_Confidence16
+    PixelFormatName_Coord3D_C8
+    PixelFormatName_Coord3D_C16
+    PixelFormatName_Coord3D_C32f
+    PixelFormatName_Coord3D_ABC32f
+    PixelFormatName_YUV420_8_YY_UV_SemiplanarIDS
+    PixelFormatName_YUV420_8_YY_VU_SemiplanarIDS
+    PixelFormatName_YUV422_8_UYVY
+    PixelFormatName_RGB8
+    PixelFormatName_RGB10
+    PixelFormatName_RGB12
+    PixelFormatName_BGR8
+    PixelFormatName_BGR10
+    PixelFormatName_BGR12
+    PixelFormatName_RGBa8
+    PixelFormatName_RGBa10
+    PixelFormatName_RGBa12
+    PixelFormatName_BGRa8
+    PixelFormatName_BGRa10
+    PixelFormatName_BGRa12
+    PixelFormatName_BayerBG10p
+    PixelFormatName_BayerBG12p
+    PixelFormatName_BayerGB10p
+    PixelFormatName_BayerGB12p
+    PixelFormatName_BayerGR10p
+    PixelFormatName_BayerGR12p
+    PixelFormatName_BayerRG10p
+    PixelFormatName_BayerRG12p
+    PixelFormatName_Mono10p
+    PixelFormatName_Mono12p
+    PixelFormatName_RGB10p32
+    PixelFormatName_BGR10p32
+    PixelFormatName_BayerRG10g40IDS
     """
 
     INITIALIZED = False
 
-    FORMAT_VERTICAL_BINNING = IPL.PixelFormatName_Mono16 # Mono12 # BGRa8
+    FORMAT_VERTICAL_BINNING = IPL.PixelFormatName_Mono16 # 
     FORMAT_AREA_SCAN = IPL.PixelFormatName_BGRa8
 
     ############################################################################
@@ -43,7 +108,7 @@ class IDSCamera:
         self.long_name = None
         self.datastream = None
 
-        self.save_area_scan_to_disk = False
+        self.save_area_scan_to_disk = True
         self.save_area_scan_image = False
         self.take_one_request = None
         self.taking_acquisition = False
@@ -192,7 +257,7 @@ class IDSCamera:
             log.debug("start: already running")
             return
 
-        self.datastream = None # kludge
+        # self.datastream = None # kludge
         if self.datastream is None:
             log.debug("start: initializing datastream")
             self.datastream = self.device.DataStreams()[0].OpenDataStream()
@@ -225,8 +290,10 @@ class IDSCamera:
                 self.image_converter_vertical_binning.PreAllocateConversion(input_pixel_format, self.FORMAT_VERTICAL_BINNING, self.width, self.height)
 
                 log.debug("start: pre-allocating image converter for area scan")
-                self.image_converter_area_scan = IPL.ImageConverter()
-                self.image_converter_area_scan.PreAllocateConversion(input_pixel_format, self.FORMAT_AREA_SCAN, self.width, self.height)
+                self.image_converter_area_scan = None
+                if False: # kludge
+                    self.image_converter_area_scan = IPL.ImageConverter()
+                    self.image_converter_area_scan.PreAllocateConversion(input_pixel_format, self.FORMAT_AREA_SCAN, self.width, self.height)
                 
                 log.debug(f"start: supported conversions from input pixel format {input_pixel_format}:")
                 for fmt in self.image_converter_vertical_binning.SupportedOutputPixelFormatNames(input_pixel_format):
@@ -345,30 +412,38 @@ class IDSCamera:
         # NOTE: Use `ImageConverter`, since the `ConvertTo` function re-allocates
         #       the conversion buffers on every call
         log.debug(f"get_spectrum: converting for vertical binning")
-        converted_vertical_binning = self.image_converter_vertical_binning.Convert(image, self.FORMAT_VERTICAL_BINNING)
+        converted_vertical_binning = None
+        if True: # False: # kludge
+            converted_vertical_binning = self.image_converter_vertical_binning.Convert(image, self.FORMAT_VERTICAL_BINNING)
+        log.debug(f"get_spectrum: converted_vertical_binning {converted_vertical_binning}")
 
+        converted_area_scan = None
         self.last_area_scan_image = None
-        if self.save_area_scan_image:
+        if self.save_area_scan_image and self.image_converter_area_scan is not None:
             log.debug(f"get_spectrum: converting for area scan")
             converted_area_scan = self.image_converter_area_scan.Convert(image, self.FORMAT_AREA_SCAN)
+            log.debug(f"get_spectrum: converted_area_scan {converted_area_scan}")
             data = converted_area_scan.get_numpy_1D().copy()
+            log.debug(f"get_spectrum: area scan 1D len {len(data)}")
 
             # ENLIGHTEN will convert to QtGui.QImage.Format_RGB32
             self.last_area_scan_image = AreaScanImage(data, converted_area_scan.Width(), converted_area_scan.Height(), fmt="RGB32")
+            log.debug(f"get_spectrum: last_area_scan_image {self.last_area_scan_image}")
 
         # we've converted the original image (possibly twice), so can now release the underlying buffer
         log.debug(f"get_spectrum: releasing buffer")
         self.datastream.QueueBuffer(buffer)
 
         if self.save_area_scan_to_disk:
-            log.debug(f"get_spectrum: saving mono png to disk")
             pathname_mono = self.next_name(cwd + "/image-mono", ".png")
-            IPL.ImageWriter.WriteAsPNG(pathname_mono, converted_vertical_binning)
-            log.debug(f"Saved as {pathname_mono}")
+            if converted_vertical_binning is not None:
+                log.debug(f"get_spectrum: saving mono png to disk")
+                IPL.ImageWriter.WriteAsPNG(pathname_mono, converted_vertical_binning)
+                log.debug(f"Saved as {pathname_mono}")
 
-            if self.save_area_scan_image:
+            pathname_area = self.next_name(cwd + "/image-area", ".png")
+            if converted_area_scan is not None and self.save_area_scan_image:
                 log.debug(f"get_spectrum: saving area png to disk")
-                pathname_area = self.next_name(cwd + "/image-area", ".png")
                 IPL.ImageWriter.WriteAsPNG(pathname_area, converted_area_scan)
                 log.debug(f"Saved as {pathname_area}")
 
@@ -377,21 +452,26 @@ class IDSCamera:
         ########################################################################
 
         log.debug(f"get_spectrum: performing vertical binning")
-        first_row = max(0, self.start_line)
-        last_row = min(self.stop_line, converted_vertical_binning.Height() - 1)
-        log.debug(f"get_spectrum: first_row {first_row}, last_row {last_row}")
-        spectrum = [0] * converted_vertical_binning.Width()
-        try:
-            for row in range(first_row, last_row + 1):
-                # log.debug(f"get_spectrum: row {row}")
-                pixel_row = IPL.PixelRow(converted_vertical_binning, row)
-                channels = pixel_row.Channels() 
-                channel = channels[0]
-                values = channel.Values 
-                for pixel, intensity in enumerate(values):
-                    spectrum[pixel] += intensity
-        except Exception as e:
-            log.error(f"Error vertically binning image: {e}", exc_info=1)
+        
+        if converted_vertical_binning is not None:
+            first_row = max(0, self.start_line)
+            last_row = min(self.stop_line, converted_vertical_binning.Height() - 1)
+            log.debug(f"get_spectrum: first_row {first_row}, last_row {last_row}")
+            spectrum = [0] * converted_vertical_binning.Width()
+
+            try:
+                for row in range(first_row, last_row + 1):
+                    # log.debug(f"get_spectrum: row {row}")
+                    pixel_row = IPL.PixelRow(converted_vertical_binning, row)
+                    channels = pixel_row.Channels() 
+                    channel = channels[0]
+                    values = channel.Values 
+                    for pixel, intensity in enumerate(values):
+                        spectrum[pixel] += intensity
+            except Exception as e:
+                log.error(f"Error vertically binning image: {e}", exc_info=1)
+        else:
+            spectrum = [0] * image.Width()
         log.debug(f"get_spectrum: done binning")
 
         if self.save_area_scan_to_disk:
