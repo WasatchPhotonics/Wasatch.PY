@@ -4,6 +4,7 @@
     - IDS cameras
         - add IDSDevice, IDSCamera
     - area scan
+        - add AreaScanImage
         - add start-of-frame marker at spectrum[0]
         - move row index to spectrum[1]
         - allow fast polling in area scan mode

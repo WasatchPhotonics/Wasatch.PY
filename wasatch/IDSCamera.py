@@ -1,5 +1,6 @@
 import threading
 import logging
+import pathlib 
 import time
 import sys
 import os
@@ -36,66 +37,32 @@ class IDSCamera:
     peak::ipl::PixelFormatName::BayerRG8 --> QImage::Format_Grayscale8
     peak::ipl::PixelFormatName::Mono8    --> QImage::Format_Grayscale8
     otherwise                            --> QImage::Format_RGB32
-
-    per site-packages/ids_peak_ipl/ids_peak_ipl.py
-
-    PixelFormatName_Invalid
-    PixelFormatName_BayerGR8
-    PixelFormatName_BayerGR10
-    PixelFormatName_BayerGR12
-    PixelFormatName_BayerRG8
-    PixelFormatName_BayerRG10
-    PixelFormatName_BayerRG12
-    PixelFormatName_BayerGB8
-    PixelFormatName_BayerGB10
-    PixelFormatName_BayerGB12
-    PixelFormatName_BayerBG8
-    PixelFormatName_BayerBG10
-    PixelFormatName_BayerBG12
-    PixelFormatName_Mono8
-    PixelFormatName_Mono10
-    PixelFormatName_Mono12
-    PixelFormatName_Mono16
-    PixelFormatName_Confidence8
-    PixelFormatName_Confidence16
-    PixelFormatName_Coord3D_C8
-    PixelFormatName_Coord3D_C16
-    PixelFormatName_Coord3D_C32f
-    PixelFormatName_Coord3D_ABC32f
-    PixelFormatName_YUV420_8_YY_UV_SemiplanarIDS
-    PixelFormatName_YUV420_8_YY_VU_SemiplanarIDS
-    PixelFormatName_YUV422_8_UYVY
-    PixelFormatName_RGB8
-    PixelFormatName_RGB10
-    PixelFormatName_RGB12
-    PixelFormatName_BGR8
-    PixelFormatName_BGR10
-    PixelFormatName_BGR12
-    PixelFormatName_RGBa8
-    PixelFormatName_RGBa10
-    PixelFormatName_RGBa12
-    PixelFormatName_BGRa8
-    PixelFormatName_BGRa10
-    PixelFormatName_BGRa12
-    PixelFormatName_BayerBG10p
-    PixelFormatName_BayerBG12p
-    PixelFormatName_BayerGB10p
-    PixelFormatName_BayerGB12p
-    PixelFormatName_BayerGR10p
-    PixelFormatName_BayerGR12p
-    PixelFormatName_BayerRG10p
-    PixelFormatName_BayerRG12p
-    PixelFormatName_Mono10p
-    PixelFormatName_Mono12p
-    PixelFormatName_RGB10p32
-    PixelFormatName_BGR10p32
-    PixelFormatName_BayerRG10g40IDS
     """
 
     INITIALIZED = False
 
-    FORMAT_VERTICAL_BINNING = IPL.PixelFormatName_Mono16 # 
-    FORMAT_AREA_SCAN = IPL.PixelFormatName_BGRa8
+    # @see site-packages/ids_peak_ipl/ids_peak_ipl.py
+    ALL_PIXEL_FORMAT_NAMES = [
+        "BGR10",        "BGR10p32",        "BGR12",          "BGR8",        "BGRa10",          "BGRa12",       "BGRa8",
+        "BayerBG10",    "BayerBG10g40IDS", "BayerBG10p",     "BayerBG12",   "BayerBG12g24IDS", "BayerBG12p",   "BayerBG8",
+        "BayerGB10",    "BayerGB10g40IDS", "BayerGB10p",     "BayerGB12",   "BayerGB12g24IDS", "BayerGB12p",   "BayerGB8",
+        "BayerGR10",    "BayerGR10g40IDS", "BayerGR10p",     "BayerGR12",   "BayerGR12g24IDS", "BayerGR12p",   "BayerGR8",
+        "BayerRG10",    "BayerRG10g40IDS", "BayerRG10p",     "BayerRG12",   "BayerRG12g24IDS", "BayerRG12p",   "BayerRG8",
+        "Confidence16", "Confidence8",     "Coord3D_ABC32f", "Coord3D_C16", "Coord3D_C32f",    "Coord3D_C8",
+        "Mono10",       "Mono12",          "Mono10p",        "Mono12p",     "Mono10g40IDS",    "Mono12g24IDS", "Mono16", "Mono8",
+        "RGB10",        "RGB10p32",        "RGB12",          "RGB8",        "RGBa10",          "RGBa12",       "RGBa8",
+        "YUV420_8_YY_UV_SemiplanarIDS",    "YUV420_8_YY_VU_SemiplanarIDS",  "YUV422_8_UYVY",   "Invalid"
+    ]
+
+    # generated via ImageConverter.SupportedOutputPixelFormatNames(PixelFormat(IPL.PixelFormatName_Mono12g24IDS))
+    # "Mono10g40IDS" omitted as unusable (can't be accessed as line data, can't be output to PNG)
+    SUPPORTED_CONVERSIONS = [ 
+        "Mono16", "Mono12", "Mono10", "Mono8",
+        "RGB12",  "RGB10",  "RGB8",
+        "BGR12",  "BGR10",  "BGR8",
+        "RGBa12", "RGBa10", "RGBa8",
+        "BGRa12", "BGRa10", "BGRa8"
+    ] 
 
     ############################################################################
     # Lifecycle
@@ -126,9 +93,11 @@ class IDSCamera:
         self.integration_time_ms = 15 # seems to be default?
         self.last_integration_time_ms = 15
 
-        self.image_converter_vertical_binning = None
-        self.image_converter_area_scan = None
+        self.image_converter = None
         self.last_area_scan_image = None
+
+        self.vertical_binning_format_name = "Mono16"
+        self.area_scan_format_name = "BGRa8"
 
         try:
             if self.INITIALIZED:
@@ -138,8 +107,27 @@ class IDSCamera:
                 IDSPeak.Library.Initialize()
                 self.INITIALIZED = True
             self.device_manager = IDSPeak.DeviceManager.Instance()
+            self.init_pixel_format_names()
         except Exception as ex:
             log.critical("failed to instantiate IDSPeak.DeviceManager", exc_info=1)
+
+    def init_pixel_format_names(self):
+        """ 
+        If there's an in-built API method to convert from the name of a desired 
+        format to a PixelFormat object or number, I didn't see one. (Okay, maybe
+        using Node.Entries() and SymbolicValue().)
+
+        @see IPL.PixelFormat class docs at https://en.ids-imaging.com/manuals/ids-peak/ids-peak-ipl-documentation/2.15.0/en/classpeak_1_1ipl_1_1_pixel_format.html
+        """
+        self.name_to_num = {}
+        log.debug("All PixelFormat types:")
+        for name in self.ALL_PIXEL_FORMAT_NAMES:
+            num = getattr(IPL, f"PixelFormatName_{name}") # int
+            fmt = IPL.PixelFormat(num) # num -> PixelFormat is easy
+            log.debug(f"  {name:30} = 0x{num:08x} ({num})")
+            assert name == fmt.Name(), f"name {name} != Name() {fmt.Name()}"
+            assert num == fmt.PixelFormatName(), f"num {num} != PixelFormatName() {fmt.PixelFormatName()}" # poorly named
+            self.name_to_num[name] = num
 
     def close(self):
         log.debug("close: start")
@@ -207,7 +195,7 @@ class IDSCamera:
         self.node_map.FindNode("TriggerSelector").SetCurrentEntry("ReadOutStart") # "ExposureStart" not supported?
         self.node_map.FindNode("TriggerMode").SetCurrentEntry("On")
         self.node_map.FindNode("TriggerSource").SetCurrentEntry("Software")
-        self.node_map.FindNode("ExposureTime").SetValue(400_000) # value in µs
+        self.node_map.FindNode("ExposureTime").SetValue(1_000_000) # value in µs
         
         # nodeMapRemoteDevice.FindNode("SequencerMode")   .SetCurrentEntry("Off")
         # nodeMapRemoteDevice.FindNode("AcquisitionMode") .SetCurrentEntry("SingleFrame")
@@ -261,7 +249,7 @@ class IDSCamera:
         if self.datastream is None:
             log.debug("start: initializing datastream")
             self.datastream = self.device.DataStreams()[0].OpenDataStream()
-            log.debug(f"start: datastream {self.datastream}")
+            log.debug(f"start: datastream initialized")
             self.reset()
         else:
             log.debug("start: datastream already initialized?")
@@ -272,40 +260,47 @@ class IDSCamera:
 
         try:
             # Lock parameters that should not be accessed during acquisition
+            # MZ: what are these?
             log.debug("start: locking parameters")
             self.node_map.FindNode("TLParamsLocked").SetValue(1)
 
-            pixel_format = self.node_map.FindNode("PixelFormat").CurrentEntry().Value()
-            input_pixel_format = IPL.PixelFormat(pixel_format)
+            # determine initial camera output format
+            node = self.node_map.FindNode("PixelFormat")
+            entry = node.CurrentEntry()
+            num = entry.Value()
+            input_fmt = IPL.PixelFormat(num)
+            name = input_fmt.Name()
 
-            log.debug(f"start: Width {self.width}, Height {self.height}, PixelFormat {pixel_format}, input format {input_pixel_format}")
+            log.debug(f"start: width {self.width}, height {self.height}, outputting {name} 0x{num:08x} ({num})")
 
             # Pre-allocate conversion buffers to speed up first image conversion
             # while the acquisition is running
             #
             # NOTE: Lazy-load the image converters
-            if self.image_converter_vertical_binning is None:
-                log.debug("start: pre-allocating image converter for vertical binning")
-                self.image_converter_vertical_binning = IPL.ImageConverter()
-                self.image_converter_vertical_binning.PreAllocateConversion(input_pixel_format, self.FORMAT_VERTICAL_BINNING, self.width, self.height)
+            if self.image_converter is None:
+                self.image_converter = IPL.ImageConverter()
 
-                log.debug("start: pre-allocating image converter for area scan")
-                self.image_converter_area_scan = None
-                if False: # kludge
-                    self.image_converter_area_scan = IPL.ImageConverter()
-                    self.image_converter_area_scan.PreAllocateConversion(input_pixel_format, self.FORMAT_AREA_SCAN, self.width, self.height)
+                # use this opportunity to report all the different conversion 
+                # options from the sensor's DEFAULT format, which is either 
+                # "Mono10g40IDS" or "Mono12g24IDS"
+                log.debug(f"start: supported conversions from {name}:")
+                for num in self.image_converter.SupportedOutputPixelFormatNames(input_fmt):
+                    fmt = IPL.PixelFormat(num)
+                    name = fmt.Name()
+                    log.debug(f"  {name:30} = 0x{num:08x} ({num})")
+
+                # don't pre-allocate for now; still playing with different formats
+                # self.image_converter.PreAllocateConversion(input_fmt, self.FORMAT_VERTICAL_BINNING, self.width, self.height)
+                #
+                # it's possible that holding two pre-allocated ImageConverters was screwing something up? not sure
+                # log.debug("start: pre-allocating image converter for area scan")
+                # self.image_converter_area_scan = None
+                # self.image_converter_area_scan = IPL.ImageConverter()
+                # self.image_converter_area_scan.PreAllocateConversion(input_fmt, self.FORMAT_AREA_SCAN, self.width, self.height)
                 
-                log.debug(f"start: supported conversions from input pixel format {input_pixel_format}:")
-                for fmt in self.image_converter_vertical_binning.SupportedOutputPixelFormatNames(input_pixel_format):
-                    log.debug(f"  {str(fmt)}")
-
-            log.debug("start: starting acquisition")
             self.datastream.StartAcquisition()
-            log.debug("start: executing")
             self.node_map.FindNode("AcquisitionStart").Execute()
-            log.debug("start: waiting")
             self.node_map.FindNode("AcquisitionStart").WaitUntilDone()
-            log.debug("start: done waiting")
             self.taking_acquisition = True
 
             log.debug("start: started")
@@ -408,88 +403,97 @@ class IDSCamera:
         image = EXT.BufferToImage(buffer)
         log.debug(f"get_spectrum: read buffer")
 
-        # This creates a deep copy of the image, so the buffer is free to be used again
-        # NOTE: Use `ImageConverter`, since the `ConvertTo` function re-allocates
-        #       the conversion buffers on every call
-        log.debug(f"get_spectrum: converting for vertical binning")
-        converted_vertical_binning = None
-        if True: # False: # kludge
-            converted_vertical_binning = self.image_converter_vertical_binning.Convert(image, self.FORMAT_VERTICAL_BINNING)
-        log.debug(f"get_spectrum: converted_vertical_binning {converted_vertical_binning}")
+        if True:
+            # normal case, just vertically bin using the configured format
+            spectrum, asi = self.vertically_bin_image(image)
 
-        converted_area_scan = None
-        self.last_area_scan_image = None
-        if self.save_area_scan_image and self.image_converter_area_scan is not None:
-            log.debug(f"get_spectrum: converting for area scan")
-            converted_area_scan = self.image_converter_area_scan.Convert(image, self.FORMAT_AREA_SCAN)
-            log.debug(f"get_spectrum: converted_area_scan {converted_area_scan}")
-            data = converted_area_scan.get_numpy_1D().copy()
-            log.debug(f"get_spectrum: area scan 1D len {len(data)}")
-
-            # ENLIGHTEN will convert to QtGui.QImage.Format_RGB32
-            self.last_area_scan_image = AreaScanImage(data, converted_area_scan.Width(), converted_area_scan.Height(), fmt="RGB32")
-            log.debug(f"get_spectrum: last_area_scan_image {self.last_area_scan_image}")
-
-        # we've converted the original image (possibly twice), so can now release the underlying buffer
-        log.debug(f"get_spectrum: releasing buffer")
-        self.datastream.QueueBuffer(buffer)
-
-        if self.save_area_scan_to_disk:
-            pathname_mono = self.next_name(cwd + "/image-mono", ".png")
-            if converted_vertical_binning is not None:
-                log.debug(f"get_spectrum: saving mono png to disk")
-                IPL.ImageWriter.WriteAsPNG(pathname_mono, converted_vertical_binning)
-                log.debug(f"Saved as {pathname_mono}")
-
-            pathname_area = self.next_name(cwd + "/image-area", ".png")
-            if converted_area_scan is not None and self.save_area_scan_image:
-                log.debug(f"get_spectrum: saving area png to disk")
-                IPL.ImageWriter.WriteAsPNG(pathname_area, converted_area_scan)
-                log.debug(f"Saved as {pathname_area}")
-
-        ########################################################################
-        # Vertical Binning
-        ########################################################################
-
-        log.debug(f"get_spectrum: performing vertical binning")
-        
-        if converted_vertical_binning is not None:
-            first_row = max(0, self.start_line)
-            last_row = min(self.stop_line, converted_vertical_binning.Height() - 1)
-            log.debug(f"get_spectrum: first_row {first_row}, last_row {last_row}")
-            spectrum = [0] * converted_vertical_binning.Width()
-
-            try:
-                for row in range(first_row, last_row + 1):
-                    # log.debug(f"get_spectrum: row {row}")
-                    pixel_row = IPL.PixelRow(converted_vertical_binning, row)
-                    channels = pixel_row.Channels() 
-                    channel = channels[0]
-                    values = channel.Values 
-                    for pixel, intensity in enumerate(values):
-                        spectrum[pixel] += intensity
-            except Exception as e:
-                log.error(f"Error vertically binning image: {e}", exc_info=1)
+            self.datastream.QueueBuffer(buffer)
         else:
-            spectrum = [0] * image.Width()
-        log.debug(f"get_spectrum: done binning")
+            # characterization: test all supported image formats
 
-        if self.save_area_scan_to_disk:
-            log.debug(f"saving area CSV to disk")
-            pathname_csv = pathname_mono.replace(".png", ".csv")
-            with open(pathname_csv, "w") as outfile:
-                for pixel, intensity in enumerate(spectrum):
-                    outfile.write(f"{pixel}, {intensity}\n")
-            log.debug(f"Saved as {pathname_csv}")
+            # this will take awhile, so make a deep-copy and release the buffer
+            clone = image.Clone()
+            self.datastream.QueueBuffer(buffer)
 
-        if spectrum is None:
-            log.debug(f"get_spectrum: returning {spectrum}")
-        else:
-            log.debug(f"get_spectrum: returning {spectrum[:5]}")
+            # loop over all supported conversions
+            for format_name in self.SUPPORTED_CONVERSIONS:
+                try:
+                    spectrum, asi = self.vertically_bin_image(clone, format_name)
+                except Exception as ex:
+                    log.error(f"caught exception during conversion to {format_name}: {ex}", exc_info=1)
+
+        # for now, just use the PNG cached in the filesystem
+        #
+        # data = converted_area_scan.get_numpy_1D().copy()
+        # log.debug(f"get_spectrum: area scan 1D len {len(data)}")
+        # 
+        # # ENLIGHTEN will convert to QtGui.QImage.Format_RGB32
+        # self.last_area_scan_image = AreaScanImage(data, converted_area_scan.Width(), converted_area_scan.Height(), fmt="RGB32")
+
+        self.last_area_scan_image = asi
 
         self.last_integration_time_ms = self.integration_time_ms
         log.debug("get_spectrum: done")
         return spectrum
+
+    def vertically_bin_image(self, image, format_name=None):
+        """ returns a single vertically-binned spectrum, and an AreaScanImage """
+
+        if format_name is None:
+            format_name = self.vertical_binning_format_name
+        format_num = self.name_to_num[format_name]
+        fmt = IPL.PixelFormat(format_num)
+
+        converted = self.image_converter.Convert(image, fmt)
+        if converted is None:
+            log.error("vertically_bin_image: failed converting image to {format_name}")
+            return None, None
+
+        # attempt to save converted image to PNG for debugging
+        pathname_png = f"idspeak/converted-{format_name}.png"
+        pathlib.Path("idspeak").mkdir(exist_ok=True)
+        try:
+            IPL.ImageWriter.WriteAsPNG(pathname_png, converted)
+            log.debug(f"saved {pathname_png}")
+            asi = AreaScanImage(pathname_png=pathname_png)
+        except IPL.ImageFormatNotSupportedException:
+            log.error(f"vertically_bin_image: unable to save {format_name} as PNG", exc_info=1)
+            asi = None
+
+        # this will hold the sum of all channels
+        spectrum = [0] * converted.Width()
+
+        # individual per-channel spectra for characterization
+        channel_count = fmt.NumChannels()
+        channel_spectra = [ [0] * converted.Width() for i in range(channel_count) ]
+
+        try:
+            # iterate over each line of the 2D image
+            for row in range(converted.Height()):
+                pixel_row = IPL.PixelRow(converted, row)
+
+                # iterate over each channel (R, G, B, a, etc)
+                for channel_index, channel in enumerate(pixel_row.Channels()):
+                    # iterate over each pixel in the line (for this channel)
+                    values = channel.Values 
+                    for pixel, intensity in enumerate(values):
+                        spectrum[pixel] += intensity
+                        channel_spectra[channel_index][pixel] += intensity
+        except IPL.ImageFormatNotSupportedException:
+            log.error(f"vertically_bin_image: unable to vertically bin {format_name}", exc_info=1)
+            return None, None
+
+        pathname_csv = f"idspeak/converted-{format_name}.csv"
+        with open(pathname_csv, "w") as outfile:
+            outfile.write("pixel, intensity, " + ", ".join(['chan_'+str(i) for i in range(channel_count)]) + "\n")
+            for pixel, intensity in enumerate(spectrum):
+                outfile.write(f"{pixel}, {spectrum[pixel]}")
+                for i in range(channel_count):
+                    outfile.write(f", {channel_spectra[i][pixel]}")
+                outfile.write("\n")
+            log.debug(f"  saved {pathname_csv} ({channel_count} channels)")
+
+        return spectrum, asi
 
     ############################################################################
     # Utility
@@ -611,7 +615,9 @@ if __name__ == '__main__':
                     camera.get_spectrum()
 
                 log.info("main: measurement completed, sleeping 5sec")
-                time.sleep(5)
+                # time.sleep(5)
+                break
+
         except Exception as ex:
             log.error("main: exception during measuremnet loop: {ex}", exc_info=1)
         finally:

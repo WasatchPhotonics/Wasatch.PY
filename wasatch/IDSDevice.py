@@ -103,6 +103,18 @@ class IDSDevice(InterfaceDevice):
         self.set_stop_line(end)
         return SpectrometerResponse(True)
 
+    def set_area_scan_format_name(self, s):
+        if s not in self.camera.SUPPORTED_CONVERSIONS:
+            return SpectrometerResponse(False)
+        self.camera.area_scan_format_name = s   
+        return SpectrometerResponse(True)
+
+    def set_vertical_binning_format_name(self, s):
+        if s not in self.camera.SUPPORTED_CONVERSIONS:
+            return SpectrometerResponse(False)
+        self.camera.vertical_binning_format_name = s   
+        return SpectrometerResponse(True)
+
     def set_area_scan_enable(self, flag):
         log.debug(f"set_area_scan_enable: flag {flag}")
         self.camera.save_area_scan_image = flag
@@ -150,5 +162,8 @@ class IDSDevice(InterfaceDevice):
         process_f["start_line"]          = lambda x: self.set_start_line(x)
         process_f["stop_line"]           = lambda x: self.set_stop_line(x)
         process_f["area_scan_enable"]    = lambda x: self.set_area_scan_enable(bool(x))
+
+        process_f["area_scan_format_name"] = lambda x: self.set_area_scan_format_name(x)
+        process_f["vertical_binning_format_name"] = lambda x: self.set_vertical_binning_format_name(x)
 
         return process_f
