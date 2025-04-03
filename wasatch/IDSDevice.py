@@ -1,4 +1,5 @@
 import logging
+import json
 
 from .SpectrometerResponse  import SpectrometerResponse, ErrorLevel
 from .SpectrometerSettings  import SpectrometerSettings
@@ -41,19 +42,27 @@ class IDSDevice(InterfaceDevice):
         log.debug(f"connect: trying to start {self.device_id}")
         self.camera.start()
 
-        # initialize default settings, so we can start overwriting them from the camera
+        # initialize default settings
         self.settings = SpectrometerSettings()
+        self.settings.eeprom.excitation_nm_float = 785 
+        self.settings.eeprom.wavecal_coeffs = [0, 1, 0, 0, 0]
 
+        # stomp from camera
         self.settings.eeprom.model = self.camera.model_name
         self.settings.eeprom.serial_number = self.camera.serial_number
+        self.settings.eeprom.detector_serial_number = self.camera.serial_number
         self.settings.eeprom.active_pixels_horizontal = self.camera.width
         self.settings.eeprom.active_pixels_vertical = self.camera.height
         self.settings.eeprom.roi_vertical_region_1_start = 0
-        self.settings.eeprom.roi_vertical_region_1_end   = self.camera.height
+        self.settings.eeprom.roi_vertical_region_1_end = self.camera.height
 
-        # kludges for testing
-        self.settings.eeprom.excitation_nm_float = 785 
-        self.settings.eeprom.wavecal_coeffs = [0, 1, 0, 0, 0]
+        # stomp from virtual eeprom
+        self.init_from_json()
+
+        # pass vertical ROI down into Camera (where binning occurs)
+        self.set_start_line(self.setting.eeprom.roi_vertical_region_1_start)
+        self.set_stop_line (self.setting.eeprom.roi_vertical_region_1_end)
+        # no need to pass horizontal ROI, because that's handled in ENLIGHTEN
 
         log.debug("connect: success")
         return SpectrometerResponse(True)
@@ -64,18 +73,57 @@ class IDSDevice(InterfaceDevice):
             self.camera.close()
             self.camera = None
 
+    def init_from_json(self):
+        """
+        {
+          "detector_serial_number": "4108809482",
+          "excitation_nm_float": 785.0,
+          "invert_x_axis": true,
+          "wavelength_coeffs": [
+              821.19,
+                0.106,
+                4.00E-05,
+               -1.00E+07,
+                5.00E-11
+          ],
+          "wp_model": "WP-785XS-FS-OEM+STARVIS",
+          "wp_serial_number": "WP-002288"
+        }
+
+        """
+        config_dir = os.path.join(self.camera.get_default_data_dir(), "config")
+        json_path = os.path.join(config_dir, f"{self.camera.serial_number}.json")
+        if os.path.exists(json_path):
+            data = json.load(json_path)
+
+            def stomp(k, attr=None):
+                if k in data:
+                    value = data[k]
+                    if attr is None:
+                        attr = k
+                    log.debug("stomping eeprom.{attr} = {value}")
+                    setattr(self.settings.eeprom, attr, value)
+
+            for k in [ "excitation_nm_float", 
+                       "invert_x_axis", 
+                       "wavelength_coeffs",
+                       "roi_horizontal_end",
+                       "roi_horizontal_start",
+                       "roi_vertical_region_1_start",
+                       "roi_vertical_region_1_end" ]:
+                stomp(k)
+            for k, attr in [ [ "wp_model",         "model" ],
+                             [ "wp_serial_number", "serial_number" ] ]:
+                stomp(k, attr)
+
     def set_integration_time_ms(self, ms):
         """
         It did not look like we need to stop/start the camera when changing exposure time:
         cpp/afl_features_live_qtwidgets/backend.cpp BackEnd::SetExposure
         """
         log.debug(f"set_integration_time_ms: here")
-        #log.debug(f"set_integration_time_ms: stopping")
-        #self.camera.stop()
         log.debug(f"set_integration_time_ms: setting integration time {ms}ms")
         self.camera.set_integration_time_ms(ms)
-        #log.debug(f"set_integration_time_ms: starting")
-        #self.camera.start()
         log.debug(f"set_integration_time_ms: done")
         return SpectrometerResponse(True)
 
@@ -117,7 +165,7 @@ class IDSDevice(InterfaceDevice):
 
     def set_area_scan_enable(self, flag):
         log.debug(f"set_area_scan_enable: flag {flag}")
-        self.camera.save_area_scan_image = flag
+        self.camera.area_scan_enabled = flag
         return SpectrometerResponse(True)
 
     def get_spectrum(self):

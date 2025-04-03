@@ -5,6 +5,8 @@ import time
 import sys
 import os
 
+from datetime import datetime
+
 from ids_peak import ids_peak as IDSPeak
 from ids_peak import ids_peak_ipl_extension as EXT
 from ids_peak_ipl import ids_peak_ipl as IPL
@@ -75,11 +77,13 @@ class IDSCamera:
         self.long_name = None
         self.datastream = None
 
-        self.save_area_scan_to_disk = True
-        self.save_area_scan_image = False
+        self.area_scan_enabled = False
         self.take_one_request = None
         self.taking_acquisition = False
         self.shutdown_in_progress = False
+        self.last_asi_timestamp = None
+        self.last_area_scan_image = None
+        self.rotate_180 = True
 
         self.buffers = []
 
@@ -94,10 +98,12 @@ class IDSCamera:
         self.last_integration_time_ms = 15
 
         self.image_converter = None
-        self.last_area_scan_image = None
+        self.image_transformer = None
 
         self.vertical_binning_format_name = "Mono16"
-        self.area_scan_format_name = "BGRa8"
+
+        self.dir = os.path.join(self.get_default_data_dir(), "idspeak")
+        pathlib.Path(self.dir).mkdir(exist_ok=True)
 
         try:
             if self.INITIALIZED:
@@ -289,15 +295,9 @@ class IDSCamera:
                     name = fmt.Name()
                     log.debug(f"  {name:30} = 0x{num:08x} ({num})")
 
-                # don't pre-allocate for now; still playing with different formats
-                # self.image_converter.PreAllocateConversion(input_fmt, self.FORMAT_VERTICAL_BINNING, self.width, self.height)
-                #
-                # it's possible that holding two pre-allocated ImageConverters was screwing something up? not sure
-                # log.debug("start: pre-allocating image converter for area scan")
-                # self.image_converter_area_scan = None
-                # self.image_converter_area_scan = IPL.ImageConverter()
-                # self.image_converter_area_scan.PreAllocateConversion(input_fmt, self.FORMAT_AREA_SCAN, self.width, self.height)
-                
+            if self.image_transformer is None:
+                self.image_transformer = IPL.ImageTransformer()
+
             self.datastream.StartAcquisition()
             self.node_map.FindNode("AcquisitionStart").Execute()
             self.node_map.FindNode("AcquisitionStart").WaitUntilDone()
@@ -403,14 +403,13 @@ class IDSCamera:
         image = EXT.BufferToImage(buffer)
         log.debug(f"get_spectrum: read buffer")
 
+        asi = None
         if True:
             # normal case, just vertically bin using the configured format
             spectrum, asi = self.vertically_bin_image(image)
 
             self.datastream.QueueBuffer(buffer)
         else:
-            # characterization: test all supported image formats
-
             # this will take awhile, so make a deep-copy and release the buffer
             clone = image.Clone()
             self.datastream.QueueBuffer(buffer)
@@ -422,16 +421,7 @@ class IDSCamera:
                 except Exception as ex:
                     log.error(f"caught exception during conversion to {format_name}: {ex}", exc_info=1)
 
-        # for now, just use the PNG cached in the filesystem
-        #
-        # data = converted_area_scan.get_numpy_1D().copy()
-        # log.debug(f"get_spectrum: area scan 1D len {len(data)}")
-        # 
-        # # ENLIGHTEN will convert to QtGui.QImage.Format_RGB32
-        # self.last_area_scan_image = AreaScanImage(data, converted_area_scan.Width(), converted_area_scan.Height(), fmt="RGB32")
-
         self.last_area_scan_image = asi
-
         self.last_integration_time_ms = self.integration_time_ms
         log.debug("get_spectrum: done")
         return spectrum
@@ -449,16 +439,8 @@ class IDSCamera:
             log.error("vertically_bin_image: failed converting image to {format_name}")
             return None, None
 
-        # attempt to save converted image to PNG for debugging
-        pathname_png = f"idspeak/converted-{format_name}.png"
-        pathlib.Path("idspeak").mkdir(exist_ok=True)
-        try:
-            IPL.ImageWriter.WriteAsPNG(pathname_png, converted)
-            log.debug(f"saved {pathname_png}")
-            asi = AreaScanImage(pathname_png=pathname_png)
-        except IPL.ImageFormatNotSupportedException:
-            log.error(f"vertically_bin_image: unable to save {format_name} as PNG", exc_info=1)
-            asi = None
+        if self.rotate_180:
+            self.image_transformer.MirrorUpDownLeftRightInPlace(converted)
 
         # this will hold the sum of all channels
         spectrum = [0] * converted.Width()
@@ -483,21 +465,46 @@ class IDSCamera:
             log.error(f"vertically_bin_image: unable to vertically bin {format_name}", exc_info=1)
             return None, None
 
-        pathname_csv = f"idspeak/converted-{format_name}.csv"
-        with open(pathname_csv, "w") as outfile:
-            outfile.write("pixel, intensity, " + ", ".join(['chan_'+str(i) for i in range(channel_count)]) + "\n")
-            for pixel, intensity in enumerate(spectrum):
-                outfile.write(f"{pixel}, {spectrum[pixel]}")
-                for i in range(channel_count):
-                    outfile.write(f", {channel_spectra[i][pixel]}")
-                outfile.write("\n")
-            log.debug(f"  saved {pathname_csv} ({channel_count} channels)")
+        if False:
+            pathname_csv = os.path.join(self.dir, f"{format_name}.csv")
+            with open(pathname_csv, "w") as outfile:
+                outfile.write("pixel, intensity, " + ", ".join(['chan_'+str(i) for i in range(channel_count)]) + "\n")
+                for pixel, intensity in enumerate(spectrum):
+                    outfile.write(f"{pixel}, {spectrum[pixel]}")
+                    for i in range(channel_count):
+                        outfile.write(f", {channel_spectra[i][pixel]}")
+                    outfile.write("\n")
+                log.debug(f"  saved {pathname_csv} ({channel_count} channels)")
+
+        # save converted image to PNG
+        asi = None
+        if self.area_scan_enabled:
+            now = datetime.now()
+            if self.last_asi_timestamp is None or (now - self.last_asi_timestamp).total_seconds() >= 1:
+                pathname_png = os.path.join(self.dir, f"{format_name}.png")
+                try:
+                    factor = IPL.ScaleFactor.New(0.5, 0.5)
+                    converted.Scale(factor)
+                    IPL.ImageWriter.WriteAsPNG(pathname_png, converted)
+                    log.debug(f"saved {pathname_png}")
+                    asi = AreaScanImage(pathname_png=pathname_png)
+                    self.last_asi_timestamp = datetime.now()
+                except IPL.ImageFormatNotSupportedException:
+                    log.error(f"vertically_bin_image: unable to save {format_name} as PNG", exc_info=1)
+            else:
+                log.debug("skipping ASI")
 
         return spectrum, asi
 
     ############################################################################
     # Utility
     ############################################################################
+
+    def get_default_data_dir(self):
+        """ copy of enlighten.common method of the same name """
+        if os.name == "nt":
+            return os.path.join(os.path.expanduser("~"), "Documents", "EnlightenSpectra")
+        return os.path.join(os.environ["HOME"], "EnlightenSpectra")
 
     def next_name(self, path, ext):
         num = 0

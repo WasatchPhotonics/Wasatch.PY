@@ -263,13 +263,9 @@ class WrapperWorker(threading.Thread):
                 log.error("received non-failure Reading without spectrum...ignoring?")
 
             # only poll hardware buses at 20Hz
-            try:
-                if not self.connected_device.state.area_scan_enabled:
-                    sleep_sec = WrapperWorker.POLLER_WAIT_SEC * num_connected_devices
-                    log.debug("sleeping %.2f sec", sleep_sec)
-                    time.sleep(sleep_sec)
-            except:
-                pass
+            sleep_sec = WrapperWorker.POLLER_WAIT_SEC * num_connected_devices
+            log.debug("sleeping %.2f sec", sleep_sec)
+            time.sleep(sleep_sec)
 
         ########################################################################
         # we have exited the loop
