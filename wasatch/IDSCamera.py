@@ -447,20 +447,24 @@ class IDSCamera:
 
         # individual per-channel spectra for characterization
         channel_count = fmt.NumChannels()
-        channel_spectra = [ [0] * converted.Width() for i in range(channel_count) ]
+        # channel_spectra = [ [0] * converted.Width() for i in range(channel_count) ]
 
         try:
             # iterate over each line of the 2D image
+            binned_count = 0
             for row in range(converted.Height()):
-                pixel_row = IPL.PixelRow(converted, row)
+                if self.start_line <= row <= self.stop_line:
+                    pixel_row = IPL.PixelRow(converted, row)
+                    binned_count += 1
 
-                # iterate over each channel (R, G, B, a, etc)
-                for channel_index, channel in enumerate(pixel_row.Channels()):
-                    # iterate over each pixel in the line (for this channel)
-                    values = channel.Values 
-                    for pixel, intensity in enumerate(values):
-                        spectrum[pixel] += intensity
-                        channel_spectra[channel_index][pixel] += intensity
+                    # iterate over each channel (R, G, B, a, etc)
+                    for channel_index, channel in enumerate(pixel_row.Channels()):
+                        # iterate over each pixel in the line (for this channel)
+                        values = channel.Values 
+                        for pixel, intensity in enumerate(values):
+                            spectrum[pixel] += intensity
+                            # channel_spectra[channel_index][pixel] += intensity
+            log.debug(f"binned {binned_count} lines from {self.start_line} to {self.stop_line}")
         except:
             log.error(f"vertically_bin_image: unable to vertically bin {format_name}", exc_info=1)
             return None, None
@@ -486,25 +490,27 @@ class IDSCamera:
                     # size image, we can reduce it in size and quality for the 
                     # visual area scan
 
-                    # 50% size
-                    factor = IPL.ScaleFactor()
-                    factor.x = 0.5
-                    factor.y = 0.5
-                    converted.Scale(factor)
+                    # 50% size -- this doesn't seem to be working?
+                    if False:
+                        factor = IPL.ScaleFactor()
+                        factor.x = 0.5
+                        factor.y = 0.5
+                        converted.Scale(factor)
 
-                    # 20% quality
-                    png_param = IPL.ImageWriter.PNGParameter()
-                    png_param.Quality = 20
+                    # 20% quality -- I don't know if this is doing anything or not?
+                    # png_param = IPL.ImageWriterPNGParameter()
+                    # png_param.Quality = 20
 
-                    IPL.ImageWriter.WriteAsPNG(pathname_png, converted, png_param)
+                    IPL.ImageWriter.WriteAsPNG(pathname_png, converted) # , png_param)
                     log.debug(f"saved {pathname_png}")
 
                     asi = AreaScanImage(pathname_png=pathname_png)
-                    self.last_asi_timestamp = datetime.now()
+                    self.last_asi_timestamp = now
                 except:
                     log.error(f"vertically_bin_image: unable to save {format_name} as PNG", exc_info=1)
             else:
-                log.debug("skipping ASI")
+                #log.debug("skipping ASI")
+                pass
 
         return spectrum, asi
 
