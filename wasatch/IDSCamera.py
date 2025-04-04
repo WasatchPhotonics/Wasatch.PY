@@ -12,6 +12,7 @@ from ids_peak import ids_peak_ipl_extension as EXT
 from ids_peak_ipl import ids_peak_ipl as IPL
 
 from wasatch.AreaScanImage import AreaScanImage
+from wasatch import utils
 
 log = logging.getLogger(__name__)
 
@@ -102,7 +103,7 @@ class IDSCamera:
 
         self.vertical_binning_format_name = "Mono16"
 
-        self.dir = os.path.join(self.get_default_data_dir(), "idspeak")
+        self.dir = os.path.join(utils.get_default_data_dir(), "idspeak")
         pathlib.Path(self.dir).mkdir(exist_ok=True)
 
         try:
@@ -114,7 +115,7 @@ class IDSCamera:
                 self.INITIALIZED = True
             self.device_manager = IDSPeak.DeviceManager.Instance()
             self.init_pixel_format_names()
-        except Exception as ex:
+        except:
             log.critical("failed to instantiate IDSPeak.DeviceManager", exc_info=1)
 
     def init_pixel_format_names(self):
@@ -143,8 +144,8 @@ class IDSCamera:
                 log.debug("close: revoking buffers")
                 for buffer in self.datastream.AnnouncedBuffers():
                     self.datastream.RevokeBuffer(buffer)
-        except Exception as e:
-            log.error(f"close: caught exception when clearing buffers: {e}", exc_info=1)
+        except:
+            log.error(f"close: caught exception when clearing buffers", exc_info=1)
         log.debug("close: done")
 
     def __del__(self):
@@ -195,13 +196,11 @@ class IDSCamera:
 
         # initialize software trigger
         # @see https://www.ids-imaging.us/manuals/ids-peak/ids-peak-user-manual/2.15.0/en/acquisition-control.html
-        self.dump()
-
         log.debug("TriggerSelector set to ExposureStart")
         self.node_map.FindNode("TriggerSelector").SetCurrentEntry("ReadOutStart") # "ExposureStart" not supported?
         self.node_map.FindNode("TriggerMode").SetCurrentEntry("On")
         self.node_map.FindNode("TriggerSource").SetCurrentEntry("Software")
-        self.node_map.FindNode("ExposureTime").SetValue(1_000_000) # value in µs
+        self.node_map.FindNode("ExposureTime").SetValue(15_000) # value in µs
         
         # nodeMapRemoteDevice.FindNode("SequencerMode")   .SetCurrentEntry("Off")
         # nodeMapRemoteDevice.FindNode("AcquisitionMode") .SetCurrentEntry("SingleFrame")
@@ -304,8 +303,8 @@ class IDSCamera:
             self.taking_acquisition = True
 
             log.debug("start: started")
-        except Exception as e:
-            log.error(f"Exception (start acquisition): {e}", exc_info=1)
+        except:
+            log.error(f"Exception (start acquisition)", exc_info=1)
 
         log.debug("start: done")
 
@@ -330,8 +329,8 @@ class IDSCamera:
 
             # Unlock parameters
             self.node_map.FindNode("TLParamsLocked").SetValue(0)
-        except Exception as e:
-            log.error(f"stop: caught exception {e}", exc_info=1)
+        except:
+            log.error(f"stop: caught exception", exc_info=1)
         log.debug("stop: done")
 
     def reset(self):
@@ -356,8 +355,8 @@ class IDSCamera:
                 self.buffers.append(buffer)
 
             log.debug("reset: allocated buffers")
-        except Exception as e:
-            log.error(f"reset: caught exception {e}", exc_info=1)
+        except:
+            log.error(f"reset: caught exception", exc_info=1)
 
     ############################################################################
     # Acquisition Loop (Software)
@@ -374,8 +373,8 @@ class IDSCamera:
                     self.send_trigger()
                     self.get_spectrum()
                     self.take_one_request = None
-            except Exception as e:
-                log.error(f"acquisition_loop: caught exception {e}", exc_info=1)
+            except:
+                log.error(f"acquisition_loop: caught exception", exc_info=1)
                 self.take_one_request = None
 
     def send_trigger(self):
@@ -418,8 +417,8 @@ class IDSCamera:
             for format_name in self.SUPPORTED_CONVERSIONS:
                 try:
                     spectrum, asi = self.vertically_bin_image(clone, format_name)
-                except Exception as ex:
-                    log.error(f"caught exception during conversion to {format_name}: {ex}", exc_info=1)
+                except:
+                    log.error(f"caught exception during conversion to {format_name}", exc_info=1)
 
         self.last_area_scan_image = asi
         self.last_integration_time_ms = self.integration_time_ms
@@ -428,6 +427,7 @@ class IDSCamera:
 
     def vertically_bin_image(self, image, format_name=None):
         """ returns a single vertically-binned spectrum, and an AreaScanImage """
+        asi = None
 
         if format_name is None:
             format_name = self.vertical_binning_format_name
@@ -461,7 +461,7 @@ class IDSCamera:
                     for pixel, intensity in enumerate(values):
                         spectrum[pixel] += intensity
                         channel_spectra[channel_index][pixel] += intensity
-        except IPL.ImageFormatNotSupportedException:
+        except:
             log.error(f"vertically_bin_image: unable to vertically bin {format_name}", exc_info=1)
             return None, None
 
@@ -477,19 +477,31 @@ class IDSCamera:
                 log.debug(f"  saved {pathname_csv} ({channel_count} channels)")
 
         # save converted image to PNG
-        asi = None
         if self.area_scan_enabled:
             now = datetime.now()
             if self.last_asi_timestamp is None or (now - self.last_asi_timestamp).total_seconds() >= 1:
                 pathname_png = os.path.join(self.dir, f"{format_name}.png")
                 try:
-                    factor = IPL.ScaleFactor.New(0.5, 0.5)
+                    # now that we've completed vertical binning using the full-
+                    # size image, we can reduce it in size and quality for the 
+                    # visual area scan
+
+                    # 50% size
+                    factor = IPL.ScaleFactor()
+                    factor.x = 0.5
+                    factor.y = 0.5
                     converted.Scale(factor)
-                    IPL.ImageWriter.WriteAsPNG(pathname_png, converted)
+
+                    # 20% quality
+                    png_param = IPL.ImageWriter.PNGParameter()
+                    png_param.Quality = 20
+
+                    IPL.ImageWriter.WriteAsPNG(pathname_png, converted, png_param)
                     log.debug(f"saved {pathname_png}")
+
                     asi = AreaScanImage(pathname_png=pathname_png)
                     self.last_asi_timestamp = datetime.now()
-                except IPL.ImageFormatNotSupportedException:
+                except:
                     log.error(f"vertically_bin_image: unable to save {format_name} as PNG", exc_info=1)
             else:
                 log.debug("skipping ASI")
@@ -499,12 +511,6 @@ class IDSCamera:
     ############################################################################
     # Utility
     ############################################################################
-
-    def get_default_data_dir(self):
-        """ copy of enlighten.common method of the same name """
-        if os.name == "nt":
-            return os.path.join(os.path.expanduser("~"), "Documents", "EnlightenSpectra")
-        return os.path.join(os.environ["HOME"], "EnlightenSpectra")
 
     def next_name(self, path, ext):
         num = 0
@@ -542,8 +548,8 @@ class IDSCamera:
                     log.debug(f"'{name}' is type {t} (unsupported)")
             else:
                 log.debug(f"dump_min_max: '{name}' not found in node_map")
-        except Exception as ex:
-            log.error(f"dump_min_max: error with name '{name}': {ex}", exc_info=1)
+        except:
+            log.error(f"dump_min_max: error with name {name}", exc_info=1)
 
     def dump_value(self, name):
         try:
@@ -562,8 +568,8 @@ class IDSCamera:
                     log.debug(f"'{name}' is type {t}: '{value}'")
             else:
                 log.debug(f"dump_value: '{name}' not found in node_map")
-        except Exception as ex:
-            log.error(f"dump_value: error with name '{name}': {ex}", exc_info=1)
+        except:
+            log.error(f"dump_value: error with name '{name}'", exc_info=1)
 
     def dump_entries(self, name):
         log.debug(f"Supported values of '{name}':")
@@ -625,8 +631,8 @@ if __name__ == '__main__':
                 # time.sleep(5)
                 break
 
-        except Exception as ex:
-            log.error("main: exception during measuremnet loop: {ex}", exc_info=1)
+        except:
+            log.error("main: exception during measuremnet loop", exc_info=1)
         finally:
             # make sure to always stop the acquisition_thread, otherwise
             # we'd hang, e.g. on KeyboardInterrupt
@@ -637,8 +643,8 @@ if __name__ == '__main__':
 
     except KeyboardInterrupt:
         log.critical("User interrupt: Exiting...")
-    except Exception as e:
-        log.error(f"Exception (main): {e}", exc_info=1)
+    except:
+        log.error(f"Exception (main)", exc_info=1)
     finally:
         # Close camera and library after program ends
         if camera is not None:
