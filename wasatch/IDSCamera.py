@@ -21,25 +21,40 @@ class IDSCamera:
     This class encapsulates access to the IDS Peak SDK. It is called and used by
     IDSDevice. IDSDevice "is-an" InterfaceDevice, and is mimicking the same 
     upstream API as WasatchDevice, TCPDevice, AndorDevice etc. This class, 
-    IDSCamera, is implementing the downstream IDS Peak SDK API.
+    IDSCamera, is implementing the downstream IDSPeak SDK API.
 
-    We could have done this like AndorDevice and TCPDevice, and merged both into
-    one class (upstream and downsteam APIs). However, I opted to follow the 
-    example of WasatchDevice/FeatureInterfaceDevice and OceanDevice/
-    SeaBreezeWrapper, both of which keep the two separate.
+    We could have done this like AndorDevice and TCPDevice, and merged both 
+    IDSDevice and IDSCamera into a single file or class (upstream and downsteam 
+    APIs). However, I opted to follow the example of (WasatchDevice -> 
+    FeatureInterfaceDevice) and (OceanDevice -> SeaBreezeWrapper), both of which
+    keep the two separate.
 
+    @par Vendor Documentati0on
+
+    @see https://www.ids-imaging.us/manuals/ids-peak/ids-peak-api-documentation/2.15.0/en/annotated.html
+    @see https://en.ids-imaging.com/manuals/ids-peak/ids-peak-ipl-documentation/2.15.0/en/annotated.html
+                                                              ^^^--- different!
     @see Program Files/IDS/ids_peak/generic_sdk/samples/source/python/start_stop_acquisition_software_trigger/main.py
+    
 
-    @par Image Formats
+    @par Converting IDS --> Qt
 
     Per cpp/multi_camera_live_qtwidgets/acquisitionworker.cpp, it looks like:
 
-    peak::ipl::PixelFormatName::BGRa8    --> QImage::Format_RGB32
-    peak::ipl::PixelFormatName::RGB8     --> QImage::Format_RGB888
-    peak::ipl::PixelFormatName::RGB10p32 --> QImage::Format_BGR30
-    peak::ipl::PixelFormatName::BayerRG8 --> QImage::Format_Grayscale8
-    peak::ipl::PixelFormatName::Mono8    --> QImage::Format_Grayscale8
-    otherwise                            --> QImage::Format_RGB32
+        peak::ipl::PixelFormatName::BGRa8    --> QImage::Format_RGB32
+        peak::ipl::PixelFormatName::RGB8     --> QImage::Format_RGB888
+        peak::ipl::PixelFormatName::RGB10p32 --> QImage::Format_BGR30
+        peak::ipl::PixelFormatName::BayerRG8 --> QImage::Format_Grayscale8
+        peak::ipl::PixelFormatName::Mono8    --> QImage::Format_Grayscale8
+        otherwise                            --> QImage::Format_RGB32
+
+    @par Backlog
+
+    The following need to be made much faster, via increased use of NumPy etc:
+
+    - vertical binning
+    - conversion to QPixmap
+
     """
 
     INITIALIZED = False
@@ -57,8 +72,8 @@ class IDSCamera:
         "YUV420_8_YY_UV_SemiplanarIDS",    "YUV420_8_YY_VU_SemiplanarIDS",  "YUV422_8_UYVY",   "Invalid"
     ]
 
-    # generated via ImageConverter.SupportedOutputPixelFormatNames(PixelFormat(IPL.PixelFormatName_Mono12g24IDS))
-    # "Mono10g40IDS" omitted as unusable (can't be accessed as line data, can't be output to PNG)
+    # generated via ImageConverter.SupportedOutputPixelFormatNames(PixelFormat(IPL.PixelFormatName_Mono10g40IDS))
+    # "Mono12g24IDS" omitted as unusable (can't be accessed as line data, can't be output to PNG)
     SUPPORTED_CONVERSIONS = [ 
         "Mono16", "Mono12", "Mono10", "Mono8",
         "RGB12",  "RGB10",  "RGB8",
@@ -84,6 +99,7 @@ class IDSCamera:
         self.shutdown_in_progress = False
         self.last_asi_timestamp = None
         self.last_area_scan_image = None
+        self.area_scan_image_timeout_sec = 1 # by default, generate new ASI at 1Hz
         self.rotate_180 = True
 
         self.buffers = []
@@ -101,7 +117,10 @@ class IDSCamera:
         self.image_converter = None
         self.image_transformer = None
 
-        self.vertical_binning_format_name = "Mono16"
+        # this is the default value, but IDSDevice may change it at runtime based
+        # on the ENLIGHTEN plugin
+        self.output_format_name = "Mono16"
+        self.output_format_obj = None
 
         self.dir = os.path.join(utils.get_default_data_dir(), "idspeak")
         pathlib.Path(self.dir).mkdir(exist_ok=True)
@@ -269,27 +288,25 @@ class IDSCamera:
             log.debug("start: locking parameters")
             self.node_map.FindNode("TLParamsLocked").SetValue(1)
 
-            # determine initial camera output format
-            node = self.node_map.FindNode("PixelFormat")
-            entry = node.CurrentEntry()
-            num = entry.Value()
-            input_fmt = IPL.PixelFormat(num)
-            name = input_fmt.Name()
+            # determine initial camera output format (the "input format" to this class)
+            input_format_node  = self.node_map.FindNode("PixelFormat")
+            input_format_entry = input_format_node.CurrentEntry()
+            input_format_num   = input_format_entry.Value()
+            self.input_format_obj = IPL.PixelFormat(input_format_num)
+            input_format_name  = self.input_format_obj.Name()
 
-            log.debug(f"start: width {self.width}, height {self.height}, outputting {name} 0x{num:08x} ({num})")
+            log.debug(f"start: width {self.width}, height {self.height}, outputting {input_format_name} 0x{input_format_num:08x} ({input_format_num})")
 
-            # Pre-allocate conversion buffers to speed up first image conversion
+            # Pre-allocate conversion buffers to speed up image conversion
             # while the acquisition is running
-            #
-            # NOTE: Lazy-load the image converters
             if self.image_converter is None:
-                self.image_converter = IPL.ImageConverter()
+                self.init_image_converter()
 
                 # use this opportunity to report all the different conversion 
-                # options from the sensor's DEFAULT format, which is either 
-                # "Mono10g40IDS" or "Mono12g24IDS"
-                log.debug(f"start: supported conversions from {name}:")
-                for num in self.image_converter.SupportedOutputPixelFormatNames(input_fmt):
+                # options from the sensor's default format (the INPUT format to 
+                # this class), which is likely "Mono10g40IDS" or "Mono12g24IDS"
+                log.debug(f"start: supported conversions from {input_format_name}:")
+                for num in self.image_converter.SupportedOutputPixelFormatNames(self.input_format_obj):
                     fmt = IPL.PixelFormat(num)
                     name = fmt.Name()
                     log.debug(f"  {name:30} = 0x{num:08x} ({num})")
@@ -307,6 +324,20 @@ class IDSCamera:
             log.error(f"Exception (start acquisition)", exc_info=1)
 
         log.debug("start: done")
+
+    def init_image_converter(self, output_format_name=None):
+        self.image_converter = IPL.ImageConverter()
+
+        if output_format_name is None:
+            output_format_name = self.output_format_name
+        else:
+            self.output_format_name = output_format_name
+
+        # MZ: I'm not sure if this actually speeds ALL conversions, or just the FIRST one
+        output_format_num = self.name_to_num[self.output_format_name]
+        self.output_format_obj = IPL.PixelFormat(output_format_num)
+        self.image_converter.PreAllocateConversion(self.input_format_obj, self.output_format_obj, self.width, self.height)
+        log.debug("pre-allocated ImageConverter to output {self.output_format_name}")
 
     def stop(self):
         """ Called during shutdown.  """
@@ -405,7 +436,7 @@ class IDSCamera:
         asi = None
         if True:
             # normal case, just vertically bin using the configured format
-            spectrum, asi = self.vertically_bin_image(image)
+            spectrum = self.vertically_bin_image(image)
 
             self.datastream.QueueBuffer(buffer)
         else:
@@ -416,25 +447,31 @@ class IDSCamera:
             # loop over all supported conversions
             for format_name in self.SUPPORTED_CONVERSIONS:
                 try:
-                    spectrum, asi = self.vertically_bin_image(clone, format_name)
+                    spectrum = self.vertically_bin_image(clone, format_name)
                 except:
                     log.error(f"caught exception during conversion to {format_name}", exc_info=1)
 
-        self.last_area_scan_image = asi
         self.last_integration_time_ms = self.integration_time_ms
         log.debug("get_spectrum: done")
         return spectrum
 
     def vertically_bin_image(self, image, format_name=None):
-        """ returns a single vertically-binned spectrum, and an AreaScanImage """
+        """ 
+
+        @note Stores a handle to a new AreaScanImage if the old one has expired.
+              This handle isn't "returned" but can be read by IDSDevice.
+        @returns a single vertically-binned spectrum
+        """
         asi = None
 
         if format_name is None:
-            format_name = self.vertical_binning_format_name
-        format_num = self.name_to_num[format_name]
-        fmt = IPL.PixelFormat(format_num)
+            converted = self.image_converter.Convert(image, self.output_format_obj)
+            format_obj = self.output_format_obj
+        else:
+            format_num = self.name_to_num[format_name]
+            format_obj = IPL.PixelFormat(format_num)
+            converted = self.image_converter.Convert(image, format_obj)
 
-        converted = self.image_converter.Convert(image, fmt)
         if converted is None:
             log.error("vertically_bin_image: failed converting image to {format_name}")
             return None, None
@@ -446,7 +483,7 @@ class IDSCamera:
         spectrum = [0] * converted.Width()
 
         # individual per-channel spectra for characterization
-        channel_count = fmt.NumChannels()
+        channel_count = format_obj.NumChannels()
         # channel_spectra = [ [0] * converted.Width() for i in range(channel_count) ]
 
         try:
@@ -482,37 +519,40 @@ class IDSCamera:
 
         # save converted image to PNG
         if self.area_scan_enabled:
+            
+            # only generate a fresh AreaScanImage if the old one has expired
             now = datetime.now()
-            if self.last_asi_timestamp is None or (now - self.last_asi_timestamp).total_seconds() >= 1:
+            if (self.last_asi_timestamp is None or
+                    (now - self.last_asi_timestamp).total_seconds() >= self.area_scan_image_timeout_sec):
                 pathname_png = os.path.join(self.dir, f"{format_name}.png")
                 try:
-                    # now that we've completed vertical binning using the full-
-                    # size image, we can reduce it in size and quality for the 
-                    # visual area scan
+                    # Now that we've completed vertical binning using the full-
+                    # size image, we COULD reduce it in size and quality for the 
+                    # visual area scan. Hyperspectral applications might prefer 
+                    # high-quality, so make any downgrade/shrinkage optional.
 
                     # 50% size -- this doesn't seem to be working?
-                    if False:
+                    if True:
                         factor = IPL.ScaleFactor()
                         factor.x = 0.5
                         factor.y = 0.5
-                        converted.Scale(factor)
+                        converted = converted.Scale(factor)
 
                     # 20% quality -- I don't know if this is doing anything or not?
-                    # png_param = IPL.ImageWriterPNGParameter()
-                    # png_param.Quality = 20
+                    png_param = IPL.ImageWriterPNGParameter()
+                    png_param.Quality = 20
 
-                    IPL.ImageWriter.WriteAsPNG(pathname_png, converted) # , png_param)
+                    IPL.ImageWriter.WriteAsPNG(pathname_png, converted, png_param)
                     log.debug(f"saved {pathname_png}")
 
-                    asi = AreaScanImage(pathname_png=pathname_png)
+                    self.last_area_scan_image = AreaScanImage(pathname_png=pathname_png)
                     self.last_asi_timestamp = now
                 except:
                     log.error(f"vertically_bin_image: unable to save {format_name} as PNG", exc_info=1)
             else:
-                #log.debug("skipping ASI")
-                pass
+                log.debug("not yet time for a new AreaScanImage")
 
-        return spectrum, asi
+        return spectrum
 
     ############################################################################
     # Utility

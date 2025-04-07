@@ -176,11 +176,13 @@ class IDSDevice(InterfaceDevice):
         self.set_stop_line(end)
         return SpectrometerResponse(True)
 
-    def set_vertical_binning_format_name(self, s):
-        log.debug(f"setting vertical_binning_format_name to {s}")
-        if s not in self.camera.SUPPORTED_CONVERSIONS:
+    def set_output_format_name(self, format_name):
+        if format_name  not in self.camera.SUPPORTED_CONVERSIONS:
+            log.error("unsupported output format name {format_name}")
             return SpectrometerResponse(False)
-        self.camera.vertical_binning_format_name = s   
+
+        log.debug(f"setting output_format_name to {format_name}")
+        self.camera.init_image_converter(format_name)
         return SpectrometerResponse(True)
 
     def set_area_scan_enable(self, flag):
@@ -250,8 +252,13 @@ class IDSDevice(InterfaceDevice):
         reading = Reading(self.device_id)
 
         reading.spectrum = self.get_spectrum()
+
+        # attach an AreaScanImage if there is one
         reading.area_scan_image = self.camera.last_area_scan_image
+        self.camera.last_area_scan_image = None # don't re-send the same one twice
+
         self.session_reading_count += 1
+        reading.session_count = self.session_reading_count
 
         # post-process scan averaging
         if self.settings.state.scans_to_average > 1:
@@ -299,6 +306,6 @@ class IDSDevice(InterfaceDevice):
         process_f["area_scan_enable"]    = lambda x: self.set_area_scan_enable(bool(x))
         process_f["scans_to_average"]    = lambda x: self.set_scans_to_average(int(x))
 
-        process_f["vertical_binning_format_name"] = lambda x: self.set_vertical_binning_format_name(x)
+        process_f["output_format_name"] = lambda x: self.set_output_format_name(x)
 
         return process_f
