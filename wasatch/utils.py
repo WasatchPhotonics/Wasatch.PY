@@ -712,3 +712,9 @@ def vercmp(a, b, delim="."):
 
 def to_hex(a):
     return "[ " + ", ".join([f"0x{v:02x}" for v in a]) + " ]"
+
+def from_db_to_linear(x):
+    return 10 ** (x / 20.)
+
+def from_linear_to_db(x):
+    return 20 * math.log(x, 10)

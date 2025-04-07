@@ -65,6 +65,7 @@ class IDSDevice(InterfaceDevice):
         self.settings.eeprom.active_pixels_vertical = self.camera.height
         self.settings.eeprom.roi_vertical_region_1_start = 0
         self.settings.eeprom.roi_vertical_region_1_end = self.camera.height
+        self.settings.eeprom.invert_x_axis = True
 
         # stomp from virtual eeprom
         self.init_from_json()
@@ -79,6 +80,9 @@ class IDSDevice(InterfaceDevice):
         # no need to pass horizontal ROI, because that's handled in ENLIGHTEN
 
         self.set_integration_time_ms(15)
+
+        # since area scan is so important to this camera, perform full rotation
+        self.camera.set_rotate_180(self.settings.eeprom.invert_x_axis)
 
         log.debug("connect: success")
         return SpectrometerResponse(True)
@@ -126,10 +130,12 @@ class IDSDevice(InterfaceDevice):
                     log.debug(f"stomping eeprom.{attr} = {value}")
                     setattr(self.settings.eeprom, attr, value)
 
-            for k in [ "excitation_nm_float", 
+            for k in [ "detector_gain",
+                       "excitation_nm_float", 
                        "invert_x_axis", 
                        "horiz_binning_enabled",       
                        "horiz_binning_mode",
+                       "startup_integration_time_ms",
                        "wavelength_coeffs",
                        "roi_horizontal_end",
                        "roi_horizontal_start",
@@ -145,12 +151,21 @@ class IDSDevice(InterfaceDevice):
         It did not look like we need to stop/start the camera when changing exposure time:
         cpp/afl_features_live_qtwidgets/backend.cpp BackEnd::SetExposure
         """
-        log.debug(f"set_integration_time_ms: here")
-        log.debug(f"set_integration_time_ms: setting integration time {ms}ms")
-        self.camera.set_integration_time_ms(ms)
-        self.settings.state.integration_time_ms = ms
-        log.debug(f"set_integration_time_ms: done")
+        log.debug(f"set_integration_time_ms: {ms}ms")
+        self.settings.state.integration_time_ms = self.camera.set_integration_time_ms(ms)
         return SpectrometerResponse(True)
+
+    def set_gain_factor(self, factor):
+        """ Appears to be a scalar multiplier rather than dB, since it defaults to 1.0? """
+        log.debug(f"set_gain_factor: gain factor {factor:.1f}")
+        self.settings.state.detector_gain = self.camera.set_gain_factor(factor)
+        return SpectrometerResponse(True)
+
+    def set_gain_db(self, db):
+        log.debug(f"set_gain_db: gain {db:.1f}")
+        self.settings.state.gain_db = db
+        factor = utils.from_db_to_linear(db)
+        return self.set_gain_factor(factor)
 
     def set_start_line(self, line):
         log.debug(f"set_start_line: line {line}")
@@ -299,12 +314,15 @@ class IDSDevice(InterfaceDevice):
 
         process_f["acquire_data"]        = self.acquire_data
                                          
-        process_f["integration_time_ms"] = lambda x: self.set_integration_time_ms(x)
+        # deliberately don't support gain_factor or detector_gain
+        process_f["gain_db"]             = lambda x: self.set_gain_db(float(x)) 
+        process_f["integration_time_ms"] = lambda x: self.set_integration_time_ms(int(x))
+        process_f["scans_to_average"]    = lambda x: self.set_scans_to_average(int(x))
+
         process_f["vertical_binning"]    = lambda x: self.set_vertical_roi(x)
         process_f["start_line"]          = lambda x: self.set_start_line(x)
         process_f["stop_line"]           = lambda x: self.set_stop_line(x)
         process_f["area_scan_enable"]    = lambda x: self.set_area_scan_enable(bool(x))
-        process_f["scans_to_average"]    = lambda x: self.set_scans_to_average(int(x))
 
         process_f["output_format_name"] = lambda x: self.set_output_format_name(x)
 
