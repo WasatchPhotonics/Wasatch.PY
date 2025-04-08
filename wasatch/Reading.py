@@ -39,6 +39,8 @@ class Reading:
         self.laser_is_firing           = False  # per interlock board, not laser_enable
         self.laser_tec_enabled         = False
         self.take_one_request          = None
+        self.elapsed_from_request      = None
+        self.elapsed_since_last        = None
 
         # currently only populated by AutoRaman
         self.new_integration_time_ms   = None

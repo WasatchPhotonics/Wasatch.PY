@@ -836,7 +836,7 @@ class IDSCamera:
                 log.error(f"{indent}{name} is unknown type {type_}")
 
             if not node.IsWriteable():
-                value += " (READ-ONLY)"
+                value = str(value) + " (READ-ONLY)"
 
             if value is None:
                 log.debug(f"{indent}{name} ({type_})")
