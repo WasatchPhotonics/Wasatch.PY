@@ -1,6 +1,6 @@
 # Changelog
 
-- 2025-??-?? 2.3.0
+- 2025-04-08 2.3.0
     - IDS cameras
         - add IDSDevice, IDSCamera
     - area scan
