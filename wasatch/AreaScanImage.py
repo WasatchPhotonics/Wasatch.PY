@@ -9,4 +9,4 @@ class AreaScanImage:
         self.pathname_png = pathname_png
 
     def __repr__(self):
-        return f"AreaScanImage<width {self.width}, height {self.height}, format_name {self.format_name}, pathname_png {self.pathname_png}>"
+        return f"AreaScanImage<width {self.width} (orig {self.width_orig}), height {self.height} (orig {self.height_orig}), format_name {self.format_name}, pathname_png {self.pathname_png}>"

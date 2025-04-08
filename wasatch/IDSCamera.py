@@ -1,6 +1,7 @@
 import threading
 import logging
 import pathlib 
+import numpy as np
 import time
 import sys
 import os
@@ -267,6 +268,8 @@ class IDSCamera:
         self.last_area_scan_image = None
         self.area_scan_image_timeout_sec = 1 # by default, generate new ASI at 1Hz
         self.rotate_180 = True
+        self.shrink_area_scan = True
+        self.degrade_area_scan = True
 
         self.buffers = []
 
@@ -282,6 +285,7 @@ class IDSCamera:
 
         self.image_converter = None
         self.image_transformer = None
+        # self.binning = None
 
         # this is the default value, but IDSDevice may change it at runtime based
         # on the ENLIGHTEN plugin
@@ -497,6 +501,9 @@ class IDSCamera:
             if self.image_transformer is None:
                 self.image_transformer = IPL.ImageTransformer()
 
+            # if self.binning is None:
+            #     self.init_binning()
+
             self.datastream.StartAcquisition()
             self.node_map.FindNode("AcquisitionStart").Execute()
             self.node_map.FindNode("AcquisitionStart").WaitUntilDone()
@@ -521,6 +528,20 @@ class IDSCamera:
         self.output_format_obj = IPL.PixelFormat(output_format_num)
         self.image_converter.PreAllocateConversion(self.input_format_obj, self.output_format_obj, self.width, self.height)
         log.debug("pre-allocated ImageConverter to output {self.output_format_name}")
+
+    def init_binning_NOT_USED(self):
+        """
+        It's unclear how much use IPL.Binning would be...the docs aren't entirely
+        clear on whether this could vertically bin rows (70, 790) of Mono16,
+        given several parameters take a uint8. According to the uEye manual, this
+        seems more intended for Bayer filter, bin2x2 etc.
+
+        @see https://www.ids-imaging.us//manuals/ids-peak/ids-peak-ipl-documentation/2.15.0/en/classpeak_1_1ipl_1_1_binning.html
+        @see https://www.1stvision.com/cameras/IDS/IDS-manuals/uEye_Manual/hw_binning.html
+        """
+        # self.binning = IPL.Binning()
+        # binning.SetMode(IPL.Binning.BinningMode_Sum)
+        pass
 
     def stop(self):
         """ Called during shutdown.  """
@@ -640,12 +661,13 @@ class IDSCamera:
         asi = None
 
         if format_name is None:
-            converted = self.image_converter.Convert(image, self.output_format_obj)
+            format_name = self.output_format_name
             format_obj = self.output_format_obj
         else:
             format_num = self.name_to_num[format_name]
             format_obj = IPL.PixelFormat(format_num)
-            converted = self.image_converter.Convert(image, format_obj)
+
+        converted = self.image_converter.Convert(image, format_obj)
 
         if buffer is not None:
             # we were sent a Buffer, so release it immediately after conversion
@@ -657,7 +679,7 @@ class IDSCamera:
             return 
 
         if self.rotate_180:
-            # would be nice if we could do this in the camera...
+            # would be nice if we could set this in the camera...
             self.image_transformer.MirrorUpDownLeftRightInPlace(converted)
 
         # this will hold the sum of all channels
@@ -667,25 +689,33 @@ class IDSCamera:
         channel_count = format_obj.NumChannels()
         # channel_spectra = [ [0] * converted.Width() for i in range(channel_count) ]
 
-        try:
-            # iterate over each line of the 2D image
-            binned_count = 0
-            for row in range(converted.Height()):
-                if self.start_line <= row <= self.stop_line:
-                    pixel_row = IPL.PixelRow(converted, row)
-                    binned_count += 1
+        if self.output_format_name == "Mono16":
+            data = converted.get_numpy()
+            cropped = data[self.start_line:(self.stop_line + 1), :]
+            spectrum = np.sum(cropped, axis=0)   
 
-                    # iterate over each channel (R, G, B, a, etc)
-                    for channel_index, channel in enumerate(pixel_row.Channels()):
-                        # iterate over each pixel in the line (for this channel)
-                        values = channel.Values 
-                        for pixel, intensity in enumerate(values):
-                            spectrum[pixel] += intensity
-                            # channel_spectra[channel_index][pixel] += intensity
-            log.debug(f"binned {binned_count} lines from {self.start_line} to {self.stop_line}")
-        except:
-            log.error(f"vertically_bin_image: unable to vertically bin {format_name}", exc_info=1)
-            return
+        else:
+            # we'd have to validate numpy process against different formats
+
+            try:
+                # iterate over each line of the 2D image
+                binned_count = 0
+                for row in range(converted.Height()):
+                    if self.start_line <= row <= self.stop_line:
+                        pixel_row = IPL.PixelRow(converted, row)
+                        binned_count += 1
+
+                        # iterate over each channel (R, G, B, a, etc)
+                        for channel_index, channel in enumerate(pixel_row.Channels()):
+                            # iterate over each pixel in the line (for this channel)
+                            values = channel.Values 
+                            for pixel, intensity in enumerate(values):
+                                spectrum[pixel] += intensity
+                                # channel_spectra[channel_index][pixel] += intensity
+                log.debug(f"binned {binned_count} lines from {self.start_line} to {self.stop_line}")
+            except:
+                log.error(f"vertically_bin_image: unable to vertically bin {format_name}", exc_info=1)
+                return
 
         # save binned intensities (including per-channel breakdown) as CSV
         
@@ -702,9 +732,8 @@ class IDSCamera:
 
         # save converted image to PNG
         if self.area_scan_enabled:
-            now = datetime.now()
-            if self.last_asi_timestamp is None or (now - self.last_asi_timestamp).total_seconds() >= self.area_scan_image_timeout_sec:
-                self.last_asi_timestamp = now
+            if self.last_asi_timestamp is None or (datetime.now() - self.last_asi_timestamp).total_seconds() >= self.area_scan_image_timeout_sec:
+                log.debug("time for a new AreaScanImage")
                 save_png = True
             else:
                 log.debug("not yet time for a new AreaScanImage")
@@ -717,9 +746,9 @@ class IDSCamera:
                 # visual area scan. Hyperspectral applications might prefer 
                 # high-quality, so make any downgrade/shrinkage optional.
 
-                # 50% size -- this doesn't seem to be working?
                 height_orig = converted.Height()
-                if True:
+                width_orig = converted.Width()
+                if self.shrink_area_scan:
                     factor = IPL.ScaleFactor()
                     factor.x = 0.5
                     factor.y = 0.5
@@ -727,13 +756,24 @@ class IDSCamera:
 
                 # 20% quality -- I don't know if this is doing anything or not?
                 png_param = IPL.ImageWriterPNGParameter()
-                png_param.Quality = 20
+                if self.degrade_area_scan:
+                    png_param.Quality = 20
 
+                pathname_tmp = os.path.join(self.dir, f"{format_name}-tmp.png")
                 pathname_png = os.path.join(self.dir, f"{format_name}.png")
-                IPL.ImageWriter.WriteAsPNG(pathname_png, converted, png_param)
+                IPL.ImageWriter.WriteAsPNG(pathname_tmp, converted, png_param)
+                os.replace(pathname_tmp, pathname_png)
                 log.debug(f"saved {pathname_png}")
 
-                self.last_area_scan_image = AreaScanImage(pathname_png=pathname_png, height=converted.Height(), height_orig=height_orig)
+                self.last_area_scan_image = AreaScanImage(
+                    pathname_png = pathname_png, 
+                    width        = converted.Width(), 
+                    height       = converted.Height(), 
+                    width_orig   = width_orig,
+                    height_orig  = height_orig, 
+                    format_name  = format_name)
+                log.debug(f"stored {self.last_area_scan_image}")
+                self.last_asi_timestamp = datetime.now()
             except:
                 log.error(f"vertically_bin_image: unable to save {format_name} as PNG", exc_info=1)
 
