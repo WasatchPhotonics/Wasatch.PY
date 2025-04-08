@@ -31,6 +31,7 @@ class Reading:
         self.session_count             = 0      # can treat as reading_id
         self.area_scan_row_count       = -1
         self.area_scan_data            = None
+        self.area_scan_png             = None
         self.battery_raw               = None
         self.battery_percentage        = None
         self.battery_charging          = None
@@ -38,6 +39,8 @@ class Reading:
         self.laser_is_firing           = False  # per interlock board, not laser_enable
         self.laser_tec_enabled         = False
         self.take_one_request          = None
+        self.elapsed_from_request      = None
+        self.elapsed_since_last        = None
 
         # currently only populated by AutoRaman
         self.new_integration_time_ms   = None
@@ -48,10 +51,11 @@ class Reading:
         self.dark                      = None
 
     def __str__(self):
-        return "wasatch.Reading {device_id %s, spectrum %s, averaged %s, session_count %d, area_scan_row_count %d, timestamp %s, timestamp_complete %s, failure %s, laser_enabled %s, ambient %s, take_one_request %s }" % (
+        return "wasatch.Reading {device_id %s, spectrum %s, averaged %s, sum_count %d, session_count %d, area_scan_row_count %d, timestamp %s, timestamp_complete %s, failure %s, laser_enabled %s, ambient %s, take_one_request %s }" % (
             self.device_id, 
             "None" if self.spectrum is None else ("%d values" % len(self.spectrum)),
             self.averaged, 
+            self.sum_count,
             self.session_count,
             self.area_scan_row_count,
             self.timestamp, 

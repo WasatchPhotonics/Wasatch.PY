@@ -42,7 +42,12 @@ def pixel_to_wavelength(x: int, coeffs: list[float]): # -> float
 
 ## expand 3rd-order wavelength polynomial into array of wavelengths
 def generate_wavelengths(pixels, coeffs):
-    if coeffs is None or pixels == 0:
+    if coeffs is None:
+        log.error(f"generate_wavelengths: coeffs {coeffs}")
+        return None
+
+    if pixels is None or pixels < 128:
+        log.error(f"generate_wavelengths: pixels {pixels}")
         return None
 
     wavelengths = []
@@ -206,6 +211,12 @@ def load_json(pathname):
             return json.load(infile)
     except:
         log.error("unable to load %s", pathname, exc_info=1)
+
+def get_default_data_dir():
+    """ copy of enlighten.common method of the same name """
+    if os.name == "nt":
+        return os.path.join(os.path.expanduser("~"), "Documents", "EnlightenSpectra")
+    return os.path.join(os.environ["HOME"], "EnlightenSpectra")
 
 ## iterate down a directory, returning pathnames that match the given pattern
 def get_pathnames_from_directory(rootdir, pattern=None, recursive=False):
@@ -701,3 +712,9 @@ def vercmp(a, b, delim="."):
 
 def to_hex(a):
     return "[ " + ", ".join([f"0x{v:02x}" for v in a]) + " ]"
+
+def from_db_to_linear(x):
+    return 10 ** (x / 20.)
+
+def from_linear_to_db(x):
+    return 20 * math.log(x, 10)

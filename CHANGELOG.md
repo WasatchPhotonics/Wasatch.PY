@@ -1,5 +1,13 @@
 # Changelog
 
+- 2025-04-08 2.3.0
+    - IDS cameras
+        - add IDSDevice, IDSCamera
+    - area scan
+        - add AreaScanImage
+        - add start-of-frame marker at spectrum[0]
+        - move row index to spectrum[1]
+        - allow fast polling in area scan mode
 - 2025-02-26 2.2.18
     - add laser state to Reading from AutoRaman
 - 2025-02-11 2.2.17

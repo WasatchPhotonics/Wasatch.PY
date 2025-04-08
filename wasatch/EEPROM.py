@@ -31,6 +31,7 @@ class EEPROM:
     PAGE_LENGTH = 64
     SUBPAGE_COUNT = 4  # used for BLE
     RAMAN_INTENSITY_CALIBRATION_ORDER = 5
+    MAX_BAD_PIXELS = 15
 
     DEFAULT_LASER_WATCHDOG_SEC = 10
 
@@ -610,7 +611,7 @@ class EEPROM:
                 bad_pixel_set.add(i)
         bad_pixels = list(bad_pixel_set)
         bad_pixels.sort()
-        for i in range(15):
+        for i in range(self.MAX_BAD_PIXELS):
             if i < len(bad_pixels):
                 value = bad_pixels[i]
             else:

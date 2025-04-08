@@ -19,7 +19,6 @@ class TCPDevice(InterfaceDevice):
     ############################################################################
 
     def __init__(self, device_id, message_queue=None, alert_queue=None):
-        """ Can be constructed from addr:port, or DeviceID, or nothing """
         super().__init__()
 
         self.device_id = device_id
