@@ -2,6 +2,7 @@ import platform
 import datetime
 import logging
 import random
+import numpy as np
 import copy
 import math
 import os
@@ -13,9 +14,8 @@ from time   import sleep
 from . import utils
 
 from .SpectrometerSettings import SpectrometerSettings
-from .SpectrometerResponse import SpectrometerResponse
+from .SpectrometerResponse import SpectrometerResponse, ErrorLevel
 from .SpectrometerRequest  import SpectrometerRequest
-from .SpectrometerResponse import ErrorLevel
 from .SpectrometerState    import SpectrometerState
 from .InterfaceDevice      import InterfaceDevice
 from .DetectorRegions      import DetectorRegions
@@ -23,8 +23,10 @@ from .ControlObject        import ControlObject
 from .StatusMessage        import StatusMessage
 from .RealUSBDevice        import RealUSBDevice
 from .MockUSBDevice        import MockUSBDevice
+from .AreaScanImage        import AreaScanImage
 from .DetectorROI          import DetectorROI
 from .PollStatus           import PollStatus
+from .Reading              import Reading
 from .EEPROM               import EEPROM
 from .IMX385               import IMX385
 from .ROI                  import ROI
@@ -121,6 +123,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.last_applied_laser_power = 0.0 # last power level APPLIED to laser, either by turning off (0) or on 
         self.next_applied_laser_power = None # power level to be applied NEXT time the laser is enabled
         self.has_received_spectrum = False
+        self.extra_area_scan_data = []
 
         self.raise_exceptions = False
         self.inject_random_errors = False
@@ -426,6 +429,17 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # if self.settings.is_gen15():
         #     log.debug("enabling Gen 1.5 accessory connector")
         #     self.set_accessory_enable(True)
+
+        # ######################################################################
+        # Area Scan
+        # ######################################################################
+
+        if self.settings.is_xs():
+            self.settings.eeprom.actual_pixels_vertical = 1080 # MZ: probably higher
+        else:
+            self.settings.eeprom.actual_pixels_vertical = 70
+
+        self.area_scan_frame = [ [0] * self.settings.pixels() for line in range(self.settings.eeprom.actual_pixels_vertical) ]
 
         # ######################################################################
         # Done
@@ -1090,12 +1104,12 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.settings.eeprom.detector_gain_odd = gain
         return self._send_code(0x9d, raw, label="SET_DETECTOR_GAIN_ODD")
 
-    ##
-    # Historically, this opcode moved around a bit.  At one point it was 0xeb
-    # (and is now again), which conflicts with CF_SELECT).  At other times it
-    # was 0xe9, which conflicted with LASER_RAMP_ENABLE.  This seems to be what
-    # we're standardizing on henceforth.
-    def set_area_scan_enable(self, flag: bool):
+    def set_area_scan_enable(self, flag):
+        """
+        Historically, this opcode moved around a bit. It is currently 0xeb, which 
+        conflicts with CF_SELECT).  At one point it was 0xe9, which conflicted with
+        LASER_RAMP_ENABLE.  
+        """
         if self.settings.is_ingaas():
             log.error("area scan is not supported on InGaAs detectors (single line array)")
             return SpectrometerResponse(error_lvl=ErrorLevel.low, error_msg="area scan is not supported on InGaAs detectors (single line array)")
@@ -1104,6 +1118,15 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.settings.state.area_scan_enabled = flag
         self.settings.state.area_scan_first_trigger_sent = False
         return self._send_code(0xeb, value, label="SET_AREA_SCAN_ENABLE")
+
+    def set_area_scan_line_count(self, n):
+        self.debug(f"setting line count to {n}")
+        self.dev.ctrl_transfer(H2D, 0xa6, n, 0, Z, TIMEOUT) 
+        return self._send_code(0xa6, n, label="SET_AREA_SCAN_LINE_COUNT")
+
+    def set_area_scan_line_interval(self, n):
+        self.debug(f"setting line interval to {n}")
+        return self._send_code(0xa8, n, label="SET_AREA_SCAN_INTERVAL")
 
     def get_sensor_line_length(self):
         value = self.get_upper_code(0x03, label="GET_LINE_LENGTH", lsb_len=2)
@@ -1232,6 +1255,21 @@ class FeatureIdentificationDevice(InterfaceDevice):
         """ legacy alias """
         return self.get_spectrum(trigger, auto_raman_params)
 
+    def generate_timeout_ms(self):
+        max_integ_ms = max(self.settings.state.integration_time_ms, self.settings.state.prev_integration_time_ms)
+        if self.settings.is_micro():
+            # we have no idea if Series-XS has to "wake up" the sensor, so wait
+            # long enough for 20ms + 8 throwaway frames if need be (IMX385 datasheet p69)
+            if self.settings.state.onboard_averaging:
+                timeout_ms = max_integ_ms * (self.settings.state.scans_to_average + 7) + 500 * self.settings.num_connected_devices + 20
+            else:
+                timeout_ms = max_integ_ms * 8 + 500 * self.settings.num_connected_devices + 20
+            if not self.has_received_spectrum:
+                timeout_ms += 10_000
+        else:
+            timeout_ms = max_integ_ms * 2 + 1_000 * self.settings.num_connected_devices
+        return int(timeout_ms)
+
     def get_spectrum(self, trigger=True, auto_raman_params=None):
         """
         Send "acquire", then immediately read the bulk endpoint(s).
@@ -1313,22 +1351,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
             endpoints = [0x82, 0x86]
             block_len_bytes = 2048 # 1024 pixels apiece from two endpoints
 
-        max_integ_ms = max(self.settings.state.integration_time_ms, self.settings.state.prev_integration_time_ms)
-
-        if self.settings.is_micro():
-            # we have no idea if Series-XS has to "wake up" the sensor, so wait
-            # long enough for 20ms + 8 throwaway frames if need be (IMX385 datasheet p69)
-            if self.settings.state.onboard_averaging:
-                timeout_ms = max_integ_ms * (self.settings.state.scans_to_average + 7) + 500 * self.settings.num_connected_devices + 20
-            else:
-                timeout_ms = max_integ_ms * 8 + 500 * self.settings.num_connected_devices + 20
-
-            if not self.has_received_spectrum:
-                timeout_ms += 10000
-        else:
-            timeout_ms = max_integ_ms * 2 + 1000 * self.settings.num_connected_devices
-
-        timeout_ms = int(timeout_ms)            
+        timeout_ms = self.generate_timeout_ms()
 
         self._wait_for_usb_available()
 
@@ -1566,8 +1589,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.debug("queuing throwaways")
             self.remaining_throwaways += 1
 
-    def set_scans_to_average(self, n):
-        retval = self._send_code(0xff, 0x62, n, label="SET_SCANS_TO_AVERAGE")
+    def set_onboard_scans_to_average(self, n):
+        if not self.settings.is_xs():
+            return SpectrometerResponse(False)
+
+        retval = self._send_code(0xff, 0x62, n, label="SET_ONBOARD_SCANS_TO_AVERAGE")
         self.settings.state.scans_to_average = n
         self.settings.state.onboard_averaging = True
         return retval
@@ -1627,6 +1653,119 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.settings.state.poll_status = status
         # log.debug(f"get_poll_status: status 0x{status:02x}")
         return result
+
+    # ##########################################################################
+    # Area Scan
+    # ##########################################################################
+
+    def get_area_scan(self):
+        """
+        @returns Reading(spectrum, AreaScanImage(data=nd_array))
+        """
+        log.debug("get_area_scan: start")
+        if self.settings.is_ingaas():
+            log.debug("get_area_scan: returning None (InGaAs)")
+            return None
+        elif self.settings.is_xs():
+            log.debug("get_area_scan: calling get_area_scan_xs")
+            return self.get_area_scan_xs()
+        else:
+            log.debug("get_area_scan: calling get_area_scan_hamamatsu")
+            return self.get_area_scan_hamamatsu()
+
+    def get_area_scan_xs(self):
+        raise NotImplemented("YOU ARE HERE")
+
+    def get_area_scan_hamamatsu(self):
+        """
+        @returns Reading(spectrum, AreaScanImage(data=nd_array))
+        """
+        log.debug("get_area_scan_hamamatsu: start")
+        marker = 0xffff
+        clamp = 0xfffe
+        lines = 69
+        line_len = self.settings.pixels() * 2
+        timeout_ms = self.generate_timeout_ms()
+
+        # request a frame
+        self._send_code(0xad, label="ACQUIRE_SPECTRUM")
+
+        # read frame line-by-line
+        line_count = 0
+        for line in range(lines):
+            prefix = f"line {line_count}"
+
+            data = self.extra_area_scan_data # start with any extra data we might have picked up on the last read
+            self.extra_area_scan_data = []
+
+            log.debug(f"get_area_scan_hamamatsu: {prefix} reading line")
+            try:
+                while len(data) < line_len:
+                    bytes_remaining = line_len - len(data)
+                    # would need to expand this to 0x86 for S16011-1101
+                    latest_data = self.device_type.read(self.device, 0x82, bytes_remaining, timeout=timeout_ms)
+                    # log.debug(f"{prefix}: read {len(latest_data)} bytes ({bytes_remaining} requested): {latest_data[:10]}")
+                    data.extend(latest_data) 
+            except:
+                log.error(f"error reading line {line}", exc_info=1)
+                break
+
+            extra_len = len(data) - line_len
+            if extra_len > 0:
+                log.warn(f"get_area_scan_hamamatsu {prefix}: storing {extra_len} extra bytes toward the next line")
+                self.extra_area_scan_data = line_data[line_len:]
+
+            # demarshal line into spectrum
+            spectrum = []
+            for i in range(self.settings.pixels()):
+                lsb = data[i*2 + 0]
+                msb = data[i*2 + 1]
+                intensity = (msb << 8) + lsb
+                spectrum.append(intensity)
+
+            # first pixel is start-of-line marker
+            if spectrum[0] != marker:
+                log.warn(f"get_area_scan_hamamatsu {prefix}: first pixel expected 0x{marker:04x}, found 0x{spectrum[0]:04x}")
+            spectrum[0] = spectrum[2] # stomp
+
+            # verify rest of line is clamped to 0xfffe
+            for i, intensity in enumerate(spectrum):
+                if i > 1 and spectrum[i] > clamp:
+                    log.warn(f"get_area_scan_hamamatsu {prefix}: WARNING: pixel {i:4d} value 0x{spectrum[i]:04x} exceeds clamp 0x{clamp:04x}")
+
+            # second pixel is line index
+            line_index = spectrum[1]
+            if line_index >= lines:
+                log.warn(f"get_area_scan_hamamatsu {prefix}: WARNING: line_index {line_index} exceeds frame limit")
+            spectrum[1] = spectrum[2] # stomp
+
+            # store line in image
+            log.debug(f"get_area_scan_hamamatsu: {prefix}: storing line {line_index}")
+            self.area_scan_frame[line_index] = spectrum
+            # self.debug(f"{prefix}: stored line {line_index}: {spectrum[:5]}")
+            
+            line_count += 1
+
+        ########################################################################
+        # process completed frame
+        ########################################################################
+
+        log.debug("get_area_scan_hamamatsu: processing completed frame")
+        
+        # vertically bin within vertical ROI for live graph
+        start = self.settings.eeprom.roi_vertical_region_1_start
+        stop  = self.settings.eeprom.roi_vertical_region_1_end
+        data = np.array(self.area_scan_frame)
+        cropped = data[start:(stop + 1), :]
+        spectrum = np.sum(cropped, axis=0)   
+        asi = AreaScanImage(data=data, width=len(data[0]), height=len(data))
+
+        reading = Reading(self.device_id)
+        reading.spectrum = spectrum
+        reading.area_scan_image = asi
+
+        log.debug("get_area_scan_hamamatsu: returning {reading}")
+        return reading
 
     # ##########################################################################
     # ADCs / DACs
@@ -2607,50 +2746,64 @@ class FeatureIdentificationDevice(InterfaceDevice):
         if self.settings.is_micro():
             roi = self.settings.get_vertical_roi()
             if roi is not None:
-                self.set_vertical_binning(roi)
+                self.set_vertical_roi(roi)
 
-    def set_vertical_binning(self, roi):
+    def set_vertical_roi(self, roi):
         # check for legacy vis since they don't like vertical binning
         if self.settings.fpga_firmware_version == "000-008" and self.settings.microcontroller_firmware_version == "0.1.0.7":
             return SpectrometerResponse(data=False)
+
         if not self.settings.is_micro():
-            log.debug("Vertical Binning only configurable on Series-XS")
-            return SpectrometerResponse(data=False, error_msg="vertical binning not supported")
+            # YOU ARE HERE
+            if not self.settings.supports_feature("hamamatsu_vertical_roi"):
+                log.debug("Vertical Binning only configurable on Series-XS and prototype X/XM")
+                return SpectrometerResponse(data=False, error_msg="vertical binning not supported")
 
         if isinstance(roi, ROI):
             start, end = roi.start, roi.end
         elif len(roi) == 2:
             start, end = roi[0], roi[1]
         else:
-            log.error("set_vertical_binning requires an ROI object or tuple of (start, stop) lines")
+            log.error("set_vertical_roi: requires an ROI object or tuple of (start, stop) lines")
             return SpectrometerResponse(data=False, error_msg="invalid start and stop lines")
 
         if start < 0 or end < 0:
-            log.error("set_vertical_binning requires POSITIVE (start, stop) lines")
+            log.error("set_vertical_roi: requires POSITIVE (start, stop) lines")
             return SpectrometerResponse(data=False, error_msg="invalid start and stop lines")
 
         # enforce ascending order (also, note that stop line is "last line binned + 1", so stop must be > start)
         if start >= end:
             # (start, end) = (end, start)
-            log.error("set_vertical_binning requires ascending order (ignoring %d, %d)", start, end)
+            log.error("set_vertical_roi: requires ascending order (ignoring %d, %d)", start, end)
             return SpectrometerResponse(data=False, error_msg="invalid start and stop lines")
 
-        ok1 = self._send_code(bRequest        = 0xff,
-                              wValue          = 0x21,
-                              wIndex          = start,
-                              data_or_wLength = [0] * 8,
-                              label           = "SET_CCD_START_LINE")
-        if ok1.error_msg != '':
-            return ok1
+        buf = [0] * 8
+        if self.settings.is_xs():
+            # ARM has USB opcodes for start/stop line
+            ok = self._send_code(bRequest=0xff, wValue=0x21, wIndex=start, data_or_wLength=buf, label="SET_CMOS_START_LINE")
+            if not ok.data:
+                return ok
+            ok = self._send_code(bRequest=0xff, wValue=0x23, wIndex=end, data_or_wLength=buf, label="SET_CMOS_STOP_LINE")
+            if not ok.data:
+                return ok
+        else:
+            # FX2 lacks USB opcodes for start/stop line, so use I2C Poke
 
-        ok2 = self._send_code(bRequest        = 0xff,
-                              wValue          = 0x23,
-                              wIndex          = end,
-                              data_or_wLength = [0] * 8,
-                              label           = "SET_CCD_STOP_LINE")
-        if ok2.error_msg != '':
-            return ok2
-        return SpectrometerResponse(data=ok1.data and ok2.data)
+            # I2C_POKE              0x90 
+            # SENSOR_ROI_START_LINE 0x29 len 1 default 0x00
+            # SENSOR_ROI_STOP_LINE  0x2A len 1 default 0x45 (69 dec)
+        
+            buf[0] = start
+            ok = self._send_code(bRequest=0x90, wValue=0x29, wIndex=1, data_or_wLength=buf, label="I2C_POKE(SET_CCD_START_LINE)")
+            if not ok.data:
+                return ok
+
+            buf[0] = end
+            ok = self._send_code(bRequest=0x90, wValue=0x2A, wIndex=1, data_or_wLength=buf, label="I2C_POKE(SET_CCD_STOP_LINE)")
+            if not ok.data:
+                return ok
+
+        return SpectrometerResponse(data=True)
 
     ## 
     # @param mode: integral value 0-3
@@ -3513,7 +3666,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 "set_tec_enable",
                 "set_trigger_delay",
                 "set_trigger_source",
-                "set_vertical_binning",
+                "set_vertical_roi",
                 "update_laser_watchdog",
                 "update_session_eeprom",
                 "write_eeprom",
@@ -3574,7 +3727,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         process_f["laser_watchdog_sec"]                 = lambda x: self.set_laser_watchdog_sec(int(round(x)))
 
         # regions
-        process_f["vertical_binning"]                   = lambda x: self.set_vertical_binning(x)
+        process_f["vertical_binning"]                   = lambda x: self.set_vertical_roi(x) # legacy alias
+        process_f["vertical_roi"]                       = lambda x: self.set_vertical_roi(x)
         process_f["update_vertical_roi"]                = lambda x: self.update_vertical_roi()
         process_f["single_region"]                      = lambda x: self.set_single_region(int(round(x)))
         process_f["clear_regions"]                      = lambda x: self.clear_regions()
@@ -3601,6 +3755,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         process_f["horiz_binning_enable"]               = lambda x: self.settings.eeprom.set("horiz_binning_enabled", bool(x))
         process_f["wavenumber_correction"]              = lambda x: self.settings.set_wavenumber_correction(float(x))
         process_f["linear_pixel_calibration"]           = lambda x: self.settings.set_linear_pixel_calibration(x)
+        process_f["onboard_scans_to_average"]           = lambda x: self.set_onboard_scans_to_average(int(x))
 
         # heartbeats & connection data
         process_f["raise_exceptions"]                   = lambda x: setattr(self, "raise_exceptions", bool(x))

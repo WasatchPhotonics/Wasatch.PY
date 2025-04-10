@@ -24,41 +24,80 @@ from .Reading                     import Reading
 
 log = logging.getLogger(__name__)
 
-##
-# A WasatchDevice encapsulates and wraps a Wasatch spectrometer in a blocking
-# interface.  It will normally wrap one of the following:
-#
-# - a FeatureIdentificationDevice (modern FID spectrometer)
-#
-# ENLIGHTEN does not instantiate WasatchDevices directly, but instead uses
-# a WasatchDeviceWrapper to access a single WasatchDevice in a dedicated child 
-# thread.  Other users of Wasatch.PY may of course instantiate a WasatchDevice 
-# directly.
 class WasatchDevice(InterfaceDevice):
+    """
+    This is the top-level interface for controlling and communicating with
+    Wasatch Photonics USB 2.0 spectrometers using the FeatureInterfaceDevice 
+    (FID) protocol as defined in ENG-0001.
 
-    # While this is not the main interface device, it wraps FID
-    # It is also what is called by WrapperWorker and because of this
-    # I chose to implement the minimum formatting for interface device
-    # so that it can match the other calls in WrapperWorker
+    This class is essentially a clunky wrapper over FeatureInterfaceDevice, 
+    providing the higher-level InterfaceDevice interface making WasatchDevice a 
+    peer to AndorDevice, OceanDevice, TCPDevice, IDSDevice etc.
 
-    ##
-    # @param device_id      a DeviceID instance OR string label thereof
-    # @param message_queue  if provided, used to send status back to caller
-    # @param alert_queue    if provided, used to receive hints and realtime interrupts from caller
+    Several points will stand out:
+
+    1. WasatchDevice should probably be renamed to FIDDevice, because Wasatch 
+       Photonics is also the manufacturer for spectrometers using AndorDevice,
+       TCPDevice, IDSDevice etc.
+
+    2. This class could be simplified considerably, and possibly merged with
+       FeatureIdentificationDevice.
+
+    ENLIGHTEN does not instantiate WasatchDevices directly, but instead uses
+    a WasatchDeviceWrapper to access a single WasatchDevice in a dedicated child
+    thread.  Other users of Wasatch.PY may of course instantiate a WasatchDevice 
+    directly, or go straight to a FeatureInterfaceDevice.
+
+    Main things this "wrapper" provides:
+
+    - Implements software-based, library-based scan averaging (badly). Although
+      ARM-based spectrometers can do this in firmware, FX2-based models have to
+      do it in software. Between Wasatch.PY and ENLIGHTEN, it seems preferable
+      to have this in the Wasatch.PY library, where it is easier for customers
+      to use.
+
+    - Distinguishes between normal, averaged, AutoRaman and AreaScan  
+      acquisitions.
+
+    @par History
+
+    This class exists because it used to wrap TWO types of spectrometers:
+
+    - FeatureIdentificationDevices, which follow the ENG-0001 API and
+      have EEPROMs
+    - StrokerDevices, which didn't have EEPROMs and didn't obey ENG-0001.
+
+    I don't know if we have an ENG document specifying the protocol that the old
+    Stroker electronics used. It was already deprecated when I started, and was 
+    rapidly removed from Wasatch.PY. Which kind of made this class superfluous.
+
+    This class (and all who inherit InterfaceDevice) use a somewhat clunky
+    data-passing and error-handling mechanism via SpectrometerRequest and
+    SpectrometerResponse objects. That could probably be streamlined.
+
+    Part of the legacy "ugly-isms" in this class date back to when ENLIGHTEN
+    was multi-process rather than multi-threaded, and all data flows between
+    Wasatch.PY and ENLIGHTEN were via pickled queues :-(
+    """
+
     def __init__(self, device_id, message_queue=None, alert_queue=None):
-
+        """
+        @param device_id      a DeviceID instance OR string label thereof
+        @param message_queue  if provided, used to send status back to caller
+        @param alert_queue    if provided, used to receive hints and realtime interrupts from caller
+        """
         # if passed a string representation of a DeviceID, deserialize it
         if type(device_id) is str:
             device_id = DeviceID(label=device_id)
 
         self.device_id      = device_id
-        self.message_queue  = message_queue
-        self.alert_queue    = alert_queue   
+        self.message_queue  = message_queue # outgoing notifications to ENLIGHTEN
+        self.alert_queue    = alert_queue   # incoming alerts from ENLIGHTEN 
 
         self.lock = threading.Lock()
 
         self.connected = False
-        self.hardware = None
+        self.hardware = None                # FeatureIdentificationDevice
 
         # Receives ENLIGHTEN's 'change settings' commands in the spectrometer
         # process. Although a logical queue, has nothing to do with multiprocessing.
@@ -92,10 +131,10 @@ class WasatchDevice(InterfaceDevice):
     #                                                                          #
     # ######################################################################## #
 
-    ## Attempt low level connection to the specified DeviceID
-    def connect(self): # -> SpectrometerResponse 
+    def connect(self):
+        """ Attempt low level connection to the specified DeviceID """
         if self.device_id.is_usb() or self.device_id.is_mock():
-            log.debug("trying to connect to %s device" % ("USB" if self.device_id.is_usb() else "Mock"))
+            log.debug(f"trying to connect to {'USB' if self.device_id.is_usb() else 'Mock'}")
             result = self.connect_feature_identification()
             if result.data:
                 log.debug("Connected to FeatureIdentificationDevice")
@@ -103,13 +142,10 @@ class WasatchDevice(InterfaceDevice):
                 self.initialize_settings()
                 return SpectrometerResponse(True)
             else:
-
                 log.debug("Failed to connect to FeatureIdentificationDevice")
                 return result
-
         else:
             log.critical("unsupported DeviceID protocol: %s", self.device_id)
-
         log.debug("Can't connect to %s", self.device_id)
         return SpectrometerResponse(False)
 
@@ -128,54 +164,47 @@ class WasatchDevice(InterfaceDevice):
 
     ## Given a specified universal identifier, attempt to connect to the device using FID protocol.
     # @todo merge with the hardcoded list in DeviceFinderUSB
-    def connect_feature_identification(self): # -> SpectrometerResponse 
-        FID_list = ["1000", "2000", "4000"] # hex
-
+    def connect_feature_identification(self):
         # check to see if valid FID PID
         pid_hex = self.device_id.get_pid_hex()
-        if pid_hex not in FID_list:
-            log.debug("connect_feature_identification: device_id %s PID %s not in FID list %s", self.device_id, pid_hex, FID_list)
+        if pid_hex not in ["1000", "2000", "4000"]:
+            log.debug(f"connect_feature_identification: device_id {self.device_id} has invalid PID {pid_hex}")
             return SpectrometerResponse(False)
 
         dev = None
         try:
-            log.debug("connect_fid: instantiating FID with device_id %s pid %s", self.device_id, pid_hex)
+            log.debug(f"connect_fid: instantiating FID with device_id {self.device_id}, pid {pid_hex}")
             dev = FeatureIdentificationDevice(device_id=self.device_id, message_queue=self.message_queue, alert_queue=self.alert_queue)
             log.debug("connect_fid: instantiated")
 
-            try:
-                log.debug("connect_fid: calling dev.connect")
-                response = dev.connect()
-                log.debug("connect_fid: back from dev.connect")
-            except Exception as exc:
-                log.critical("connect_feature_identification: %s", exc, exc_info=1)
-                return SpectrometerResponse(False)
+            log.debug("connect_fid: calling dev.connect")
+            response = dev.connect()
+            log.debug("connect_fid: back from dev.connect")
 
             if not response.data:
                 log.critical("Low level failure in device connect")
                 return response
 
             self.hardware = dev
-
         except:
-            log.critical("Problem connecting to: %s", self.device_id, exc_info=1)
+            log.critical(f"Problem connecting to {self.device_id}", exc_info=1)
             return SpectrometerResponse(False)
 
-        log.debug("Connected to FeatureIdentificationDevice %s", self.device_id)
+        log.debug(f"Connected to FeatureIdentificationDevice {self.device_id}")
         return SpectrometerResponse(True)
 
     def initialize_settings(self):
         if not self.connected:
             return
 
+        # WasatchDevice and FID share same SpectrometerSettings
         self.settings = self.hardware.settings
 
-        # generic post-initialization stuff 
-
         req_int = SpectrometerRequest('get_integration_time_ms')
-        req_gain = SpectrometerRequest('get_detector_gain')# note we don't pass update_session_eeprom, so this doesn't really do anything
+        req_gain = SpectrometerRequest('get_detector_gain')
         reqs = [req_int, req_gain]
         self.hardware.handle_requests(reqs) 
+
         # could read the defaults for these ss.state volatiles from FID too:
         #
         # self.tec_setpoint_degC
@@ -195,7 +224,7 @@ class WasatchDevice(InterfaceDevice):
     #                                                                          #
     # ######################################################################## #
 
-    def acquire_data(self): # -> SpectrometerResponse 
+    def acquire_data(self):
         """
         Process all enqueued settings, then read actual data (spectrum and
         temperatures) from the device.
@@ -230,7 +259,10 @@ class WasatchDevice(InterfaceDevice):
         # spectra and temperatures).  If we disable spectra, ENLIGHTEN stops 
         # receiving temperatures as well.  In the future perhaps we should return
         # multiple object types (Acquisitions, Temperatures, etc)
-        return self.acquire_spectrum()
+        if self.settings.state.area_scan_enabled:
+            return self.acquire_area_scan()
+        else:
+            return self.acquire_spectrum()
 
     ##
     # Generate one Reading from the spectrometer, including one
@@ -274,6 +306,9 @@ class WasatchDevice(InterfaceDevice):
     # @return a Reading wrapped in a SpectrometerResponse
     #
     def acquire_spectrum(self):
+        """
+        @returns a SpectrometerResponse(data=Reading)
+        """
         if self.take_one_request and self.take_one_request.auto_raman_request:
             return self.acquire_spectrum_auto_raman()
         else:
@@ -281,7 +316,7 @@ class WasatchDevice(InterfaceDevice):
 
     def acquire_spectrum_auto_raman(self):
         """
-        @returns a Reading wrapped in a SpectrometerResponse
+        @returns a SpectrometerResponse(data=Reading)
         @todo fold-in a lot of the post-reading sensor measurements 
               (temperature, interlock etc) provided by acquire_spectrum_standard
         """
@@ -301,6 +336,9 @@ class WasatchDevice(InterfaceDevice):
         return spectrometer_response
 
     def acquire_spectrum_standard(self):
+        """
+        @returns a SpectrometerResponse(data=Reading)
+        """
         acquire_response = SpectrometerResponse()
 
         tor = self.take_one_request
@@ -699,131 +737,61 @@ class WasatchDevice(InterfaceDevice):
             reading.laser_power_mW      = self.settings.state.laser_power_mW
             reading.laser_enabled       = self.settings.state.laser_enabled
 
-            # Are we reading one spectrum (normal mode, or "slow" area scan), or
-            # doing a batch-read of a whole frame ("fast" area scan)?
-            #
-            # It's a bit confusing that this is INSIDE the scan averaging loop...
-            # there is NO use-case for "averaged" area scan.  We should move this
-            # up and out of take_one_averaged_reading().
-            if self.settings.state.area_scan_enabled and self.settings.state.area_scan_fast:
+            # collect ONE spectrum (it's in a while loop because we may have
+            # to wait for an external trigger, and must wait through a series
+            # of timeouts)
+            externally_triggered = self.settings.state.trigger_source == SpectrometerState.TRIGGER_SOURCE_EXTERNAL
+            try:
+                while True:
+                    req = SpectrometerRequest("get_spectrum")
+                    res = self.hardware.handle_requests([req])[0]
+                    if res.error_msg != '':
+                        return res
 
-                # collect a whole frame of area scan data
-                with self.lock:
-                    reading.area_scan_data = []
-                    try:
-                        rows = self.settings.eeprom.active_pixels_vertical
-                        first = True
-                        log.debug("trying to read a fast area scan frame of %d rows", rows)
-                        #for i in range(rows):
-                        row_data = {}
-                        while True:
-                            log.debug(f"trying to read fast area scan row")
-                            req = SpectrometerRequest("get_spectrum",kwargs={"trigger":first})
-                            response = self.hardware.handle_requests([req])[0]
-                            if response.error_msg != '':
-                                return response
-                            spectrum_and_row = response.data
-                            first = False
-                            if response.poison_pill:
-                                # get_spectrum returned a poison-pill, so we're not 
-                                # getting any more in this frame...give up and move on
-                                # return False
-                                take_one_response.transfer_response(response)
-                                log.debug(f"get_spectrum returned {spectrum_and_row}, breaking")
-                                break
-                            elif response.keep_alive:
-                                take_one_response.transfer_response(response)
-                                log.debug(f"get_spectrum returned keep alive, passing up")
-                                return take_one_response
-                            elif self.hardware.shutdown_requested:
-                                take_one_response.transfer_response(response)
-                                return take_one_response
-                            elif spectrum_and_row.spectrum is None:
-                                log.debug("take_one_averaged_reading: get_spectrum None, sending keepalive for now (area scan fast)")
-                                take_one_response.transfer_response(response)
-                                return take_one_response
-
-                            # mimic "slow" results to minimize downstream fuss
-                            spectrum = spectrum_and_row.spectrum
-                            row = spectrum_and_row.row
-
-                            reading.spectrum = spectrum
-                            row_data[row] = spectrum
-                            reading.timestamp_complete  = datetime.datetime.now()
-                            log.debug("device.take_one_averaged_reading(area scan fast): got %s ... (row %d) (min %d)",
-                                spectrum[0:9], row, min(reading.spectrum))
-
-                        reading.area_scan_data = []
-                        reading.area_scan_row_count = -1
-                        for row in sorted(row_data.keys()):
-                            reading.area_scan_data.append(row_data[row])
-                            reading.area_scan_row_count = row
-
-                    except Exception as exc:
-                        log.critical("Error reading hardware data", exc_info=1)
-                        reading.spectrum = None
-                        reading.failure = str(exc)
-                        take_one_response.error_msg = exc
-                        take_one_response.error_lvl = ErrorLevel.medium
-                        take_one_response.keep_alive = True
+                    # @todo get rid of spectrum_and_row...get_spectrum() can go back to only returning spectrum
+                    spectrum_and_row = res.data
+                    if res.poison_pill:
+                        # float up poison
+                        take_one_response.transfer_response(res)
+                        return take_one_response
+                    if res.keep_alive:
+                        # float up keep alive
+                        take_one_response.transfer_response(res)
+                        return take_one_response
+                    if isinstance(spectrum_and_row, bool):
+                        # get_spectrum returned a poison-pill, so flow it upstream
+                        take_one_response.poison_pill = True
                         return take_one_response
 
-            else:
-
-                # collect ONE spectrum (it's in a while loop because we may have
-                # to wait for an external trigger, and must wait through a series
-                # of timeouts)
-                externally_triggered = self.settings.state.trigger_source == SpectrometerState.TRIGGER_SOURCE_EXTERNAL
-                try:
-                    while True:
-                        req = SpectrometerRequest("get_spectrum")
-                        res = self.hardware.handle_requests([req])[0]
-                        if res.error_msg != '':
-                            return res
-                        spectrum_and_row = res.data
-                        if res.poison_pill:
-                            # float up poison
-                            take_one_response.transfer_response(res)
-                            return take_one_response
-                        if res.keep_alive:
-                            # float up keep alive
-                            take_one_response.transfer_response(res)
-                            return take_one_response
-                        if isinstance(spectrum_and_row, bool):
-                            # get_spectrum returned a poison-pill, so flow it upstream
-                            take_one_response.poison_pill = True
-                            return take_one_response
-
-                        if self.hardware.shutdown_requested:
-                            take_one_response.poison_pill = True
-                            return take_one_response
-
-                        if spectrum_and_row is None or spectrum_and_row.spectrum is None:
-                            # FeatureIdentificationDevice can return None when waiting
-                            # on an external trigger.  
-                            log.debug("take_one_averaged_reading: get_spectrum None, sending keepalive for now")
-                            take_one_response.transfer_response(res)
-                            return take_one_response
-                        else:
-                            break
-
-                    reading.spectrum            = spectrum_and_row.spectrum
-                    reading.area_scan_row_count = spectrum_and_row.row
-                    reading.timestamp_complete  = datetime.datetime.now()
-
-                    log.debug("device.take_one_averaged_reading: got %s ... (row %d)", reading.spectrum[0:9], reading.area_scan_row_count)
-                except Exception as exc:
-                    # if we got the timeout after switching from externally triggered back to internal, let it ride
-                    take_one_response.error_msg = exc
-                    take_one_response.error_lvl = ErrorLevel.medium
-                    take_one_response.keep_alive = True
-                    if externally_triggered:
-                        log.debug("caught exception from get_spectrum while externally triggered...sending keepalive")
+                    if self.hardware.shutdown_requested:
+                        take_one_response.poison_pill = True
                         return take_one_response
 
-                    log.critical("Error reading hardware data", exc_info=1)
-                    reading.spectrum = None
-                    reading.failure = str(exc)
+                    if spectrum_and_row is None or spectrum_and_row.spectrum is None:
+                        # FeatureIdentificationDevice can return None when waiting
+                        # on an external trigger.  
+                        log.debug("take_one_averaged_reading: get_spectrum None, sending keepalive for now")
+                        take_one_response.transfer_response(res)
+                        return take_one_response
+                    else:
+                        break
+
+                reading.spectrum            = spectrum_and_row.spectrum
+                reading.timestamp_complete  = datetime.datetime.now()
+
+                log.debug(f"take_one_averaged_reading: got {reading.spectrum[0:9]}")
+            except Exception as exc:
+                # if we got the timeout after switching from externally triggered back to internal, let it ride
+                take_one_response.error_msg = exc
+                take_one_response.error_lvl = ErrorLevel.medium
+                take_one_response.keep_alive = True
+                if externally_triggered:
+                    log.debug("caught exception from get_spectrum while externally triggered...sending keepalive")
+                    return take_one_response
+
+                log.critical("Error reading hardware data", exc_info=1)
+                reading.spectrum = None
+                reading.failure = str(exc)
 
             ####################################################################
             # Aggregate scan averaging
@@ -900,7 +868,6 @@ class WasatchDevice(InterfaceDevice):
                 reading.averaged = True
 
         log.debug("device.take_one_averaged_reading: returning %s", reading)
-        # reading.dump_area_scan()
         take_one_response.data = reading
         return take_one_response
 
@@ -961,6 +928,30 @@ class WasatchDevice(InterfaceDevice):
         process_f["acquire_data"] = self.acquire_data
 
         return process_f
+
+    # ######################################################################## #
+    #                                                                          #
+    #                                Area Scan                                 #
+    #                                                                          #
+    # ######################################################################## #
+
+    def acquire_area_scan(self):
+        """
+        FeatureIdentificationDevice.get_area_scan returns a Reading because it
+        really needs to return both the AreaScanImage (whatever form that may 
+        take) and the vertically-binned spectrum (for live display).
+
+        @returns a SpectrometerResponse(data=Reading)
+        """
+        log.debug("acquire_area_scan: start")
+        reading = self.hardware.get_area_scan()
+
+        self.session_reading_count += 1
+        reading.session_count = self.session_reading_count
+        response = SpectrometerResponse(data=reading)
+
+        log.debug(f"acquire_area_scan: returning response {response}")
+        return response
 
     # ######################################################################## #
     #                                                                          #

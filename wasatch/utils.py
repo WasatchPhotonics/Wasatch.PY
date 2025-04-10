@@ -692,10 +692,21 @@ def resize_file(path, nbytes, ensure_no_overwrite=False):
 
     return True
 
-def vercmp(a, b, delim="."):
-    """ vercmp("1.2.3.4", "1.2.4.3") -> -1 """
+def vercmp(a, b, delim=None):
+    """ 
+    @returns vercmp("1.2.3.4", "1.2.4.3") -> -1 
+    @note Python probably already something like this...?
+    """
     if a is None or b is None:
         return None
+
+    if delim is None:
+        for c in [".", "_", "-", " "]:
+            if c in a and c in b:
+                delim = c
+                break
+    if delim is None:
+        delim = "." # maybe there is no delimiter
 
     tok_a = str(a).split(delim)
     tok_b = str(b).split(delim)
@@ -706,7 +717,7 @@ def vercmp(a, b, delim="."):
     if   int_a > int_b: return +1
     elif int_a < int_b: return -1
     elif len(tok_a) == 1 and len(tok_b) == 1: return 0
-    elif len(tok_a)  > 1 and len(tok_b)  > 1: return vercmp(delim.join(tok_a[1:]), delim.join(tok_b[1:]))
+    elif len(tok_a)  > 1 and len(tok_b)  > 1: return vercmp(delim.join(tok_a[1:]), delim.join(tok_b[1:]), delim=delim)
     elif len(tok_b)  > 1: return -1
     else: return +1
 
