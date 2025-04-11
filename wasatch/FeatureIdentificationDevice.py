@@ -3295,6 +3295,43 @@ class FeatureIdentificationDevice(InterfaceDevice):
     def get_opt_integration_time_resolution(self):
         return self.get_upper_code(0x05, label="GET_OPT_INTEGRATION_TIME_RESOLUTION", msb_len=1)
 
+    def update_firmware_log(self):
+        if not self.settings.state.firmware_logging_enabled or not self.settings.is_xs():
+            return 
+
+        # read all pending lines
+        lines = []
+        start_time = datetime.datetime.now()
+        max_ms = int(max(100, self.settings.state.integration_time_ms / 2))
+        while True:
+            response = self._get_code(0x81, label="GET_LOG")
+            if response is None:
+               break
+
+            data = response.data
+            if data is None or len(data) == 0:
+               break
+
+            line = ""
+            for c in data[1:]:
+                if c == 0:
+                   break
+                line += chr(c)
+
+            if 0 == len(line):
+                break
+
+            lines.append(line)
+
+            if (datetime.datetime.now() - start_time).total_seconds() * 1000 > max_ms:
+                log.debug("update_firmware_log: enough for now")
+                break
+
+        if len(lines) > 0:
+            for line in lines:
+                log.debug(f"update_firmware_log: {line}")
+            self.queue_message("firmware_log", lines)
+
     # ##########################################################################
     # Analog output
     # ##########################################################################
@@ -3740,6 +3777,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
         process_f["allow_default_gain_reset"]           = lambda x: setattr(self, "allow_default_gain_reset", bool(x))
 
         # experimental (R&D)
+        #
+        # MZ: note that anything calling self.settings.state.set() can probably 
+        # now be simplified as ENLIGHTEN has access to the same SpectrometerState object
+        # (see firmware_logging_enabled)
         process_f["graph_alternating_pixels"]           = lambda x: self.settings.state.set("graph_alternating_pixels", bool(x))
         process_f["swap_alternating_pixels"]            = lambda x: self.settings.state.set("swap_alternating_pixels", bool(x))
         process_f["edc_enable"]                         = lambda x: self.settings.state.set("edc_enabled", bool(x))

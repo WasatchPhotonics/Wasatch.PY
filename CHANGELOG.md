@@ -5,9 +5,13 @@
         - add IDSDevice, IDSCamera
     - area scan
         - add AreaScanImage
-        - add start-of-frame marker at spectrum[0]
+        - expect start-of-frame marker at spectrum[0]
         - move row index to spectrum[1]
-        - allow fast polling in area scan mode
+        - redesigned for Hamamatsu
+    - vertical ROI
+        - support vertical ROI in Hamamatsu
+    - firmware logging
+        - allow ENLIGHTEN to display firmware log
 - 2025-02-26 2.2.18
     - add laser state to Reading from AutoRaman
 - 2025-02-11 2.2.17

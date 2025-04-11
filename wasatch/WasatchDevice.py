@@ -611,6 +611,8 @@ class WasatchDevice(InterfaceDevice):
                 if reading is not None:
                     reading.battery_percentage = self.last_battery_percentage
 
+        self.hardware.update_firmware_log()
+
         if auto_enable_laser:
             log.debug(f"AUTO-RAMAN ==> done")
 
