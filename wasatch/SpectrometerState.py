@@ -72,6 +72,9 @@ class SpectrometerState:
         # wasatch.PollStatus
         self.poll_status = PollStatus.UNDEFINED
 
+        # logging
+        self.firmware_logging_enabled = False
+
         # ######################################################################
         # accessory connector
         # ######################################################################

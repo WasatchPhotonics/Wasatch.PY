@@ -20,9 +20,13 @@ class FirmwareRequirements:
             "microcontroller_serial_number":    { "microcontroller": { "min": "1.0.4.5", "unsupported": [ "11.3.0.37" ] } },
             "get_ble_firmware_version":         { "microcontroller": { "min": "1.0.4.5", "unsupported": [ "11.3.0.37", "1.0.33.7" ] } },
             "get_laser_warning_delay_sec":      { "microcontroller": { "min": "1.0.4.5", "unsupported": [ "11.3.0.37" ] } },
+            "hamamatsu_vertical_roi":           { "microcontroller": { "min": "10.0.0.47" } }, # , "fpga": { "min": "35_12_0", "includes": "_" } },
         }
 
     def supports(self, feature):
+        """
+        @todo generalize the logic within microcontroller and fpga portions; add ble
+        """
         if feature not in self.feature_versions:
             log.error(f"supports: unknown feature {feature}")
             return False
@@ -45,6 +49,9 @@ class FirmwareRequirements:
 
         if "fpga" in reqts:
             reqt = reqts["fpga"]
+            if "includes" in reqt:
+                if reqs["includes"] not in fpga_ver:
+                    return False
             if "min" in reqt:
                 min_ = reqt["min"]
                 if vercmp(fpga_ver, min_) < 0:
