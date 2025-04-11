@@ -1755,7 +1755,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # vertically bin within vertical ROI for live graph
         start = self.settings.eeprom.roi_vertical_region_1_start
         stop  = self.settings.eeprom.roi_vertical_region_1_end
-        data = np.array(self.area_scan_frame)
+        data = np.array(self.area_scan_frame, dtype=np.float32, copy=True) # try order{‘K’, ‘A’, ‘C’, ‘F’}?
+
         cropped = data[start:(stop + 1), :]
         spectrum = np.sum(cropped, axis=0)   
         asi = AreaScanImage(data=data, width=len(data[0]), height=len(data))
@@ -1765,6 +1766,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         reading.area_scan_image = asi
 
         log.debug("get_area_scan_hamamatsu: returning {reading}")
+        log.debug(f"get_area_scan_hamamatsu: asi.data {asi.data}")
         return reading
 
     # ##########################################################################
