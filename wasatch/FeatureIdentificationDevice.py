@@ -1662,15 +1662,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
         """
         @returns Reading(spectrum, AreaScanImage(data=nd_array))
         """
-        log.debug("get_area_scan: start")
         if self.settings.is_ingaas():
-            log.debug("get_area_scan: returning None (InGaAs)")
             return None
         elif self.settings.is_xs():
-            log.debug("get_area_scan: calling get_area_scan_xs")
             return self.get_area_scan_xs()
         else:
-            log.debug("get_area_scan: calling get_area_scan_hamamatsu")
             return self.get_area_scan_hamamatsu()
 
     def get_area_scan_xs(self):
@@ -1680,7 +1676,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
         """
         @returns Reading(spectrum, AreaScanImage(data=nd_array))
         """
-        log.debug("get_area_scan_hamamatsu: start")
         marker = 0xffff
         clamp = 0xfffe
         lines = 69
@@ -1698,13 +1693,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
             data = self.extra_area_scan_data # start with any extra data we might have picked up on the last read
             self.extra_area_scan_data = []
 
-            log.debug(f"get_area_scan_hamamatsu: {prefix} reading line")
             try:
                 while len(data) < line_len:
                     bytes_remaining = line_len - len(data)
-                    # would need to expand this to 0x86 for S16011-1101
+                    # @todo expand this to 0x86 for S16011-1101
                     latest_data = self.device_type.read(self.device, 0x82, bytes_remaining, timeout=timeout_ms)
-                    # log.debug(f"{prefix}: read {len(latest_data)} bytes ({bytes_remaining} requested): {latest_data[:10]}")
                     data.extend(latest_data) 
             except:
                 log.error(f"error reading line {line}", exc_info=1)
@@ -1740,7 +1733,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
             spectrum[1] = spectrum[2] # stomp
 
             # store line in image
-            log.debug(f"get_area_scan_hamamatsu: {prefix}: storing line {line_index}")
             self.area_scan_frame[line_index] = spectrum
             # self.debug(f"{prefix}: stored line {line_index}: {spectrum[:5]}")
             
@@ -1750,23 +1742,22 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # process completed frame
         ########################################################################
 
-        log.debug("get_area_scan_hamamatsu: processing completed frame")
-        
+        # store full-frame image data for Area Scan
+        data = np.array(self.area_scan_frame, dtype=np.float32, copy=True)
+        data -= data.min() # remove baseline
+        asi = AreaScanImage(data=data, width=len(data[0]), height=len(data))
+
         # vertically bin within vertical ROI for live graph
         start = self.settings.eeprom.roi_vertical_region_1_start
         stop  = self.settings.eeprom.roi_vertical_region_1_end
-        data = np.array(self.area_scan_frame, dtype=np.float32, copy=True) # try order{‘K’, ‘A’, ‘C’, ‘F’}?
-
         cropped = data[start:(stop + 1), :]
         spectrum = np.sum(cropped, axis=0)   
-        asi = AreaScanImage(data=data, width=len(data[0]), height=len(data))
 
+        # return image and spectrum in Reading
         reading = Reading(self.device_id)
         reading.spectrum = spectrum
         reading.area_scan_image = asi
 
-        log.debug("get_area_scan_hamamatsu: returning {reading}")
-        log.debug(f"get_area_scan_hamamatsu: asi.data {asi.data}")
         return reading
 
     # ##########################################################################
@@ -2751,14 +2742,13 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 self.set_vertical_roi(roi)
 
     def set_vertical_roi(self, roi):
-        # check for legacy vis since they don't like vertical binning
+        # check for legacy SiG-VIS since it didn't like vertical binning
         if self.settings.fpga_firmware_version == "000-008" and self.settings.microcontroller_firmware_version == "0.1.0.7":
             return SpectrometerResponse(data=False)
 
         if not self.settings.is_micro():
-            # YOU ARE HERE
             if not self.settings.supports_feature("hamamatsu_vertical_roi"):
-                log.debug("Vertical Binning only configurable on Series-XS and prototype X/XM")
+                log.warning("Vertical Binning only configurable on XS and prototype X/XM")
                 return SpectrometerResponse(data=False, error_msg="vertical binning not supported")
 
         if isinstance(roi, ROI):

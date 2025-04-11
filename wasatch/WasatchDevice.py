@@ -943,15 +943,10 @@ class WasatchDevice(InterfaceDevice):
 
         @returns a SpectrometerResponse(data=Reading)
         """
-        log.debug("acquire_area_scan: start")
         reading = self.hardware.get_area_scan()
-
         self.session_reading_count += 1
         reading.session_count = self.session_reading_count
-        response = SpectrometerResponse(data=reading)
-
-        log.debug(f"acquire_area_scan: returning response {response}")
-        return response
+        return SpectrometerResponse(data=reading)
 
     # ######################################################################## #
     #                                                                          #
