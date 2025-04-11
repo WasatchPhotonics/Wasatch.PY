@@ -30,8 +30,7 @@ class Reading:
         self.sum_count                 = 0
         self.session_count             = 0      # can treat as reading_id
         self.area_scan_row_count       = -1
-        self.area_scan_data            = None
-        self.area_scan_png             = None
+        self.area_scan_image           = None
         self.battery_raw               = None
         self.battery_percentage        = None
         self.battery_charging          = None
@@ -79,12 +78,3 @@ class Reading:
         # (WasatchDevice.acquire_spectrum instantiates Reading before calling hardware.get_line,
         #  and does not overwrite it)
         self.timestamp = datetime.datetime.now()
-
-    def dump_area_scan(self):
-        if self.area_scan_data is None:
-            return
-
-        rows = len(self.area_scan_data)
-        for i in range(rows):
-            spectrum = self.area_scan_data[i]
-            log.debug("dump_area_scan: row %2d, %4d pixels, max %5d: %s ... %s", i, len(spectrum), max(spectrum), spectrum[0:5], spectrum[-5:])
