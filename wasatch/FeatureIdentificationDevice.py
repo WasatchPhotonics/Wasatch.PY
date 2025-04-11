@@ -1700,7 +1700,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                     latest_data = self.device_type.read(self.device, 0x82, bytes_remaining, timeout=timeout_ms)
                     data.extend(latest_data) 
             except:
-                log.error(f"error reading line {line}", exc_info=1)
+                log.error(f"get_area_scan_hamamatsu {prefix}: error reading line {line}", exc_info=1)
                 break
 
             extra_len = len(data) - line_len
