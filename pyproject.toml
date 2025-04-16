@@ -14,7 +14,8 @@ dependencies = [
     "pexpect",
     "seabreeze",
     "pyudev",
-    "pywin32"
+    "pywin32",
+    "pyftdi"
 
 ]
 
