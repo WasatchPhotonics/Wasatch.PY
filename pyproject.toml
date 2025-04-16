@@ -4,10 +4,8 @@ build-backend="setuptools.build_meta"
 
 [project]
 name = "wasatch"
-authors = [{name = "Wasatch Photonics", email = "edort@wasatchphotonics.com"}]
 readme = "README.md"
-classifiers = ["License :: OSI Approved :: MIT License"]
-dynamic = ["version", "description"]
+version = "1.0.0"
 dependencies = [ "mkl",
 "numpy",
 "six",
