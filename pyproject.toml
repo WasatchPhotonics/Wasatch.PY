@@ -17,7 +17,8 @@ dependencies = [
     "pywin32",
     "pyftdi",
     "crcmod",
-    "bleak"
+    "bleak",
+    "ids_peak",
 ]
 
 [build-system]
