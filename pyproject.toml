@@ -13,7 +13,9 @@ dependencies = [
     "requests",
     "pexpect",
     "seabreeze",
-    "pyudev"
+    "pyudev",
+    "pywin32"
+
 ]
 
 [build-system]
