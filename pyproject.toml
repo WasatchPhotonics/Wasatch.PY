@@ -15,7 +15,8 @@ dependencies = [
     "seabreeze",
     "pyudev",
     "pywin32",
-    "pyftdi"
+    "pyftdi",
+    "crcmod",
 
 ]
 
