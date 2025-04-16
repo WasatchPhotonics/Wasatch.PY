@@ -1,23 +1,21 @@
-[build-system]
-requires=["setuptools"]
-build-backend="setuptools.build_meta"
-
 [project]
 name = "wasatch"
 readme = "README.md"
 version = "1.0.0"
-dependencies = [ "mkl",
-"numpy",
-"six",
-"psutil",
-"future",
-"pygtail",
-"pyusb",
-"requests",
-"pexpect",
-"seabreeze",
-"pyudev"
+dependencies = [
+    "mkl",
+    "numpy",
+    "six",
+    "psutil",
+    "future",
+    "pygtail",
+    "pyusb",
+    "requests",
+    "pexpect",
+    "seabreeze",
+    "pyudev"
 ]
 
-[project.urls]
-Home = "https://github.com/WasatchPhotonics/Wasatch.PY"
+[build-system]
+requires=["setuptools"]
+build-backend="setuptools.build_meta"
