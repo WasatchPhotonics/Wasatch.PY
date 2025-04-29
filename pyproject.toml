@@ -14,7 +14,7 @@ dependencies = [
     "pexpect",
     "seabreeze",
     "pyudev",
-    "pywin32",
+    "pywin32; platform_system=='Windows'",
     "pyftdi",
     "crcmod",
     "bleak",
