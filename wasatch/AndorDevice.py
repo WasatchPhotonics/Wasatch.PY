@@ -1,14 +1,17 @@
 import os
 import usb
 import json
+import numpy as np
 import struct
 import logging
 import datetime
+
 from ctypes import *
 
 from .SpectrometerSettings        import SpectrometerSettings
 from .SpectrometerResponse        import SpectrometerResponse
 from .InterfaceDevice             import InterfaceDevice
+from .StatusMessage               import StatusMessage
 from .DeviceID                    import DeviceID
 from .Reading                     import Reading
 from .ROI                         import ROI
@@ -71,11 +74,10 @@ class AndorDevice(InterfaceDevice):
         # An AndorDevice has-a SpectrometerSettings, which has-a EEPROM, which 
         # has-a MultiWavelengthCalibration
         self.settings = SpectrometerSettings(self.device_id)
-        self.summed_spectra         = None
-        self.sum_count              = 0
         self.session_reading_count  = 0
-        self.take_one               = False
-        self.failure_count          = 0
+        self.sum_count              = 0
+        self.take_one_request       = None
+
         self.dll_fail               = True
         self.tec_enabled            = True
         self.driver                 = None
@@ -147,6 +149,27 @@ class AndorDevice(InterfaceDevice):
     # Private Methods
     ###############################################################
 
+    def _queue_message(self, setting, value):
+        """
+        If an upstream queue is defined, send the name-value pair.  Does nothing
+        if the caller hasn't provided a queue.
+
+        "setting" is application (caller) dependent, but ENLIGHTEN currently uses
+        "marquee_info" and "marquee_error".
+        """
+        if self.message_queue is None:
+            return
+
+        msg = StatusMessage(setting, value)
+        try:
+            log.debug(f"queue_message: msg {msg}")
+            self.message_queue.put(msg) 
+        except:
+            log.error(f"failed to enqueue StatusMessage {msg}", exc_info=1)
+
+    def not_implemented(self):
+        pass
+
     def _init_process_funcs(self):
         process_f = {}
 
@@ -158,10 +181,14 @@ class AndorDevice(InterfaceDevice):
         process_f["init_tec_setpoint"]          = self.init_tec_setpoint
         process_f["set_tec_setpoint"]           = self.set_tec_setpoint
         process_f["init_detector_area"]         = self.init_detector_area
-        process_f["scans_to_average"]           = self.scans_to_average
+        process_f["scans_to_average"]           = self.set_scans_to_average
         process_f["high_gain_mode_enable"]      = self.high_gain_mode_enable
         process_f["save_config"]                = self.save_config
         process_f["vertical_binning"]           = self.set_vertical_binning
+        process_f["take_one_request"]           = self.set_take_one_request
+
+        process_f["reset_scan_averaging"]       = self.not_implemented
+        process_f["heartbeat"]                  = self.not_implemented
 
         ##################################################################
         # What follows is the old init-lambdas that are squashed into process_f
@@ -204,142 +231,147 @@ class AndorDevice(InterfaceDevice):
             os.makedirs(self.config_dir)
         return os.path.isfile(self.config_file)
 
-    def _get_spectrum_raw(self): # -> list[float] 
+    def _get_spectrum_raw(self):
         """
         @todo missing bad-pixel correction
         """
         spec_arr = c_long * self.pixels
         spec_init_vals = [0] * self.pixels
-        spec = spec_arr(*spec_init_vals)
+        spectrum = spec_arr(*spec_init_vals)
 
         # ask for spectrum then collect, NOT multithreaded (though we should look into that!), blocks
         self.driver.StartAcquisition()
         self.driver.WaitForAcquisition()
-        success = self.driver.GetAcquiredData(spec, c_ulong(self.pixels))
+        result = self.driver.GetAcquiredData(spectrum, c_ulong(self.pixels))
 
-        if (success != self.SUCCESS):
-            log.debug(f"getting spectra did not succeed. Received code of {success}. Returning")
+        if (result != self.SUCCESS):
+            log.error(f"_get_spectrum_raw: GetAcquiredData failed (result {result})")
             return
 
         # convert from wasatch.AndorDevice.c_long_Array_512
-        convertedSpec = [x for x in spec]
+        spectrum = np.array(spectrum, dtype=np.float32) # [x for x in spectrum]
 
         if (self.settings.eeprom.invert_x_axis):
-            convertedSpec.reverse()
+            # spectrum.reverse()
+            spectrum = spectrum[::-1]
 
-        return convertedSpec
+        # Andor cameras can return all zeros when saturated
+        if not spectrum.any():
+            self._queue_message("marquee_error", "Andor camera is saturated")
+
+        # log.debug(f"_get_spectrum_raw: returning spectrum {spectrum}")
+        return spectrum
 
     def _take_one_averaged_reading(self):
-        averaging_enabled = (self.settings.state.scans_to_average > 1)
+        """ 
+        @note this may be collecting a dark spectrum requested through TakeOneRequest.take_dark 
+        @returns Reading
+        """
 
-        if averaging_enabled:
-            # collect the entire averaged spectrum at once (added for
-            # BatchCollection with laser delay)
-            #
-            # So: we're NOT in "free-running" mode, so we're basically being
-            # slaved to parent process and doing exactly what is requested
-            # "on command."  That means we can perform a big, heavy blocking
-            # scan average all at once, because they requested it.
-            self.sum_count = 0
-            loop_count = self.settings.state.scans_to_average
+        ########################################################################
+        # take the averaged spectrum
+        ########################################################################
+
+        tor = self.take_one_request
+        if tor is not None:
+            scans_to_average = tor.scans_to_average
+            log.debug(f"take_one_averaged_reading: taking scans_to_average from tor {tor}")
         else:
-            # we're in free-running mode
-            loop_count = 1
+            scans_to_average = self.settings.state.scans_to_average
+            log.debug(f"take_one_averaged_reading: taking scans_to_average from SpectrometerState")
 
-        log.debug("take_one_averaged_reading: loop_count = %d", loop_count)
+        log.debug(f"take_one_averaged_reading: scans_to_average {scans_to_average}")
 
         # either take one measurement (normal), or a bunch (blocking averaging)
-        reading = None
-        for _ in range(0, loop_count):
+        reading = Reading(self.device_id) # reading.timestamp is when reading STARTED, not FINISHED!
+        self.sum_count = 0
+        failure_count = 0
+        self.summed_spectrum = None
+        MAX_FAILURES = 3
 
-            # start a new reading
-            # NOTE: reading.timestamp is when reading STARTED, not FINISHED!
-            reading = Reading(self.device_id)
+        # this loop can DELIBERATELY be changed (shortened, reset or lengthened)
+        # by external changes to self.sum_count and self.settings.state.scans_to_average
+        while self.sum_count < scans_to_average:
 
-            if self.tec_enabled:
-                log.debug("TEC enabled, so reading temperature")
-
-                use_float = True    # seems to work on 785XL (WP-01635 and WP-01491)
-
-                if use_float:
-                    c_temp = c_float()
-                    result = self.driver.GetTemperatureF(byref(c_temp))
-                else:
-                    c_temp = c_int()
-                    result = self.driver.GetTemperature(byref(c_temp))
-
-                label = self.get_error_code(result)
-                
-                if label in [ "DRV_SUCCESS", 
-                              "DRV_TEMPERATURE_DRIFT",
-                              "DRV_TEMPERATURE_STABILIZED",
-                              "DRV_TEMPERATURE_NOT_REACHED",
-                              "DRV_TEMPERATURE_NOT_STABILIZED" ]:
-                    reading.detector_temperature_degC = c_temp.value
-                    log.debug(f"Andor temperature {reading.detector_temperature_degC:.2f} ({label})")
-                else:
-                    log.error(f"unable to read detector temperature, result was {label}")
-
+            # monitor for external changes (but NOT new TakeOneRequest...that will appear in due process)
+            if scans_to_average != self.settings.state.scans_to_average:
+                log.debug(f"detected change in scans_to_average from {scans_to_average} to {self.settings.state.scans_to_average}")
+                self.scan_count = 0
+                scans_to_average = self.settings.state.scans_to_average
+                self.summed_spectrum = None
+            
             try:
-                reading.integration_time_ms = self.settings.state.integration_time_ms
-                reading.laser_power_perc    = self.settings.state.laser_power_perc
-                reading.laser_power_mW      = self.settings.state.laser_power_mW
-                reading.laser_enabled       = self.settings.state.laser_enabled
-                reading.spectrum            = self._get_spectrum_raw()
+                log.debug(f"take_one_averaged_reading: taking spectrum {self.sum_count+1} of {scans_to_average}")
+                spectrum = self._get_spectrum_raw()
+            except usb.USBError:
+                failure_count += 1
+                log.error(f"failure_count {failure_count}, encountered USB error in reading for device {self.device}", exc_info=1)
+                if failure_count < MAX_FAILURES:
+                    continue
+
+            if spectrum is None or spectrum == []:
+                failure_count += 1
+                log.error(f"failure_count {failure_count}, received empty spectrum {reading.spectrum}")
+                if failure_count < MAX_FAILURES:
+                    log.error(f"failure_count {failure_count}, trying again")
+                    continue
+
+            if failure_count >= MAX_FAILURES:
+                msg = f"exceeded MAX_FAILURES {MAX_FAILURES} while trying to read an averaged spectrum"
+                log.error(msg)
+                return 
+
+            log.debug("successfully read one spectrum")
+            self.sum_count += 1
+            if scans_to_average > 1 and self.sum_count < scans_to_average:
+                # MZ: why aren't we following this pattern in WasatchDevice / FeatureInterfaceDevice?
+                log.debug(f"floating message upstream because sum_count {self.sum_count}, scans_to_average {scans_to_average}")
+                self._queue_message("scan_averaging", (self.device_id, self.sum_count))
+
+            if self.summed_spectrum is None:
+                self.summed_spectrum = spectrum
+            else:
+                self.summed_spectrum += spectrum
+            log.debug(f"take_one_averaged_reading: sum_count {self.sum_count}, summed_spectrum : {self.summed_spectrum[0:9]}")
+
+        # have we completed the averaged reading?
+        reading.spectrum = self.summed_spectrum / self.sum_count if self.sum_count > 1 else spectrum
+
+        log.debug(f"take_one_averaged_reading: {'averaged' if self.sum_count > 1 else 'non-averaged'} spectrum : %s ...", reading.spectrum[0:9])
+        reading.averaged = True
+        reading.sum_count = self.sum_count
+        return reading
+
+    def get_detector_temperature_degC(self):
+        if self.tec_enabled:
+            log.debug("TEC enabled, so reading temperature")
+
+            use_float = True    # seems to work on 785XL (WP-01635 and WP-01491)
+            if use_float:
+                c_temp = c_float()
+                result = self.driver.GetTemperatureF(byref(c_temp))
+            else:
+                c_temp = c_int()
+                result = self.driver.GetTemperature(byref(c_temp))
 
                 # MZ: why were we trying to use GetTemperatureF(float) here, when above it was GetTemperature(int)?
                 # temperature = c_float()
                 # temp_success = self.driver.GetTemperatureF(byref(temperature))
                 # reading.detector_temperature_degC = temperature.value
-            except usb.USBError:
-                self.failure_count += 1
-                log.error(f"Andor Device: encountered USB error in reading for device {self.device}")
 
-            if reading.spectrum is None or reading.spectrum == []:
-                if self.failure_count > 3:
-                    return SpectrometerResponse(data=False,error_msg="exceeded failure for readings")
-
-            if not reading.failure:
-                if averaging_enabled:
-                    if self.sum_count == 0:
-                        self.summed_spectra = [float(i) for i in reading.spectrum]
-                    else:
-                        log.debug("device.take_one_averaged_reading: summing spectra")
-                        for i in range(len(self.summed_spectra)):
-                            self.summed_spectra[i] += reading.spectrum[i]
-                    self.sum_count += 1
-                    log.debug("device.take_one_averaged_reading: summed_spectra : %s ...", self.summed_spectra[0:9])
-
-            # count spectra
-            self.session_reading_count += 1
-            reading.session_count = self.session_reading_count
-            reading.sum_count = self.sum_count
-
-            # have we completed the averaged reading?
-            if averaging_enabled:
-                if self.sum_count >= self.settings.state.scans_to_average:
-                    reading.spectrum = [ x / self.sum_count for x in self.summed_spectra ]
-                    log.debug("device.take_one_averaged_reading: averaged_spectrum : %s ...", reading.spectrum[0:9])
-                    reading.averaged = True
-
-                    # reset for next average
-                    self.summed_spectra = None
-                    self.sum_count = 0
+            label = self.get_error_code(result)
+            
+            if label in [ "DRV_SUCCESS", 
+                          "DRV_TEMPERATURE_DRIFT",
+                          "DRV_TEMPERATURE_STABILIZED",
+                          "DRV_TEMPERATURE_NOT_REACHED",
+                          "DRV_TEMPERATURE_NOT_STABILIZED" ]:
+                detector_temperature_degC = c_temp.value
+                log.debug(f"Andor temperature {detector_temperature_degC:.2f} ({label})")
+                return detector_temperature_degC
             else:
-                # if averaging isn't enabled...then a single reading is the
-                # "averaged" final measurement (check reading.sum_count to confirm)
-                reading.averaged = True
+                log.error(f"unable to read detector temperature, result was {label}")
 
-            # were we told to only take one (potentially averaged) measurement?
-            if self.take_one and reading.averaged:
-                log.debug("completed take_one")
-                self.change_setting("cancel_take_one", True)
-
-        log.debug("device.take_one_averaged_reading: returning %s", reading)
-        if reading.spectrum is not None and reading.spectrum != []:
-            self.failure_count = 0
-        # reading.dump_area_scan()
-        return SpectrometerResponse(data=reading)
 
     def _close_ex_shutter(self):
         self.check_result(self.driver.SetShutterEx(1, 1, self.SHUTTER_SPEED_MS, self.SHUTTER_SPEED_MS, 2), "SetShutterEx(2)")
@@ -438,6 +470,10 @@ class AndorDevice(InterfaceDevice):
         self.settings.eeprom.active_pixels_horizontal = self.pixels 
         self.settings.eeprom.has_cooling = True
         return SpectrometerResponse(data=True)
+
+    def set_take_one_request(self, tor):
+        log.debug(f"set_take_one_request: storing {tor}")
+        self.take_one_request = tor
 
     def set_vertical_binning(self, roi):
         """
@@ -547,8 +583,54 @@ class AndorDevice(InterfaceDevice):
             self.set_tec_setpoint(self.settings.eeprom.startup_temp_degC)
 
     def acquire_data(self):
+        # handle TakeOneRequest.take_dark
+        dark_reading = None
+        tor = self.take_one_request
+        log.debug(f"acquire_data: tor {tor}")
+        if tor and tor.take_dark:
+            self.set_shutter_enable(True)
+            dark_reading = self._take_one_averaged_reading()
+            if dark is None:
+                return SpectrometerResponse(False, error_msg="failed to collect dark")
+            self.set_shutter_enable(False)
+
+        # get spectrum (potentially averaged)
         reading = self._take_one_averaged_reading()
-        return reading
+        if reading is None:
+            return SpectrometerResponse(False, error_msg="failed to collect reading")
+
+        # fill-out metadata
+        if dark_reading:
+            reading.dark = dark_reading.spectrum
+        reading.integration_time_ms = self.settings.state.integration_time_ms
+        reading.detector_temperature_degC = self.get_detector_temperature_degC()
+
+        # only bump session_count by one for a dark-corrected averaged reading 
+        # (regardless of how many spectra were collected to generate it)
+        self.session_reading_count += 1
+        reading.session_count = self.session_reading_count
+
+        # update or close TakeOneRequest
+        if tor is not None:
+            log.debug(f"acquire_data: adding to to reading: {tor}")
+            reading.take_one_request = tor
+
+            # XL units don't provide laser control
+            if tor.laser_warmup_ms:     log.error("TakeOneRequest.laser_warmup_ms not supported")
+            if tor.auto_raman_request:  log.error("TakeOneRequest.auto_raman_request not supported")
+            if tor.enable_laser_before: log.error("TakeOneRequest.enable_laser_before not supported")
+            if tor.disable_laser_after: log.error("TakeOneRequest.disable_laser_after not supported")
+
+            # readings_current/target are for "fast (streaming) BatchCollection"
+            if tor.readings_target:
+                tor.readings_current += 1
+
+            if not tor.readings_target or tor.readings_current >= tor.readings_target:
+                log.debug(f"completed {tor}")
+                self.take_one_request = None
+
+        log.debug(f"acquire_data: reading {reading}")
+        return SpectrometerResponse(data=reading)
 
     def set_shutter_enable(self, enable):
         if enable:
@@ -679,9 +761,13 @@ class AndorDevice(InterfaceDevice):
         log.debug(f"set AD channel {ADnumber} with horizontal speed {HSnumber} ({STemp})")
         return SpectrometerResponse(True)
 
-    def scans_to_average(self, value):
+    def set_scans_to_average(self, value):
+        value = int(value)
+
+        # reset count on changes
         self.sum_count = 0
-        self.settings.state.scans_to_average = int(value)
+        self.summed_spectrum = None
+        self.settings.state.scans_to_average = value
         return SpectrometerResponse(True)
 
     def get_error_code_long(self, code):
