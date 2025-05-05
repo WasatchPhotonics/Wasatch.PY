@@ -9,3 +9,6 @@ class StatusMessage:
     def __init__(self, setting, value):
         self.setting = setting  # probably a string
         self.value   = value    # don't presume type
+
+    def __repr__(self):
+        return f"StatusMessage<setting {self.setting}, value {self.value}>"

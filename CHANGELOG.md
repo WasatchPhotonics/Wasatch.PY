@@ -1,5 +1,9 @@
 # Changelog
 
+- 2025-??-?? 2.3.1
+    - enforce signed and unsigned integers in MultiWavecalCalibration (resolve XL
+      config files with floating-point horizontal ROI)
+    - update BatchCollection and Scan Averaging for AndorDevice
 - 2025-04-08 2.3.0
     - IDS cameras
         - add IDSDevice, IDSCamera
