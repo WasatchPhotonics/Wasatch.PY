@@ -5,7 +5,7 @@ description= "Application-level driver for Wasatch Photonics spectrometers"
 requires-python = ">=3.9"
 readme = "README.md"
 dependencies = [
-    "mkl",
+    #"mkl",
     "numpy",
     "six",
     "psutil",
