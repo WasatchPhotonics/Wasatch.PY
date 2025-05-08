@@ -1,5 +1,7 @@
 # Changelog
-
+- ????-??-?? 2.3.1
+    - remove legacy package install files
+    - add all dependencies to pyproject.toml
 - 2025-04-08 2.3.0
     - IDS cameras
         - add IDSDevice, IDSCamera
