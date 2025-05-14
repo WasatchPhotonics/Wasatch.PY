@@ -41,11 +41,10 @@ class CSVLoader:
         # default
         self.timestamp = datetime.datetime.now()
 
-        # temporarily store these if no wavecal is provided
+        # define buckets into which we will load the data in load_data()
         self.metadata = {
             "pixel": []
         }
-
         self.headers = []
         self.processed_reading = ProcessedReading()
         self.processed_reading.reading = Reading(device_id = "LOAD:" + pathname)
@@ -104,7 +103,7 @@ class CSVLoader:
                     # check for end of metadata
                     looks_like_header = False
                     for tok in [ part.strip().lower() for part in line ]:
-                        if tok in ["pixel", "wavelength", "wavenumber", "processed", "intensity"]:
+                        if tok in ["pixel", "wavelength", "wavenumber", "processed", "intensity", "raw"]:
                             looks_like_header = True
                             break
 
@@ -180,5 +179,10 @@ class CSVLoader:
 
         # clear any arrays we ended up not filling
         self.processed_reading.post_load_cleanup()
+
+        log.debug("returning processed_reading:")
+        self.processed_reading.dump()
+
+        log.debug(f"returning metadata {self.metadata}")
 
         return self.processed_reading, self.metadata
