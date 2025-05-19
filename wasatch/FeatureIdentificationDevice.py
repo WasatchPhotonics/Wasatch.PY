@@ -1119,11 +1119,25 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.settings.state.area_scan_first_trigger_sent = False
         return self._send_code(0xeb, value, label="SET_AREA_SCAN_ENABLE")
 
+    def set_area_scan_line_step(self, n):
+        if not self.settings.is_xs():
+            msg = "area scan line step is only supported on XS"
+            log.error(msg)
+            return SpectrometerResponse(error_lvl=ErrorLevel.low, error_msg=msg)
+
+        n = int(max(0, min(n, 255)))
+
+        log.debug(f"setting area scan line step to {n}")
+        self.settings.state.area_scan_line_step = n
+        return self.i2c_write(0x17, [n], label="SET_AREA_SCAN_LINE_STEP")
+
+    # MZ: I don't remember what boards / firmware supports this?
     def set_area_scan_line_count(self, n):
         self.debug(f"setting line count to {n}")
         self.dev.ctrl_transfer(H2D, 0xa6, n, 0, Z, TIMEOUT) 
         return self._send_code(0xa6, n, label="SET_AREA_SCAN_LINE_COUNT")
 
+    # MZ: I don't remember what boards / firmware supports this?
     def set_area_scan_line_interval(self, n):
         self.debug(f"setting line interval to {n}")
         return self._send_code(0xa8, n, label="SET_AREA_SCAN_INTERVAL")
@@ -1654,6 +1668,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # log.debug(f"get_poll_status: status 0x{status:02x}")
         return result
 
+    def i2c_write(self, address, buf, label=""):
+        return self._send_code(0x90, wValue=address, wIndex=len(buf), data_or_wLength=buf, label=label)
+
     # ##########################################################################
     # Area Scan
     # ##########################################################################
@@ -1661,6 +1678,76 @@ class FeatureIdentificationDevice(InterfaceDevice):
     def get_area_scan(self):
         """
         @returns Reading(spectrum, AreaScanImage(data=nd_array))
+
+        It's important to understand that Hamamatsu and XS area scan features
+        are architected differently in several respects.
+
+        @par Hamamatsu Area Scan
+
+        Full-frame Hamamatsu area scans are collected and returned in a single 
+        blocking call. This is possible because:
+
+        - the frame is only 69 lines (6% of a 1080p image)
+        - FX2-based 110008 boards use 480 mbps High-Speed USB (40x faster than 
+          12 mbps Full-Speed)
+        - CCDs are more sensitive as CMOS, allowing shorter integration times
+        - Hamamatsu sensors don't have the 32ms min per-frame LVDS transfer time
+        - Hamamatsu sensors allow vertical shifting and horizontal-readout to be
+          delayed by the FPGA until the previous line has been pushed to the FX2,
+          allowing every line in a frame to be sequentially read and pushed (vs
+          IMX385 free-running frame times forcing one line/frame)
+        - the FX2 internally generates subsequent ACQUIRE signals to the FPGA
+          after each line has been read-out from the USB buffers to host, reducing
+          the number of EP0 control messages
+
+        Due to the above, the Hamamatsu area scan can be executed much faster
+        than an IMX385 area scan, and is considered fast enough to "block" on
+        the full frame. 
+
+        Therefore, a single blocking call to get_area_scan_hamamatsu() will 
+        return a complete area scan frame in roughly the following time:
+
+            INTEG_MS + TICK_US x LINES x (PIXELS + 1)
+
+        where:
+            INTEG_MS is current integration time
+            LINES    is 69 for most Hamamatsu CCDs (128 for C0)
+            PIXELS   is 1044 or 2068 as appropriate (physical, not active)
+            TICK_US  is 2µs or 4µs as appropriate (depends on clock speed at 
+                     which FPGA 'ticks' the CCD)
+
+        "PIXELS + 1" represents the 1 tick required for each line's vertical 
+        shift, plus PIXELS ticks for the horizontal read-out.
+
+        @par XS Area Scan
+
+        In contrast, as long as our IMX385 sensor is controlled in "main mode,"
+        via Spartan6 with no additional DDR memory, over LVDS, the XS image scan
+        must be read line-by-line, where each line requires a separate full-frame 
+        acquisition (32ms minimum latency).
+
+        Therefore, a full area scan of a 1080p detector would take AT LEAST 32ms 
+        x 1080 lines = 35sec just for LVDS readout to the FPGA. The 1080 ACQUIRE 
+        commands would stretch that out further. Over 12mbps Full-Speed USB, the
+        entire process comes to something like 2.5 MINUTES operationally.
+
+        Therefore, a blocking call to get_area_scan_xs() will return ASINGLE LINE 
+        of an ONGOING area scan. This allows ENLIGHTEN to appear "responsive" 
+        during the area scan process, updating its graphical area scan image in
+        real-time as each line is received.
+
+        To further speed the process, the XS FPGA will only return lines within
+        the configured vertical ROI, so if a vertical ROI of (300, 500) is config-
+        ured, the area scan image will only comprise 200 lines rather than the 
+        full 1080.
+
+        Also, since each call to this function will only return a single line,
+        and the FPGA will automatically "roll-over" the current line index after
+        coming to the configured stop_line (returning to the configured start_line),
+        this function does not have a concept of "stopping" or "finishing" a frame;
+        subsequent calls will just keep sending out additional lines, until the
+        spectrometer is taken out of area scan mode.
+
         """
         if self.settings.is_ingaas():
             return None
@@ -1670,7 +1757,81 @@ class FeatureIdentificationDevice(InterfaceDevice):
             return self.get_area_scan_hamamatsu()
 
     def get_area_scan_xs(self):
-        raise NotImplemented("YOU ARE HERE")
+        """
+        @returns Reading(spectrum, AreaScanImage(data=nd_array))
+        """
+
+        line_len = self.settings.pixels() * 2
+        timeout_ms = self.generate_timeout_ms()
+
+        # read a line (might be the "next" line, might be the "first" or "last" 
+        # line, might have skipped a few, who knows)
+        self._send_code(0xad, label="ACQUIRE_SPECTRUM")
+
+        data = self.extra_area_scan_data # start with any extra data we might have picked up on the last read
+        self.extra_area_scan_data = []
+
+        try:
+            while len(data) < line_len:
+                bytes_remaining = line_len - len(data)
+                latest_data = self.device_type.read(self.device, 0x82, bytes_remaining, timeout=timeout_ms)
+                data.extend(latest_data) 
+        except:
+            log.error(f"get_area_scan_xs: error reading line {line}", exc_info=1)
+            return None
+
+        extra_len = len(data) - line_len
+        if extra_len > 0:
+            log.warn(f"get_area_scan_xs: storing {extra_len} extra bytes toward the next line")
+            self.extra_area_scan_data = line_data[line_len:]
+
+        # demarshal line into spectrum
+        spectrum = []
+        for i in range(self.settings.pixels()):
+            lsb = data[i*2 + 0]
+            msb = data[i*2 + 1]
+            intensity = (msb << 8) + lsb
+            spectrum.append(intensity)
+
+        log.debug(f"get_area_scan_xs: read {spectrum[:5]}")
+
+        # first pixel is line index
+        line_index = spectrum[0]
+
+        # for some reason, line index is copied across first four pixels?
+        for i in range(4):
+            spectrum[i] = spectrum[4] 
+
+        # store line in image
+        max_lines = len(self.area_scan_frame)
+        for offset in range(self.settings.state.area_scan_line_step):
+            index = line_index + offset
+            if 0 <= index < max_lines:
+                self.area_scan_frame[index] = spectrum
+            else:
+                log.warn(f"get_area_scan_xs: WARNING: line_index {line_index} exceeds max_lines {max_lines}")
+        
+        ########################################################################
+        # process completed frame
+        ########################################################################
+
+        # store full-frame image data for Area Scan
+        data = np.array(self.area_scan_frame, dtype=np.float32, copy=True)
+        data -= data.min() # remove baseline
+        asi = AreaScanImage(data=data, width=len(data[0]), height=len(data))
+
+        # vertically bin within vertical ROI for live graph
+        start = self.settings.eeprom.roi_vertical_region_1_start
+        stop  = self.settings.eeprom.roi_vertical_region_1_end
+        cropped = data[start:(stop + 1), :]
+        spectrum = np.sum(cropped, axis=0)   
+
+        # return image and spectrum in Reading
+        reading = Reading(self.device_id)
+        reading.spectrum = spectrum
+        reading.area_scan_image = asi
+
+        return reading
 
     def get_area_scan_hamamatsu(self):
         """
@@ -3732,6 +3893,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         process_f["trigger_source"]                     = lambda x: self.set_trigger_source(int(x))
         process_f["enable_secondary_adc"]               = lambda x: self.settings.state.set("secondary_adc_enabled", bool(x))
         process_f["area_scan_enable"]                   = lambda x: self.set_area_scan_enable(bool(x))
+        process_f["area_scan_line_step"]                = lambda x: self.set_area_scan_line_step(int(x))
         process_f["area_scan_fast"]                     = lambda x: self.settings.state.set("area_scan_fast", bool(x))
 
         process_f["bad_pixel_mode"]                     = lambda x: self.settings.state.set("bad_pixel_mode", int(x))

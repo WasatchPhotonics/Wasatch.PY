@@ -259,6 +259,7 @@ class WasatchDevice(InterfaceDevice):
         # spectra and temperatures).  If we disable spectra, ENLIGHTEN stops 
         # receiving temperatures as well.  In the future perhaps we should return
         # multiple object types (Acquisitions, Temperatures, etc)
+
         if self.settings.state.area_scan_enabled:
             return self.acquire_area_scan()
         else:

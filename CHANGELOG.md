@@ -5,6 +5,7 @@
       config files with floating-point horizontal ROI)
     - update BatchCollection and Scan Averaging for AndorDevice
     - added EEPROM.laser_interlock_excluded
+    - area scan mostly works for XS
 - 2025-04-08 2.3.0
     - IDS cameras
         - add IDSDevice, IDSCamera
