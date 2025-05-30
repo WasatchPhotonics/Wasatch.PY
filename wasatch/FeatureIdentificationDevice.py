@@ -268,8 +268,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.get_fpga_firmware_version()
         log.debug(f"FPGA firmware version {self.settings.fpga_firmware_version}")
 
-        self.get_microcontroller_serial_number()
-        log.debug(f"Microcontroller serial number {self.settings.microcontroller_serial_number}")
+        # self.get_microcontroller_serial_number()
+        # log.debug(f"Microcontroller serial number {self.settings.microcontroller_serial_number}")
 
         # issue: BL652 may not be fully booted if this was a hotplug. We could
         #        of course re-poll if None, but the initial SpectrometerSettings
@@ -282,8 +282,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         #        state are usually measurement-related. It would be a little 
         #        weird to add a "dynamic firmware version" to Reading, implying
         #        that firmware versions might suddenly change mid-runtime...
-        self.get_ble_firmware_version()
-        log.debug(f"BLE firmware version {self.settings.ble_firmware_version}")
+        # self.get_ble_firmware_version()
+        # log.debug(f"BLE firmware version {self.settings.ble_firmware_version}")
 
         # ######################################################################
         # model-specific settings
@@ -439,7 +439,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         else:
             self.settings.eeprom.actual_pixels_vertical = 70
 
-        self.area_scan_frame = [ [0] * self.settings.pixels() for line in range(self.settings.eeprom.actual_pixels_vertical) ]
+        self.reset_area_scan_frame()
 
         # ######################################################################
         # Done
@@ -452,6 +452,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.settings.state.dump("FID.post_connect")
 
         return SpectrometerResponse(self.connected)
+        
+    def reset_area_scan_frame(self):
+        self.area_scan_frame = [ [0] * self.settings.pixels() for line in range(self.settings.eeprom.actual_pixels_vertical) ]
 
     def disconnect(self):
         if self.last_applied_laser_power:
@@ -788,6 +791,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
             # try again
             log.error("retrying (attempt %d)", retry_count + 1)
+        return SpectrometerResponse(True)
 
     ## @note weird that so few calls to this function override the default wLength
     # @todo consider adding retry logic as well
@@ -1125,7 +1129,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.error(msg)
             return SpectrometerResponse(error_lvl=ErrorLevel.low, error_msg=msg)
 
-        n = int(max(0, min(n, 255)))
+        n = int(max(1, min(n, 255)))
 
         log.debug(f"setting area scan line step to {n}")
         self.settings.state.area_scan_line_step = n
@@ -1761,6 +1765,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         @returns Reading(spectrum, AreaScanImage(data=nd_array))
         """
 
+        start = self.settings.eeprom.roi_vertical_region_1_start
+        stop  = self.settings.eeprom.roi_vertical_region_1_end
         line_len = self.settings.pixels() * 2
         timeout_ms = self.generate_timeout_ms()
 
@@ -1792,21 +1798,22 @@ class FeatureIdentificationDevice(InterfaceDevice):
             msb = data[i*2 + 1]
             intensity = (msb << 8) + lsb
             spectrum.append(intensity)
-
-        log.debug(f"get_area_scan_xs: read {spectrum[:5]}")
+        spectrum = np.array(spectrum, dtype=np.uint16)
 
         # first pixel is line index
         line_index = spectrum[0]
+        line_index -= 40 # MZ: kludge
+        log.debug(f"get_area_scan_xs: line_index {line_index}, spectrum {spectrum[:5]}")
 
         # for some reason, line index is copied across first four pixels?
         for i in range(4):
             spectrum[i] = spectrum[4] 
 
-        # store line in image
+        # update new line(s) in image
         max_lines = len(self.area_scan_frame)
-        for offset in range(self.settings.state.area_scan_line_step):
+        for offset in range(self.settings.state.area_scan_line_step + 1):
             index = line_index + offset
-            if 0 <= index < max_lines:
+            if 0 <= index < max_lines and index < stop:
                 self.area_scan_frame[index] = spectrum
             else:
                 log.warn(f"get_area_scan_xs: WARNING: line_index {line_index} exceeds max_lines {max_lines}")
@@ -1818,13 +1825,17 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # store full-frame image data for Area Scan
         data = np.array(self.area_scan_frame, dtype=np.float32, copy=True)
         data -= data.min() # remove baseline
-        asi = AreaScanImage(data=data, width=len(data[0]), height=len(data))
 
         # vertically bin within vertical ROI for live graph
-        start = self.settings.eeprom.roi_vertical_region_1_start
-        stop  = self.settings.eeprom.roi_vertical_region_1_end
+        log.debug(f"vertically binning ({start}, {stop})")
         cropped = data[start:(stop + 1), :]
         spectrum = np.sum(cropped, axis=0)   
+
+        # flag the first and last 5pixels of the current line only
+        if 0 <= line_index < max_lines:
+            data[line_index][:5]  = data.max()
+            data[line_index][-5:] = data.max()
+        asi = AreaScanImage(data=data, width=len(data[0]), height=len(data), line_index=line_index)
 
         # return image and spectrum in Reading
         reading = Reading(self.device_id)
@@ -2930,31 +2941,20 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.error("set_vertical_roi: requires ascending order (ignoring %d, %d)", start, end)
             return SpectrometerResponse(data=False, error_msg="invalid start and stop lines")
 
-        buf = [0] * 8
         if self.settings.is_xs():
             # ARM has USB opcodes for start/stop line
-            ok = self._send_code(bRequest=0xff, wValue=0x21, wIndex=start, data_or_wLength=buf, label="SET_CMOS_START_LINE")
-            if not ok.data:
-                return ok
-            ok = self._send_code(bRequest=0xff, wValue=0x23, wIndex=end, data_or_wLength=buf, label="SET_CMOS_STOP_LINE")
-            if not ok.data:
-                return ok
+            self._send_code(bRequest=0xff, wValue=0x21, wIndex=start, label="SET_CMOS_START_LINE")
+            self._send_code(bRequest=0xff, wValue=0x23, wIndex=end,   label="SET_CMOS_STOP_LINE")
         else:
-            # FX2 lacks USB opcodes for start/stop line, so use I2C Poke
+            # FX2 lacks USB opcodes for start/stop line, so use I2C Poke (clamp to 1 byte)
+            start = int(max(0, min(255, start)))
+            end   = int(max(0, min(255, end  )))
+            self.i2c_write(0x29, [start], label="I2C_POKE(SET_CCD_START_LINE)")
+            self.i2c_write(0x2A, [end],   label="I2C_POKE(SET_CCD_STOP_LINE)")
 
-            # I2C_POKE              0x90 
-            # SENSOR_ROI_START_LINE 0x29 len 1 default 0x00
-            # SENSOR_ROI_STOP_LINE  0x2A len 1 default 0x45 (69 dec)
-        
-            buf[0] = start
-            ok = self._send_code(bRequest=0x90, wValue=0x29, wIndex=1, data_or_wLength=buf, label="I2C_POKE(SET_CCD_START_LINE)")
-            if not ok.data:
-                return ok
-
-            buf[0] = end
-            ok = self._send_code(bRequest=0x90, wValue=0x2A, wIndex=1, data_or_wLength=buf, label="I2C_POKE(SET_CCD_STOP_LINE)")
-            if not ok.data:
-                return ok
+        self.settings.eeprom.roi_vertical_region_1_start = start
+        self.settings.eeprom.roi_vertical_region_1_end = end
+        self.reset_area_scan_frame()
 
         return SpectrometerResponse(data=True)
 
