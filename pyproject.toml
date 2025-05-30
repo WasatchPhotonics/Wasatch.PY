@@ -1,13 +1,36 @@
-[build-system]
-requires = ["flit_core >=3.2,<4"]
-build-backend = "flit_core.buildapi"
-
 [project]
 name = "wasatch"
-authors = [{name = "Wasatch Photonics", email = "edort@wasatchphotonics.com"}]
+version = "2.3.1"
+description= "Application-level driver for Wasatch Photonics spectrometers"
+requires-python = ">=3.9"
 readme = "README.md"
-classifiers = ["License :: OSI Approved :: MIT License"]
-dynamic = ["version", "description"]
+dependencies = [
+    #"mkl",
+    "numpy",
+    "six",
+    "psutil",
+    "future",
+    "pygtail",
+    "pyusb",
+    "requests",
+    "pexpect",
+    "seabreeze",
+    "pyudev",
+    "pywin32; platform_system=='Windows'",
+    "pyftdi",
+    "crcmod",
+    "bleak",
+    "ids_peak; platform_system=='Windows'",
+]
 
 [project.urls]
-Home = "https://github.com/WasatchPhotonics/Wasatch.PY"
+Homepage = "https://github.com/WasatchPhotonics/wasatch.py"
+
+[build-system]
+requires=["setuptools"]
+build-backend="setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where=["."]
+include=["wasatch"]
+exclude=[]

@@ -1,11 +1,14 @@
 # Changelog
 
-- 2025-??-?? 2.3.1
+- 2025-05-30 2.3.1
     - enforce signed and unsigned integers in MultiWavecalCalibration (resolve XL
       config files with floating-point horizontal ROI)
     - update BatchCollection and Scan Averaging for AndorDevice
     - added EEPROM.laser_interlock_excluded
     - area scan mostly works for XS
+    - packaging
+        - remove legacy package install files
+        - add all dependencies to pyproject.toml
 - 2025-04-08 2.3.0
     - IDS cameras
         - add IDSDevice, IDSCamera
