@@ -58,6 +58,7 @@ class SpectrometerState:
         self.area_scan_enabled = False
         self.area_scan_fast = True # now the default
         self.area_scan_first_trigger_sent = False
+        self.area_scan_line_step = 1
 
         # battery
         self.battery_percentage = 0.0

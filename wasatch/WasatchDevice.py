@@ -259,6 +259,7 @@ class WasatchDevice(InterfaceDevice):
         # spectra and temperatures).  If we disable spectra, ENLIGHTEN stops 
         # receiving temperatures as well.  In the future perhaps we should return
         # multiple object types (Acquisitions, Temperatures, etc)
+
         if self.settings.state.area_scan_enabled:
             return self.acquire_area_scan()
         else:
@@ -619,7 +620,7 @@ class WasatchDevice(InterfaceDevice):
         if tor:
             reading.take_one_request = tor
 
-            # was this a "fast BatchCollection" with a streaming multi-reading TakeOneRequest?
+            # this was for a "fast BatchCollection" with a streaming multi-reading TakeOneRequest
             if tor.readings_target:
                 tor.readings_current += 1
 
