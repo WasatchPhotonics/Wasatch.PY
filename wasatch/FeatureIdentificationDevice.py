@@ -1802,7 +1802,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         # first pixel is line index
         line_index = spectrum[0]
-        line_index -= 40 # MZ: kludge
+        # line_index -= 40 # MZ: kludge
         log.debug(f"get_area_scan_xs: line_index {line_index}, spectrum {spectrum[:5]}")
 
         # for some reason, line index is copied across first four pixels?
