@@ -1764,7 +1764,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
         """
         @returns Reading(spectrum, AreaScanImage(data=nd_array))
         """
-
         start = self.settings.eeprom.roi_vertical_region_1_start
         stop  = self.settings.eeprom.roi_vertical_region_1_end
         line_len = self.settings.pixels() * 2
@@ -1774,7 +1773,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # line, might have skipped a few, who knows)
         self._send_code(0xad, label="ACQUIRE_SPECTRUM")
 
-        data = self.extra_area_scan_data # start with any extra data we might have picked up on the last read
+        # start with any extra data we might have picked up on the last read
+        data = self.extra_area_scan_data 
         self.extra_area_scan_data = []
 
         try:
@@ -1802,8 +1802,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         # first pixel is line index
         line_index = spectrum[0]
-        # line_index -= 40 # MZ: kludge
-        log.debug(f"get_area_scan_xs: line_index {line_index}, spectrum {spectrum[:5]}")
+        if self.settings.supports_feature("xs_area_scan_offset_kludge"):
+            line_index -= 40
 
         # for some reason, line index is copied across first four pixels?
         for i in range(4):
@@ -1813,10 +1813,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         max_lines = len(self.area_scan_frame)
         for offset in range(self.settings.state.area_scan_line_step + 1):
             index = line_index + offset
-            if 0 <= index < max_lines and index < stop:
+            if 0 <= index < max_lines and index <= stop:
                 self.area_scan_frame[index] = spectrum
-            else:
-                log.warn(f"get_area_scan_xs: WARNING: line_index {line_index} exceeds max_lines {max_lines}")
         
         ########################################################################
         # process completed frame

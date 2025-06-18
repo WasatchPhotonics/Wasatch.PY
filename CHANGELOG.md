@@ -1,5 +1,10 @@
 # Changelog
 
+- 2025-06-18 2.3.2
+    - XS area scan
+        - fixed off-by-one stop line
+        - fixed xs_area_scan_offset_kludge on newer FPGAs
+    - added "max" to utils.vercmp
 - 2025-05-30 2.3.1
     - enforce signed and unsigned integers in MultiWavecalCalibration (resolve XL
       config files with floating-point horizontal ROI)
