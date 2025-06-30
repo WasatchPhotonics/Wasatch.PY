@@ -1849,8 +1849,16 @@ class FeatureIdentificationDevice(InterfaceDevice):
         marker = 0xffff
         clamp = 0xfffe
         lines = 69
-        line_len = self.settings.pixels() * 2
-        timeout_ms = self.generate_timeout_ms()
+        line_index = -1
+        pixels = self.settings.pixels()
+        line_len = pixels * 2
+        timeout_ms = self.generate_timeout_ms() + 10
+
+        endpoints = [0x82]
+        block_len_bytes = line_len
+        if pixels == 2048 and not self.settings.is_arm():
+            endpoints = [0x82, 0x86]
+            block_len_bytes = 2048 # 1024 pixels apiece from two endpoints
 
         # request a frame
         self._send_code(0xad, label="ACQUIRE_SPECTRUM")
@@ -1866,10 +1874,14 @@ class FeatureIdentificationDevice(InterfaceDevice):
             try:
                 while len(data) < line_len:
                     bytes_remaining = line_len - len(data)
-                    # @todo expand this to 0x86 for S16011-1101
-                    latest_data = self.device_type.read(self.device, 0x82, bytes_remaining, timeout=timeout_ms)
+                    bytes_to_read = min(bytes_remaining, block_len_bytes)
+                    ep_index = 1 if len(endpoints) > 1 and len(data) >= 1024 else 0
+
+                    # log.debug(f"get_area_scan_hamamatsu: attempting to read {bytes_to_read} from 0x{endpoints[ep_index]:02x}")
+                    latest_data = self.device_type.read(self.device, endpoints[ep_index], bytes_to_read, timeout=timeout_ms)
                     data.extend(latest_data) 
             except:
+                # this still happens periodically
                 log.error(f"get_area_scan_hamamatsu {prefix}: error reading line {line}", exc_info=1)
                 break
 
@@ -1903,8 +1915,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
             spectrum[1] = spectrum[2] # stomp
 
             # store line in image
-            self.area_scan_frame[line_index] = spectrum
-            # self.debug(f"{prefix}: stored line {line_index}: {spectrum[:5]}")
+            if 0 <= line_index < len(self.area_scan_frame):
+                log.debug(f"get_area_scan_hamamatsu {prefix}: storing line {line_index}: {spectrum[:5]}")
+                self.area_scan_frame[line_index] = spectrum
+            else:
+                log.warn(f"get_area_scan_hamamatsu {prefix}: dropping line {line_index}: {spectrum[:5]}")
             
             line_count += 1
 
@@ -1915,7 +1930,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # store full-frame image data for Area Scan
         data = np.array(self.area_scan_frame, dtype=np.float32, copy=True)
         data -= data.min() # remove baseline
-        asi = AreaScanImage(data=data, width=len(data[0]), height=len(data))
+        if self.settings.eeprom.invert_x_axis:
+            data = np.rot90(data, k=2)
+        asi = AreaScanImage(data=data, width=len(data[0]), height=len(data), line_index=line_index)
 
         # vertically bin within vertical ROI for live graph
         start = self.settings.eeprom.roi_vertical_region_1_start
