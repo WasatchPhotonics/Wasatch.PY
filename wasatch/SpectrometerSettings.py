@@ -237,7 +237,7 @@ class SpectrometerSettings:
         # order in the current codebase."
 
         coeffs = self.eeprom.multi_wavelength_calibration.get("raman_intensity_coeffs")
-        log.debug("update_raman_intensity_factors: coeffs {coeffs}")
+        log.debug(f"update_raman_intensity_factors: coeffs {coeffs}")
         if coeffs is None or coeffs == []:
             return
 
@@ -256,7 +256,7 @@ class SpectrometerSettings:
         except:
             log.error(f"exception generating Raman intensity factors (coeffs {coeffs})", exc_info=1)
             self.raman_intensity_factors = None
-        log.debug("generated {len(self.raman_intensity_factors)} Raman intensity factors")
+        log.debug(f"generated {len(self.raman_intensity_factors)} Raman intensity factors")
 
     def set_linear_pixel_calibration(self, data):
         self.linear_pixel_calibration = None
