@@ -1446,5 +1446,8 @@ class EEPROMField:
         self.offset     = pos[1]
         self.length     = pos[2]
 
+    def __repr__(self): 
+        return str(self.__dict__)
+    
     def toJSON(self): 
         return str(self.__dict__)
