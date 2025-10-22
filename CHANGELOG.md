@@ -1,5 +1,7 @@
 # Changelog
 
+- 2025-10-22 2.3.5
+    - don't loop on spectral read errors on XS
 - 2025-10-22 2.3.4
     - ignore heartbeat on Andor
 - 2025-06-30 2.3.3

@@ -233,7 +233,7 @@ class WasatchDeviceWrapper:
 
         self.wrapper_worker.daemon = True
 
-        log.debug("deivce wrapper: starting WrapperWorker thread")
+        log.debug("device wrapper: starting WrapperWorker thread")
         self.wrapper_worker.start()
 
         # expect to read a single post-initialization SpectrometerSettings object off the queue

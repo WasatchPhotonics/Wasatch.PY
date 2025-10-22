@@ -1401,7 +1401,12 @@ class FeatureIdentificationDevice(InterfaceDevice):
                     else:
                         errors += 1
                         log.error(f"Encountered error on read of {exc}", exc_info=1)
-                        if errors < 3:
+
+                        # Don't loop on errors on XS, so we can experimentally 
+                        # use an XS board as a detector-less laser/TEC driver 
+                        # board. (A better solution would be to add FeatureMask.
+                        # has_detector or similar, this works for now.)
+                        if errors < 3 and not self.settings.is_xs():
                             log.error(f"ignoring error number {errors}")
                         else:
                             response.error_msg = "Encountered error on read"
