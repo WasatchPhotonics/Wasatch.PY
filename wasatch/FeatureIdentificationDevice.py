@@ -1608,12 +1608,17 @@ class FeatureIdentificationDevice(InterfaceDevice):
             self.remaining_throwaways += 1
 
     def set_onboard_scans_to_average(self, n):
+        """ 
+        This is provided to let ENLIGHTEN *turn off* onboard averaging settings 
+        which might have been generated, and (deliberately) left in place after 
+        an Auto-Raman measurement.
+        """
         if not self.settings.is_xs():
             return SpectrometerResponse(False)
 
         retval = self._send_code(0xff, 0x62, n, label="SET_ONBOARD_SCANS_TO_AVERAGE")
         self.settings.state.scans_to_average = n
-        self.settings.state.onboard_averaging = True
+        self.settings.state.onboard_averaging = n > 1
         return retval
 
     def get_scans_to_average(self):
@@ -1673,6 +1678,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return result
 
     def i2c_write(self, address, buf, label=""):
+        # return log.debug(f"i2c_write: declining to send cmd 0x90, wValue {address}, wIndex {len(buf)}, data_or_wLength {buf}, label {label}")
         return self._send_code(0x90, wValue=address, wIndex=len(buf), data_or_wLength=buf, label=label)
 
     # ##########################################################################
@@ -2929,6 +2935,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 self.set_vertical_roi(roi)
 
     def set_vertical_roi(self, roi):
+        log.debug(f"set_vertical_roi: {roi}")
+
         # check for legacy SiG-VIS since it didn't like vertical binning
         if self.settings.fpga_firmware_version == "000-008" and self.settings.microcontroller_firmware_version == "0.1.0.7":
             return SpectrometerResponse(data=False)
@@ -2945,6 +2953,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         else:
             log.error("set_vertical_roi: requires an ROI object or tuple of (start, stop) lines")
             return SpectrometerResponse(data=False, error_msg="invalid start and stop lines")
+        log.debug(f"set_vertical_roi: start {start}, end {end}")
 
         if start < 0 or end < 0:
             log.error("set_vertical_roi: requires POSITIVE (start, stop) lines")
