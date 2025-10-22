@@ -1,5 +1,7 @@
 # Changelog
 
+- 2025-10-22 2.3.4
+    - ignore heartbeat on Andor
 - 2025-06-30 2.3.3
     - Hamamatsu 2048px area scan
 - 2025-06-18 2.3.2
