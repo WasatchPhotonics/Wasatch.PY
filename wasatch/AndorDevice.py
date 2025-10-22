@@ -188,7 +188,7 @@ class AndorDevice(InterfaceDevice):
         process_f["take_one_request"]           = self.set_take_one_request
 
         process_f["reset_scan_averaging"]       = self.not_implemented
-        process_f["heartbeat"]                  = self.not_implemented
+        process_f["heartbeat"]                  = lambda x: None
 
         ##################################################################
         # What follows is the old init-lambdas that are squashed into process_f
