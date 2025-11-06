@@ -28,7 +28,11 @@ pip-install-local:
 	pip install $$PWD
 
 publish-test:
+	@echo REMINDER to keep .toml in sync with __init__.py!
+	@echo 
 	flit publish --repository testpypi
 
 publish:
+	@echo REMINDER to keep .toml in sync with __init__.py!
+	@echo 
 	flit publish
