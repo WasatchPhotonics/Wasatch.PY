@@ -1,5 +1,9 @@
 # Changelog
 
+- 2025-11-06 2.3.6
+    - resolve hotplug race condition when laser power set in percent
+    - cache certain device getters to avoid I2C overruns
+    - stop trying to read laser temperature on FX2, it's never worked right
 - 2025-10-22 2.3.5
     - don't loop on spectral read errors on XS
 - 2025-10-22 2.3.4

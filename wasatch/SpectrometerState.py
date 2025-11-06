@@ -29,12 +29,15 @@ class SpectrometerState:
         # TEC       @todo rename detector_tec...
         self.tec_setpoint_degC = 15 # that's a very strange default...
         self.tec_enabled = False
+        self.detector_temperature_raw = None
+        self.detector_temperature_raw_last_refreshed = None
 
         # high gain mode (InGaAs only)
         self.high_gain_mode_enabled = False
 
         # laser
         self.laser_enabled = False
+        self.laser_enabled_last_refreshed = None
         self.laser_power_mW = None  # if last set in mW, will contain setpoint in mW; else will be None
         self.laser_power_perc = 0   # should always contain a number [0, 100]
         self.use_mW = False         # bool
