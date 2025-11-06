@@ -308,11 +308,23 @@ class FeatureIdentificationDevice(InterfaceDevice):
             return result
 
         # ######################################################################
-        # Automatically disable laser at connection
+        # Laser defaults
         # ######################################################################
 
-        # if self.settings.eeprom.has_laser:
-        #     self.set_laser_enable(False)
+        if self.settings.eeprom.has_laser:
+            log.debug("post_connect: setting laser defaults")
+            # MZ: why did we stop doing this?
+            # self.set_laser_enable(False)
+
+            self.settings.state.laser_power_mW = self.settings.eeprom.max_laser_power_mW
+            self.settings.state.laser_power_perc = 100
+            self.settings.state.use_mW = self.settings.eeprom.has_laser_power_calibration() and self.settings.is_mml()
+
+            log.debug(f"  laser_power_mW   {self.settings.state.laser_power_mW}")
+            log.debug(f"  laser_power_perc {self.settings.state.laser_power_perc}")
+            log.debug(f"  use_mW           {self.settings.state.use_mW}")
+
+            log.debug("post_connect: done setting laser defaults")
 
         # ######################################################################
         # TEC Setpoint
@@ -816,20 +828,21 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         try:
             self._wait_for_usb_available()
+            log.debug("%s_get_code: request 0x%02x value 0x%04x index 0x%04x length %d", prefix, bRequest, wValue, wIndex, wLength)
             result = self.device_type.ctrl_transfer(self.device,
                                                0xc0,        # DEVICE_TO_HOST
                                                bRequest,
                                                wValue,
                                                wIndex,
-                                               wLength)
+                                               wLength)     # add TIMEOUT_MS?
         except Exception as exc:
             log.critical(f"Hardware Failure FID Get Code Problem with ctrl transfer (bRequest 0x{bRequest:02x}, wValue 0x{wValue:04x}, wIndex 0x{wIndex:04x}, label {label})", exc_info=1)
             self._schedule_disconnect(exc)
             return SpectrometerResponse(poison_pill=True)
 
         result_hex = " ".join([f"{v:02x}" for v in result])
-        log.debug("%s_get_code: request 0x%02x value 0x%04x index 0x%04x = [%s]",
-            prefix, bRequest, wValue, wIndex, result_hex)
+        log.debug("%s_get_code: request 0x%02x value 0x%04x index 0x%04x length %d = [%s]",
+            prefix, bRequest, wValue, wIndex, wLength, result_hex)
 
         if result is None:
             log.critical("_get_code[%s, %s]: received null", label, self.device_id)
@@ -1135,10 +1148,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.settings.state.area_scan_line_step = n
         return self.i2c_write(0x17, [n], label="SET_AREA_SCAN_LINE_STEP")
 
-    # MZ: I don't remember what boards / firmware supports this?
+    # MZ: I don't remember what boards / firmware supports this? How does this differ from interval?
     def set_area_scan_line_count(self, n):
         self.debug(f"setting line count to {n}")
-        self.dev.ctrl_transfer(H2D, 0xa6, n, 0, Z, TIMEOUT) 
+        self.dev.ctrl_transfer(H2D, 0xa6, n, 0, Z)
         return self._send_code(0xa6, n, label="SET_AREA_SCAN_LINE_COUNT")
 
     # MZ: I don't remember what boards / firmware supports this?
@@ -2011,7 +2024,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         if self.settings.state.selected_adc is None or self.settings.state.selected_adc != 1:
             self.select_adc(1)
 
-        result = self._get_code(0xd5, wLength=2, label="GET_ADC", lsb_len=2)
+        result = self._get_code(0xd5, wLength=2, label="GET_ADC (secondary)", lsb_len=2)
         log.debug("secondary_adc_raw: 0x%04x", result)
         return result
 
@@ -2206,7 +2219,18 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
     ## @note big-endian, reverse of get_laser_temperature_raw
     def get_detector_temperature_raw(self):
-        return self._get_code(0xd7, label="GET_CCD_TEMP", msb_len=2)
+        # - don't poll detector temperature faster than 10Hz...analyzing performance on FX2
+        last = self.settings.state.detector_temperature_raw_last_refreshed 
+        now = datetime.datetime.now()
+        if last is not None and (now - last).total_seconds() < 0.1:
+            raw = self.settings.state.detector_temperature_raw
+            log.debug("get_detector_temperature_raw: using cached {raw}")
+            return raw
+        raw = self._get_code(0xd7, wLength=2, label="GET_CCD_TEMP", msb_len=2)
+        self.settings.state.detector_temperature_raw = raw
+        self.settings.state.detector_temperature_raw_last_refreshed = now
+        log.debug("get_detector_temperature_raw: storing {raw}")
+        return raw
 
     def get_detector_temperature_degC(self, raw: float = None):
         if raw is None:
@@ -2367,12 +2391,16 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
     def get_laser_temperature_raw(self):
         """ @note little-endian, reverse of get_detector_temperature_raw """
+        # this is currently unreliable on most (all?) Hamamatsu units, so why bother
+        if not self.settings.is_xs():
+            return SpectrometerResponse(0)
+
         # flip to primary ADC if needed
         if self.settings.state.selected_adc is None or self.settings.state.selected_adc != 0:
             # MZ: unclear if this is needed on SiG
             self.select_adc(0)
 
-        result = self._get_code(0xd5, wLength=2, label="GET_ADC", lsb_len=2)
+        result = self._get_code(0xd5, wLength=2, label="GET_ADC (laser)", lsb_len=2)
         if not result.data:
             log.debug("Unable to read laser temperature")
             return SpectrometerResponse(0)
@@ -2409,11 +2437,21 @@ class FeatureIdentificationDevice(InterfaceDevice):
             # MZ: get_laser_enabled not currently robust on SiG :-(
             return SpectrometerResponse(data=self.settings.state.laser_enabled)
 
-        res = self._get_code(0xe2, label="GET_LASER_ENABLED", msb_len=1)
+        # - don't poll laser faster than 100Hz...analyzing performance on FX2
+        # - seems to be double-polled due to is_laser_firing()
+        last = self.settings.state.laser_enabled_last_refreshed
+        now = datetime.datetime.now()
+        if last is not None and (now - last).total_seconds() < 0.01:
+            flag = self.settings.state.laser_enabled
+            log.debug(f"get_laser_enabled: using cached {flag}")
+            return SpectrometerResponse(data=flag)
+
+        res = self._get_code(0xe2, wLength=1, label="GET_LASER_ENABLED", msb_len=1)
         flag = 0 != res.data
 
-        log.debug(f"get_laser_enabled: {flag} (storing to {self.settings.state})")
+        log.debug(f"get_laser_enabled: {flag} (storing to self.settings.state)")
         self.settings.state.laser_enabled = flag
+        self.settings.state.laser_enabled_last_refreshed = now
         return SpectrometerResponse(data=flag)
 
     def set_laser_enable(self, flag: bool):
@@ -2978,6 +3016,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
             # FX2 lacks USB opcodes for start/stop line, so use I2C Poke (clamp to 1 byte)
             start = int(max(0, min(255, start)))
             end   = int(max(0, min(255, end  )))
+
+            # start = max(1, start) # kludge
+
             self.i2c_write(0x29, [start], label="I2C_POKE(SET_CCD_START_LINE)")
             self.i2c_write(0x2A, [end],   label="I2C_POKE(SET_CCD_STOP_LINE)")
 
