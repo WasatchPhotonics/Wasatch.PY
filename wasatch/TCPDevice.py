@@ -7,6 +7,7 @@ from .SpectrometerSettings  import SpectrometerSettings
 from .InterfaceDevice       import InterfaceDevice
 from .DeviceID              import DeviceID
 from .Reading               import Reading
+from .ROI                   import ROI
 
 log = logging.getLogger(__name__)
 
@@ -160,14 +161,27 @@ class TCPDevice(InterfaceDevice):
         return self.get_cmd(0xbf, lsb_len=3, label="GET_INTEGRATION_TIME_MS")
 
     def set_detector_gain(self, db):
-        word = self.float_to_uint16(db, label="SET_DETECTOR_GAIN")
+        # word = self.float_to_uint16(db, label="SET_DETECTOR_GAIN")
+        tenx = int(round(10 * db, 0))
+
+        # needs to be sent big-endian
+        lsb = tenx & 0xff
+        msb = (tenx >> 8) & 0xff
+        word = (lsb << 8) | msb
+
         self.send_cmd(0xb7, word, label="SET_DETECTOR_GAIN")
 
     def get_detector_gain(self):
-        data = self.get_cmd(0xc5, length=2, label="GET_DETECTOR_GAIN")
-        msb = data[0]
-        lsb = data[1]
-        return msb + lsb / 256.0
+        tenx = self.get_cmd(0xc5, lsb_len=2, label="GET_DETECTOR_GAIN")
+        return int(round(float(data) / 10, 1))
+
+    def set_vertical_roi(self, roi):
+        if isinstance(roi, ROI):
+            self.set_start_line(roi.start)
+            self.set_stop_line(roi.end)
+        else:
+            self.set_start_line(roi[0])
+            self.set_stop_line(roi[1])
 
     def set_start_line(self, line):
         self.send_cmd(0xff, 0x21, line, label="SET_START_LINE")
@@ -191,6 +205,9 @@ class TCPDevice(InterfaceDevice):
             spectrum.append(intensity)
 
         return spectrum
+
+    def not_implemented(self, label):
+        log.debug("{label} is not implemented for TCP spectrometers")
 
     # not implemented:
     #
@@ -336,8 +353,8 @@ class TCPDevice(InterfaceDevice):
         process_f["acquire_data"]        = self.acquire_data
                                          
         process_f["integration_time_ms"] = lambda x: self.set_integration_time_ms(x)
-        process_f["detector_gain"]       = lambda x: self.set_gain(x)
-        process_f["laser_enable"]        = lambda x: self.set_laser_enable(x)
+        process_f["detector_gain"]       = lambda x: self.set_detector_gain(x)
+        process_f["laser_enable"]        = lambda x: self.not_implemented("set_laser_enable")
         process_f["vertical_binning"]    = lambda x: self.set_vertical_roi(x)
 
         return process_f

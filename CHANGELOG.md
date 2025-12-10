@@ -1,5 +1,9 @@
 # Changelog
 
+- 2025-12-10 2.3.7
+    - added EEPROM.is_oem
+    - fixed TCPDevice.set_detector_gain and set_vertical_roi
+    - disable use of eeprom.actual_pixels_horizontal during acquisition
 - 2025-11-06 2.3.6
     - resolve hotplug race condition when laser power set in percent
     - cache certain device getters to avoid I2C overruns

@@ -123,6 +123,8 @@ class EEPROM:
         self.sig_laser_tec               = False # better: sig_sml_laser_tec
         self.has_interlock_feedback      = False
         self.laser_interlock_excluded    = False # True if the unit has a laser, but the normal safety interlock has been removed or otherwise disabled (OEM-only)
+        self.laser_timeout_after_count   = False
+        self.is_oem                      = False
         self.has_shutter                 = False
         self.disable_ble_power           = False
         self.disable_laser_armed_indicator = False
@@ -506,6 +508,8 @@ class EEPROM:
             self.disable_ble_power             = 0 != self.feature_mask & 0x0100
             self.disable_laser_armed_indicator = 0 != self.feature_mask & 0x0200
             self.laser_interlock_excluded      = 0 != self.feature_mask & 0x0400
+            self.laser_timeout_after_count     = 0 != self.feature_mask & 0x0800
+            self.is_oem                        = 0 != self.feature_mask & 0x1000
         else:
             self.invert_x_axis                 = False 
             self.horiz_binning_enabled         = False
@@ -517,6 +521,9 @@ class EEPROM:
             self.has_shutter                   = False
             self.disable_ble_power             = False 
             self.disable_laser_armed_indicator = False
+            self.laser_interlock_excluded      = False
+            self.laser_timeout_after_count     = False
+            self.is_oem                        = False
 
         # ######################################################################
         # sanity checks
@@ -562,6 +569,8 @@ class EEPROM:
         mask |= 0x0100 if self.disable_ble_power             else 0
         mask |= 0x0200 if self.disable_laser_armed_indicator else 0
         mask |= 0x0400 if self.laser_interlock_excluded      else 0
+        mask |= 0x0800 if self.laser_timeout_after_count     else 0
+        mask |= 0x1000 if self.is_oem                        else 0
         return mask
 
     ##

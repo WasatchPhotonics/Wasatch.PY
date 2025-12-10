@@ -1361,7 +1361,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         ########################################################################
 
         # this is the number of pixels we expect to read-out over USB
-        if self.settings.is_imx385():
+        if False and self.settings.is_imx385():
             # Currently, only the IMX385 uses horizontal binning, so for now 
             # limit code changes to that detector (even though they haven't been
             # shown to break other hardware)
@@ -1633,6 +1633,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
         """
         if not self.settings.is_xs():
             return SpectrometerResponse(False)
+
+        # MZ: Kludge, disabling while testing
+        log.debug("disabling internal averaging")
+        return SpectrometerResponse(False)
 
         retval = self._send_code(0xff, 0x62, n, label="SET_ONBOARD_SCANS_TO_AVERAGE")
         self.settings.state.scans_to_average = n
