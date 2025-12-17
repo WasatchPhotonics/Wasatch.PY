@@ -380,7 +380,10 @@ class WasatchDevice(InterfaceDevice):
                 time.sleep(1) 
 
             dark_reading = self.take_one_averaged_reading(label="internal dark")
-            if dark_reading.poison_pill or dark_reading.error_msg:
+            if dark_reading.keep_alive:
+                log.debug(f"internal dark keepalive {dark_reading}")
+                return dark_reading
+            elif dark_reading.poison_pill or dark_reading.error_msg:
                 log.debug(f"internal dark error {dark_reading}")
                 acquire_response.poison_pill = True
                 return acquire_response
@@ -410,10 +413,10 @@ class WasatchDevice(InterfaceDevice):
         if take_one_response.poison_pill:
             log.debug(f"floating up take_one_averaged_reading poison pill {take_one_response}")
             return take_one_response
-        if take_one_response.keep_alive:
+        elif take_one_response.keep_alive:
             log.debug(f"floating up keep alive")
             return take_one_response
-        if take_one_response.data is None:
+        elif take_one_response.data is None:
             log.debug(f"Received a none reading, floating it up {take_one_response}")
             return take_one_response
 
@@ -694,6 +697,10 @@ class WasatchDevice(InterfaceDevice):
 
         @returns Reading on success, true or false on "stop processing" conditions
         """
+
+        if not self.settings.has_detector():
+            return SpectrometerResponse(keep_alive=True)
+            
         take_one_response = SpectrometerResponse()
 
         if self.take_one_request:

@@ -1,5 +1,7 @@
 # Changelog
 
+- 2025-??-?? 2.3.8
+    - added settings.has_detector
 - 2025-12-10 2.3.7
     - added EEPROM.is_oem
     - fixed TCPDevice.set_detector_gain and set_vertical_roi

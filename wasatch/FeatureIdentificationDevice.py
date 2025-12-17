@@ -1316,6 +1316,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
                  when NOT in external-triggered mode
         @throws exception on timeout (unless external triggering enabled)
         """
+
+        if not self.settings.has_detector():
+            return SpectrometerResponse(keep_alive=True)
+
         response = SpectrometerResponse()
 
         if not self.is_sensor_stable():
@@ -1413,13 +1417,14 @@ class FeatureIdentificationDevice(InterfaceDevice):
                         pass
                     else:
                         errors += 1
-                        log.error(f"Encountered error on read of {exc}", exc_info=1)
+                        log.error(f"Encountered error {errors} on read of {exc}", exc_info=1)
 
                         # Don't loop on errors on XS, so we can experimentally 
                         # use an XS board as a detector-less laser/TEC driver 
-                        # board. (A better solution would be to add FeatureMask.
-                        # has_detector or similar, this works for now.)
-                        if errors < 3 and not self.settings.is_xs():
+                        # board. 
+                        if not self.settings.has_detector():
+                            pass
+                        elif errors < 3:
                             log.error(f"ignoring error number {errors}")
                         else:
                             response.error_msg = "Encountered error on read"
@@ -1621,7 +1626,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return response
 
     def require_throwaway(self, flag):
-        if flag and self.settings.is_xs() and self.remaining_throwaways < 1:
+        if flag and self.settings.is_xs() and self.remaining_throwaways < 1 and self.settings.has_detector():
             log.debug("queuing throwaways")
             self.remaining_throwaways += 1
 
