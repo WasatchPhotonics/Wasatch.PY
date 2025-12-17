@@ -66,11 +66,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
                                        |
                                 handle_requests
                                        |
-                                 ------------
-                                /   /  |  \  \ 
+                                  -----------
+                                 |  |  |  |  | 
              { get_laser status, acquire, set_laser_watchdog, etc....}
-                                \   \  |  /  /
-                                 ------------
+                                 |  |  |  |  | 
+                                  -----------
                                        |
                                    _send_code
     @endverbatim
