@@ -19,11 +19,13 @@ import os
 import re
 import sys
 import time
-import numpy
+import numpy as np
 import signal
 import logging
-import datetime
 import argparse
+
+from datetime import datetime
+from time import sleep
 
 import wasatch
 from wasatch                      import applog
@@ -33,72 +35,53 @@ from wasatch.WasatchBus           import WasatchBus
 from wasatch.WasatchDevice        import WasatchDevice
 
 log = logging.getLogger(__name__)
+demo = None
 
 class WasatchDemo:
 
-    ############################################################################
-    #                                                                          #
-    #                               Lifecycle                                  #
-    #                                                                          #
-    ############################################################################
-
     def __init__(self):
-        self.bus     = None
-        self.camera_device = None
-        self.laser_device = None
-        self.logger  = None
-        self.outfile = None
-        self.exiting = False
+        self.camera_device = None   # a wasatch.IDSDevice wrapping a wasatch.IDSCamera (as 'camera')
+        self.laser_device = None    # a wasatch.WasatchDevice wrapping a wasatch.FeatureIdentificationDevice (as 'hardware')
         self.reading_count = 0
+        self.exiting = False
 
         self.args = self.parse_args()
 
-        if self.args.log_level != "NEVER":
-            self.logger = applog.MainLogger(self.args.log_level)
-        log.info("Wasatch.PY version %s", wasatch.__version__)
-
-    ############################################################################
-    #                                                                          #
-    #                             Command-Line Args                            #
-    #                                                                          #
-    ############################################################################
+        print(f"Wasatch.PY {wasatch.__version__} IDS Raman Demo")
 
     def parse_args(self):
         parser = argparse.ArgumentParser(description="Simple demo to acquire spectra from command-line interface")
         parser.add_argument("--log-level",           type=str, default="INFO", help="logging level", choices=["DEBUG","INFO","WARNING","ERROR","CRITICAL","NEVER"])
         parser.add_argument("--integration-time-ms", type=int, default=1000,   help="integration time (ms, default 10)")
-        parser.add_argument("--delay-ms",            type=int, default=1000,   help="delay between integrations (ms, default 1000)")
-        parser.add_argument("--outfile",             type=str, default=None,   help="output filename (e.g. path/to/spectra.csv)")
+        parser.add_argument("--take-dark",           action="store_true",      help="first measurement is used for dark subtraction")
+        parser.add_argument("--enable-laser",        action="store_true",      help="fire laser (after optional dark)")
         parser.add_argument("--max",                 type=int, default=0,      help="max spectra to acquire (default 0, unlimited)")
+        parser.add_argument("--save-spectra",        action="store_true",      help="save vertically-binned spectra to row-ordered CSV")
+        parser.add_argument("--save-png",            action="store_true",      help="save PNG of each image frame")
+        parser.add_argument("--save-data",           action="store_true",      help="save 2D array of each image frame")
+        parser.add_argument("--save-dir",            type=str, default=".",    help="directory to save files")
+        parser.add_argument("--prefix",              type=str, default="ids-raman", help="filename prefix")
 
         args = parser.parse_args()
-        args.log_level = args.log_level.upper()
+        log.setLevel(args.log_level)
 
         return args
         
-    ############################################################################
-    #                                                                          #
-    #                              USB Devices                                 #
-    #                                                                          #
-    ############################################################################
-
     def connect(self):
-        """ Connect to all discoverable Wasatch spectrometers.  """
 
         ########################################################################
         # Look for laser driver board
         ########################################################################
 
-        if self.bus is None:
-            self.bus = WasatchBus()
-        if not self.bus.device_ids:
+        bus = WasatchBus()
+        if not bus.device_ids:
             print("No Wasatch USB spectrometers found.")
             return 
 
         # look for laser driver on WasatchBus -- we won't see the camera here,
         # because IDSPeak devices are not automatically considered for inclusion
         # by WasatchBus (although they could be)
-        for device_id in self.bus.device_ids:
+        for device_id in bus.device_ids:
             log.debug("connect: trying to connect to %s", device_id)
             device = WasatchDevice(device_id)
             ok = device.connect()
@@ -119,9 +102,10 @@ class WasatchDemo:
 
             self.laser_device = device
             break
+
         if self.laser_device is None:
-            log.critical("Could not find laser driver, exitting")
-            return False
+            log.critical("could not find laser driver, exitting")
+            return 
 
         ########################################################################
         # now look for an IDS camera
@@ -129,18 +113,33 @@ class WasatchDemo:
 
         try:
             device_id = DeviceID(label="IDSPeak")
-            device = IDSDevice(device_id=device_id)
+            device = IDSDevice(device_id=device_id, scratch_dir=".")
             if device.connect():
-                log.info("Successfully connected to IDSPeak camera")
                 self.camera_device = device
             else:
-                log.error("Failed to connecting to IDSCamera")
+                log.error("failed connecting to IDSCamera")
         except:
-            log.critical("Exception connecting to IDS camera", exc_info=1)
+            log.critical("exception connecting to IDS camera", exc_info=1)
+            return
 
         if self.camera_device is None:
-            log.critical("Could not find IDS camera, exitting")
-            return False
+            log.critical("could not find IDS camera, exitting")
+            return
+
+        device   = self.camera_device
+        camera   = device.camera
+        settings = device.settings
+        eeprom   = settings.eeprom
+
+        device.set_area_scan_enable(True)
+
+        # copy the laser excitation over to the camera "virtual EEPROM" so we can 
+        # compute wavenumbers
+        eeprom.excitation_nm = self.laser_device.settings.eeprom.excitation_nm
+        settings.update_wavecal()
+        print(f"connected to IDSPeak camera {eeprom.model} {eeprom.serial_number} with {camera.width}x{camera.height} pixels " +
+               f"from ({settings.wavelengths[0]:.2f}, {settings.wavelengths[-1]:.2f}nm)" +
+               (   f" ({settings.wavenumbers[0]:.2f}, {settings.wavenumbers[-1]:.2f}cm⁻¹)" if settings.has_excitation() else ""))
 
         return True
 
@@ -151,104 +150,93 @@ class WasatchDemo:
     ############################################################################
 
     def run(self):
-        log.info("Wasatch.PY %s IDS Raman Demo", wasatch.__version__)
-
-        # apply initial settings
         self.camera_device.set_integration_time_ms(self.args.integration_time_ms)
 
-        # initialize outfile if one was specified
-        if self.args.outfile:
-            try:
-                self.outfile = open(self.args.outfile, "w")
-                self.outfile.write("time,temp,serial,spectrum\n")
-            except:
-                log.error("Error initializing %s", self.args.outfile)
-                self.outfile = None
+        # initialize outfile if saving spectra
+        outfile = None
+        if self.args.save_spectra:
+            filename = os.path.join(self.args.save_dir, self.args.prefix + "-spectra.csv")
+            outfile = open(filename, "w")
+            outfile.write("pixels,      0, " + ", ".join([f"{x}" for x in range(self.camera_device.settings.pixels())]) + "\n")
+            outfile.write("wavelengths, 0, " + ", ".join([f"{x:.2f}" for x in self.camera_device.settings.wavelengths]) + "\n")
+            outfile.write("wavenumbers, 0, " + ", ".join([f"{x:.2f}" for x in self.camera_device.settings.wavenumbers]) + "\n")
+            outfile.write("time,    count, spectrum\n")
 
         # read spectra until user presses Control-Break
-        while not self.exiting:
-            start_time = datetime.datetime.now()
+        while not self.exiting and (self.args.max == 0 or self.reading_count < self.args.max):
 
-            # take a spectrum 
-            log.debug(f"calling attempt_reading")
-            self.attempt_reading(self.camera_device)
+            ####################################################################
+            # check to fire laser
+            ####################################################################
 
-            end_time = datetime.datetime.now()
+            # on the first reading (or the second, if taking dark), enable the 
+            # laser if requested
+            if (self.args.enable_laser and (self.reading_count == 0 or (self.args.take_dark and self.reading_count == 1))):
+                print("enabling laser")
+                self.laser_device.hardware.set_laser_enable(True)
 
-            if self.args.max > 0 and self.reading_count >= self.args.max:
-                log.debug("max spectra reached, exiting")
-                self.exiting = True
-            else:
-                # compute how much longer we should wait before the next "tick"
-                reading_time_ms = int((end_time - start_time).microseconds / 1000)
-                sleep_ms = self.args.delay_ms - reading_time_ms
-                if sleep_ms > 0:
-                    log.debug("sleeping %d ms (%d ms already passed)", sleep_ms, reading_time_ms)
-                    try:
-                        time.sleep(float(sleep_ms) / 1000)
-                    except:
-                        self.exiting = True
+            ####################################################################
+            # read image
+            ####################################################################
 
-        log.debug("WasatchDemo.run exiting")
+            if self.exiting:
+                break
 
-    def attempt_reading(self, device):
-        try:
-            reading_response = device.acquire_data()
-        except:
-            log.critical("attempt_reading caught exception", exc_info=1)
-            self.exiting = True
-            return
+            response = self.camera_device.acquire_data()
+            if response.keep_alive:
+                log.debug(f"ignoring keepalive from {device}")
+                continue
 
-        if reading_response.keep_alive:
-            log.debug(f"ignoring keepalive from {device}")
-            return
+            if isinstance(response.data, bool):
+                if response.data:
+                    log.debug("received poison-pill, exiting")
+                    break
+                else:
+                    log.debug("no reading available")
+                    continue
 
-        if isinstance(reading_response.data, bool):
-            if reading_response.data:
-                log.debug("received poison-pill, exiting")
-                self.exiting = True
-                return
-            else:
-                log.debug("no reading available")
-                return
+            if response.data.failure:
+                log.debug("reading indicated failure")
+                break
 
-        if reading_response.data.failure:
-            self.exiting = True
-            return
+            if self.exiting:
+                break
 
-        self.process_reading(reading_response.data)
+            self.reading_count += 1
 
-    def process_reading(self, reading):
-        if (self.exiting or 
-            (self.args.max > 0 and self.reading_count >= self.args.max)):
-            return
+            reading = response.data
+            spectrum = reading.spectrum
+            settings = self.camera_device.settings
+            asi = reading.area_scan_image
+            ts = reading.timestamp.strftime("%Y%m%d-%H%M%S-%f")
 
-        settings = self.camera_device.settings
+            # print some stats as we go
+            spectrum_min = np.amin(spectrum)
+            spectrum_max = np.amax(spectrum)
+            spectrum_avg = np.mean(spectrum)
+            spectrum_std = np.std (spectrum)
+            print(f"{ts}: {self.reading_count:4d} : min {spectrum_min:8.2f}, max {spectrum_max:8.2f}, avg {spectrum_avg:8.2f}, stdev {spectrum_std:8.2f}")
 
-        self.reading_count += 1
-        spectrum = reading.spectrum
+            # append to row-ordered file
+            if outfile:
+                values = ",".join(format(x, ".2f") for x in spectrum)
+                outfile.write(f"{reading.timestamp}, {self.reading_count}, {values}")
 
-        spectrum_min = numpy.amin(spectrum)
-        spectrum_max = numpy.amax(spectrum)
-        spectrum_avg = numpy.mean(spectrum)
-        spectrum_std = numpy.std (spectrum)
+            # save PNG
+            if self.args.save_png and asi.pathname_png:
+                filename = os.path.join(self.args.save_dir, f"{self.args.prefix}-{self.reading_count:04d}.png")
+                os.replace(asi.pathname_png, filename)
+                print(f"\tsaved {filename}")
 
-        print("%s: %s %4d  Detector: %5.2f degC  Min: %8.2f  Max: %8.2f  Avg: %8.2f  StdDev: %8.2f" % (
-            reading.timestamp,
-            settings.eeprom.serial_number,
-            self.reading_count,
-            reading.detector_temperature_degC,
-            spectrum_min,
-            spectrum_max,
-            spectrum_avg,
-            spectrum_std))
-        log.debug("%s", str(reading))
+            # save area scan data
+            if self.args.save_data and asi.data is not None:
+                filename = os.path.join(self.args.save_dir, f"{self.args.prefix}-{self.reading_count:04d}-data.csv")
+                np.savetxt(filename, asi.data, fmt='%d')
+                print(f"\tsaved {filename}")
 
-        if self.outfile:
-            self.outfile.write("%s,%.2f,%s,%s\n" % (datetime.datetime.now(),
-                                                 reading.detector_temperature_degC,
-                                                 settings.eeprom.serial_number,
-                                                 ",".join(format(x, ".2f") for x in spectrum)))
+            if self.args.take_dark and self.reading_count == 1:
+                print("\tsaving dark")
+                self.camera_device.camera.set_dark(asi)
 
 ################################################################################
 # main()
@@ -256,27 +244,26 @@ class WasatchDemo:
 
 def signal_handler(signal, frame):
     print('\rInterrupted by Ctrl-C...shutting down', end=' ')
-    clean_shutdown()
+    shutdown()
 
-def clean_shutdown():
-    log.debug("Exiting")
+def shutdown():
     if demo:
+        demo.exiting = True
         if demo.laser_device is not None:
+            demo.laser_device.hardware.set_laser_enable(False)
             demo.laser_device.disconnect()
-            time.sleep(1)
+
         if demo.camera_device is not None:
             demo.camera_device.disconnect()
-            time.sleep(1)
-        if demo.logger:
-            log.debug("closing logger")
-            log.debug(None)
-            demo.logger.close()
-            time.sleep(1)
-            applog.explicit_log_close()
+            sleep(1)
+
+    log.debug(None)
+    applog.explicit_log_close()
     sys.exit()
 
-demo = None
 if __name__ == "__main__":
+    # add a signal-handler to catch ctrl-C interrupts, so we can cleanly close 
+    # down all connected devices
     signal.signal(signal.SIGINT, signal_handler)
 
     demo = WasatchDemo()
@@ -284,6 +271,10 @@ if __name__ == "__main__":
         # Note that on Windows, Control-Break (SIGBREAK) differs from 
         # Control-C (SIGINT); see https://stackoverflow.com/a/1364199
         log.debug("Press Control-Break to interrupt...")
-        demo.run()
+        try:
+            demo.run()
+        except:
+            # catch exception so shutdown will run and disable laser
+            log.error("Caught exception during demo", exc_info=1)
 
-    clean_shutdown()
+    shutdown()
