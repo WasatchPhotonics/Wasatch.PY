@@ -135,7 +135,7 @@ class MainLogger:
         root_log = logging.getLogger()
         self.log_configurer(self.logfile, append)
         root_log.setLevel(self.log_level)
-        root_log.warning("Top level log configuration (%d handlers, get_location %s)", len(root_log.handlers), get_location())
+        root_log.debug("Top level log configuration (%d handlers, get_location %s)", len(root_log.handlers), get_location())
 
     ## Setup file handler and command window stream handlers. Every log
     #  message received on the queue handler will use these log configurers. 
