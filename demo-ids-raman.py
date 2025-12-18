@@ -63,7 +63,8 @@ class WasatchDemo:
         parser.add_argument("--prefix",              type=str, default="ids-raman", help="filename prefix")
 
         args = parser.parse_args()
-        log.setLevel(args.log_level)
+        # logging.getLogger().setLevel(args.log_level)
+        applog.MainLogger(args.log_level)
 
         return args
         
@@ -113,7 +114,7 @@ class WasatchDemo:
 
         try:
             device_id = DeviceID(label="IDSPeak")
-            device = IDSDevice(device_id=device_id, scratch_dir=".")
+            device = IDSDevice(device_id=device_id, scratch_dir=".", consumer_deletes_area_scan_image=True)
             if device.connect():
                 self.camera_device = device
             else:
@@ -220,23 +221,24 @@ class WasatchDemo:
             # append to row-ordered file
             if outfile:
                 values = ",".join(format(x, ".2f") for x in spectrum)
-                outfile.write(f"{reading.timestamp}, {self.reading_count}, {values}")
+                outfile.write(f"{reading.timestamp}, {self.reading_count}, {values}\n")
 
             # save PNG
             if self.args.save_png and asi.pathname_png:
                 filename = os.path.join(self.args.save_dir, f"{self.args.prefix}-{self.reading_count:04d}.png")
+                log.debug(f"renaming {asi.pathname_png} -> {filename}")
                 os.replace(asi.pathname_png, filename)
                 print(f"\tsaved {filename}")
 
             # save area scan data
             if self.args.save_data and asi.data is not None:
-                filename = os.path.join(self.args.save_dir, f"{self.args.prefix}-{self.reading_count:04d}-data.csv")
-                np.savetxt(filename, asi.data, fmt='%d')
+                filename = os.path.join(self.args.save_dir, f"{self.args.prefix}-{self.reading_count:04d}.csv")
+                np.savetxt(filename, asi.data, fmt='%d', delimiter=",")
                 print(f"\tsaved {filename}")
 
             if self.args.take_dark and self.reading_count == 1:
                 print("\tsaving dark")
-                self.camera_device.camera.set_dark(asi)
+                self.camera_device.camera.set_dark_asi(asi)
 
 ################################################################################
 # main()

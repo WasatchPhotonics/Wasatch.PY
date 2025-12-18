@@ -25,18 +25,20 @@ class IDSDevice(InterfaceDevice):
     # lifecycle
     ############################################################################
 
-    def __init__(self, device_id, message_queue=None, alert_queue=None):
+    def __init__(self, device_id, message_queue=None, alert_queue=None, config_dir=None, scratch_dir=None, consumer_deletes_area_scan_image=False):
         super().__init__()
 
         self.device_id = device_id
         self.process_f = self.init_process_funcs()
         self.device = None
-        self.camera = IDSCamera()
+        self.camera = IDSCamera(scratch_dir=scratch_dir, consumer_deletes_area_scan_image=consumer_deletes_area_scan_image)
 
         self.imx385 = IMX385() # re-using existing binning
 
         self.session_reading_count = 0
         self.reset_averaging()
+
+        self.config_dir = config_dir if config_dir else os.path.join(utils.get_default_data_dir(), "config")
 
     def connect(self):
         """
@@ -111,8 +113,7 @@ class IDSDevice(InterfaceDevice):
         }
 
         """
-        config_dir = os.path.join(utils.get_default_data_dir(), "config")
-        json_path = os.path.join(config_dir, f"IDS-{self.camera.serial_number}.json")
+        json_path = os.path.join(self.config_dir, f"IDS-{self.camera.serial_number}.json")
         if os.path.exists(json_path):
             with open(json_path) as config_file:
                 data = json.load(config_file)
@@ -211,16 +212,18 @@ class IDSDevice(InterfaceDevice):
         return SpectrometerResponse(True)
 
     def get_spectrum(self):
-        log.debug(f"get_spectrum: calling send_trigger")
-        self.camera.send_trigger()
-        log.debug(f"get_spectrum: calling get_spectrum")
-        spectrum = self.camera.get_spectrum()
+        try:
+            self.camera.send_trigger()
+            spectrum = self.camera.get_spectrum()
+        except:
+            log.error("error getting spectrum from IDSCamera", exc_info=1)
+            return SpectrometerResponse(False)
+            
         if spectrum is None:
-            log.error("get_spectrum: received None?!")
+            # log.error("get_spectrum: received None?!")
+            return SpectrometerResponse(False)
 
         spectrum = self.apply_horizontal_binning(spectrum)
-
-        log.debug(f"get_spectrum: done")
         return spectrum
 
     def apply_horizontal_binning(self, spectrum):
@@ -267,6 +270,9 @@ class IDSDevice(InterfaceDevice):
         reading = Reading(self.device_id)
 
         reading.spectrum = self.get_spectrum()
+
+        if not self.camera:
+            return SpectrometerResponse(False)
 
         # attach an AreaScanImage if there is one
         reading.area_scan_image = self.camera.last_area_scan_image
