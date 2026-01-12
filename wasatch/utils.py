@@ -54,7 +54,7 @@ def generate_wavelengths(pixels, coeffs):
     for x in range(pixels):
         wavelength = 0.0
         for i in range(len(coeffs)):
-            wavelength += coeffs[i] * pow(x, i)
+            wavelength += float(coeffs[i]) * pow(x, i)
         wavelengths.append(wavelength)
     return wavelengths            
 
