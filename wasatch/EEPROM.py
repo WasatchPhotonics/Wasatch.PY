@@ -869,6 +869,8 @@ class EEPROM:
                 else:
                     buf[start_byte + i] = 0
         else:
+            if data_type == "f":
+                value = float(value)
             struct.pack_into(data_type, buf, start_byte, value)
 
         if False:
