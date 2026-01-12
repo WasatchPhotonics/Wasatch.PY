@@ -4,7 +4,7 @@ import json
 import numpy as np
 import struct
 import logging
-import datetime
+from datetime import datetime
 
 from ctypes import *
 
@@ -37,11 +37,11 @@ class AndorDevice(InterfaceDevice):
                                        |
                                 handle_requests
                                        |
-                                 ------------
-                                /   /  |  \  \  
+                                  -----------
+                                 |  |  |  |  |  
              { get_laser status, acquire, set_laser_watchdog, etc....}
-                                \   \  |  /  /
-                                 ------------
+                                 |  |  |  |  |  
+                                  -----------
                                        |
                          {self.driver.some_andor_sdk_call}
     @endverbatim
@@ -50,6 +50,7 @@ class AndorDevice(InterfaceDevice):
 
     SUCCESS = 20002             #!< see load_error_codes()
     SHUTTER_SPEED_MS = 50       #!< allow time for mechanical shutter to stabilize
+    TEMPERATURE_CACHE_SEC = 1.0
 
     def __init__(self, device_id, message_queue=None, alert_queue=None):
         # if passed a string representation of a DeviceID, deserialize it
@@ -83,12 +84,15 @@ class AndorDevice(InterfaceDevice):
         self.driver                 = None
 
         self.process_id = os.getpid()
-        self.last_memory_check = datetime.datetime.now()
+        self.last_memory_check = datetime.now()
         self.last_battery_percentage = 0
         self.spec_index = 0 
         self._scan_averaging = 1
         self.dark = None
         self.boxcar_half_width = 0
+
+        self.temperature_cache_value = None
+        self.temperature_cache_timestamp = None
 
         # decide appropriate DLL filename for architecture
         arch = 64 if 64 == struct.calcsize("P") * 8 else 32
@@ -344,34 +348,37 @@ class AndorDevice(InterfaceDevice):
 
     def get_detector_temperature_degC(self):
         if self.tec_enabled:
-            log.debug("TEC enabled, so reading temperature")
+            log.debug("TEC enabled, so including temperature")
 
-            use_float = True    # seems to work on 785XL (WP-01635 and WP-01491)
-            if use_float:
-                c_temp = c_float()
-                result = self.driver.GetTemperatureF(byref(c_temp))
+            now = datetime.now()
+            if self.temperature_cache_timestamp is None or self.temperature_cache_value is None or (now - self.temperature_cache_timestamp).total_seconds() >= self.TEMPERATURE_CACHE_SEC:
+                # read new temperature
+                use_float = True    # seems to work on 785XL (WP-01635 and WP-01491)
+                if use_float:
+                    c_temp = c_float()
+                    result = self.driver.GetTemperatureF(byref(c_temp))
+                else:
+                    c_temp = c_int()
+                    result = self.driver.GetTemperature(byref(c_temp))
+
+                label = self.get_error_code(result)
+                if label in [ "DRV_SUCCESS", 
+                              "DRV_TEMPERATURE_DRIFT",
+                              "DRV_TEMPERATURE_STABILIZED",
+                              "DRV_TEMPERATURE_NOT_REACHED",
+                              "DRV_TEMPERATURE_NOT_STABILIZED" ]:
+                    self.temperature_cache_value = c_temp.value
+                    self.temperature_cache_timestamp = now
+                    log.debug(f"Andor temperature {self.temperature_cache_value:.2f} ({label})")
+                else:
+                    log.error(f"unable to read detector temperature, result was {label}")
+                    self.temperature_cache_value = None
+                    self.temperature_cache_timestamp = None
             else:
-                c_temp = c_int()
-                result = self.driver.GetTemperature(byref(c_temp))
+                # use cached value
+                pass
 
-                # MZ: why were we trying to use GetTemperatureF(float) here, when above it was GetTemperature(int)?
-                # temperature = c_float()
-                # temp_success = self.driver.GetTemperatureF(byref(temperature))
-                # reading.detector_temperature_degC = temperature.value
-
-            label = self.get_error_code(result)
-            
-            if label in [ "DRV_SUCCESS", 
-                          "DRV_TEMPERATURE_DRIFT",
-                          "DRV_TEMPERATURE_STABILIZED",
-                          "DRV_TEMPERATURE_NOT_REACHED",
-                          "DRV_TEMPERATURE_NOT_STABILIZED" ]:
-                detector_temperature_degC = c_temp.value
-                log.debug(f"Andor temperature {detector_temperature_degC:.2f} ({label})")
-                return detector_temperature_degC
-            else:
-                log.error(f"unable to read detector temperature, result was {label}")
-
+            return self.temperature_cache_value
 
     def _close_ex_shutter(self):
         self.check_result(self.driver.SetShutterEx(1, 1, self.SHUTTER_SPEED_MS, self.SHUTTER_SPEED_MS, 2), "SetShutterEx(2)")
