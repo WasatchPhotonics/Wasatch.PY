@@ -50,6 +50,12 @@ before uploading to the "public, global, default" pypi repository.
 When you are ready to publish run `flit publish` or `flit publish --repository pypi`
 (or just "make publish").
 
+## Common Errors
+
+### requests.exceptions.HTTPError: 400 Client Error: Bad Request for url: https://test.pypi.org/legacy/
+
+Ensure wasatch/__init__.py version matches pyproject.toml.
+
 # Installing 'wasatch' package from source
 
 If you've cloned the Wasatch.PY repo and want to just install the `wasatch` 
