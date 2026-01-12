@@ -66,11 +66,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
                                        |
                                 handle_requests
                                        |
-                                 ------------
-                                /   /  |  \  \ 
+                                  -----------
+                                 |  |  |  |  | 
              { get_laser status, acquire, set_laser_watchdog, etc....}
-                                \   \  |  /  /
-                                 ------------
+                                 |  |  |  |  | 
+                                  -----------
                                        |
                                    _send_code
     @endverbatim
@@ -185,14 +185,14 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # it doesn't know what PIDs it might be looking for.  We know, so just
         # narrow down the search to those devices.
 
-        log.info(f"FID.connect: asked to connect to device_type {self.device_type}")
-        log.info(f"FID.connect: calling device_type.find, looking for VID 0x{self.device_id.vid:04x} and PID 0x{self.device_id.pid:04x}")
+        log.debug(f"FID.connect: asked to connect to device_type {self.device_type}")
+        log.debug(f"FID.connect: calling device_type.find, looking for VID 0x{self.device_id.vid:04x} and PID 0x{self.device_id.pid:04x}")
         devices = self.device_type.find(find_all=True, idVendor=self.device_id.vid, idProduct=self.device_id.pid)
-        log.info(f"FID.connect: found devices {devices}")
+        log.debug(f"FID.connect: found devices {devices}")
         dev_list = list(devices) # convert from array
 
         device = None
-        log.info(f"searching for specified device in dev_list {dev_list}")
+        log.debug(f"searching for specified device in dev_list {dev_list}")
         for dev in dev_list:
             if dev.bus != self.device_id.bus:
                 log.debug("FID.connect: rejecting device (bus %d != requested %d)", dev.bus, self.device_id.bus)
@@ -475,7 +475,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         self.connected = False
 
-        log.critical("fid.disconnect: releasing interface")
+        log.debug("fid.disconnect: releasing interface")
         try:
             #result = self.device_type.release_interface(self.device, 0)
             try:
@@ -520,7 +520,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # I had to look at the full configuration string and saw that the way to get the instance id was the following
         # using _try_get_string https://github.com/pyusb/pyusb/blob/master/usb/core.py#L1221
         # so techincally we shouldn't do this by the _ meaning it should be private, but it's the only way I see
-        device_instance_id = f'USB\VID_{self.device_id.vid:04X}&PID_{self.device_id.pid:04X}\{usb.core._try_get_string(pyusb_devices[0], pyusb_devices[0].iSerialNumber)}'
+        device_instance_id = f'USB/VID_{self.device_id.vid:04X}&PID_{self.device_id.pid:04X}/{usb.core._try_get_string(pyusb_devices[0], pyusb_devices[0].iSerialNumber)}'
         log.debug(f"In reset and restart trying to reset instance id {device_instance_id}")
         subprocess.run(["pnputil", r"/reboot", r"/disable-device", device_instance_id])
         subprocess.run(["pnputil", r"/reboot", r"/enable-device", device_instance_id])
@@ -1316,6 +1316,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
                  when NOT in external-triggered mode
         @throws exception on timeout (unless external triggering enabled)
         """
+
+        if not self.settings.has_detector():
+            return SpectrometerResponse(keep_alive=True)
+
         response = SpectrometerResponse()
 
         if not self.is_sensor_stable():
@@ -1361,7 +1365,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         ########################################################################
 
         # this is the number of pixels we expect to read-out over USB
-        if self.settings.is_imx385():
+        if False and self.settings.is_imx385():
             # Currently, only the IMX385 uses horizontal binning, so for now 
             # limit code changes to that detector (even though they haven't been
             # shown to break other hardware)
@@ -1413,13 +1417,14 @@ class FeatureIdentificationDevice(InterfaceDevice):
                         pass
                     else:
                         errors += 1
-                        log.error(f"Encountered error on read of {exc}", exc_info=1)
+                        log.error(f"Encountered error {errors} on read of {exc}", exc_info=1)
 
                         # Don't loop on errors on XS, so we can experimentally 
                         # use an XS board as a detector-less laser/TEC driver 
-                        # board. (A better solution would be to add FeatureMask.
-                        # has_detector or similar, this works for now.)
-                        if errors < 3 and not self.settings.is_xs():
+                        # board. 
+                        if not self.settings.has_detector():
+                            pass
+                        elif errors < 3:
                             log.error(f"ignoring error number {errors}")
                         else:
                             response.error_msg = "Encountered error on read"
@@ -1621,7 +1626,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return response
 
     def require_throwaway(self, flag):
-        if flag and self.settings.is_xs() and self.remaining_throwaways < 1:
+        if flag and self.settings.is_xs() and self.remaining_throwaways < 1 and self.settings.has_detector():
             log.debug("queuing throwaways")
             self.remaining_throwaways += 1
 
@@ -1633,6 +1638,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
         """
         if not self.settings.is_xs():
             return SpectrometerResponse(False)
+
+        # MZ: Kludge, disabling while testing
+        log.debug("disabling internal averaging")
+        return SpectrometerResponse(False)
 
         retval = self._send_code(0xff, 0x62, n, label="SET_ONBOARD_SCANS_TO_AVERAGE")
         self.settings.state.scans_to_average = n
@@ -2999,13 +3008,13 @@ class FeatureIdentificationDevice(InterfaceDevice):
         log.debug(f"set_vertical_roi: start {start}, end {end}")
 
         if start < 0 or end < 0:
-            log.error("set_vertical_roi: requires POSITIVE (start, stop) lines")
+            log.debug("set_vertical_roi: requires POSITIVE (start, stop) lines")
             return SpectrometerResponse(data=False, error_msg="invalid start and stop lines")
 
         # enforce ascending order (also, note that stop line is "last line binned + 1", so stop must be > start)
         if start >= end:
             # (start, end) = (end, start)
-            log.error("set_vertical_roi: requires ascending order (ignoring %d, %d)", start, end)
+            log.debug("set_vertical_roi: requires ascending order (ignoring %d, %d)", start, end)
             return SpectrometerResponse(data=False, error_msg="invalid start and stop lines")
 
         if self.settings.is_xs():

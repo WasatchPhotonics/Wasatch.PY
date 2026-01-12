@@ -371,6 +371,7 @@ class WasatchDeviceWrapper:
             if wrapper_response.keep_alive or wrapper_response.data is None:
                 # If that keep alive is associated with an error though float it up
                 if wrapper_response.keep_alive and wrapper_response.error_msg:
+                    log.debug(f"get_final_item: ignoring keepalive WITH error_msg {wrapper_response.error_msg}")
                     last_response = wrapper_response
                     break
                 log.debug("get_final_item: ignoring keepalive")

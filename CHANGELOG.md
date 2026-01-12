@@ -1,5 +1,17 @@
 # Changelog
 
+- 2026-01-12 2.3.8
+    - added settings.has_detector
+    - improved support for Andor .json "virtual EEPROMs"
+    - bump internal WrapperWorker poll rate from 20Hz to 200Hz
+    - retain debug logging for 20sec after connection (vs previous 10sec)
+    - only update Andor detector temperature at 1Hz
+    - improved support for using 220250 boards as standalone laser drivers w/o 
+      detectors (added Reading.keep_alive to indicate metadata but no spectra)
+- 2025-12-10 2.3.7
+    - added EEPROM.is_oem
+    - fixed TCPDevice.set_detector_gain and set_vertical_roi
+    - disable use of eeprom.actual_pixels_horizontal during acquisition
 - 2025-11-06 2.3.6
     - resolve hotplug race condition when laser power set in percent
     - cache certain device getters to avoid I2C overruns

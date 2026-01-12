@@ -155,6 +155,10 @@ class SpectrometerSettings:
         else:
             return False
 
+    def has_detector(self):
+        det = self.eeprom.detector
+        return det is not None and len(det) > 0 and det.lower() != "none"
+
     def has_excitation(self):
         return self.excitation() > 0
 

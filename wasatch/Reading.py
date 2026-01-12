@@ -40,6 +40,7 @@ class Reading:
         self.take_one_request          = None
         self.elapsed_from_request      = None
         self.elapsed_since_last        = None
+        self.keep_alive                = False
 
         # currently only populated by AutoRaman
         self.new_integration_time_ms   = None

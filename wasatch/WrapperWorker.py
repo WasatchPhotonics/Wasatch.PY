@@ -38,9 +38,9 @@ class WrapperWorker(threading.Thread):
     #     of EACH AND EVERY INTEGRATION
     # TODO: replace if check for each type of spec with single call
     # TODO: Create ABC of hardware device that keeps common functions like handle_requests
-    POLLER_WAIT_SEC = 0.05    # .05sec = 50ms = update from hardware device at 20Hz
+    POLLER_WAIT_SEC = 0.005    # .005sec = 5ms = update from hardware device at 200Hz
 
-    DEBUG_SEC = 10 # enforce debug logging for the 1st 10sec after connecting a new spectrometer
+    DEBUG_SEC = 20 # enforce debug logging for the 1st 20sec after connecting a new spectrometer
 
     def __init__(
             self,
@@ -243,8 +243,12 @@ class WrapperWorker(threading.Thread):
                 log.critical(f"hardware level error...exiting because poison-pill")
                 self.response_queue.put(reading_response)
 
-            elif reading_response.data.spectrum is not None:
-                log.debug("sending Reading %d back to GUI thread (%s)", reading_response.data.session_count, reading_response.data.spectrum[0:5])
+            elif reading_response.data.spectrum is not None or reading_response.data.keep_alive: # playing
+                if reading_response.data.spectrum is not None:
+                    log.debug("sending Reading %d back to GUI thread (%s)", reading_response.data.session_count, reading_response.data.spectrum[0:5])
+                else:
+                    log.debug("sending Reading %d back to GUI thread WITH NO SPECTRA")
+
                 try:
                     self.response_queue.put_nowait(reading_response) 
                 except:
@@ -262,9 +266,9 @@ class WrapperWorker(threading.Thread):
             else:
                 log.error("received non-failure Reading without spectrum...ignoring?")
 
-            # only poll hardware buses at 20Hz
+            # only poll hardware buses at 200Hz
             sleep_sec = WrapperWorker.POLLER_WAIT_SEC * num_connected_devices
-            log.debug("sleeping %.2f sec", sleep_sec)
+            log.debug("sleeping %.3f sec", sleep_sec)
             time.sleep(sleep_sec)
 
         ########################################################################

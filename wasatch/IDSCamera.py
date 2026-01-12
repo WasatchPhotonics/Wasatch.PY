@@ -253,7 +253,7 @@ class IDSCamera:
     # Lifecycle
     ############################################################################
 
-    def __init__(self):
+    def __init__(self, scratch_dir=None, area_scan_image_timeout_sec=1, consumer_deletes_area_scan_image=False):
 
         self.device = None
         self.node_map = None
@@ -266,10 +266,12 @@ class IDSCamera:
         self.shutdown_in_progress = False
         self.last_asi_timestamp = None
         self.last_area_scan_image = None
-        self.area_scan_image_timeout_sec = 1 # by default, generate new ASI at 1Hz
+        self.area_scan_image_timeout_sec = area_scan_image_timeout_sec
+        self.consumer_deletes_area_scan_image = consumer_deletes_area_scan_image
         self.rotate_180 = True
         self.shrink_area_scan = True
         self.degrade_area_scan = True
+        self.dark = None # wasatch.AreaScanImage
 
         self.buffers = []
 
@@ -292,7 +294,7 @@ class IDSCamera:
         self.output_format_name = "Mono16"
         self.output_format_obj = None
 
-        self.dir = os.path.join(utils.get_default_data_dir(), "idspeak")
+        self.dir = scratch_dir if scratch_dir else os.path.join(utils.get_default_data_dir(), "idspeak")
         pathlib.Path(self.dir).mkdir(exist_ok=True)
 
         try:
@@ -404,6 +406,9 @@ class IDSCamera:
 
         log.debug(f"connect: successfully connected to {self.long_name}")
         return True
+
+    def set_dark_asi(self, asi):
+        self.dark = asi
 
     ############################################################################
     # Acquisition Loop (Device)
@@ -625,7 +630,7 @@ class IDSCamera:
         try:
             buffer = self.datastream.WaitForFinishedBuffer(timeout_ms) # takes ms
         except:
-            log.error(f"failed on datastream.WaitForFinishedBuffer({timeout_ms}ms)", exc_info=1)
+            # log.error(f"failed on datastream.WaitForFinishedBuffer({timeout_ms}ms)", exc_info=1)
             return
 
         # Get image from buffer (shallow copy)
@@ -658,8 +663,6 @@ class IDSCamera:
               This handle isn't "returned" but can be read by IDSDevice.
         @returns a single vertically-binned spectrum
         """
-        asi = None
-
         if format_name is None:
             format_name = self.output_format_name
             format_obj = self.output_format_obj
@@ -682,6 +685,17 @@ class IDSCamera:
             # would be nice if we could set this in the camera...
             self.image_transformer.MirrorUpDownLeftRightInPlace(converted)
 
+        # always generate 2D numpy array
+        data = converted.get_numpy()
+
+        # If we were given a AreaScanImage to use for dark correction, subtract 
+        # it now. Note that this will be subtraced from the numpy 'data' array 
+        # used for vertical binning, but NOT subtracted from the actual image 
+        # 'converted' which is still going to be used for the Area Scan PNG.
+        # Note this is not clamped (negatives may result).
+        if self.dark:
+            data = np.subtract(data, self.dark.data)
+
         # this will hold the sum of all channels
         spectrum = [0] * converted.Width()
 
@@ -690,10 +704,8 @@ class IDSCamera:
         # channel_spectra = [ [0] * converted.Width() for i in range(channel_count) ]
 
         if self.output_format_name == "Mono16":
-            data = converted.get_numpy()
             cropped = data[self.start_line:(self.stop_line + 1), :]
             spectrum = np.sum(cropped, axis=0)   
-
         else:
             # we'd have to validate numpy process against different formats
 
@@ -717,7 +729,9 @@ class IDSCamera:
                 log.error(f"vertically_bin_image: unable to vertically bin {format_name}", exc_info=1)
                 return
 
+        ########################################################################
         # save binned intensities (including per-channel breakdown) as CSV
+        ########################################################################
         
         if save_csv:
             pathname_csv = os.path.join(self.dir, f"{format_name}.csv")
@@ -730,9 +744,13 @@ class IDSCamera:
                     outfile.write("\n")
                 log.debug(f"  saved {pathname_csv} ({channel_count} channels)")
 
+        ########################################################################
         # save converted image to PNG
+        ########################################################################
+
+        now = datetime.now()
         if self.area_scan_enabled:
-            if self.last_asi_timestamp is None or (datetime.now() - self.last_asi_timestamp).total_seconds() >= self.area_scan_image_timeout_sec:
+            if self.last_asi_timestamp is None or (now - self.last_asi_timestamp).total_seconds() >= self.area_scan_image_timeout_sec:
                 log.debug("time for a new AreaScanImage")
                 save_png = True
             else:
@@ -760,12 +778,23 @@ class IDSCamera:
                     png_param.Quality = 20
 
                 pathname_tmp = os.path.join(self.dir, f"{format_name}-tmp.png")
-                pathname_png = os.path.join(self.dir, f"{format_name}.png")
+
+                # if the consumer is responsible for deleting area scan images,
+                # give every image a unique filename (so the consumer can "run
+                # slower" and take its time processing received images, without
+                # worrying that we will be continually "stomping" old filenames)
+                if self.consumer_deletes_area_scan_image:
+                    ts = now.strftime("%Y%m%d-%H%M%S-%f")
+                    pathname_png = os.path.join(self.dir, f"{format_name}-{ts}.png")
+                else:
+                    pathname_png = os.path.join(self.dir, f"{format_name}.png")
+
                 IPL.ImageWriter.WriteAsPNG(pathname_tmp, converted, png_param)
                 os.replace(pathname_tmp, pathname_png)
                 log.debug(f"saved {pathname_png}")
 
                 self.last_area_scan_image = AreaScanImage(
+                    data         = data,
                     pathname_png = pathname_png, 
                     width        = converted.Width(), 
                     height       = converted.Height(), 
@@ -773,7 +802,7 @@ class IDSCamera:
                     height_orig  = height_orig, 
                     format_name  = format_name)
                 log.debug(f"stored {self.last_area_scan_image}")
-                self.last_asi_timestamp = datetime.now()
+                self.last_asi_timestamp = now
             except:
                 log.error(f"vertically_bin_image: unable to save {format_name} as PNG", exc_info=1)
 

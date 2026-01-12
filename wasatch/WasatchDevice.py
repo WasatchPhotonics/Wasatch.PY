@@ -173,14 +173,8 @@ class WasatchDevice(InterfaceDevice):
 
         dev = None
         try:
-            log.debug(f"connect_fid: instantiating FID with device_id {self.device_id}, pid {pid_hex}")
             dev = FeatureIdentificationDevice(device_id=self.device_id, message_queue=self.message_queue, alert_queue=self.alert_queue)
-            log.debug("connect_fid: instantiated")
-
-            log.debug("connect_fid: calling dev.connect")
             response = dev.connect()
-            log.debug("connect_fid: back from dev.connect")
-
             if not response.data:
                 log.critical("Low level failure in device connect")
                 return response
@@ -380,7 +374,10 @@ class WasatchDevice(InterfaceDevice):
                 time.sleep(1) 
 
             dark_reading = self.take_one_averaged_reading(label="internal dark")
-            if dark_reading.poison_pill or dark_reading.error_msg:
+            if dark_reading.keep_alive:
+                log.debug(f"internal dark keepalive {dark_reading}")
+                return dark_reading
+            elif dark_reading.poison_pill or dark_reading.error_msg:
                 log.debug(f"internal dark error {dark_reading}")
                 acquire_response.poison_pill = True
                 return acquire_response
@@ -410,16 +407,16 @@ class WasatchDevice(InterfaceDevice):
         if take_one_response.poison_pill:
             log.debug(f"floating up take_one_averaged_reading poison pill {take_one_response}")
             return take_one_response
-        if take_one_response.keep_alive:
-            log.debug(f"floating up keep alive")
-            return take_one_response
-        if take_one_response.data is None:
+        elif take_one_response.keep_alive:
+            # log.debug(f"acquire_spectrum_standard: declining to float up keep alive")
+            pass
+        elif take_one_response.data is None:
             log.debug(f"Received a none reading, floating it up {take_one_response}")
             return take_one_response
 
         # don't perform dark subtraction, but pass the dark measurement along
         # with the averaged reading
-        if dark_reading.data is not None:
+        if dark_reading.data is not None and not reading.keep_alive:
             reading.dark = dark_reading.data.spectrum
             log.debug(f"attaching dark to reading (mean {np.mean(reading.dark)}, min {min(reading.dark)}, max {max(reading.dark)})")
             log.debug(f"reading spectrum          (mean {np.mean(reading.spectrum)}, min {min(reading.spectrum)}, max {max(reading.spectrum)})")
@@ -617,7 +614,7 @@ class WasatchDevice(InterfaceDevice):
         if auto_enable_laser:
             log.debug(f"AUTO-RAMAN ==> done")
 
-        if tor:
+        if tor and not reading.keep_alive:
             reading.take_one_request = tor
 
             # this was for a "fast BatchCollection" with a streaming multi-reading TakeOneRequest
@@ -694,6 +691,7 @@ class WasatchDevice(InterfaceDevice):
 
         @returns Reading on success, true or false on "stop processing" conditions
         """
+
         take_one_response = SpectrometerResponse()
 
         if self.take_one_request:
@@ -720,6 +718,7 @@ class WasatchDevice(InterfaceDevice):
             req = SpectrometerRequest("get_spectrum")
             res = self.hardware.handle_requests([req])[0]
             if res.error_msg != '':
+                log.debug(f"take_one_averaged_reading: returning while handling pending throwaways because error_msg {res.error_msg}")
                 return res
 
         # either take one measurement (normal), or a bunch (sum_locally)
@@ -745,10 +744,12 @@ class WasatchDevice(InterfaceDevice):
             # of timeouts)
             externally_triggered = self.settings.state.trigger_source == SpectrometerState.TRIGGER_SOURCE_EXTERNAL
             try:
+                keep_alive = False
                 while True:
                     req = SpectrometerRequest("get_spectrum")
                     res = self.hardware.handle_requests([req])[0]
                     if res.error_msg != '':
+                        log.debug(f"take_one_averaged_reading: returning due to error_msg {res.error_msg}")
                         return res
 
                     # @todo get rid of spectrum_and_row...get_spectrum() can go back to only returning spectrum
@@ -757,10 +758,12 @@ class WasatchDevice(InterfaceDevice):
                         # float up poison
                         take_one_response.transfer_response(res)
                         return take_one_response
+
                     if res.keep_alive:
-                        # float up keep alive
-                        take_one_response.transfer_response(res)
-                        return take_one_response
+                        log.debug(f"take_one_averaged_reading: flagging reading as keep_alive (no spectra)")
+                        keep_alive = True
+                        break
+
                     if isinstance(spectrum_and_row, bool):
                         # get_spectrum returned a poison-pill, so flow it upstream
                         take_one_response.poison_pill = True
@@ -779,10 +782,16 @@ class WasatchDevice(InterfaceDevice):
                     else:
                         break
 
-                reading.spectrum            = spectrum_and_row.spectrum
+                reading.keep_alive = keep_alive
+                if reading.keep_alive:
+                    log.debug(f"take_one_averaged_reading: trying to populate keep_alive")
+                    reading.spectrum = None
+                else:
+                    reading.spectrum = spectrum_and_row.spectrum
+                    log.debug(f"take_one_averaged_reading: got {reading.spectrum[0:9]}")
+
                 reading.timestamp_complete  = datetime.datetime.now()
 
-                log.debug(f"take_one_averaged_reading: got {reading.spectrum[0:9]}")
             except Exception as exc:
                 # if we got the timeout after switching from externally triggered back to internal, let it ride
                 take_one_response.error_msg = exc
@@ -834,7 +843,7 @@ class WasatchDevice(InterfaceDevice):
             # we should probably perform the summation in ENLIGHTEN too (for
             # non-TakeOneRequest averages).
 
-            if not reading.failure:
+            if not reading.failure and not reading.keep_alive:
                 # log.debug("take_one_averaged_reading: not failure")
                 if sum_locally:
                     log.debug("take_one_averaged_reading: summing locally")
@@ -849,26 +858,28 @@ class WasatchDevice(InterfaceDevice):
                     log.debug("take_one_averaged_reading: summed_spectra : %s ...", self.summed_spectra[0:9])
 
             # count spectra
-            self.session_reading_count += 1
+            if not reading.keep_alive:
+                self.session_reading_count += 1
             reading.session_count = self.session_reading_count
             reading.sum_count = self.sum_count
             log.debug(f"take_one_averaged_reading: reading.sum_count now {reading.sum_count}, session_count {reading.session_count}")
 
             # have we completed the averaged reading?
-            if sum_locally: 
-                log.debug(f"take_one_averaged_reading: checking for completion self.sum_count {self.sum_count} >?= scans_to_average {scans_to_average}")
-                if self.sum_count >= scans_to_average:
-                    reading.spectrum = [ x / self.sum_count for x in self.summed_spectra ]
-                    log.debug("take_one_averaged_reading: averaged_spectrum : %s ...", reading.spectrum[0:9])
-                    reading.averaged = True
+            if not reading.keep_alive:
+                if sum_locally: 
+                    log.debug(f"take_one_averaged_reading: checking for completion self.sum_count {self.sum_count} >?= scans_to_average {scans_to_average}")
+                    if self.sum_count >= scans_to_average:
+                        reading.spectrum = [ x / self.sum_count for x in self.summed_spectra ]
+                        log.debug("take_one_averaged_reading: averaged_spectrum : %s ...", reading.spectrum[0:9])
+                        reading.averaged = True
 
-                    # reset for next average
-                    self.summed_spectra = None
-                    self.sum_count = 0
-            else:
-                # if averaging isn't enabled...then a single reading is the
-                # "averaged" final measurement (check reading.sum_count to confirm)
-                reading.averaged = True
+                        # reset for next average
+                        self.summed_spectra = None
+                        self.sum_count = 0
+                else:
+                    # if averaging isn't enabled...then a single reading is the
+                    # "averaged" final measurement (check reading.sum_count to confirm)
+                    reading.averaged = True
 
         log.debug("device.take_one_averaged_reading: returning %s", reading)
         take_one_response.data = reading

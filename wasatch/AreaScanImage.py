@@ -16,4 +16,4 @@ class AreaScanImage:
         AreaScanImage.FRAME_COUNT += 1
 
     def __repr__(self):
-        return f"AreaScanImage<frame {self.frame_count}, line_index {line_index}, width {self.width} (orig {self.width_orig}), height {self.height} (orig {self.height_orig}), format_name {self.format_name}, pathname_png {self.pathname_png}>"
+        return f"AreaScanImage<frame {self.frame_count}, line_index {self.line_index}, width {self.width} (orig {self.width_orig}), height {self.height} (orig {self.height_orig}), format_name {self.format_name}, pathname_png {self.pathname_png}>"
