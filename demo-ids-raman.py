@@ -63,7 +63,6 @@ class WasatchDemo:
         parser.add_argument("--prefix",              type=str, default="ids-raman", help="filename prefix")
 
         args = parser.parse_args()
-        # logging.getLogger().setLevel(args.log_level)
         applog.MainLogger(args.log_level)
 
         return args
