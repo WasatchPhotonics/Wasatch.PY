@@ -26,6 +26,7 @@ import argparse
 
 from datetime import datetime
 from time import sleep
+from PIL import Image, ImageStat  # for image normalization
 
 import wasatch
 from wasatch                      import applog
@@ -59,6 +60,7 @@ class WasatchDemo:
         parser.add_argument("--save-spectra",        action="store_true",      help="save vertically-binned spectra to row-ordered CSV")
         parser.add_argument("--save-png",            action="store_true",      help="save PNG of each image frame")
         parser.add_argument("--save-data",           action="store_true",      help="save 2D array of each image frame")
+        parser.add_argument("--normalize",           action="store_true",      help="normalize PNG image")
         parser.add_argument("--save-dir",            type=str, default=".",    help="directory to save files")
         parser.add_argument("--prefix",              type=str, default="ids-raman", help="filename prefix")
 
@@ -150,6 +152,9 @@ class WasatchDemo:
     ############################################################################
 
     def run(self):
+        if self.args.save_dir != ".":
+            os.makedirs(self.args.save_dir, exist_ok=True)
+
         self.camera_device.set_integration_time_ms(self.args.integration_time_ms)
 
         # initialize outfile if saving spectra
@@ -228,6 +233,17 @@ class WasatchDemo:
                 log.debug(f"renaming {asi.pathname_png} -> {filename}")
                 os.replace(asi.pathname_png, filename)
                 print(f"\tsaved {filename}")
+
+                # normalize PNG (just the image file, not the raw 2D data)
+                if self.args.normalize:
+                    img = Image.open(filename).convert('L')
+                    stat = ImageStat.Stat(img)
+                    mean_brightness = stat.mean[0]
+                    img_array = np.array(img)
+                    normalized_img_array = img_array / mean_brightness * 100 
+                    normalized_img = Image.fromarray(np.uint8(normalized_img_array))
+                    normalized_img.save(filename)
+                    print(f"\tnormalized {filename}")
 
             # save area scan data
             if self.args.save_data and asi.data is not None:

@@ -111,3 +111,4 @@ wasatch_applog.txt
 .DS_Store
 .vs/*
 environment.yml
+data/

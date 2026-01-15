@@ -1,5 +1,7 @@
 # Changelog
 
+- 2026-01-15 2.3.9
+    - added --normalize to demo-ids-raman.py
 - 2026-01-12 2.3.8
     - added settings.has_detector
     - improved support for Andor .json "virtual EEPROMs"
