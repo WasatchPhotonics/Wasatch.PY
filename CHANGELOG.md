@@ -1,5 +1,7 @@
 # Changelog
 
+- 2026-01-16 2.3.10
+    - support 2min integrations on STARVIS
 - 2026-01-15 2.3.9
     - added --normalize to demo-ids-raman.py
 - 2026-01-12 2.3.8
