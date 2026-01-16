@@ -58,6 +58,8 @@ class IDSDevice(InterfaceDevice):
         self.settings = SpectrometerSettings(self.device_id)
         self.settings.eeprom.excitation_nm_float = 785 
         self.settings.eeprom.wavecal_coeffs = [0, 1, 0, 0, 0]
+        self.settings.eeprom.min_integration_time_ms = 15       # Default UserSet
+        self.settings.eeprom.max_integration_time_ms = 120_000  # LongExposure UserSet
 
         # stomp from camera
         self.settings.eeprom.model = self.camera.model_name
@@ -213,17 +215,22 @@ class IDSDevice(InterfaceDevice):
 
     def get_spectrum(self):
         try:
+            # log.debug("get_spectrum: calling send_trigger")
             self.camera.send_trigger()
+            # log.debug("get_spectrum: back from send_trigger, calling camera.get_spectrum")
             spectrum = self.camera.get_spectrum()
+            # log.debug("get_spectrum: back from camera.get_spectrum")
         except:
             log.error("error getting spectrum from IDSCamera", exc_info=1)
             return SpectrometerResponse(False)
             
         if spectrum is None:
-            # log.error("get_spectrum: received None?!")
+            log.debug("get_spectrum: received None")
             return SpectrometerResponse(False)
 
+        # log.debug("get_spectrum: applying horizontal binning")
         spectrum = self.apply_horizontal_binning(spectrum)
+        # log.debug("get_spectrum: done")
         return spectrum
 
     def apply_horizontal_binning(self, spectrum):
@@ -262,14 +269,15 @@ class IDSDevice(InterfaceDevice):
 
     def acquire_data(self):
         # pre-process scan averaging
-        log.debug(f"acquire_data: scans_to_average {self.settings.state.scans_to_average}")
+        # log.debug(f"acquire_data: start (scans_to_average {self.settings.state.scans_to_average})")
         if self.settings.state.scans_to_average > 1:
             if self.sum_count > self.settings.state.scans_to_average:
                 self.reset_averaging()
 
         reading = Reading(self.device_id)
-
+        # log.debug("acquire_data: calling get_spectrum")
         reading.spectrum = self.get_spectrum()
+        # log.debug("acquire_data: back from get_spectrum")
 
         if not self.camera:
             return SpectrometerResponse(False)
@@ -301,8 +309,11 @@ class IDSDevice(InterfaceDevice):
             else:
                 log.debug(f"acquire_data: averaged {self.sum_count}/{self.settings.state.scans_to_average}")
 
-        log.debug(f"acquire_data: returning {reading}")
+        # log.debug(f"acquire_data: returning {reading}")
         return SpectrometerResponse(data=reading)
+
+    def heartbeat(self, arg):
+        return SpectrometerResponse(data=True)
 
     ############################################################################
     # utility
@@ -319,6 +330,7 @@ class IDSDevice(InterfaceDevice):
         process_f["close"]               = self.disconnect
 
         process_f["acquire_data"]        = self.acquire_data
+        process_f["heartbeat"]           = self.heartbeat
                                          
         # deliberately don't support gain_factor or detector_gain
         process_f["gain_db"]             = lambda x: self.set_gain_db(float(x)) 

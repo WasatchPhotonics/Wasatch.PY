@@ -259,10 +259,11 @@ class IDSCamera:
         self.node_map = None
         self.long_name = None
         self.datastream = None
+        self.dumped = False
 
         self.area_scan_enabled = False
         self.take_one_request = None
-        self.taking_acquisition = False
+        self.started = False
         self.shutdown_in_progress = False
         self.last_asi_timestamp = None
         self.last_area_scan_image = None
@@ -380,19 +381,50 @@ class IDSCamera:
         self.start_line = 0
         self.stop_line = self.height - 1
 
-        # Load the default settings
-        self.node_map.FindNode("UserSetSelector").SetCurrentEntry("Default")
-        self.node_map.FindNode("UserSetLoad").Execute()
-        self.node_map.FindNode("UserSetLoad").WaitUntilDone()
+        self.set_user_set("Default")
 
-        # initialize software trigger
-        # @see https://www.ids-imaging.us/manuals/ids-peak/ids-peak-user-manual/2.15.0/en/acquisition-control.html
-        log.debug("TriggerSelector set to ExposureStart")
-        self.node_map.FindNode("TriggerSelector").SetCurrentEntry("ReadOutStart") # "ExposureStart" not supported?
-        self.node_map.FindNode("TriggerMode").SetCurrentEntry("On")
-        self.node_map.FindNode("TriggerSource").SetCurrentEntry("Software")
-        self.node_map.FindNode("ExposureTime").SetValue(15_000) # value in µs
-        
+        # default to 15ms
+        self.node_map.FindNode("ExposureTime").SetValue(15_000) # value in µs (note this is valid in Default, but not LongExposure)
+
+        log.debug(f"connect: successfully connected to {self.long_name}")
+        return True
+
+    def doing_default(self):
+        selector = self.node_map.FindNode("UserSetSelector")
+        return "Default" == selector.CurrentEntry().SymbolicValue()
+
+    def doing_long_exposure(self):
+        selector = self.node_map.FindNode("UserSetSelector")
+        return "LongExposure" == selector.CurrentEntry().SymbolicValue()
+
+    def set_user_set(self, entry):
+        if entry not in ["Default", "LongExposure"]:
+            log.error(f"ignoring unsupported UserSetSelector {entry}")
+            return
+
+        selector = self.node_map.FindNode("UserSetSelector")
+        current_entry = selector.CurrentEntry().SymbolicValue()
+        if entry == current_entry:
+            log.debug(f"set_user_set: UserSet already {entry}")
+            return
+        log.debug(f"set_user_set: changing {current_entry} -> {entry}")
+
+        was_started = self.started
+        if was_started:
+            log.debug("set_user_set: was_started, so stopping")
+            self.stop()
+
+        selector.SetCurrentEntry(entry)
+        loader = self.node_map.FindNode("UserSetLoad")
+        loader.Execute()
+        loader.WaitUntilDone()
+
+        node = self.node_map.FindNode("ExposureTime")
+        log.debug(f"set_user_set: applied UserSetSelector {entry}, ExposureTime range now ({node.Minimum()}, {node.Maximum()})µs")
+
+        # assuming we may need to do this after changing UserSet, but haven't verified
+        self.init_software_trigger()
+
         # nodeMapRemoteDevice.FindNode("SequencerMode")   .SetCurrentEntry("Off")
         # nodeMapRemoteDevice.FindNode("AcquisitionMode") .SetCurrentEntry("SingleFrame")
         # nodeMapRemoteDevice.FindNode("ExposureMode")    .SetCurrentEntry("Timed")
@@ -402,10 +434,21 @@ class IDSCamera:
         # nodeMapRemoteDevice.FindNode("AcquisitionStart").Execute()
         # nodeMapRemoteDevice.FindNode("AcquisitionStart").WaitUntilDone()
 
-        self.dump_node(name="Root")
+        # MZ: this can take 247ms, so only do once
+        if not self.dumped:
+            self.dump_node(name="Root")
+            self.dumped = True
 
-        log.debug(f"connect: successfully connected to {self.long_name}")
-        return True
+        if was_started:
+            log.debug("set_user_set: was_started, so re-starting")
+            self.start()
+
+    def init_software_trigger(self):
+        # @see https://www.ids-imaging.us/manuals/ids-peak/ids-peak-user-manual/2.15.0/en/acquisition-control.html
+        log.debug("TriggerSelector set to ExposureStart")
+        self.node_map.FindNode("TriggerSelector").SetCurrentEntry("ReadOutStart") # "ExposureStart" not supported?
+        self.node_map.FindNode("TriggerMode").SetCurrentEntry("On")
+        self.node_map.FindNode("TriggerSource").SetCurrentEntry("Software")
 
     def set_dark_asi(self, asi):
         self.dark = asi
@@ -430,12 +473,20 @@ class IDSCamera:
         self.stop_line = n
 
     def set_integration_time_ms(self, ms):
-        # do we need to .stop and .start around this?
-        us = ms * 1000.0
+        # manually clamp to apparent "multi-UserSet" range of (15ms, 120sec)
+        # deliberately round to ms resolution to simplify barrier comparisons
+        ms = int(round(min(120_000, max(ms, 15)), 0))
 
-        node = self.node_map.FindNode("ExposureTime")
-        us = max(us, node.Minimum())
-        us = min(us, node.Maximum())
+        us = ms * 1000.0
+        log.debug(f"set_integration_time_ms: ms {ms}, us {us}")
+
+        if us <= 1_001_000:
+            self.set_user_set("Default")
+        elif us >= 2_000_000:
+            self.set_user_set("LongExposure")
+        else:
+            # either mode can apparently support (1001, 1999ms)
+            pass
 
         log.debug(f"set_integration_time_ms: integration time {us} µs")
         self.node_map.FindNode("ExposureTime").SetValue(us)
@@ -457,11 +508,11 @@ class IDSCamera:
             log.debug("start: no device")
             return 
 
-        if self.taking_acquisition:
+        if self.started:
             log.debug("start: already running")
             return
 
-        # self.datastream = None # kludge
+        self.datastream = None # kludge
         if self.datastream is None:
             log.debug("start: initializing datastream")
             self.datastream = self.device.DataStreams()[0].OpenDataStream()
@@ -512,7 +563,7 @@ class IDSCamera:
             self.datastream.StartAcquisition()
             self.node_map.FindNode("AcquisitionStart").Execute()
             self.node_map.FindNode("AcquisitionStart").WaitUntilDone()
-            self.taking_acquisition = True
+            self.started = True
 
             log.debug("start: started")
         except:
@@ -549,11 +600,11 @@ class IDSCamera:
         pass
 
     def stop(self):
-        """ Called during shutdown.  """
+        """ Called when changing UserSet, and at shutdown. """
         if self.device is None:
             return
 
-        if not self.taking_acquisition:
+        if not self.started:
             log.debug("stop: not running")
             return
 
@@ -565,7 +616,7 @@ class IDSCamera:
             # Discard all buffers from the acquisition engine
             # They remain in the announced buffer pool
             self.datastream.Flush(IDSPeak.DataStreamFlushMode_DiscardAll)
-            self.taking_acquisition = False
+            self.started = False
 
             # Unlock parameters
             self.node_map.FindNode("TLParamsLocked").SetValue(0)
@@ -618,27 +669,33 @@ class IDSCamera:
                 self.take_one_request = None
 
     def send_trigger(self):
+        # log.debug("send_trigger: start...")
         self.node_map.FindNode("TriggerSoftware").Execute()
         self.node_map.FindNode("TriggerSoftware").WaitUntilDone()
+        # log.debug("send_trigger: ...done")
 
     def get_spectrum(self):
+        # log.debug("get_spectrum: start")
         if self.datastream is None:
             log.error("get_spectrum: no datastream?!")
             return
 
         timeout_ms = int(round(1000 + 2 * max(self.integration_time_ms, self.last_integration_time_ms)))
         try:
+            # log.debug(f"get_spectrum: waiting on finished buffer (timeout {timeout_ms}ms)")
             buffer = self.datastream.WaitForFinishedBuffer(timeout_ms) # takes ms
         except:
-            # log.error(f"failed on datastream.WaitForFinishedBuffer({timeout_ms}ms)", exc_info=1)
+            log.error(f"failed on datastream.WaitForFinishedBuffer(timeout {timeout_ms}ms)", exc_info=1)
             return
 
         # Get image from buffer (shallow copy)
+        # log.debug(f"get_spectrum: converting to image")
         image = EXT.BufferToImage(buffer)
 
         if True:
             # normal case, just vertically bin using the configured format
             # (pass the buffer so it can be released after conversion)
+            # log.debug(f"get_spectrum: vertically binning")
             spectrum = self.vertically_bin_image(image, buffer=buffer)
         else:
             # debug code to experimentally convert the same frame into every 
@@ -655,6 +712,7 @@ class IDSCamera:
                     log.error(f"exception during conversion to {format_name}", exc_info=1)
 
         self.last_integration_time_ms = self.integration_time_ms
+        # log.debug("get_spectrum: done")
         return spectrum
 
     def vertically_bin_image(self, image, format_name=None, buffer=None, save_csv=False, save_png=False):
