@@ -1,5 +1,7 @@
 # Changelog
 
+- 2026-02-09 2.3.11
+    - rotate Hamamatsu area scan 180 deg
 - 2026-01-16 2.3.10
     - support 2min integrations on STARVIS
 - 2026-01-15 2.3.9
