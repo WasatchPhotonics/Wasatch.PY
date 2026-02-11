@@ -1963,7 +1963,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # store full-frame image data for Area Scan
         data = np.array(self.area_scan_frame, dtype=np.float32, copy=True)
         data -= data.min() # remove baseline
-        if not self.settings.eeprom.invert_x_axis:
+        if self.settings.eeprom.invert_x_axis:
             data = np.rot90(data, k=2)
         asi = AreaScanImage(data=data, width=len(data[0]), height=len(data), line_index=line_index)
 

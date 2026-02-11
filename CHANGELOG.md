@@ -1,5 +1,8 @@
 # Changelog
 
+- 2026-02-?? 2.3.12
+    - added laser_password, startup_scans_to_average, laser_attenuator
+    - added [un]pack_field
 - 2026-02-09 2.3.11
     - rotate Hamamatsu area scan 180 deg
 - 2026-01-16 2.3.10

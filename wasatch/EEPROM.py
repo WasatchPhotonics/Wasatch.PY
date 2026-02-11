@@ -25,9 +25,9 @@ log = logging.getLogger(__name__)
 # @see 24LC128 for FX2 (16KB, https://www.microchip.com/en-us/product/24LC128)
 class EEPROM:
 
-    LATEST_REV = 17
+    LATEST_REV = 18
 
-    MAX_PAGES = 8
+    MAX_PAGES = 9
     PAGE_LENGTH = 64
     SUBPAGE_COUNT = 4  # used for BLE
     RAMAN_INTENSITY_CALIBRATION_ORDER = 5
@@ -68,6 +68,7 @@ class EEPROM:
         ((1, 46,  2), "h", "tec_beta"),
         ((1, 48, 12), "s", "calibration_date"),
         ((1, 60,  3), "s", "calibrated_by"),
+
         ((2,  0, 16), "s", "detector"),
         ((2, 16,  2), "H", "active_pixels_horizontal"),
         ((2, 18,  1), "B", "laser_warmup_sec"),
@@ -87,6 +88,7 @@ class EEPROM:
         ((2, 51,  4), "f", "linearity_c2"),
         ((2, 55,  4), "f", "linearity_c3"),
         ((2, 59,  4), "f", "linearity_c4"),
+
         ((3, 12,  4), "f", "laser_power_c0"),
         ((3, 16,  4), "f", "laser_power_c1"),
         ((3, 20,  4), "f", "laser_power_c2"),
@@ -101,9 +103,15 @@ class EEPROM:
         ((3, 55,  2), "H", "power_timeout_sec"),
         ((3, 57,  2), "H", "detector_timeout_sec"),
         ((3, 59,  1), "B", "horiz_binning_mode"),
+        ((3, 60,  1), "B", "startup_scans_to_average"),
+        ((3, 61,  1), "B", "laser_attenuator"),
+
         ((4,  0, 64), "s", "user_data"),
+
         ((5, 30, 16), "s", "product_configuration"),
-        ((5, 63,  1), "B", "subformat")
+        ((5, 63,  1), "B", "subformat"),
+
+        ((8,  0, 15), "s", "laser_password"),
     ]
 
     def __init__(self):
@@ -145,6 +153,8 @@ class EEPROM:
         self.power_timeout_sec           = 0
         self.detector_timeout_sec        = 0
         self.horiz_binning_mode          = 0
+        self.startup_scans_to_average    = 1
+        self.laser_attenuator            = 127
                                          
         self.wavelength_coeffs           = []
         self.degC_to_dac_coeffs          = []
@@ -184,6 +194,8 @@ class EEPROM:
 
         self.bad_pixels                  = [] # should be set, not list (but this works with EEPROMEditor)
         self.product_configuration       = None
+
+        self.laser_password              = None
 
         self.format                      = EEPROM.LATEST_REV
         self.subformat                   = 0 # determines format of pages 6-7
@@ -227,6 +239,7 @@ class EEPROM:
             "roi_vertical_region_3_start",
             "user_text",
             "wavelength_coeffs",
+            "laser_password",
         ]
 
         self.init_raman_intensity_calibration()
@@ -276,7 +289,7 @@ class EEPROM:
     # ##########################################################################
 
     ## 
-    # given a set of the 8 buffers read from a spectrometer via USB,
+    # given a set of the 8+ buffers read from a spectrometer via USB,
     # parse those into the approrpriate fields and datatypes
     def parse(self, buffers):
         if len(buffers) < EEPROM.MAX_PAGES:
@@ -448,6 +461,10 @@ class EEPROM:
             self.detector_timeout_sec        = self.unpack((3, 57,  2), "H", "detector_timeout_sec")
             self.horiz_binning_mode          = self.unpack((3, 59,  1), "B", "horiz_binning_mode")
 
+        if self.format >= 18:
+            self.unpack_field("startup_scans_to_average")
+            self.unpack_field("laser_attenuator")
+
         # ######################################################################
         # Page 4
         # ######################################################################
@@ -524,6 +541,17 @@ class EEPROM:
             self.laser_interlock_excluded      = False
             self.laser_timeout_after_count     = False
             self.is_oem                        = False
+
+        # ######################################################################
+        # Page 8
+        # ######################################################################
+
+        if "XS" in self.model.upper(): # and self.format >= 18:
+            
+            s = self.unpack_field("laser_password", quiet=True)
+            if len(s) < 4 or any([c in [0x00, 0xff] for c in s]):
+                log.debug("no laser password found")
+                self.laser_password = None
 
         # ######################################################################
         # sanity checks
@@ -695,6 +723,8 @@ class EEPROM:
         self.pack((3, 55,  2), "H", self.power_timeout_sec)
         self.pack((3, 57,  2), "H", self.detector_timeout_sec)
         self.pack((3, 59,  1), "B", self.multi_wavelength_calibration.get("horiz_binning_mode"))
+        self.pack_field("startup_scans_to_average")
+        self.pack_field("laser_attenuator")
 
         # ######################################################################
         # Page 4
@@ -741,6 +771,14 @@ class EEPROM:
             self.multi_wavelength_calibration.write()
         else:
             log.error(f"Unwriteable EEPROM subformat {self.subformat}")
+
+        # ######################################################################
+        # Page 8
+        # ######################################################################
+
+        if "XS" in self.model.upper():
+            # self.pack((8,  0, 16), "s", self.laser_password)
+            self.pack_field("laser_password", quiet=True)
 
     # ##########################################################################
     #                                                                          #
@@ -789,19 +827,29 @@ class EEPROM:
         log.debug("float_to_uint16: %f -> 0x%04x", gain, raw)
         return raw
 
+    def unpack_field(self, name, quiet=False):
+        if name not in self.fields:
+            log.error(f"unable to unpack unknown field {name}")
+            return
+
+        field = self.fields[name]
+        value = self.unpack(field.pos, field.data_type, label=name, quiet=quiet)
+        setattr(self, name, value)
+        return value
+
     ## 
     # Unpack a single field at a given buffer offset of the given datatype.
     #
     # @param address    a tuple of the form (buf, offset, len)
     # @param data_type  see https://docs.python.org/2/library/struct.html#format-characters
     # @param label      if provided, is included in debug log output
-    def unpack(self, address, data_type, label=None):
+    def unpack(self, address, data_type, label=None, quiet=False):
         page       = address[0]
         start_byte = address[1]
         length     = address[2]
         end_byte   = start_byte + length
 
-        if page > len(self.buffers):
+        if page + 1 > len(self.buffers):
             log.error("error unpacking EEPROM page %d, offset %d, len %d as %s: invalid page (label %s)", 
                 page, start_byte, length, data_type, label, exc_info=1)
             return
@@ -827,11 +875,21 @@ class EEPROM:
             except:
                 log.error("error unpacking EEPROM page %d, offset %d, len %d as %s", page, start_byte, length, data_type, exc_info=1)
 
-        if label is None:
-            log.debug("Unpacked [%s]: %s", data_type, unpack_result)
-        else:
-            log.debug("Unpacked [%s]: %s (%s)", data_type, unpack_result, label)
+        if not quiet:
+            if label is None:
+                log.debug("Unpacked [%s]: %s", data_type, unpack_result)
+            else:
+                log.debug("Unpacked [%s]: %s (%s)", data_type, unpack_result, label)
         return unpack_result
+
+    def pack_field(self, name, quiet=False):
+        if name not in self.fields:
+            log.error(f"unable to pack unknown field {name}")
+            return
+
+        field = self.fields[name]
+        value = getattr(self, name)
+        self.pack(field.pos, field.data_type, value, label=name, quiet=quiet)
 
     ## 
     # Marshall or serialize a single field at a given buffer offset of the given datatype.
@@ -839,7 +897,7 @@ class EEPROM:
     # @param address    a tuple of the form (buf, offset, len)
     # @param data_type  see https://docs.python.org/2/library/struct.html#format-characters
     # @param value      value to serialize
-    def pack(self, address, data_type, value, label=None):
+    def pack(self, address, data_type, value, label=None, quiet=False):
         page       = address[0]
         start_byte = address[1]
         length     = address[2]
@@ -873,7 +931,7 @@ class EEPROM:
                 value = float(value)
             struct.pack_into(data_type, buf, start_byte, value)
 
-        if False:
+        if False and not quiet:
             extra = "" if label is None else (" (%s)" % label)
             log.debug("Packed (%d, %2d, %2d) '%s' value %s -> %s%s", 
                 page, start_byte, length, data_type, value, buf[start_byte:end_byte], extra)
@@ -960,6 +1018,8 @@ class EEPROM:
         log.debug("  Power Timeout:    %d", self.power_timeout_sec)
         log.debug("  Detector Timeout: %d", self.detector_timeout_sec)
         log.debug("  Horiz Bin Mode:   %d", self.multi_wavelength_calibration.get("horiz_binning_mode", default=0))
+        log.debug("  Startup Scan Avg: %d", self.startup_scans_to_average)
+        log.debug("  Laser Attenuator: %d", self.laser_attenuator)
         log.debug("  Slit size:        %s um", self.slit_size_um)
         log.debug("  Start Integ Time: %d ms", self.startup_integration_time_ms)
         log.debug("  Start Temp:       %.2f degC", self.startup_temp_degC)
