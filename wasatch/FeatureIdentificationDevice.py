@@ -942,14 +942,14 @@ class FeatureIdentificationDevice(InterfaceDevice):
     def get_battery_state_raw(self):
         """Retrieves the raw battery reading and then caches it for 1 sec"""
         now = datetime.datetime.now()
-        if self.settings.state.battery_timestamp is not None and (now - self.settings.state.battery_timestamp).total_seconds() < 1:
-            return SpectrometerResponse(data=self.settings.state.battery_raw)
+        if self.settings.state.battery_timestamp is None or \
+                self.settings.state.battery_raw is None or \
+                (now - self.settings.state.battery_timestamp).total_seconds() > 1:
+            self.settings.state.battery_timestamp = now
+            response = self.get_upper_code(0x13, label="GET_BATTERY_STATE", msb_len=3)
+            self.settings.state.battery_raw = response.data
+            log.debug(f"battery_state_raw: 0x{self.settings.state.battery_raw:06x}")
 
-        self.settings.state.battery_timestamp = now
-        response = self.get_upper_code(0x13, label="GET_BATTERY_STATE", msb_len=3)
-        self.settings.state.battery_raw = response.data
-
-        log.debug(f"battery_state_raw: 0x{self.settings.state.battery_raw:04x}")
         return SpectrometerResponse(data=self.settings.state.battery_raw)
 
     def get_battery_percentage(self):
@@ -958,7 +958,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         lsb = (word >> 16) & 0xff
         msb = (word >>  8) & 0xff
         perc = msb + (1.0 * lsb / 256.0)
-        log.debug("battery_perc: %.2f%%", perc)
+        log.debug(f"battery_perc: msb 0x{msb:02x} + lsb 0x{lsb:02x} = {perc:0.2f}%%")
         return SpectrometerResponse(data=perc)
 
     def get_battery_charging(self):

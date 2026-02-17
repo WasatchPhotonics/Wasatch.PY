@@ -1,8 +1,10 @@
 # Changelog
 
-- 2026-02-?? 2.3.12
+- 2026-02-17 2.3.12
     - added laser_password, startup_scans_to_average, laser_attenuator
     - added [un]pack_field
+    - un-rotated Hamamatsu area scan 180 deg :-(
+    - allow IDS config files to be located by serial number prefix
 - 2026-02-09 2.3.11
     - rotate Hamamatsu area scan 180 deg
 - 2026-01-16 2.3.10
