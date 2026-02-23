@@ -115,39 +115,44 @@ class IDSDevice(InterfaceDevice):
         }
 
         """
-        json_path = os.path.join(self.config_dir, f"IDS-{self.camera.serial_number}.json")
-        if os.path.exists(json_path):
-            with open(json_path) as config_file:
-                data = json.load(config_file)
-            log.debug(f"loaded from {json_path}: {data}")
+        prefix = f"IDS-{self.camera.serial_number}"
+        suffix = ".json"
+        json_path = utils.find_first_file(path=self.config_dir, prefix=prefix, suffix=suffix)
+        if not json_path:
+            log.debug(f"could not find file with prefix {prefix}, suffix {suffix} in path {self.config_dir}")
+            return
 
-            def stomp(k, attr=None):
-                if attr is None:
-                    attr = k
-                    log.debug(f"attempting to stomp {k}")
-                else:
-                    log.debug(f"attempting to stomp {k} --> {attr}")
+        with open(json_path) as config_file:
+            data = json.load(config_file)
+        log.debug(f"loaded from {json_path}: {data}")
 
-                if k in data:
-                    value = data[k]
-                    log.debug(f"stomping eeprom.{attr} = {value}")
-                    setattr(self.settings.eeprom, attr, value)
+        def stomp(k, attr=None):
+            if attr is None:
+                attr = k
+                log.debug(f"attempting to stomp {k}")
+            else:
+                log.debug(f"attempting to stomp {k} --> {attr}")
 
-            for k in [ "detector_gain",
-                       "excitation_nm_float", 
-                       "invert_x_axis", 
-                       "horiz_binning_enabled",       
-                       "horiz_binning_mode",
-                       "startup_integration_time_ms",
-                       "wavelength_coeffs",
-                       "roi_horizontal_end",
-                       "roi_horizontal_start",
-                       "roi_vertical_region_1_start",
-                       "roi_vertical_region_1_end" ]:
-                stomp(k)
-            for k, attr in [ [ "wp_model",         "model" ],
-                             [ "wp_serial_number", "serial_number" ] ]:
-                stomp(k, attr)
+            if k in data:
+                value = data[k]
+                log.debug(f"stomping eeprom.{attr} = {value}")
+                setattr(self.settings.eeprom, attr, value)
+
+        for k in [ "detector_gain",
+                   "excitation_nm_float", 
+                   "invert_x_axis", 
+                   "horiz_binning_enabled",       
+                   "horiz_binning_mode",
+                   "startup_integration_time_ms",
+                   "wavelength_coeffs",
+                   "roi_horizontal_end",
+                   "roi_horizontal_start",
+                   "roi_vertical_region_1_start",
+                   "roi_vertical_region_1_end" ]:
+            stomp(k)
+        for k, attr in [ [ "wp_model",         "model" ],
+                         [ "wp_serial_number", "serial_number" ] ]:
+            stomp(k, attr)
 
     def set_integration_time_ms(self, ms):
         """

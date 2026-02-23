@@ -218,10 +218,25 @@ def get_default_data_dir():
         return os.path.join(os.path.expanduser("~"), "Documents", "EnlightenSpectra")
     return os.path.join(os.environ["HOME"], "EnlightenSpectra")
 
-## iterate down a directory, returning pathnames that match the given pattern
+def find_first_file(path, prefix=None, suffix=None, recursive=False):
+    pat = f"^{prefix}" if prefix else ""
+    if suffix:
+        suffix = suffix.replace(".", "\\.")
+        pat += f".*{suffix}"
+    # log.debug(f"find_first_file: pat [{pat}]")
+    files = get_pathnames_from_directory(rootdir=path, pattern=pat, recursive=recursive)
+    if len(files) < 1:
+        return None
+    else:
+        return files[0]
+
 def get_pathnames_from_directory(rootdir, pattern=None, recursive=False):
+    """ 
+    Iterate down a directory, returning pathnames that match the given pattern in
+    deterministic sorted order.
+    """
     pathnames = []
-    # log.debug("searching %s matching %s with recursive %s", rootdir, pattern, recursive)
+    # log.debug("get_pathnames_from_directory: searching %s matching %s with recursive %s", rootdir, pattern, recursive)
     if recursive:
         for (directory, _, filenames) in os.walk(rootdir):
             for filename in filenames:
@@ -230,7 +245,7 @@ def get_pathnames_from_directory(rootdir, pattern=None, recursive=False):
                     if re.search(pattern, filename):
                         pathnames.append(pathname)
                     else:
-                        # log.debug("%s does not match %s", pathname, pattern)
+                        # log.debug("get_pathnames_from_directory: %s does not match %s", pathname, pattern)
                         pass
                 else:
                     pathnames.append(pathname)
@@ -242,11 +257,12 @@ def get_pathnames_from_directory(rootdir, pattern=None, recursive=False):
                     if re.search(pattern, filename):
                         pathnames.append(pathname)
                     else:
-                        # log.debug("%s does not match %s", pathname, pattern)
+                        # log.debug("get_pathnames_from_directory: %s does not match %s", pathname, pattern)
                         pass
                 else:
                     pathnames.append(pathname)
-    # log.debug("returning %s", pathnames)
+    pathnames.sort()
+    # log.debug("get_pathnames_from_directory: returning %s", pathnames)
     return pathnames
 
 ##
