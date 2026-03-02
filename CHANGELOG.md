@@ -1,5 +1,8 @@
 # Changelog
 
+- 2026-03-02 2.3.13
+    - add experimental FPGA reset for InGaAs
+    - add Reading.image_format
 - 2026-02-17 2.3.12
     - added laser_password, startup_scans_to_average, laser_attenuator
     - added [un]pack_field

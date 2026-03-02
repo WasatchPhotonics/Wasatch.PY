@@ -405,7 +405,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.debug("sending gain/offset to FPGA")
             self.set_detector_gain      (self.settings.eeprom.detector_gain)
             self.set_detector_offset    (self.settings.eeprom.detector_offset)
-            self.set_detector_gain_odd  (self.settings.eeprom.detector_gain_odd)
+            self.set_detector_gain_odd  (self.settings.eeprom.detector_gain_odd) 
             self.set_detector_offset_odd(self.settings.eeprom.detector_offset_odd)
 
         # initialize state.gain_db from EEPROM startup value
@@ -3025,8 +3025,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
             # FX2 lacks USB opcodes for start/stop line, so use I2C Poke (clamp to 1 byte)
             start = int(max(0, min(255, start)))
             end   = int(max(0, min(255, end  )))
-
-            # start = max(1, start) # kludge
 
             self.i2c_write(0x29, [start], label="I2C_POKE(SET_CCD_START_LINE)")
             self.i2c_write(0x2A, [end],   label="I2C_POKE(SET_CCD_STOP_LINE)")

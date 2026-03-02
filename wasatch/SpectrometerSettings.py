@@ -139,13 +139,13 @@ class SpectrometerSettings:
     def excitation(self):
         return self.eeprom.multi_wavelength_calibration.get("excitation_nm_float", default=0.0)
 
-    def is_mml(self): # -> bool 
+    def is_mml(self):
         if not self.eeprom.has_laser:
             return False
         if self.eeprom.has_laser and not self.is_sml():
             return True
 
-    def is_sml(self): # -> bool 
+    def is_sml(self):
         if not self.eeprom.has_laser:
             return False
         elif (self.eeprom.has_laser and 
@@ -330,11 +330,11 @@ class SpectrometerSettings:
     #
     # ##########################################################################
 
-    def is_arm(self): # -> bool 
+    def is_arm(self):
         return self.hardware_info is not None and self.hardware_info.is_arm()
 
-    def is_ingaas(self): # -> bool 
-        if self.hardware_info is not None and self.hardware_info.is_ingaas():
+    def is_ingaas(self): 
+        if self.hardware_info is not None and self.hardware_info.is_ingaas(): # checks for PID 0x2000
             return True
         elif self.eeprom is None or self.eeprom.detector is None:
             return False
@@ -353,14 +353,14 @@ class SpectrometerSettings:
     def is_imx385(self):
         return self.is_imx() and "imx385" in self.eeprom.detector.lower()
 
-    def is_imx392(self): # -> bool 
+    def is_imx392(self):
         return self.is_imx() and "imx392" in self.eeprom.detector.lower()
 
-    def is_spi(self): # -> bool 
+    def is_spi(self):
         return self.hardware_info is not None and \
                self.hardware_info.pid == 0x6014
 
-    def is_micro(self): # -> bool 
+    def is_micro(self):
         return ( self.is_arm() and (
                    self.is_imx() or
                    "micro" in self.full_model().lower() or
@@ -369,31 +369,31 @@ class SpectrometerSettings:
                  )
                ) or self.is_spi()
 
-    def is_non_raman(self): # -> bool 
+    def is_non_raman(self):
         return not self.has_excitation()
 
-    def is_gen15(self): # -> bool 
+    def is_gen15(self):
         if "DISABLE_GEN15" in os.environ:
             return False
         return self.eeprom.gen15
 
-    def is_gen2(self): # -> bool 
+    def is_gen2(self):
         return False
 
     ## @todo add this to EEPROM.feature_mask if we decide to keep the feature
-    def has_marker(self): # -> bool 
+    def has_marker(self):
         return self.eeprom.model == "WPX-8CHANNEL"
 
-    def is_andor(self): # -> bool 
+    def is_andor(self):
         return '0x136e' in str(self.device_id)
 
     def is_ids(self): 
         return 'IDSPeak' in str(self.device_id)
 
-    def is_sig(self): # -> bool 
+    def is_sig(self):
         return self.is_micro()
 
-    def is_xs(self): # -> bool 
+    def is_xs(self):
         return self.is_micro()
 
     def supports_feature(self, feature):

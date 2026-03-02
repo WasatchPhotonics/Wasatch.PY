@@ -280,9 +280,7 @@ class IDSDevice(InterfaceDevice):
                 self.reset_averaging()
 
         reading = Reading(self.device_id)
-        # log.debug("acquire_data: calling get_spectrum")
         reading.spectrum = self.get_spectrum()
-        # log.debug("acquire_data: back from get_spectrum")
 
         if not self.camera:
             return SpectrometerResponse(False)
@@ -313,6 +311,9 @@ class IDSDevice(InterfaceDevice):
                 self.reset_averaging()
             else:
                 log.debug(f"acquire_data: averaged {self.sum_count}/{self.settings.state.scans_to_average}")
+
+        # track image format
+        reading.image_format = self.camera.output_format_name
 
         # log.debug(f"acquire_data: returning {reading}")
         return SpectrometerResponse(data=reading)

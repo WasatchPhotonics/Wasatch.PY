@@ -723,6 +723,7 @@ class WasatchDevice(InterfaceDevice):
 
         # either take one measurement (normal), or a bunch (sum_locally)
         reading = None
+        tried_reset = False
         for loop_index in range(loop_count):
 
             # log.debug(f"take_one_averaged_reading: loop_index {loop_index+1} of {loop_count}")
@@ -749,6 +750,16 @@ class WasatchDevice(InterfaceDevice):
                     req = SpectrometerRequest("get_spectrum")
                     res = self.hardware.handle_requests([req])[0]
                     if res.error_msg != '':
+
+                        if self.settings.is_ingaas():
+                            if tried_reset:
+                                log.debug("take_one_averaged_reading: already tried InGaAs FPGA reset :-(")
+                            else:
+                                log.debug("take_one_averaged_reading: attempting InGaAs FPGA reset")
+                                self.hardware.reset_fpga()
+                                tried_reset = True
+                                continue
+
                         log.debug(f"take_one_averaged_reading: returning due to error_msg {res.error_msg}")
                         return res
 
