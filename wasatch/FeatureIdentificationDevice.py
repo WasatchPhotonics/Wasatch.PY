@@ -374,7 +374,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
                 if eeprom.min_temp_degC <= eeprom.startup_temp_degC <= eeprom.max_temp_degC:
                     degC = eeprom.startup_temp_degC
-                elif re.match(r"7031|10141|9214", eeprom.detector):
+                elif re.match(r"7031|10141|9214", eeprom.detector) or self.settings.is_ingaas():
                     degC = -15
                 elif re.match(r"16011|11511|11850|13971", eeprom.detector):
                     degC = 10

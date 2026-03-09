@@ -278,6 +278,7 @@ class IDSCamera:
 
         # correspond to EEPROM
         self.model_name = None
+        self.sensor_name = None
         self.serial_number = None
         self.width = 0
         self.height = 0
@@ -373,6 +374,7 @@ class IDSCamera:
 
         # Cache settings corresponding to Wasatch EEPROM
         self.model_name = device.ModelName()
+        self.sensor_name = self.node_map.FindNode("SensorName").Value()
         self.serial_number = self.node_map.FindNode("DeviceSerialNumber").Value()
         self.width = self.node_map.FindNode("Width").Value()
         self.height = self.node_map.FindNode("Height").Value()
