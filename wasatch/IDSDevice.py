@@ -179,11 +179,13 @@ class IDSDevice(InterfaceDevice):
     def set_start_line(self, line):
         log.debug(f"set_start_line: line {line}")
         self.camera.set_start_line(line)
+        self.settings.eeprom.roi_vertical_region_1_start = line
         return SpectrometerResponse(True)
 
     def set_stop_line(self, line):
         log.debug(f"set_stop_line: line {line}")
         self.camera.set_stop_line(line)
+        self.settings.eeprom.roi_vertical_region_1_end = line
         return SpectrometerResponse(True)
 
     def set_vertical_roi(self, roi):

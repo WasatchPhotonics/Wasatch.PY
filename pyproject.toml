@@ -1,6 +1,6 @@
 [project]
 name = "wasatch"
-version = "2.3.14"
+version = "2.3.15"
 description= "Application-level driver for Wasatch Photonics spectrometers"
 requires-python = ">=3.9"
 readme = "README.md"

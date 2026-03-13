@@ -247,7 +247,7 @@ class WrapperWorker(threading.Thread):
                 if reading_response.data.spectrum is not None:
                     log.debug("sending Reading %d back to GUI thread (%s)", reading_response.data.session_count, reading_response.data.spectrum[0:5])
                 else:
-                    log.debug("sending Reading %d back to GUI thread WITH NO SPECTRA")
+                    log.debug("sending Reading %d back to GUI thread WITH NO SPECTRA", reading_response.data.session_count)
 
                 try:
                     self.response_queue.put_nowait(reading_response) 

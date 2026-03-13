@@ -1,5 +1,7 @@
 # Changelog
 
+- 2026-03-13 2.3.15
+    - capture changes to vertical ROI in IDSDevice's EEPROM
 - 2026-03-09 2.3.14
     - save IDS detector in EEPROM
 - 2026-03-02 2.3.13
