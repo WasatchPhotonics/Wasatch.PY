@@ -2823,8 +2823,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.error(msg)
             return SpectrometerResponse(data=False, error_msg=msg)
 
-        if not self.settings.eeprom.has_interlock_feedback:
-            # log.debug("CAN_LASER_FIRE requires has_interlock_feedback (defaulting True)")
+        if not (self.settings.eeprom.has_interlock_feedback or self.settings.is_xs()):
+            # log.debug("CAN_LASER_FIRE requires has_interlock_feedback or XS (defaulting True)")
             return SpectrometerResponse(data=True)
 
         res = self._get_code(0xef, label="CAN_LASER_FIRE", msb_len=1)
