@@ -37,8 +37,13 @@ class WrapperWorker(threading.Thread):
     #   - note that this is essentially ADDED to the total measurement time
     #     of EACH AND EVERY INTEGRATION
     # TODO: replace if check for each type of spec with single call
-    # TODO: Create ABC of hardware device that keeps common functions like handle_requests
-    POLLER_WAIT_SEC = 0.005    # .005sec = 5ms = update from hardware device at 200Hz
+    # TODO: Create ABC of hardware device that keeps common functions like 
+    #       handle_requests
+    #
+    # For a long time we held this to 20Hz, and that was fine. Recently we tried
+    # bumping it to 200Hz, and that worked fine on "fast" computers, but not so
+    # well on "slower" computers. Temporarily dropping back to 20Hz for testing.
+    POLLER_WAIT_SEC = 0.05    # .05sec = 50ms = update from hardware device at 20Hz 
 
     DEBUG_SEC = 20 # enforce debug logging for the 1st 20sec after connecting a new spectrometer
 
