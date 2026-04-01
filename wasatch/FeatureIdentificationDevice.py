@@ -1288,7 +1288,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
     def generate_timeout_ms(self):
         max_integ_ms = max(self.settings.state.integration_time_ms, self.settings.state.prev_integration_time_ms)
-        if self.settings.is_micro():
+        if self.settings.is_xs():
             # we have no idea if Series-XS has to "wake up" the sensor, so wait
             # long enough for 20ms + 8 throwaway frames if need be (IMX385 datasheet p69)
             if self.settings.state.onboard_averaging:
@@ -1297,6 +1297,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 timeout_ms = max_integ_ms * 8 + 500 * self.settings.num_connected_devices + 20
             if not self.has_received_spectrum:
                 timeout_ms += 10_000
+
+            # kludge while testing Auto-Raman oddities
+            timeout_ms *= 5
         else:
             timeout_ms = max_integ_ms * 2 + 1_000 * self.settings.num_connected_devices
         return int(timeout_ms)
@@ -2813,10 +2816,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
     def can_laser_fire(self):
         """
-        @note only works on FX2-based spectrometers with FW >= 10.0.0.11
+        @note only works on XS, and FX2-based spectrometers with FW >= 10.0.0.11
+        @note on XS, opcode returns 0x00 (false) or 0x08 (true)
         @returns True if there is a laser and either the interlock is
-         closed (in firing position), or there is no readable
-         interlock
+                 closed (in firing position), or there is no readable
+                 interlock
         """
         if not self.settings.eeprom.has_laser:
             msg = "no laser installed"

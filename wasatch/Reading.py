@@ -43,7 +43,7 @@ class Reading:
         self.keep_alive                = False
         self.image_format              = None
 
-        # currently only populated by AutoRaman
+        # only populated by AutoRaman
         self.new_integration_time_ms   = None
         self.new_gain_db               = None
 
@@ -51,8 +51,11 @@ class Reading:
         # driver is asked to collect a dark just before enabling the laser
         self.dark                      = None
 
+    def is_auto_raman(self):
+        return self.take_one_request and self.take_one_request.auto_raman_request
+
     def __str__(self):
-        return "wasatch.Reading {device_id %s, spectrum %s, averaged %s, sum_count %d, session_count %d, area_scan_row_count %d, timestamp %s, timestamp_complete %s, failure %s, laser_enabled %s, ambient %s, take_one_request %s }" % (
+        return "wasatch.Reading {device_id %s, spectrum %s, averaged %s, sum_count %d, session_count %d, area_scan_row_count %d, timestamp %s, timestamp_complete %s, failure %s, laser_enabled %s, laser_can_fire %s, ambient %s, take_one_request %s }" % (
             self.device_id, 
             "None" if self.spectrum is None else ("%d values" % len(self.spectrum)),
             self.averaged, 
@@ -63,6 +66,7 @@ class Reading:
             self.timestamp_complete, 
             self.failure,
             self.laser_enabled,
+            self.laser_can_fire,
             self.ambient_temperature_degC,
             self.take_one_request)
 

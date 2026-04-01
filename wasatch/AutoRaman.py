@@ -56,7 +56,7 @@ class AutoRaman:
       any point.
     """
 
-    INTER_SPECTRA_DELAY_MS = 50
+    INTER_SPECTRA_DELAY_MS = 100
 
     def __init__(self, wasatch_device):
         self.wasatch_device = wasatch_device
@@ -108,6 +108,18 @@ class AutoRaman:
         reading.laser_enabled           = True
         reading.laser_power_perc = hardware.settings.state.laser_power_perc
         reading.laser_power_mW = hardware.settings.state.laser_power_mW
+
+        # fill-out some otherwise missing attributes from WasatchDevice.acquire_spectrum_standard
+        setting_to_attr = [ ('can_laser_fire',    'laser_can_fire'),
+                            ('is_laser_firing',   'laser_is_firing') ]
+        if self.settings.is_xs() and self.settings.eeprom.sig_laser_tec:
+            setting_to_attr.extend( [ ('get_laser_tec_mode', 'laser_tec_enabled'),
+                                      ('get_ambient_temperature_degC', 'ambient_temperature_degC') ] )
+        for (setting, attr_name) in setting_to_attr:
+            request = SpectrometerRequest(setting)
+            result = self.hardware.handle_requests([request])[0]
+            if result is not None:
+                setattr(reading, attr_name, result.data)
 
         return SpectrometerResponse(data=reading)
 
@@ -236,7 +248,7 @@ class AutoRaman:
 
         # enable the laser and wait for it to fire
         self.set_laser_enable(True)
-        self.hardware.queue_message("laser_firing_indicators", True)
+        self.hardware.queue_message("laser_firing_indicators", "firing")
         warning_delay_sec = self.get_laser_warning_delay_sec()
         if warning_delay_sec > 0:
             self.hardware.queue_message("marquee_info", f"waiting {warning_delay_sec}sec for laser to fire")
@@ -399,7 +411,7 @@ class AutoRaman:
 
         # 2. turn laser off
         self.set_laser_enable(False)
-        self.hardware.queue_message("laser_firing_indicators", False)
+        self.hardware.queue_message("laser_firing_indicators", "not firing")
 
         # 3. take dark
         self.hardware.queue_message("marquee_info", f"averaging {num_avg} dark spectra at {int_time}ms")
@@ -421,6 +433,18 @@ class AutoRaman:
         reading.laser_enabled = True
         reading.laser_power_perc = self.hardware.settings.state.laser_power_perc
         reading.laser_power_mW = self.hardware.settings.state.laser_power_mW
+
+        # fill-out some otherwise missing attributes from WasatchDevice.acquire_spectrum_standard
+        setting_to_attr = [ ('can_laser_fire',    'laser_can_fire'),
+                            ('is_laser_firing',   'laser_is_firing') ]
+        if self.settings.is_xs() and self.settings.eeprom.sig_laser_tec:
+            setting_to_attr.extend( [ ('get_laser_tec_mode', 'laser_tec_enabled'),
+                                      ('get_ambient_temperature_degC', 'ambient_temperature_degC') ] )
+        for (setting, attr_name) in setting_to_attr:
+            request = SpectrometerRequest(setting)
+            result = self.hardware.handle_requests([request])[0]
+            if result is not None:
+                setattr(reading, attr_name, result.data)
 
         log.debug("done")
         return reading

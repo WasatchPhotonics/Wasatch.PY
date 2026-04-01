@@ -1,5 +1,9 @@
 # Changelog
 
+- 2026-04-01 2.3.17
+    - adding Reading.is_auto_raman()
+    - temporarily bumping XS spectra timeout
+    - filling in standard device meta-data in Auto-Raman Readings
 - 2026-03-30 2.3.16
     - assume all XS have interlock feedback
 - 2026-03-13 2.3.15
