@@ -6,6 +6,8 @@ import datetime
 from queue import Queue
 
 from .SpectrometerResponse import SpectrometerResponse
+from .SpectrometerSettings import SpectrometerSettings
+from .InterfaceDevice      import InterfaceDeviceClassUnavailable
 from .ControlObject        import ControlObject
 from .WrapperWorker        import WrapperWorker
 
@@ -120,6 +122,19 @@ class WasatchDeviceWrapper:
                                        # contributors can be skipped).  If the most-recent
                                        # frame IS a partial summation contributor, then send it on.
 
+    MAX_SETTINGS_POLL_SEC = 2
+    UNAVAILABLE_CLASS_NAMES = set()
+
+    # ##########################################################################
+    #                                                                          #
+    #                             Class Methods                                #
+    #                                                                          #
+    # ##########################################################################
+
+    @classmethod
+    def is_device_class_available(cls, class_name):
+        return class_name not in cls.UNAVAILABLE_CLASS_NAMES
+
     # ##########################################################################
     #                                                                          #
     #                             Parent Thread                                #
@@ -149,19 +164,23 @@ class WasatchDeviceWrapper:
         self.connected    = False
         self.closing      = False   # Don't permit new acquires during close
         self.poller       = None    # a handle to the child thread
-        self.is_ocean     = '0x2457' in str(device_id)
-        self.is_andor     = '0x136e' in str(device_id)
-        self.is_spi       = '0x0403' in str(device_id)
-        self.is_ids       = 'IDSPeak' in str(device_id)
-        self.mock         = 'MOCK' in str(device_id).upper()
-        self.is_ble       = 'BLE' in str(device_id)
-        self.is_tcp       = 'TCP' in str(device_id)
+
+        if   '0x136e'  in str(device_id) and '0x0001' not in str(device_id): self.class_name = "AndorDevice"
+        elif '0x24aa'  in str(device_id): self.class_name = "WasatchDevice"
+        elif '0x2457'  in str(device_id): self.class_name = "OceanDevice"
+        elif '0x0403'  in str(device_id): self.class_name = "SPIDevice"
+        elif 'IDSPeak' in str(device_id): self.class_name = "IDSDevice"
+        elif 'MOCK'    in str(device_id).upper(): self.class_name = "MockDevice"
+        elif 'BLE'     in str(device_id): self.class_name = "BLEDevice"
+        elif 'TCP'     in str(device_id): self.class_name = "TCPDevice"
+        else: self.class_name = "UnknownDevice"
+
         self.wrapper_worker = None
         self.connect_start_time = datetime.datetime(year=datetime.MAXYEAR, month=1, day=1)
 
         # this will contain a populated SpectrometerSettings object from the
         # WasatchDevice, for relay to the instantiating Controller
-        self.settings     = None
+        self.settings = None
 
         self.previous_reading = None
 
@@ -221,12 +240,7 @@ class WasatchDeviceWrapper:
             response_queue = self.response_queue, # Main <-- child \
             settings_queue = self.settings_queue, # Main <-- child  | consolidate into 
             message_queue  = self.message_queue,  # Main <-- child /  SpectrometerMessage?
-            is_ocean       = self.is_ocean,
-            is_andor       = self.is_andor,
-            is_spi         = self.is_spi,
-            is_ble         = self.is_ble,
-            is_tcp         = self.is_tcp,
-            is_ids         = self.is_ids,
+            class_name     = self.class_name,
             log_level      = self.log_level,
             callback       = self.callback)
         log.debug("device wrapper: Instance created for worker")
@@ -242,6 +256,7 @@ class WasatchDeviceWrapper:
         log.debug("connect: setup connection, returning to controller for settings polling")
 
         if self.callback:
+            log.debug("connect: waiting for settings")
             self.wait_for_settings()
 
         return True
@@ -250,35 +265,62 @@ class WasatchDeviceWrapper:
         while True:
             if self.poll_settings():
                 break
-            if (datetime.datetime.now() - self.connect_start_time).total_seconds() > 2:
+            if (datetime.datetime.now() - self.connect_start_time).total_seconds() > self.MAX_SETTINGS_POLL_SEC:
                 raise Exception("Failed to read SpectrometerSettings")
             time.sleep(0.1)
 
     def poll_settings(self): 
         """ 
-        @returns SpectrometerResponse(True) on success, (False) otherwise 
-        @note this doesn't have a timeout -- that's in enlighten.Controller.check_ready_initialize
+        @returns
+            - SpectrometerResponse(data=truthy) if SpectrometerSettings received (stop polling)
+            - SpectrometerResponse(data=None/False, error_msg) to communicate error condition (stop polling)
+            - None to continue polling
+
+        @note this doesn't have a timeout -- that's in enlighten.Controller.check_ready_initialize or self.wait_for_settings
+
+        This method can be called from one of two places:
+
+        - enlighten.Controller calls it from check_ready_initialize, itself 
+          called by tick_bus_listener, to monitor the connection status of 
+          "in_process" devices in Multispec. In this case, it is important
+          that the function return a SpectrometerSettings object
+
+        - alternately, if WasatchDeviceWrapper was invoked with inversion of
+          control (given a callback to call when a device was fully connected and
+          initialized), then this will be called in a loop from WDW.wait_for_settings
         """
         log.debug("polling device settings")
-        if not self.settings_queue.empty():
-            result = self.settings_queue.get_nowait()
-            if result is None: 
-                log.critical("poll_settings: failed to retrieve device settings (got None, shouldn't happen)")
-                return SpectrometerResponse(False, error_msg="Failed to retrieve device settings")
+        if self.settings_queue.empty():
+            return
 
-            if result.data:
-                log.info(f"got spectrometer settings for device")
-                self.connected = True
-                self.settings = result.data
-                self.connect_start_time = datetime.datetime(year=datetime.MAXYEAR, month=1, day=1)
-                self.settings.state.dump("WasatchDeviceWrapper.poll_settings")
-                return SpectrometerResponse(True)
-            else:
-                log.critical("got error response instead of settings from connection request")
-                return result
+        result = self.settings_queue.get_nowait()
+        log.debug(f"poll_setttings: received result {result}")
+        
+        # we read something from downstream (error or success), so we're going to tell our upstream listener to stop polling, no matter what
+        response = SpectrometerResponse(True)
+            
+        if result is None or result.data is None: 
+            response.error_msg = "failed to retrieve SpectrometerSettings"
+            log.critical(f"poll_settings: {response.error_msg}")
+
+        elif isinstance(result.data, InterfaceDeviceClassUnavailable):
+            response.error_msg = f"{self.class_name} unavailable"
+            log.critical(f"poll_settings: {response.error_msg}")
+            self.UNAVAILABLE_CLASS_NAMES.add(self.class_name)
+
+        elif isinstance(result.data, SpectrometerSettings):
+            # as long as no error_msg is set, ENLIGHTEN will interpret this as success
+            # (note we're still just returning data=True)
+            log.info(f"poll_settings: successfully received SpectrometerSettings for device")
+            self.connected = True
+            self.settings = result.data 
+            self.connect_start_time = datetime.datetime(year=datetime.MAXYEAR, month=1, day=1)
+            self.settings.state.dump("WasatchDeviceWrapper.poll_settings")
+
         else:
-            log.debug("settings still not obtained, returning")
-            return None
+            response.error_msg = f"received unsupported result (neither SpectrometerSettings nor InterfaceDeviceClassUnavailable): {result}"
+
+        return response
 
     def reset(self):
         if "USB" in str(self.device_id):
