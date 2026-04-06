@@ -107,9 +107,6 @@ class MockUSBDevice(AbstractUSBDevice):
             self.reading_cycles[key] = cycle(value)
         log.info("MockUSBDevice: done")
 
-    def is_andor(self): # -> bool 
-        return False
-
     def cmd_get_laser_temp(self, *args):
         return [random.randint(0,255)]*2
 
@@ -242,9 +239,6 @@ class MockUSBDevice(AbstractUSBDevice):
 
     def send_code(self):
         pass
-
-    def is_usb(self): # -> bool 
-        return True
 
     def get_pid_hex(self):
         return str(hex(self.pid))[2:]
