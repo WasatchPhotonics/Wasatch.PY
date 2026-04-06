@@ -2842,7 +2842,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         @returns SpectrometerResponse
         """
-        if not self.settings.eeprom.has_interlock_feedback:
+        if not (self.settings.eeprom.has_interlock_feedback or self.settings.is_xs()):
             # log.debug("IS_LASER_FIRING requires has_interlock_feedback (defaulting to laser_enabled)")
             return self.get_laser_enabled()
 
