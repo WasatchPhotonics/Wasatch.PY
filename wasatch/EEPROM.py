@@ -776,7 +776,7 @@ class EEPROM:
         # Page 8
         # ######################################################################
 
-        if "XS" in self.model.upper():
+        if self.model and "XS" in self.model.upper():
             # self.pack((8,  0, 16), "s", self.laser_password)
             self.pack_field("laser_password", quiet=True)
 
