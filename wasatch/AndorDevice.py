@@ -10,7 +10,7 @@ from ctypes import *
 
 from .SpectrometerSettings        import SpectrometerSettings
 from .SpectrometerResponse        import SpectrometerResponse
-from .InterfaceDevice             import InterfaceDevice
+from .InterfaceDevice             import InterfaceDevice, InterfaceDeviceClassUnavailable
 from .StatusMessage               import StatusMessage
 from .DeviceID                    import DeviceID
 from .Reading                     import Reading
@@ -52,9 +52,15 @@ class AndorDevice(InterfaceDevice):
     SHUTTER_SPEED_MS = 50       #!< allow time for mechanical shutter to stabilize
     TEMPERATURE_CACHE_SEC = 1.0
 
+    DRIVER_NOT_INSTALLED = False
+
     def __init__(self, device_id, message_queue=None, alert_queue=None):
         # if passed a string representation of a DeviceID, deserialize it
         super().__init__()
+
+        if self.DRIVER_NOT_INSTALLED:
+            raise InterfaceDeviceClassUnavailable("Andor driver not installed")
+
         if type(device_id) is str:
             device_id = DeviceID(label=device_id)
 
@@ -119,8 +125,9 @@ class AndorDevice(InterfaceDevice):
                     break
 
         if self.driver is None:
-            log.error(f"could not find {filename} in search path: {dll_paths}")
-            # MZ: interesting that we don't return here
+            # only need to display / log this once per session
+            self.DRIVER_NOT_INSTALLED = True
+            raise InterfaceDeviceClassUnavailable(f"could not find {filename} in search path: {dll_paths}")
 
         # "serial_number", "model" etc are ambiguous in an Andor configuration 
         # file -- do they refer to the camera (Andor), or the spectrometer 
@@ -135,8 +142,9 @@ class AndorDevice(InterfaceDevice):
         # (all but has_cooling can be overridden via config file)
 
         # Andor API doesn't(?) seem to have access to detector info.
-        # Note that we use non-iDus cameras, including the Newton.
+        # Note that we use non-iDus cameras, including the Newton and iVac.
         self.settings.eeprom.detector = "iDus" 
+        self.settings.eeprom.model = "WP-XL" 
 
         self.settings.eeprom.has_cooling = True
         self.settings.eeprom.startup_integration_time_ms = 10
