@@ -223,9 +223,6 @@ class BLEDevice(InterfaceDevice):
         # things not in ble-util.py
         ########################################################################
 
-        self.is_ble = True
-        self.is_andor = lambda : False 
-
         self.settings = SpectrometerSettings(self.device_id)
 
         log.debug("init: creating scan_loop")
