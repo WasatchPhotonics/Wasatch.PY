@@ -8,6 +8,7 @@ from datetime import datetime
 from .SpectrometerResponse import SpectrometerResponse
 from .SpectrometerRequest  import SpectrometerRequest
 from .WasatchDevice        import WasatchDevice
+from .InterfaceDevice      import InterfaceDeviceClassUnavailable
 from .AndorDevice          import AndorDevice
 from .OceanDevice          import OceanDevice
 from .SPIDevice            import SPIDevice
@@ -15,8 +16,16 @@ from .BLEDevice            import BLEDevice
 from .TCPDevice            import TCPDevice
 from .Reading              import Reading
 
+DEVICE_CLASSES = { "AndorDevice":   AndorDevice,
+                   "OceanDevice":   OceanDevice,
+                   "SPIDevice":     SPIDevice,
+                   "BLEDevice":     BLEDevice,
+                   "TCPDevice":     TCPDevice,
+                   "WasatchDevice": WasatchDevice }
+
 if "windows" in platform.platform().lower():
     from .IDSDevice        import IDSDevice
+    DEVICE_CLASSES["IDSDevice"] = IDSDevice
 
 log = logging.getLogger(__name__)
 
@@ -54,12 +63,7 @@ class WrapperWorker(threading.Thread):
             response_queue,
             settings_queue,
             message_queue,
-            is_ocean, # MZ: all these bools should have just been a string "type"
-            is_andor,
-            is_spi,
-            is_ble,
-            is_tcp,
-            is_ids,
+            class_name,
             log_level,
             callback=None,
             alert_queue=None):
@@ -67,12 +71,6 @@ class WrapperWorker(threading.Thread):
         threading.Thread.__init__(self)
 
         self.device_id      = device_id
-        self.is_ocean       = is_ocean
-        self.is_andor       = is_andor
-        self.is_spi         = is_spi
-        self.is_ble         = is_ble
-        self.is_tcp         = is_tcp
-        self.is_ids         = is_ids
         self.command_queue  = command_queue
         self.response_queue = response_queue
         self.settings_queue = settings_queue
@@ -80,6 +78,7 @@ class WrapperWorker(threading.Thread):
         self.alert_queue    = alert_queue  
         self.log_level      = log_level
         self.callback       = callback
+        self.class_name     = class_name
 
         self.connected_device = None
 
@@ -96,30 +95,28 @@ class WrapperWorker(threading.Thread):
     # one of the three queues (cmd inputs, response outputs, and
     # a one-shot SpectrometerSettings).
     def run(self):
-        if "windows" in platform.platform().lower():
-            is_options = (self.is_ocean, self.is_andor, self.is_ble, self.is_spi, self.is_tcp, self.is_ids)
-            device_classes = (OceanDevice, AndorDevice, BLEDevice, SPIDevice, TCPDevice, IDSDevice, WasatchDevice)
-        else:
-            is_options = (self.is_ocean, self.is_andor, self.is_ble, self.is_spi, self.is_tcp)
-            device_classes = (OceanDevice, AndorDevice, BLEDevice, SPIDevice, TCPDevice, WasatchDevice)
-
         try:
-            if any(is_options):
-                type_connection = is_options.index(True)
-                log.debug(f"trying to instantiate device of type {device_classes[type_connection]}")
-                self.connected_device = device_classes[type_connection](
-                    device_id = self.device_id,
-                    message_queue = self.message_queue,
-                    alert_queue = self.alert_queue)
+            if self.class_name not in DEVICE_CLASSES:
+                log.critical(f"Unsupported device class {self.class_name}")
+                return self.settings_queue.put(None) 
+                
+            device_class = DEVICE_CLASSES[self.class_name]
+            log.debug(f"trying to instantiate {device_class}")
+            self.connected_device = device_class(device_id = self.device_id,
+                                                 message_queue = self.message_queue,
+                                                 alert_queue = self.alert_queue)
+        except Exception as ex:
+            if isinstance(ex, InterfaceDeviceClassUnavailable):
+                log.debug(f"run: {self.class_name} unavailable")
+                # have WrapperWorker tell WasatchDeviceWrapper that the class_name 
+                # used for this class is unavailable for the remainder of this 
+                # session
+                response = SpectrometerResponse(ex)
+                log.debug(f"run: returning response with data=InterfaceDeviceClassUnavailable: {response}")
+                return self.settings_queue.put(response)
             else:
-                log.debug(f"Couldn't recognize device of {self.device_id} {is_options}, trying to instantiate as WasatchDevice")
-                self.connected_device = device_classes[device_classes.index(WasatchDevice)](
-                    device_id = self.device_id,
-                    message_queue = self.message_queue,
-                    alert_queue = self.alert_queue)
-        except:
-            log.critical("exception instantiating device", exc_info=1)
-            return self.settings_queue.put(None) 
+                log.critical("exception instantiating device", exc_info=1)
+                return self.settings_queue.put(None) 
 
         log.debug("calling connect")
         ok = False

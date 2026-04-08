@@ -1,5 +1,13 @@
 # Changelog
 
+- 2026-04-06 2.3.18
+    - replaced WrapperWorker.is_FOO with .class_name
+    - XL / Andor
+        - only warn once on missing driver
+        - more robust support for blank model
+        - default EEPROM.model
+    - XS
+        - support is_laser_firing on all XS
 - 2026-04-01 2.3.17
     - adding Reading.is_auto_raman()
     - temporarily bumping XS spectra timeout

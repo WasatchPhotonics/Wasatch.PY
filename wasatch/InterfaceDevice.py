@@ -38,3 +38,11 @@ class InterfaceDevice:
                 log.error(f"error in handling request {request} of {e}", exc_info=1)
                 responses.append(SpectrometerResponse(error_msg="error processing cmd", error_lvl=ErrorLevel.medium))
         return responses
+
+class InterfaceDeviceClassUnavailable(Exception):
+    """
+    InterfaceDevice objects can raise this to quietly indicate that they have 
+    been already deemed unavailable at runtime, and don't need to repeatedly 
+    generate CRITICAL error messages
+    """
+    pass
