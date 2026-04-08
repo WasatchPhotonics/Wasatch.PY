@@ -1,6 +1,6 @@
 # Changelog
 
-- 2026-??-?? 2.3.18
+- 2026-04-06 2.3.18
     - replaced WrapperWorker.is_FOO with .class_name
     - XL / Andor
         - only warn once on missing driver
