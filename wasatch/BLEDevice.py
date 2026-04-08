@@ -15,13 +15,9 @@ from wasatch.SpectrometerRequest  import SpectrometerRequest
 from wasatch.SpectrometerSettings import SpectrometerSettings
 from wasatch.SpectrometerResponse import SpectrometerResponse, ErrorLevel
 
-log = logging.getLogger(__name__)
+from . import utils
 
-# static, so available class-wide
-def to_hex(a):
-    if a is None:
-        return "[ ]"
-    return "[ " + ", ".join([f"0x{v:02x}" for v in a]) + " ]"
+log = logging.getLogger(__name__)
 
 class BLEDevice(InterfaceDevice):
     """
@@ -149,6 +145,8 @@ class BLEDevice(InterfaceDevice):
 
     LASER_TEC_MODES = ['OFF', 'ON', 'AUTO', 'AUTO_ON']
 
+    MAX_EEPROM_PAGES = 8 # separate from EEPROMFields, as XS BLE FW may not be in sync
+
     ACQUIRE_STATUS_CODES = {
          0: ("NAK",                         "No error, the spectrum just isn't ready yet"),
          1: ("ERR_BATT_SOC_INFO_NOT_RCVD",  "Can't read battery, and therefore can't take Auto-Dark or Auto-Raman spectra"),
@@ -158,11 +156,22 @@ class BLEDevice(InterfaceDevice):
          5: ("ERR_IMG_SNSR_IN_BAD_STATE",   "The sensor is not able to take spectra"),
          6: ("ERR_IMG_SNSR_STATE_TRANS_FLR","The sensor failed to apply acquisition parameters"),
          7: ("ERR_SPEC_ACQ_SIG_WAIT_TMO",   "The sensor failed to take a spectrum (timeout exceeded)"),
-        32: ("AUTO_OPT_TARGET_RATIO",       "Auto-Raman is in the process of optimizing acquisition parameters"),
-        33: ("TAKING_DARK",                 "taking spectra (no laser)"),
-        34: ("LASER_WARNING_DELAY",         "paused during laser warning delay period"),
-        35: ("LASER_WARMUP",                "paused during laser warmup period"),
-        36: ("TAKING_RAMAN",                "taking spectra (laser enabled)"),
+
+         # added from EnlightenMAUI.BluetoothSpectrometer.COLLECTION_FAILURE_CODDES
+         # and ENG-0120 ACQUIRE Status Notifications
+         8: ("ERR_INTERLOCK_OPEN",          "Can't perform Raman measurement because interlock open"),
+         9: ("ERR_RESERVED",                "Reserved acquisition error"),
+        10: ("ERR_BAD_MSG_FROM_STM32",      "Internal error (bad message from STM32)"),
+        11: ("ERR_AUTO_RAMAN_IN_PROG",      "Auto-Raman already in progress"),
+        12: ("ERR_SEG_TX_FLR",              "Error transmitting image segment over BLE"),
+        13: ("ERR_FPGA_READ_FLR",           "Error reading from FPGA"),
+        14: ("ERR_FPGA_UPDATE_FLR",         "Error writing to FPGA"),
+
+        32: ("AUTO_OPT_TARGET_RATIO",       "Auto-Raman is in the process of optimizing acquisition parameters"), # incl targetRatio
+        33: ("TAKING_DARK",                 "Auto-Dark/Raman taking spectra (no laser)"),                         # incl current/total steps
+        34: ("LASER_WARNING_DELAY",         "Auto-Dark/Raman paused during laser warning delay period"),          # ditto
+        35: ("LASER_WARMUP",                "Auto-Dark/Raman paused during laser warmup period"),                 # ditto
+        36: ("TAKING_RAMAN",                "Auto-Dark/Raman taking spectra (laser enabled)")                     # ditto
     }
 
     # public singleton
@@ -203,7 +212,8 @@ class BLEDevice(InterfaceDevice):
         self.code_by_name = { "LASER_STATE":             0xff03,
                               "ACQUIRE":                 0xff04,
                               "BATTERY_STATE":           0xff09,
-                              "GENERIC":                 0xff0a }
+                              "GENERIC":                 0xff0a,
+                              "SPECTRA":                 0xff0b }
         self.name_by_uuid = { self.wrap_uuid(code): name for name, code in self.code_by_name.items() }
 
         # Generics         Name                        Lvl  Set   Get Size
@@ -262,10 +272,11 @@ class BLEDevice(InterfaceDevice):
         """
         log.debug("connect: calling connect_async")
         future = asyncio.run_coroutine_threadsafe(self.connect_async(), self.run_loop)
+
         log.debug(f"connect: connect_async future pending ({future})")
         response = future.result()
-        log.debug(f"connect: back from connect_async (response {response})")
 
+        log.debug(f"connect: back from connect_async (response {response})")
         return response
 
     async def connect_async(self):
@@ -279,9 +290,9 @@ class BLEDevice(InterfaceDevice):
             return SpectrometerResponse(False, error_msg=msg)
 
         log.debug("connect_async: instantiating BleakClient")
-        self.client = BleakClient(address_or_ble_device=bleak_ble_device, 
-                                  disconnected_callback=self.disconnected_callback,
-                                  timeout=self.CONNECT_TIMEOUT_SEC)
+        self.client = BleakClient(address_or_ble_device = bleak_ble_device, 
+                                  disconnected_callback = self.disconnected_callback,
+                                  timeout               = self.CONNECT_TIMEOUT_SEC)
         log.debug(f"connect_async: BleakClient instantiated: {self.client}")
 
         # no longer need handle in DeviceID, so clear it to simplify deepcopy etc
@@ -292,6 +303,10 @@ class BLEDevice(InterfaceDevice):
 
         log.debug(f"connect_async: grabbing device information")
         await self.load_device_information()
+
+        # warn on old firmware
+        if utils.vercmp(self.device_info["Software Revision String"], "4.10.7") < 0:
+            log.error("intended for use with BLE FW 4.10.7 or higher (found {self.device_info['Software Revision String']})")
 
         log.debug(f"connect_async: loading Characteristics")
         await self.load_characteristics()
@@ -332,16 +347,14 @@ class BLEDevice(InterfaceDevice):
         log.debug(f"  address {self.client.address}")
         log.debug(f"  mtu_size {self.client.mtu_size} bytes")
 
-        device_info = {}
+        self.device_info = {}
         for service in self.client.services:
             if "Device Information" in str(service):
                 for char in service.characteristics:
                     name = char.description
                     value = self.decode(await self.client.read_gatt_char(char.uuid))
-                    device_info[name] = value
+                    self.device_info[name] = value
                     log.debug(f"  {name} {value}")
-
-        return device_info
 
     async def load_characteristics(self):
         # find the primary service
@@ -365,6 +378,9 @@ class BLEDevice(InterfaceDevice):
 
             props = ",".join(char.properties)
             log.debug(f"  {name:30s} {char.uuid} ({props}){extra}")
+
+            # reminder: INDICATE is acknowledged (i.e. TCP),
+            #           NOTIFY is unacknowledged (i.e. UDP).
     
             if "notify" in char.properties or "indicate" in char.properties:
                 if name == "BATTERY_STATE":  
@@ -372,16 +388,20 @@ class BLEDevice(InterfaceDevice):
                     await self.client.start_notify(char.uuid, self.battery_notification)
                     self.notifications.add(char.uuid)
                 elif name == "LASER_STATE":
-                    log.debug(f"starting {name} notifications")
+                    log.debug(f"starting {name} indications")
                     await self.client.start_notify(char.uuid, self.laser_state_notification)
                     self.notifications.add(char.uuid)
                 elif name == "GENERIC":
-                    log.debug(f"starting {name} notifications")
+                    log.debug(f"starting {name} indications")
                     await self.client.start_notify(char.uuid, self.generics.notification_callback)
                     self.notifications.add(char.uuid)
                 elif name == "ACQUIRE":
                     log.debug(f"starting {name} notifications")
                     await self.client.start_notify(char.uuid, self.acquire_notification)
+                    self.notifications.add(char.uuid)
+                elif name == "SPECTRA":
+                    log.debug(f"starting {name} indications")
+                    await self.client.start_notify(char.uuid, self.spectra_notification)
                     self.notifications.add(char.uuid)
 
     async def stop_notifications(self):
@@ -441,7 +461,7 @@ class BLEDevice(InterfaceDevice):
 
         if not quiet:
             code = self.code_by_name.get(name)
-            log.debug(f">> write_char({name} 0x{code:02x}, {to_hex(data)}){', '.join(extra)}")
+            log.debug(f">> write_char({name} 0x{code:02x}, {utils.to_hex(data)}){', '.join(extra)}")
 
         if isinstance(data, list):
             data = bytearray(data)
@@ -645,14 +665,25 @@ class BLEDevice(InterfaceDevice):
     # use write_char
     
     async def get_generic_value(self, name):
+        # STEP ONE: generate the payload for writing the "read request" for this particular attribute to the Generic characteristic
         request = self.generics.generate_read_request(name)
-        log.debug(f"get_generic: querying {name} ({to_hex(request)})")
+        log.debug(f"get_generic: querying {name} ({utils.to_hex(request)})")
 
+        # STEP FOUR: write the "read request" to the attribute. Store a callback
+        # which should be triggered when the response notification (carrying the
+        # same sequence number) is returned.
         await self.write_char("GENERIC", request, callback=lambda data: self.generics.process_response(name, data))
+
+        # STEP EIGHTEEN: this blocking wait will be satisfied after steps 4-17 are complete
+        log.debug(f"get_generic: waiting on {name}")
         await self.generics.wait(name)
 
+        # STEP NINETEEN: read the deserialized response value we stored in the notification callback
+        log.debug(f"get_generic: taking response from {name}")
         value = self.generics.get_value(name)
-        log.debug(f"get_generic: received {value}")
+        log.debug(f"get_generic: done (value {value})")
+
+        # STEP TWENTY: return the value to whoever called this function.
         return value
 
     ############################################################################
@@ -695,19 +726,31 @@ class BLEDevice(InterfaceDevice):
         return msg
     
     def acquire_notification(self, sender, data):
-        ok = True
         if (len(data) < 3):
             raise RuntimeError(f"received invalid ACQUIRE notification of {len(data)} bytes: {data}")
 
-        # first two bytes declare whether it's a status message or spectral data
+        # first two bytes declare whether it's a status message (all we should be 
+        # getting now under API9) or spectral data (deprecated after API6)
+        first_pixel = int((data[0] << 8) | data[1]) # big-endian int16
+
+        if first_pixel != 0xffff:
+            raise RuntimeError(f"received invalid SPECTRA data (API6) on API9 ACQUIRE characteristic!")
+            
+        status = data[2]
+        payload = data[3:]
+        msg = self.parse_acquire_status(status, payload)
+        log.debug(f"acquire_notification: {msg}")
+        
+    def spectra_notification(self, sender, data):
+        if (len(data) < 3):
+            raise RuntimeError(f"received invalid SPECTRA notification of {len(data)} bytes: {data}")
+
+        # first two bytes declare whether it's spectral data (all we should be 
+        # getting now under API9) or a status message (deprecated after API6)
         first_pixel = int((data[0] << 8) | data[1]) # big-endian int16
 
         if first_pixel == 0xffff:
-            status = data[2]
-            payload = data[3:]
-            msg = self.parse_acquire_status(status, payload)
-            log.debug(f"acquire_notification: {msg}")
-            return
+            raise RuntimeError("received invalid API6 ACQUIRE status notification on API9 SPECTRA characteristic!")
 
         ########################################################################
         # apparently it's spectral data
@@ -715,11 +758,10 @@ class BLEDevice(InterfaceDevice):
 
         # validate first_pixel
         if first_pixel != self.pixels_read:
-            # raise RuntimeError(f"received first_pixel {first_pixel} when pixels_read {self.pixels_read}")
-            log.error(f"received first_pixel {first_pixel} when pixels_read {self.pixels_read} (ignoring)")
-            return
+            raise RuntimeError(f"received first_pixel {first_pixel} when pixels_read {self.pixels_read}")
 
         spectral_data = data[2:]
+        
         pixels_in_packet = int(len(spectral_data) / 2)
 
         for i in range(pixels_in_packet):
@@ -790,30 +832,31 @@ class BLEDevice(InterfaceDevice):
         self.pages = []
 
         name = "EEPROM_DATA"
-        for page in range(8):
+        for page in range(self.MAX_EEPROM_PAGES):
             buf = bytearray()
-            for subpage in range(4):
+            while len(buf) < 64:
                 
+                offset = len(buf)
                 request = self.generics.generate_read_request(name)
                 request.append(0) # page is big-endian uint16
                 request.append(page)
-                request.append(subpage)
+                request.append(offset)
 
-                log.debug(f"read_eeprom_pages: querying {name} ({to_hex(request)})")
+                log.debug(f"read_eeprom_pages: querying {name} ({utils.to_hex(request)})")
                 await self.write_char("GENERIC", request, callback=lambda data: self.generics.process_response(name, data))
 
                 log.debug(f"read_eeprom_pages: waiting on {name}")
                 await self.generics.wait(name)
 
                 data = self.generics.get_value(name)
-                log.debug(f"read_eeprom_pages: received page {page}, subpage {subpage}: {data}")
+                log.debug(f"read_eeprom_pages: received page {page}, offset {offset}: {data}")
 
                 for byte in data:
                     buf.append(byte)
             self.pages.append(buf)
 
         elapsed_sec = (datetime.now() - start_time).total_seconds()
-        print(f"reading eeprom took {elapsed_sec:.2f} sec")
+        log.debug(f"reading eeprom took {elapsed_sec:.2f} sec")
 
     def init_process_funcs(self): # -> dict[str, Callable[..., Any]] 
         f = {}
@@ -983,7 +1026,7 @@ class Generics:
     async def notification_callback(self, sender, data):
         # STEP EIGHT: we have received a response notification from the Generic Characteristic
 
-        log.debug(f"received GENERIC notification from sender {sender}, data {to_hex(data)}")
+        log.debug(f"received GENERIC notification from sender {sender}, data {utils.to_hex(data)}")
 
         # STEP NINE: extract the sequence number from the notification response
         result = None
@@ -998,7 +1041,7 @@ class Generics:
             response_error = f"UNSUPPORTED RESPONSE_ERROR: 0x{err}"
 
         if response_error != "OK":
-            raise RuntimeError(f"GENERIC notification included error code {err} ({response_error}); data {to_hex(data)}")
+            raise RuntimeError(f"GENERIC notification included error code {err} ({response_error}); data {utils.to_hex(data)}")
 
         # STEP TEN: lookup the stored callback for this sequence number
         #

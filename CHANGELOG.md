@@ -1,5 +1,14 @@
 # Changelog
 
+- 2026-??-?? 2.3.19
+    - XS BLE
+        - fix None in utils.to_hex
+        - only parse first 8 EEPROM fields until BLE FW updated to support 9 
+        - stop checking for old FX2 code string in corrupted EEPROMs
+        - support V2.EVT prefix
+        - add new ACQUIRE status codes
+        - add new SPECTRA Characteristic
+        - read as many EEPROM bytes per page as supported by Peripheral
 - 2026-04-06 2.3.18
     - replaced WrapperWorker.is_FOO with .class_name
     - XL / Andor
