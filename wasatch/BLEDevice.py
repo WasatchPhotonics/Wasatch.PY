@@ -338,8 +338,8 @@ class BLEDevice(InterfaceDevice):
     # 
     ############################################################################
 
-    def disconnected_callback(self):
-        log.critical("disconnected")
+    def disconnected_callback(self, arg):
+        log.critical(f"disconnected (arg {arg})")
         # send poison-pill upstream?
 
     async def load_device_information(self):
@@ -553,6 +553,7 @@ class BLEDevice(InterfaceDevice):
 
     async def set_integration_time_ms(self, ms):
         name = "INTEGRATION_TIME_MS"
+        ms = int(round(ms))
         log.debug(f"setting {name} to {ms}ms")
         try:
             await self.write_char("GENERIC", self.generics.generate_write_request(name, ms), ack_name=name)
