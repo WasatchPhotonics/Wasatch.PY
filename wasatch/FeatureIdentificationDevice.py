@@ -1146,7 +1146,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         log.debug(f"setting area scan line step to {n}")
         self.settings.state.area_scan_line_step = n
-        return self.i2c_write(0x17, [n], label="SET_AREA_SCAN_LINE_STEP")
+        return self.i2c_write(0x19, [n], label="SET_AREA_SCAN_LINE_STEP") # current for RegisterMap 1.20 in FPGA 03.19.0
 
     # MZ: I don't remember what boards / firmware supports this? How does this differ from interval?
     def set_area_scan_line_count(self, n):

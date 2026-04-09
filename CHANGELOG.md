@@ -9,6 +9,8 @@
         - add new ACQUIRE status codes
         - add new SPECTRA Characteristic
         - read as many EEPROM bytes per page as supported by Peripheral
+    - XS Area Scan
+        - fixed line increment
 - 2026-04-06 2.3.18
     - replaced WrapperWorker.is_FOO with .class_name
     - XL / Andor
