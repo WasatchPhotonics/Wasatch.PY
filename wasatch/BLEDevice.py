@@ -304,10 +304,6 @@ class BLEDevice(InterfaceDevice):
         log.debug(f"connect_async: grabbing device information")
         await self.load_device_information()
 
-        # warn on old firmware
-        if utils.vercmp(self.device_info["Software Revision String"], "4.10.7") < 0:
-            log.error("intended for use with BLE FW 4.10.7 or higher (found {self.device_info['Software Revision String']})")
-
         log.debug(f"connect_async: loading Characteristics")
         await self.load_characteristics()
 
@@ -355,6 +351,15 @@ class BLEDevice(InterfaceDevice):
                     value = self.decode(await self.client.read_gatt_char(char.uuid))
                     self.device_info[name] = value
                     log.debug(f"  {name} {value}")
+
+        # warn on old firmware
+        if utils.vercmp(self.device_info["Software Revision String"], "4.10.7") < 0:
+            log.error("intended for use with BLE FW 4.10.7 or higher (found {self.device_info['Software Revision String']})")
+
+        # copy firmware revisions to SpectrometerSettings
+        self.settings.microcontroller_firmware_version = self.device_info["Firmware Revision String"]
+        self.settings.fpga_firmware_version = self.device_info["Hardware Revision String"]
+        self.settings.ble_firmware_version = self.device_info["Software Revision String"]
 
     async def load_characteristics(self):
         # find the primary service
@@ -514,20 +519,24 @@ class BLEDevice(InterfaceDevice):
         """
         log.debug(f"setting laser enable {flag}")
         self.laser_enable = flag
+
+        log.debug(f"set_laser_enable: calling sync_laser_state")
         await self.sync_laser_state()
+        log.debug(f"set_laser_enable: back from sync_laser_state")
 
     async def sync_laser_state(self):
-        # kludge for BLE FW <4.8.9
-        laser_warning_delay_ms = self.laser_warning_delay_sec * 1000
+        log.debug(f"sync_laser_state: start")
 
         data = [ 0x00,                   # mode
                  0x00,                   # type
                  0x01 if self.laser_enable else 0x00, 
                  0x00,                   # laser watchdog (DISABLE)
-                 (laser_warning_delay_ms >> 8) & 0xff,
-                 (laser_warning_delay_ms     ) & 0xff ]
-               # 0xff                    # status mask
+                 0x00,                   # reserved (legacy laser_warning_delay_ms)
+                 0x00 ]                  # reserved (legacy laser_warning_delay_ms)
+
+        log.debug(f"sync_laser_state: calling write_char('LASER_STATE') with data {data}")
         await self.write_char("LASER_STATE", data)
+        log.debug(f"sync_laser_state: done")
 
     def parse_laser_state(self, data):
         result = { 'laser_enable': False, 'laser_watchdog_sec': 0, 'status_mask': 0, 'laser_firing': False, 'interlock_closed': False }
@@ -871,7 +880,7 @@ class BLEDevice(InterfaceDevice):
         # asynchronous functions with arguments
         f["scans_to_average"]   = lambda n:     asyncio.run_coroutine_threadsafe(self.set_scans_to_average(n),      self.run_loop)
         f["integration_time_ms"]= lambda ms:    asyncio.run_coroutine_threadsafe(self.set_integration_time_ms(ms),  self.run_loop)
-        f["detector_gain"]      = lambda dB:    asyncio.run_coroutine_threadsafe(self.set_detector_gain(dB),        self.run_loop)
+        f["detector_gain"]      = lambda dB:    asyncio.run_coroutine_threadsafe(self.set_gain_db(dB),              self.run_loop)
         f["laser_enable"]       = lambda flag:  asyncio.run_coroutine_threadsafe(self.set_laser_enable(flag),       self.run_loop)
         f["vertical_binning"]   = lambda roi:   asyncio.run_coroutine_threadsafe(self.set_vertical_roi(roi),        self.run_loop)
 

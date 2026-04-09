@@ -3,6 +3,10 @@
 - 2026-??-?? 2.3.21
     - XS Area Scan
         - fixed line increment
+    - XS BLE
+        - move firmware revisions to SpectrometerSettings
+        - fix gain
+        - fix laser enable
 - 2026-04-09 2.3.20
     - XS BLE
         - fix None in utils.to_hex

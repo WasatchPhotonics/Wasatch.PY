@@ -1819,13 +1819,13 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 latest_data = self.device_type.read(self.device, 0x82, bytes_remaining, timeout=timeout_ms)
                 data.extend(latest_data) 
         except:
-            log.error(f"get_area_scan_xs: error reading line {line}", exc_info=1)
+            log.error(f"get_area_scan_xs: error reading line", exc_info=1)
             return None
 
         extra_len = len(data) - line_len
         if extra_len > 0:
             log.warn(f"get_area_scan_xs: storing {extra_len} extra bytes toward the next line")
-            self.extra_area_scan_data = line_data[line_len:]
+            self.extra_area_scan_data = data[line_len:]
 
         # demarshal line into spectrum
         spectrum = []
@@ -1838,19 +1838,20 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         # first pixel is line index
         line_index = spectrum[0]
-        if self.settings.supports_feature("xs_area_scan_offset_kludge"):
-            line_index -= 40
+        # if self.settings.supports_feature("xs_area_scan_offset_kludge"):
+        #     line_index -= 40
 
         # for some reason, line index is copied across first four pixels?
-        for i in range(4):
-            spectrum[i] = spectrum[4] 
+        # for i in range(4):
+        #     spectrum[i] = spectrum[4] 
+        spectrum[0] = spectrum[1]
 
         # update new line(s) in image
         max_lines = len(self.area_scan_frame)
         for offset in range(self.settings.state.area_scan_line_step + 1):
             index = line_index + offset
             if 0 <= index < max_lines and index <= stop:
-                self.area_scan_frame[index] = spectrum
+                self.area_scan_frame[index] = spectrum.copy()
         
         ########################################################################
         # process completed frame

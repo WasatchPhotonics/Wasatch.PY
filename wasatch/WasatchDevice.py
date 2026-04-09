@@ -970,7 +970,8 @@ class WasatchDevice(InterfaceDevice):
         """
         reading = self.hardware.get_area_scan()
         self.session_reading_count += 1
-        reading.session_count = self.session_reading_count
+        if reading:
+            reading.session_count = self.session_reading_count
         return SpectrometerResponse(data=reading)
 
     # ######################################################################## #
