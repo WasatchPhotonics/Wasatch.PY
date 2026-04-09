@@ -8,6 +8,8 @@
         - move firmware revisions to SpectrometerSettings
         - fix gain
         - fix laser enable
+        - fixed heartbeat
+        - working on LASER_STATE and BATTERY_STATE
 - 2026-04-09 2.3.20
     - XS BLE
         - fix None in utils.to_hex

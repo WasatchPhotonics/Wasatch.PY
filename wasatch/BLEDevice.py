@@ -310,11 +310,25 @@ class BLEDevice(InterfaceDevice):
         log.debug(f"connect_async: reading EEPROM")
         await self.read_eeprom()
 
+        ########################################################################
+        # post-EEPROM connection tasks
+        ########################################################################
+
         log.debug("connect_async: processing retrieved EEPROM")
         self.settings.update_wavecal()
 
+        log.debug("connect_async: initializing LASER_STATE")
+        await self.update_laser_state()
+
+        log.debug("connect_async: initializing BATTERY_STATE")
+        await self.update_battery_state()
+
         # grab initial integration time (used for acquisition timeout)
         self.integration_time_ms = self.settings.eeprom.startup_integration_time_ms
+
+        ########################################################################
+        # done
+        ########################################################################
 
         msg  = f"Connected to {self.settings.eeprom.model} {self.settings.eeprom.serial_number} with {self.settings.pixels()} pixels "
         msg += f"from ({self.settings.wavelengths[0]:.2f}, {self.settings.wavelengths[-1]:.2f}nm)"
@@ -621,51 +635,47 @@ class BLEDevice(InterfaceDevice):
     # Monitor
     ############################################################################
 
-    async def get_battery_state(self):
+    async def update_battery_state(self, buf=None):
         """
-        These will be pushed automatically 1/min from Central, if-and-only-if
+        These will be pushed automatically 2/min from Central, if-and-only-if
         no acquisition is occuring at the time of the scheduled event. However,
         at least some(?) clients (Bleak on MacOS) don't seem to receive the
         notifications until the next explicit read/write of a Characteristic 
         (any Chararacteristic? seemingly observed with ACQUIRE_CMD).
         """
-        buf = await self.read_char("BATTERY_STATE", 2)
-        log.debug(f"battery response: {buf}")
-        return { 'charging': buf[0] != 0,
-                 'perc': int(buf[1]) }
+        if buf is None:
+            log.debug("updating battery state")
+            buf = await self.read_char("BATTERY_STATE", 2)
+        if buf is None:
+            return
 
-    async def get_laser_state(self):
-        retval = {}
-        for k in [ 'mode', 'type', 'enable', 'watchdog_sec', 'mask', 'interlock_closed', 'laser_firing' ]:
-            retval[k] = 'UNKNOWN'
-            
-        buf = await self.read_char("LASER_STATE", 7)
+        state = self.settings.state
+        state.battery_charging = buf[0] != 0
+        state.battery_percentage = buf[1] + buf[2] / 256.0
+        state.battery_temperature_deg_c = buf[3]
+        state.battery_charger_temperature_deg_c = buf[4]
+
+    async def update_laser_state(self, buf=None):
+        if buf is None:
+            log.debug("updating laser state")
+            buf = await self.read_char("LASER_STATE", 7)
+        if buf is None:
+            return
+
+        state = self.settings.state
+
         if len(buf) >= 4:
-            retval.update({
-                'mode':            buf[0],
-                'type':            buf[1],
-                'enable':          buf[2],
-                'watchdog_sec':    buf[3] })
+            # ignore bytes 0 and 1 (mode and type)
+            state.laser_enabled = buf[2]
+            state.laser_watchdog_sec = (buf[3] << 8) | buf[4]
+
+        # skip bytes 5 and 6 reserved (used to be laser_warning_delay_ms)
 
         if len(buf) >= 7: 
-            retval.update({
-                'mask':            buf[6],
-                'interlock_closed':buf[6] & 0x01,
-                'laser_firing':    buf[6] & 0x02 })
+            state.laser_can_fire  = buf[7] & 0x01
+            state.laser_is_firing = buf[7] & 0x02
 
-        return retval
-
-    async def get_status(self):
-        battery_state = await self.get_battery_state()
-        battery_perc = f"{battery_state['perc']:3d}%"
-        battery_charging = 'charging' if battery_state['charging'] else 'discharging'
-
-        laser_state = await self.get_laser_state()
-        laser_firing = laser_state['laser_firing']
-        interlock_closed = 'closed (armed)' if laser_state['interlock_closed'] else 'open (safe)'
-
-        amb_temp = await self.get_generic_value("AMBIENT_TEMPERATURE_DEG_C")
-        return f"Battery {battery_perc} ({battery_charging}), Laser {laser_firing}, Interlock {interlock_closed}, Amb {amb_temp}°C"
+        # byte 8 will be laser PWM
 
     ############################################################################
     # Generics
@@ -713,6 +723,19 @@ class BLEDevice(InterfaceDevice):
         reading.session_count = self.session_reading_count
         reading.timestamp_complete = datetime.now()
         reading.device_id = self.device_id
+
+        future = asyncio.run_coroutine_threadsafe(self.update_laser_state(), self.run_loop)
+        _ = future.result()
+
+        future = asyncio.run_coroutine_threadsafe(self.update_battery_state(), self.run_loop)
+        _ = future.result()
+
+        state = self.settings.state
+        reading.laser_enabled = state.laser_enabled
+        reading.laser_is_firing = state.laser_is_firing
+        reading.laser_can_fire  = state.laser_can_fire
+        reading.battery_percentage = state.battery_percentage
+        reading.battery_charging = state.battery_charging
 
         return SpectrometerResponse(data=reading)
 
@@ -868,6 +891,13 @@ class BLEDevice(InterfaceDevice):
         elapsed_sec = (datetime.now() - start_time).total_seconds()
         log.debug(f"reading eeprom took {elapsed_sec:.2f} sec")
 
+    ############################################################################
+    # InterfaceDevice
+    ############################################################################
+
+    def heartbeat(self, arg):
+        pass
+
     def init_process_funcs(self): # -> dict[str, Callable[..., Any]] 
         f = {}
 
@@ -876,6 +906,7 @@ class BLEDevice(InterfaceDevice):
         f["disconnect"]         = self.disconnect
         f["close"]              = self.disconnect
         f["acquire_data"]       = self.acquire_data
+        f["heartbeat"]          = self.heartbeat
 
         # asynchronous functions with arguments
         f["scans_to_average"]   = lambda n:     asyncio.run_coroutine_threadsafe(self.set_scans_to_average(n),      self.run_loop)
