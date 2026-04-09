@@ -1144,9 +1144,21 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         n = int(max(1, min(n, 255)))
 
+        was_enabled = self.settings.state.area_scan_enabled
+        if was_enabled:
+            log.debug(f"temporarily disabling area scan")
+            self.set_area_scan_enable(False)
+            throwaway = self.get_spectrum()
+
         log.debug(f"setting area scan line step to {n}")
         self.settings.state.area_scan_line_step = n
-        return self.i2c_write(0x19, [n], label="SET_AREA_SCAN_LINE_STEP") # current for RegisterMap 1.20 in FPGA 03.19.0
+        result = self.i2c_write(0x19, [n], label="SET_AREA_SCAN_LINE_STEP") # current for RegisterMap 1.20 in FPGA 03.19.0
+
+        if was_enabled:
+            log.debug(f"re-enabling area scan")
+            self.set_area_scan_enable(True)
+
+        return result
 
     # MZ: I don't remember what boards / firmware supports this? How does this differ from interval?
     def set_area_scan_line_count(self, n):
@@ -1819,9 +1831,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 latest_data = self.device_type.read(self.device, 0x82, bytes_remaining, timeout=timeout_ms)
                 data.extend(latest_data) 
         except:
-            log.error(f"get_area_scan_xs: error reading line", exc_info=1)
+            log.error(f"get_area_scan_xs: error reading line with timeout {timeout_ms}ms", exc_info=1)
             return None
 
+        # not currently needed
         extra_len = len(data) - line_len
         if extra_len > 0:
             log.warn(f"get_area_scan_xs: storing {extra_len} extra bytes toward the next line")
@@ -1838,17 +1851,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         # first pixel is line index
         line_index = spectrum[0]
-        # if self.settings.supports_feature("xs_area_scan_offset_kludge"):
-        #     line_index -= 40
-
-        # for some reason, line index is copied across first four pixels?
-        # for i in range(4):
-        #     spectrum[i] = spectrum[4] 
         spectrum[0] = spectrum[1]
 
         # update new line(s) in image
         max_lines = len(self.area_scan_frame)
-        for offset in range(self.settings.state.area_scan_line_step + 1):
+        for offset in range(self.settings.state.area_scan_line_step):
             index = line_index + offset
             if 0 <= index < max_lines and index <= stop:
                 self.area_scan_frame[index] = spectrum.copy()

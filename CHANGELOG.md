@@ -3,6 +3,7 @@
 - 2026-??-?? 2.3.21
     - XS Area Scan
         - fixed line increment
+        - disable area scan while changing line increment
     - XS BLE
         - move firmware revisions to SpectrometerSettings
         - fix gain
