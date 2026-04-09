@@ -133,6 +133,13 @@ class BLEDevice(InterfaceDevice):
     MacOS host). They work fine from a "real" Dell laptop, so this is probably
     a Parallels bug.
 
+    # TODO
+
+    - consider registering callback with StatusIndicators, BatteryFeature, 
+      LaserControlFeature etc for BATTERY_STATE and LASER_STATE notifications
+    - add HardwareStripCharts for all the XS bits, like AmbientTemperature, 
+      LaserChargerTemperature, MicrocontrollerTemperature etc
+
     # Misc
 
     @todo consider https://github.com/django/asgiref#function-wrappers
@@ -427,14 +434,11 @@ class BLEDevice(InterfaceDevice):
         for uuid in self.notifications:
             await self.client.stop_notify(uuid)
 
-    def battery_notification(self, sender, data):
-        charging = data[0] != 0
-        perc = int(data[1])
-        log.debug(f"received BATTERY_STATE notification: level {perc}%, charging {charging} (data {data})")
+    async def battery_notification(self, sender, data):
+        await self.update_battery_state(data)
 
-    def laser_state_notification(self, sender, data):
-        status = self.parse_laser_state(data)
-        log.debug(f"received LASER_STATE notification: sender {sender}, data {data}: {status}")
+    async def laser_state_notification(self, sender, data):
+        await self.update_laser_state(data)
 
     async def read_char(self, name, min_len=None, quiet=False):
         uuid = self.get_uuid_by_name(name)
@@ -552,20 +556,6 @@ class BLEDevice(InterfaceDevice):
         await self.write_char("LASER_STATE", data)
         log.debug(f"sync_laser_state: done")
 
-    def parse_laser_state(self, data):
-        result = { 'laser_enable': False, 'laser_watchdog_sec': 0, 'status_mask': 0, 'laser_firing': False, 'interlock_closed': False }
-        size = len(data)
-        #if size > 0: result['mode']              = data[0]
-        #if size > 1: result['type']              = data[1]
-        if size > 2: result['laser_enable']       = data[2] != 0
-        if size > 3: result['laser_watchdog_sec'] = data[3]
-        # ignore bytes 4-5 (reserved)
-        if size > 6: 
-            result['status_mask']                 = data[6]
-            result['interlock_closed']            = data[6] & 0x01 != 0
-            result['laser_firing']                = data[6] & 0x02 != 0
-        return result
-
     async def set_laser_tec_mode(self, mode: str):
         index = self.LASER_TEC_MODES.index(mode)
         await self.write_char("GENERIC", self.generics.generate_write_request("LASER_TEC_MODE", index))
@@ -655,6 +645,8 @@ class BLEDevice(InterfaceDevice):
         state.battery_temperature_deg_c = buf[3]
         state.battery_charger_temperature_deg_c = buf[4]
 
+        log.debug(f"updated battery state: chg {state.battery_charging}, perc {state.battery_percentage}, temp {state.battery_temperature_deg_c}C, chgTemp {state.battery_temperature_deg_c}C")
+
     async def update_laser_state(self, buf=None):
         if buf is None:
             log.debug("updating laser state")
@@ -676,6 +668,8 @@ class BLEDevice(InterfaceDevice):
             state.laser_is_firing = buf[7] & 0x02
 
         # byte 8 will be laser PWM
+
+        log.debug(f"updated laser state: enabled {state.laser_enabled}, watchdog {state.laser_watchdog_sec}sec, can_fire {state.laser_can_fire}, is_firing {state.laser_is_firing}")
 
     ############################################################################
     # Generics

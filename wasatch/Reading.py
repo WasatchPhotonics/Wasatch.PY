@@ -55,7 +55,7 @@ class Reading:
         return self.take_one_request and self.take_one_request.auto_raman_request
 
     def __str__(self):
-        return "wasatch.Reading {device_id %s, spectrum %s, averaged %s, sum_count %d, session_count %d, area_scan_row_count %d, timestamp %s, timestamp_complete %s, failure %s, laser_enabled %s, laser_can_fire %s, laser_is_firing %s, ambient %s, take_one_request %s }" % (
+        return "wasatch.Reading {device_id %s, spectrum %s, averaged %s, sum_count %d, session_count %d, area_scan_row_count %d, timestamp %s, timestamp_complete %s, failure %s, laser_enabled %s, laser_can_fire %s, laser_is_firing %s, battery %s, ambient %s, take_one_request %s }" % (
             self.device_id, 
             "None" if self.spectrum is None else ("%d values" % len(self.spectrum)),
             self.averaged, 
@@ -68,6 +68,7 @@ class Reading:
             self.laser_enabled,
             self.laser_can_fire,
             self.laser_is_firing,
+            self.battery_percentage,
             self.ambient_temperature_degC,
             self.take_one_request)
 
