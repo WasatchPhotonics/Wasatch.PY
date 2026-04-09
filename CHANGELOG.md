@@ -1,5 +1,8 @@
 # Changelog
 
+- 2026-??-?? 2.3.21
+    - XS Area Scan
+        - fixed line increment
 - 2026-04-09 2.3.20
     - XS BLE
         - fix None in utils.to_hex
@@ -9,8 +12,6 @@
         - add new ACQUIRE status codes
         - add new SPECTRA Characteristic
         - read as many EEPROM bytes per page as supported by Peripheral
-    - XS Area Scan
-        - fixed line increment
 - 2026-04-06 2.3.18
     - replaced WrapperWorker.is_FOO with .class_name
     - XL / Andor
