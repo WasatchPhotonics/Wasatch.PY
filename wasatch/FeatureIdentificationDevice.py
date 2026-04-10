@@ -1133,7 +1133,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
     def set_area_scan_enable(self, flag):
         """
         Historically, this opcode moved around a bit. It is currently 0xeb, which 
-        conflicts with CF_SELECT).  At one point it was 0xe9, which conflicted with
+        conflicts with CF_SELECT.  At one point it was 0xe9, which conflicted with
         LASER_RAMP_ENABLE.  
         """
         if self.settings.is_ingaas():
@@ -1146,7 +1146,13 @@ class FeatureIdentificationDevice(InterfaceDevice):
         value = 1 if flag else 0
         self.settings.state.area_scan_enabled = flag
         self.settings.state.area_scan_first_trigger_sent = False
-        return self._send_code(0xeb, value, label="SET_AREA_SCAN_ENABLE")
+        result = self._send_code(0xeb, value, label="SET_AREA_SCAN_ENABLE")
+
+        if self.settings.is_xs():
+            log.debug("sending a single ACQUIRE to start the area scan")
+            self._send_code(0xad, label="ACQUIRE_SPECTRUM")
+
+        return result
 
     def set_area_scan_line_step(self, n):
         if not self.settings.is_xs():
@@ -1812,6 +1818,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
         subsequent calls will just keep sending out additional lines, until the
         spectrometer is taken out of area scan mode.
 
+        Note that in current XS firmware, only a single ACQUIRE needs to be sent
+        after enabling area scan mode; after that, the microcontroller will
+        internally trigger the FPGA after each line is read. In the event of a
+        rare timeout, simply send another ACQUIRE to restart the process.
         """
         if self.settings.is_ingaas():
             return None
@@ -1831,12 +1841,14 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         # read a line (might be the "next" line, might be the "first" or "last" 
         # line, might have skipped a few, who knows)
-        self._send_code(0xad, label="ACQUIRE_SPECTRUM")
+        #
+        # self._send_code(0xad, label="ACQUIRE_SPECTRUM") # XS FW does this automatically when in Area Scan mode
 
         # start with any extra data we might have picked up on the last read
-        data = self.extra_area_scan_data 
-        self.extra_area_scan_data = []
+        # data = self.extra_area_scan_data 
+        # self.extra_area_scan_data = []
 
+        data = []
         try:
             while len(data) < line_len:
                 bytes_remaining = line_len - len(data)
@@ -1844,13 +1856,15 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 data.extend(latest_data) 
         except:
             log.error(f"get_area_scan_xs: error reading line with timeout {timeout_ms}ms", exc_info=1)
-            return None
+            log.debug(f"get_area_scan_xs: sending another ACQUIRE to restart the process")
+            self._send_code(0xad, label="ACQUIRE_SPECTRUM")
+            return
 
         # not currently needed
-        extra_len = len(data) - line_len
-        if extra_len > 0:
-            log.warn(f"get_area_scan_xs: storing {extra_len} extra bytes toward the next line")
-            self.extra_area_scan_data = data[line_len:]
+        # extra_len = len(data) - line_len
+        # if extra_len > 0:
+        #     log.warn(f"get_area_scan_xs: storing {extra_len} extra bytes toward the next line")
+        #     self.extra_area_scan_data = data[line_len:]
 
         # demarshal line into spectrum
         spectrum = []
