@@ -212,7 +212,10 @@ class BLEDevice(InterfaceDevice):
         log.debug("init: start")
 
         super().__init__()
-        self.device_id = device_id
+
+        self.device_id      = device_id
+        self.message_queue  = message_queue
+        self.alert_queue    = alert_queue
 
         self.notifications = set() # all Characteristics to which we're subscribed for notifications
 
@@ -251,7 +254,6 @@ class BLEDevice(InterfaceDevice):
 
         self.session_reading_count = 0
         self.take_one_request = None
-        self.auto_raman_steps = None
         
         log.debug("init: done")
 
@@ -333,8 +335,12 @@ class BLEDevice(InterfaceDevice):
         log.debug("connect_async: initializing BATTERY_STATE")
         await self.update_battery_state()
 
-        # grab initial integration time (used for acquisition timeout)
+        log.debug("connect_async: initializing integration time")
         self.integration_time_ms = self.settings.eeprom.startup_integration_time_ms
+        await self.set_integration_time_ms(self.integration_time_ms)
+
+        log.debug("connect_async: initializing scan averaging")
+        await self.set_scans_to_average(1)
 
         ########################################################################
         # done
@@ -768,26 +774,24 @@ class BLEDevice(InterfaceDevice):
             total_steps  = int(payload[2] << 8 | payload[3])
 
             step_msg = ""
-            if totalSteps > 1:
+            if total_steps > 1:
                 step_msg = f" ({current_step + 1}/{total_steps})" 
                 msg += step_msg
 
             # Auto-Raman takes awhile, so flow up some status indications
-            if self.take_one_request and self.take_one_request.auto_raman:
-                if long == "AUTO_OPT_TARGET_RATIO":
-                    self.queue_message("Optimizing acquisition parameters" + step_msg)
+            if self.take_one_request and self.take_one_request.auto_raman_request:
+                if short == "LASER_WARMUP":
+                    self.queue_message("marquee_info", "waiting for laser to stabilize")
                     self.queue_message("progress_bar", -1)
-                elif long == "TAKING_RAMAN":
-                    self.auto_raman_steps = total_steps
-                    self.queue_message("Collecting averaged Raman sepctra" + step_msg)
-                    if self.auto_raman_steps:
-                        self.queue_message("progress_bar", 100.0 * current_step / (2 * self.auto_raman_steps))
-                elif long == "TAKING_DARK":
-                    self.queue_message("Collecting averaged darks" + step_msg)
-                    if self.auto_raman_steps:
-                        self.queue_message("progress_bar", 100.0 * (self.auto_raman_steps + current_step) / (2 * self.auto_raman_steps))
-                elif long == "LASER_WARMUP":
-                    self.queue_message("Stabilizing laser" + step_msg)
+                elif short == "AUTO_OPT_TARGET_RATIO":
+                    self.queue_message("marquee_info", "optimizing acquisition parameters")
+                    self.queue_message("progress_bar", -1)
+                elif short == "TAKING_RAMAN":
+                    self.queue_message("marquee_info", "averaging Raman sepctra")
+                    self.queue_message("progress_bar", 100.0 * current_step / total_steps)
+                elif short == "TAKING_DARK":
+                    self.queue_message("marquee_info", "averaging dark spectra")
+                    self.queue_message("progress_bar", 100.0 * current_step / total_steps)
 
         return msg
     
@@ -887,7 +891,8 @@ class BLEDevice(InterfaceDevice):
         # @todo add invert_detector
         # @todo add many things...
             
-        self.queue_message("progress_bar", 100)
+        if auto_raman:
+            self.queue_message("progress_bar", 100)
 
         return self.spectrum
 
@@ -956,6 +961,7 @@ class BLEDevice(InterfaceDevice):
         """
         if self.message_queue:
             msg = StatusMessage(setting, value)
+            log.debug(f"queue_message: {msg}")
             try:
                 self.message_queue.put(msg) 
             except:
@@ -1139,7 +1145,7 @@ class Generics:
     async def notification_callback(self, sender, data):
         # STEP EIGHT: we have received a response notification from the Generic Characteristic
 
-        log.debug(f"received GENERIC notification from sender {sender}, data {utils.to_hex(data)}")
+        log.debug(f"received GENERIC notification, data {utils.to_hex(data)}")
 
         # STEP NINE: extract the sequence number from the notification response
         result = None
