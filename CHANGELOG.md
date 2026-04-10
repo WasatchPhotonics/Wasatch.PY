@@ -1,6 +1,6 @@
 # Changelog
 
-- 2026-??-?? 2.3.22
+- 2026-04-10 2.3.22
     - added Reading.protocol
     - XS
         - disable detector timeout during area scan
