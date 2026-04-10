@@ -1,6 +1,9 @@
 # Changelog
 
-- 2026-??-?? 2.3.21
+- 2026-??-?? 2.3.22
+    - added Reading.protocol
+    - adding Auto-Raman to BLEDevice
+- 2026-04-09 2.3.21
     - XS Area Scan
         - fixed line increment
         - disable area scan while changing line increment
