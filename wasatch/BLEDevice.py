@@ -787,7 +787,7 @@ class BLEDevice(InterfaceDevice):
                     self.queue_message("marquee_info", "optimizing acquisition parameters")
                     self.queue_message("progress_bar", -1)
                 elif short == "TAKING_RAMAN":
-                    self.queue_message("marquee_info", "averaging Raman sepctra")
+                    self.queue_message("marquee_info", "averaging Raman spectra")
                     self.queue_message("progress_bar", 100.0 * current_step / total_steps)
                 elif short == "TAKING_DARK":
                     self.queue_message("marquee_info", "averaging dark spectra")
