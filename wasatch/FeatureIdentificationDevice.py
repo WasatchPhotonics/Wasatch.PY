@@ -1121,20 +1121,38 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.settings.eeprom.detector_gain_odd = gain
         return self._send_code(0x9d, raw, label="SET_DETECTOR_GAIN_ODD")
 
+    def set_detector_timeout_sec(self, sec):
+        if not self.settings.is_xs():
+            msg = "SET_DETECTOR_TIMEOUT_SEC requires XS"
+            log.error(msg)
+            return SpectrometerResponse(error_lvl=ErrorLevel.low, error_msg=msg)
+
+        log.debug(f"setting detector timeout to {sec}sec")
+        return self._send_code(0x8e, sec, label="SET_DETECTOR_TIMEOUT_SEC")
+
     def set_area_scan_enable(self, flag):
         """
         Historically, this opcode moved around a bit. It is currently 0xeb, which 
-        conflicts with CF_SELECT).  At one point it was 0xe9, which conflicted with
+        conflicts with CF_SELECT.  At one point it was 0xe9, which conflicted with
         LASER_RAMP_ENABLE.  
         """
         if self.settings.is_ingaas():
             log.error("area scan is not supported on InGaAs detectors (single line array)")
             return SpectrometerResponse(error_lvl=ErrorLevel.low, error_msg="area scan is not supported on InGaAs detectors (single line array)")
 
+        if self.settings.is_xs():
+            self.set_detector_timeout_sec(0) # disable
+
         value = 1 if flag else 0
         self.settings.state.area_scan_enabled = flag
         self.settings.state.area_scan_first_trigger_sent = False
-        return self._send_code(0xeb, value, label="SET_AREA_SCAN_ENABLE")
+        result = self._send_code(0xeb, value, label="SET_AREA_SCAN_ENABLE")
+
+        if self.settings.is_xs():
+            log.debug("sending a single ACQUIRE to start the area scan")
+            self._send_code(0xad, label="ACQUIRE_SPECTRUM")
+
+        return result
 
     def set_area_scan_line_step(self, n):
         if not self.settings.is_xs():
@@ -1144,9 +1162,21 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         n = int(max(1, min(n, 255)))
 
+        was_enabled = self.settings.state.area_scan_enabled
+        if was_enabled:
+            log.debug(f"temporarily disabling area scan")
+            self.set_area_scan_enable(False)
+            throwaway = self.get_spectrum()
+
         log.debug(f"setting area scan line step to {n}")
         self.settings.state.area_scan_line_step = n
-        return self.i2c_write(0x17, [n], label="SET_AREA_SCAN_LINE_STEP")
+        result = self.i2c_write(0x19, [n], label="SET_AREA_SCAN_LINE_STEP") # current for RegisterMap 1.20 in FPGA 03.19.0
+
+        if was_enabled:
+            log.debug(f"re-enabling area scan")
+            self.set_area_scan_enable(True)
+
+        return result
 
     # MZ: I don't remember what boards / firmware supports this? How does this differ from interval?
     def set_area_scan_line_count(self, n):
@@ -1771,7 +1801,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         commands would stretch that out further. Over 12mbps Full-Speed USB, the
         entire process comes to something like 2.5 MINUTES operationally.
 
-        Therefore, a blocking call to get_area_scan_xs() will return ASINGLE LINE 
+        Therefore, a blocking call to get_area_scan_xs() will return A SINGLE LINE 
         of an ONGOING area scan. This allows ENLIGHTEN to appear "responsive" 
         during the area scan process, updating its graphical area scan image in
         real-time as each line is received.
@@ -1788,6 +1818,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
         subsequent calls will just keep sending out additional lines, until the
         spectrometer is taken out of area scan mode.
 
+        Note that in current XS firmware, only a single ACQUIRE needs to be sent
+        after enabling area scan mode; after that, the microcontroller will
+        internally trigger the FPGA after each line is read. In the event of a
+        rare timeout, simply send another ACQUIRE to restart the process.
         """
         if self.settings.is_ingaas():
             return None
@@ -1807,25 +1841,30 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         # read a line (might be the "next" line, might be the "first" or "last" 
         # line, might have skipped a few, who knows)
-        self._send_code(0xad, label="ACQUIRE_SPECTRUM")
+        #
+        # self._send_code(0xad, label="ACQUIRE_SPECTRUM") # XS FW does this automatically when in Area Scan mode
 
         # start with any extra data we might have picked up on the last read
-        data = self.extra_area_scan_data 
-        self.extra_area_scan_data = []
+        # data = self.extra_area_scan_data 
+        # self.extra_area_scan_data = []
 
+        data = []
         try:
             while len(data) < line_len:
                 bytes_remaining = line_len - len(data)
                 latest_data = self.device_type.read(self.device, 0x82, bytes_remaining, timeout=timeout_ms)
                 data.extend(latest_data) 
         except:
-            log.error(f"get_area_scan_xs: error reading line {line}", exc_info=1)
-            return None
+            log.error(f"get_area_scan_xs: error reading line with timeout {timeout_ms}ms", exc_info=1)
+            log.debug(f"get_area_scan_xs: sending another ACQUIRE to restart the process")
+            self._send_code(0xad, label="ACQUIRE_SPECTRUM")
+            return
 
-        extra_len = len(data) - line_len
-        if extra_len > 0:
-            log.warn(f"get_area_scan_xs: storing {extra_len} extra bytes toward the next line")
-            self.extra_area_scan_data = line_data[line_len:]
+        # not currently needed
+        # extra_len = len(data) - line_len
+        # if extra_len > 0:
+        #     log.warn(f"get_area_scan_xs: storing {extra_len} extra bytes toward the next line")
+        #     self.extra_area_scan_data = data[line_len:]
 
         # demarshal line into spectrum
         spectrum = []
@@ -1838,19 +1877,14 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         # first pixel is line index
         line_index = spectrum[0]
-        if self.settings.supports_feature("xs_area_scan_offset_kludge"):
-            line_index -= 40
-
-        # for some reason, line index is copied across first four pixels?
-        for i in range(4):
-            spectrum[i] = spectrum[4] 
+        spectrum[0] = spectrum[1]
 
         # update new line(s) in image
         max_lines = len(self.area_scan_frame)
-        for offset in range(self.settings.state.area_scan_line_step + 1):
+        for offset in range(self.settings.state.area_scan_line_step):
             index = line_index + offset
             if 0 <= index < max_lines and index <= stop:
-                self.area_scan_frame[index] = spectrum
+                self.area_scan_frame[index] = spectrum.copy()
         
         ########################################################################
         # process completed frame

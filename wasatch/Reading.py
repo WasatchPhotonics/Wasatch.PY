@@ -42,6 +42,7 @@ class Reading:
         self.elapsed_since_last        = None
         self.keep_alive                = False
         self.image_format              = None
+        self.protocol                  = None
 
         # only populated by AutoRaman
         self.new_integration_time_ms   = None
@@ -55,7 +56,7 @@ class Reading:
         return self.take_one_request and self.take_one_request.auto_raman_request
 
     def __str__(self):
-        return "wasatch.Reading {device_id %s, spectrum %s, averaged %s, sum_count %d, session_count %d, area_scan_row_count %d, timestamp %s, timestamp_complete %s, failure %s, laser_enabled %s, laser_can_fire %s, laser_is_firing %s, ambient %s, take_one_request %s }" % (
+        return "wasatch.Reading {device_id %s, spectrum %s, averaged %s, sum_count %d, session_count %d, area_scan_row_count %d, timestamp %s, timestamp_complete %s, failure %s, laser_enabled %s, laser_can_fire %s, laser_is_firing %s, battery %s, ambient %s, take_one_request %s }" % (
             self.device_id, 
             "None" if self.spectrum is None else ("%d values" % len(self.spectrum)),
             self.averaged, 
@@ -68,6 +69,7 @@ class Reading:
             self.laser_enabled,
             self.laser_can_fire,
             self.laser_is_firing,
+            self.battery_percentage,
             self.ambient_temperature_degC,
             self.take_one_request)
 
@@ -80,6 +82,8 @@ class Reading:
         self.clear()
 
         self.device_id = str(device_id)
+        if self.device_id:
+            self.protocol = self.device_id.split(":")[0]
 
         # NOTE: this will generally indicate when the acquisition STARTS, not ENDS
         # (WasatchDevice.acquire_spectrum instantiates Reading before calling hardware.get_line,

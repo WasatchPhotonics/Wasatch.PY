@@ -31,6 +31,7 @@ class SpectrometerState:
         self.tec_enabled = False
         self.detector_temperature_raw = None
         self.detector_temperature_raw_last_refreshed = None
+        self.ambient_temperature_deg_c = None
 
         # high gain mode (InGaAs only)
         self.high_gain_mode_enabled = False
@@ -42,6 +43,7 @@ class SpectrometerState:
         self.laser_power_perc = 0   # should always contain a number [0, 100]
         self.use_mW = False         # bool
         self.laser_temperature_setpoint_raw = 0
+        self.laser_temperature_deg_c = None
         self.selected_adc = None
         self.selected_laser = 0
         self.laser_power_high_resolution = True
@@ -53,6 +55,8 @@ class SpectrometerState:
         self.laser_tec_enabled = False
         self.laser_tec_setpoint = 800
         self.laser_warning_delay_sec = None
+        self.laser_is_firing = None
+        self.laser_can_fire = None
 
         # triggering
         self.trigger_source = self.TRIGGER_SOURCE_INTERNAL
@@ -68,6 +72,8 @@ class SpectrometerState:
         self.battery_charging = False
         self.battery_timestamp = None
         self.battery_raw = None        
+        self.battery_temperature_deg_c = None
+        self.battery_charger_temperature_deg_c = None
 
         # wasatch.DetectorRegions
         self.detector_regions = None

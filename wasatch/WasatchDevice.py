@@ -910,8 +910,16 @@ class WasatchDevice(InterfaceDevice):
     # to the device.
     #
     # Essentially this iterates through all the (setting, value) pairs we've
-    # received through change_setting() which have not yet been processed, and <-- MZ: incomplete sentence
+    # received through change_setting() which have not yet been processed by 
+    # either handle_requests (which does everything in process_f), or 
+    # change_setting (which handles a few WasatchDevice-immediate settings).
     #
+    # The command_queue is populated by change_setting which only queues
+    # commands that neither it nor handle_requests knew what to do with, 
+    # which should be a pretty small set.
+    #
+    # Ridiculously, the commands processed here are then simply passed to 
+    # FeatureInterfaceDevice.handle_requests.
     #
     # Note that WrapperWorker.run "de-dupes" commands on
     # receipt from ENLIGHTEN, so the command stream arising from that source
@@ -922,7 +930,6 @@ class WasatchDevice(InterfaceDevice):
     # at the beginning of acquire_data, itself ticked regularly by
     # WrapperWorker.run.
     def process_commands(self):
-        control_object = "throwaway"
         retval = False
         log.debug("process_commands: processing")
         while len(self.command_queue) > 0:
@@ -970,7 +977,8 @@ class WasatchDevice(InterfaceDevice):
         """
         reading = self.hardware.get_area_scan()
         self.session_reading_count += 1
-        reading.session_count = self.session_reading_count
+        if reading:
+            reading.session_count = self.session_reading_count
         return SpectrometerResponse(data=reading)
 
     # ######################################################################## #
@@ -1003,8 +1011,48 @@ class WasatchDevice(InterfaceDevice):
     #                                                                          #
     # ######################################################################## #
 
+    def handle_requests(self, requests: list[SpectrometerRequest]): # -> list[SpectrometerResponse] 
+        """
+        Override handle_requests. 
+        
+        @note I didn't see a good way to override change_setting without having
+              to redo that pass-through. -ED
+
+        As you can see in WasatchDevice._init_process_funcs, the only commands
+        that _actually_ get executed from here are CONNECT, DISCONNECT and
+        ACQUIRE_DATA. Everything else is going to get passed to change_setting,
+        which will localling process those few specific to WasatchDevice, then
+        push the rest on command_queue for eventual ordered execution by 
+        process_commands the next time acquire_data is called by WrapperWorker.
+        """
+        responses = []
+        for request in requests:
+            try:
+                cmd = request.cmd
+                proc_func = self.process_f.get(cmd, None)
+                if proc_func is None:
+                    try:
+                        self.change_setting(cmd, *request.args, **request.kwargs)
+                    except Exception as e:
+                        log.error(f"error {e} with trying to set setting {cmd} with args and kwargs {request.args} and {request.kwargs}", exc_info=1)
+                        return []
+                elif request.args == [] and request.kwargs == {}:
+                    responses.append(proc_func())
+                else:
+                    responses.append(proc_func(*request.args, **request.kwargs))
+            except Exception as e:
+                log.error(f"error in handling request {request} of {e}", exc_info=1)
+                responses.append(SpectrometerResponse(error_msg="error processing cmd", error_lvl=ErrorLevel.medium))
+        return responses
+
     ##
     # Processes an incoming (setting, value) pair.
+    #
+    # ENLIGHTEN commands to WasatchDeviceWrapper USED TO be sent here by 
+    # WasatchDeviceWrapper. However, that is now handled via WrapperWorker -> 
+    # InterfaceDevice -> handle_requests. Therefore, this is now only invoked
+    # if WasatchDevice's override of handle_requests receives a setting that
+    # isn't declared by FeatureInterfaceDevice.
     #
     # Some settings are processed internally within this function, if the
     # functionality they are controlling is implemented by WasatchDevice.
@@ -1018,9 +1066,6 @@ class WasatchDevice(InterfaceDevice):
     # Some hardware settings (those involving triggering or the laser) are
     # sent downstream immediately, rather than waiting for the next "scheduled"
     # settings update.
-    #
-    # ENLIGHTEN commands to WasatchDeviceWrapper are sent here by
-    # WasatchDeviceWrapper.continuous_poll.
     #
     # @param setting (Input) which setting to change
     # @param value   (Input) the new value of the setting (required, but can
@@ -1055,28 +1100,5 @@ class WasatchDevice(InterfaceDevice):
         # always process trigger_source commands promptly (can't wait for end of
         # acquisition which may never come)
         if (allow_immediate and self.immediate_mode) or re.search(r"trigger|laser", setting):
-            log.debug("immediately processing %s", control_object)
+            log.debug(f"immediately processing {control_object}")
             self.process_commands()
-
-    # override handle_requests. I didn't see a good way to overwrite change_setting without
-    # having to redo that pass through.
-    def handle_requests(self, requests: list[SpectrometerRequest]): # -> list[SpectrometerResponse] 
-        responses = []
-        for request in requests:
-            try:
-                cmd = request.cmd
-                proc_func = self.process_f.get(cmd, None)
-                if proc_func is None:
-                    try:
-                        self.change_setting(cmd, *request.args, **request.kwargs)
-                    except Exception as e:
-                        log.error(f"error {e} with trying to set setting {cmd} with args and kwargs {request.args} and {request.kwargs}", exc_info=1)
-                        return []
-                elif request.args == [] and request.kwargs == {}:
-                    responses.append(proc_func())
-                else:
-                    responses.append(proc_func(*request.args, **request.kwargs))
-            except Exception as e:
-                log.error(f"error in handling request {request} of {e}", exc_info=1)
-                responses.append(SpectrometerResponse(error_msg="error processing cmd", error_lvl=ErrorLevel.medium))
-        return responses

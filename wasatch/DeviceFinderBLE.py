@@ -104,4 +104,4 @@ class DeviceFinderBLE:
         elif advertisement_data:
             return BLEDevice.WASATCH_SERVICE.lower() in advertisement_data.service_uuids.lower()
         else:
-            return "WP-" in device.name.upper()
+            return any([device.name.upper().startswith(prefix) for prefix in ["WP-", "V2.EVT"]])

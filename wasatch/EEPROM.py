@@ -292,7 +292,7 @@ class EEPROM:
     # given a set of the 8+ buffers read from a spectrometer via USB,
     # parse those into the approrpriate fields and datatypes
     def parse(self, buffers):
-        if len(buffers) < EEPROM.MAX_PAGES:
+        if len(buffers) < 8: # EEPROM.MAX_PAGES:
             log.error("EEPROM.parse expects at least %d buffers", EEPROM.MAX_PAGES)
             return False
 
@@ -303,12 +303,12 @@ class EEPROM:
         # handy for debugs
         self.hexbuf = [" ".join([f"{v:02x}" for v in buf]) for buf in buffers]
 
-        # check for known ne'er-do-well
-        bad = r"c2 47 05 31 21 00 00 04 00 03 00 00 02 31 a5 00 03 00 33 02 39 0f 00 03 00 43 02 2f 00 00 03 00 " \
-            + r"4b 02 2b 23 00 03 00 53 02 2f 00 03 ff 01 00 90 e6 78 e0 54 10 ff c4 54 0f 44 50 f5 09 13 e4"
-        for i, s in enumerate(self.hexbuf):
-            if bad in s:
-                log.error(f"bad string found in EEPROM page {i}")
+        # check for known ne'er-do-well (don't ask)
+        # bad = r"c2 47 05 31 21 00 00 04 00 03 00 00 02 31 a5 00 03 00 33 02 39 0f 00 03 00 43 02 2f 00 00 03 00 " \
+        #     + r"4b 02 2b 23 00 03 00 53 02 2f 00 03 ff 01 00 90 e6 78 e0 54 10 ff c4 54 0f 44 50 f5 09 13 e4"
+        # for i, s in enumerate(self.hexbuf):
+        #     if bad in s:
+        #         log.error(f"bad string found in EEPROM page {i}")
 
         # unpack all the fields we know about
         try:
@@ -319,7 +319,7 @@ class EEPROM:
             return False
 
     ## 
-    # Assuming a set of 8 buffers have been passed in via parse(), actually
+    # Assuming a set of 8+ buffers have been passed in via parse(), actually
     # unpack (deserialize / unmarshall) the binary data into the appropriate
     # fields and datatypes.
     # 
@@ -549,7 +549,7 @@ class EEPROM:
         if "XS" in self.model.upper(): # and self.format >= 18:
             
             s = self.unpack_field("laser_password", quiet=True)
-            if len(s) < 4 or any([c in [0x00, 0xff] for c in s]):
+            if s is None or len(s) < 4 or any([c in [0x00, 0xff] for c in s]):
                 log.debug("no laser password found")
                 self.laser_password = None
 

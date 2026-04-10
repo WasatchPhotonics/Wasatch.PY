@@ -361,13 +361,7 @@ class SpectrometerSettings:
                self.hardware_info.pid == 0x6014
 
     def is_micro(self):
-        return ( self.is_arm() and (
-                   self.is_imx() or
-                   "micro" in self.full_model().lower() or
-                   "sig"   in self.full_model().lower() or
-                   "xs"    in self.full_model().lower()
-                 )
-               ) or self.is_spi()
+        return self.is_xs()
 
     def is_non_raman(self):
         return not self.has_excitation()
@@ -391,10 +385,14 @@ class SpectrometerSettings:
         return 'IDSPeak' in str(self.device_id)
 
     def is_sig(self):
-        return self.is_micro()
+        return self.is_xs()
 
     def is_xs(self):
-        return self.is_micro()
+        return (self.is_imx() 
+                or "micro" in self.full_model().lower()
+                or "sig"   in self.full_model().lower()
+                or "xs"    in self.full_model().lower()
+                or self.is_spi())
 
     def supports_feature(self, feature):
         return self.firmware_requirements.supports(feature)

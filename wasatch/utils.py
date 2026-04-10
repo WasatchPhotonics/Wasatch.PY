@@ -738,6 +738,8 @@ def vercmp(a, b, delim=None):
     else: return +1
 
 def to_hex(a):
+    if a is None:
+        return "[ ]"
     return "[ " + ", ".join([f"0x{v:02x}" for v in a]) + " ]"
 
 def from_db_to_linear(x):

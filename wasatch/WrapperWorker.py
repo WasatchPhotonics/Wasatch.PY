@@ -297,7 +297,7 @@ class WrapperWorker(threading.Thread):
                     # remove previous setting if duplicate
                     new_keep = []
                     for co in keep:
-                        if co.setting != setting:
+                        if co and co.setting != setting:
                             new_keep.append(co)
                     keep = new_keep
 
