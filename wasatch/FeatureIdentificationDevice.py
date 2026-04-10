@@ -1121,6 +1121,15 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.settings.eeprom.detector_gain_odd = gain
         return self._send_code(0x9d, raw, label="SET_DETECTOR_GAIN_ODD")
 
+    def set_detector_timeout_sec(self, sec):
+        if not self.settings.is_xs():
+            msg = "SET_DETECTOR_TIMEOUT_SEC requires XS"
+            log.error(msg)
+            return SpectrometerResponse(error_lvl=ErrorLevel.low, error_msg=msg)
+
+        log.debug(f"setting detector timeout to {sec}sec")
+        return self._send_code(0x8e, sec, label="SET_DETECTOR_TIMEOUT_SEC")
+
     def set_area_scan_enable(self, flag):
         """
         Historically, this opcode moved around a bit. It is currently 0xeb, which 
@@ -1130,6 +1139,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
         if self.settings.is_ingaas():
             log.error("area scan is not supported on InGaAs detectors (single line array)")
             return SpectrometerResponse(error_lvl=ErrorLevel.low, error_msg="area scan is not supported on InGaAs detectors (single line array)")
+
+        if self.settings.is_xs():
+            self.set_detector_timeout_sec(0) # disable
 
         value = 1 if flag else 0
         self.settings.state.area_scan_enabled = flag
@@ -1783,7 +1795,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         commands would stretch that out further. Over 12mbps Full-Speed USB, the
         entire process comes to something like 2.5 MINUTES operationally.
 
-        Therefore, a blocking call to get_area_scan_xs() will return ASINGLE LINE 
+        Therefore, a blocking call to get_area_scan_xs() will return A SINGLE LINE 
         of an ONGOING area scan. This allows ENLIGHTEN to appear "responsive" 
         during the area scan process, updating its graphical area scan image in
         real-time as each line is received.

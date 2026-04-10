@@ -19,9 +19,6 @@ log = logging.getLogger(__name__)
 # Readings and StatusMessages) for multiprocessing-safe device communications
 # and acquisition under Windows and Qt.
 #
-# @todo This document is full of references to continuous_poll(). That method 
-#       no longer exists, and has been replaced by WrapperWorker.run()
-#
 # @par Lifecycle
 #
 # From ENLIGHTEN's standpoint (the original Wasatch.PY caller), here's what's going on:
@@ -51,26 +48,25 @@ log = logging.getLogger(__name__)
 #
 #   - instantiates a WasatchDeviceWrapper and then calls connect() on it
 #   - WasatchDeviceWrapper.connect()
-#       - spawns a thread running the continuous_poll() method of the _same_
-#         WasatchDeviceWrapper instance
+#       - spawns a WrapperWorker thread 
 #           - the WDW in the MainProcess then waits (blocks) while waiting for a
 #             single SpectrometerSettings object to be returned via a pipe from the
 #             child thread.  This doesn't block the GUI, because this whole sequence
 #             is occuring in a background tick event on the bus_timer QTimer.
-#           - the WDW in the child threadis running continuous_poll()
+#           - the WrapperWorker in the child thread is running run()
 #               - instantiates a WasatchDevice to access the actual hardware spectrometer
 #                 over USB (this object will only ever be referenced within this thread)
 #               - then calls WasatchDevice.connect()
 #                   - WasatchDevice then instantiates an internal FeatureIdentificationDevice
 #                   - WasatchDevice then populates a SpectrometerSettings object based on
 #                     the connected device (loading the EEPROM, basic firmware settings etc)
-#               - continuous_poll() sends back the single SpectrometerSettings object
+#               - WrapperWorker.run() sends back the single SpectrometerSettings object
 #                 to the blocked MainProcess by way of confirmation that a new spectrometer
 #                 has successfully connected
 #    - Controller.connect_new() then completes the initialization of the spectrometer
 #      in the GUI by calling Controller.initialize_new_device(), which adds the spectrometer
 #      to Multispec, updates the EEPROMEditor, defaults the TEC controls and so on.
-# - In the background, WasatchDeviceWrapper.continuous_poll() continues running, acting as a
+# - In the background, WrapperWorker.run() continues running, acting as a
 #   "free-running mode driver" of the spectrometer, passing down new commands from the
 #   enlighten.Controller, and feeding back Readings or StatusMessages when they appear.
 #
@@ -87,7 +83,7 @@ log = logging.getLogger(__name__)
 #
 # @par Throughput Considerations
 #
-# It is important to recognize that continuous_poll() updates the command/response
+# It is important to recognize that WrapperWorker updates the command/response
 # pipes at a relatively leisurely interval (currently 20Hz, set in POLLER_WAIT_SEC).
 # No matter how short the integration time is (1ms), you're not going to get spectra
 # faster than 20 per second through this (as ENLIGHTEN was designed as a real-time
@@ -101,10 +97,10 @@ log = logging.getLogger(__name__)
 # @par Responsiveness
 #
 # With regard to the "immediacy" of commands like laser_enable, note that 
-# spectrometer threads are internally single-threaded: the continuous_poll()
+# spectrometer threads are internally single-threaded: the WrapperWorker.run
 # function BLOCKS on WasatchDevice.acquire_data(), meaning that even if new
 # laser_enable commands get pushed into the downstream command pipe, 
-# continuous_poll won't check for them until the end of the current acquisition.
+# WrapperWorker won't check for them until the end of the current acquisition.
 #
 # What we'd really like is two threads running in the child, one handling
 # acquisitions and most commands, and another handling high-priority events like
@@ -192,8 +188,7 @@ class WasatchDeviceWrapper:
     #
     # Called by Controller.connect_new() immediately after instantiation
     #
-    # Spawn a child thread running the continuous_poll() method on THIS
-    # object instance.  
+    # Spawn a WrapperWorker child thread.
     #
     # The two threads are coupled via the 3 queues:
     #

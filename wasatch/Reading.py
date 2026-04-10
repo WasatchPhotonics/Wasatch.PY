@@ -42,6 +42,7 @@ class Reading:
         self.elapsed_since_last        = None
         self.keep_alive                = False
         self.image_format              = None
+        self.protocol                  = None
 
         # only populated by AutoRaman
         self.new_integration_time_ms   = None
@@ -81,6 +82,8 @@ class Reading:
         self.clear()
 
         self.device_id = str(device_id)
+        if self.device_id:
+            self.protocol = self.device_id.split(":")[0]
 
         # NOTE: this will generally indicate when the acquisition STARTS, not ENDS
         # (WasatchDevice.acquire_spectrum instantiates Reading before calling hardware.get_line,

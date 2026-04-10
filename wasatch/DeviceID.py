@@ -106,6 +106,9 @@ class DeviceID:
     # @param device_type: this seems to be currently exclusively used to 
     #        distinguish between RealUSBDevice and MockUSBDevice (both extending
     #        AbstractUSBDevice).
+    #
+    # @todo needs a constructor that can recreate a full object from the string 
+    #       representation (maybe add a str=None or from=None to the constructor)
     def __init__(self, device=None, label=None, directory=None, device_type=None, overrides=None, spectra_options=None, bleak_ble_device=None):
 
         self.type          = None   # "USB", "FILE", "MOCK", "BLE", "TCP"
