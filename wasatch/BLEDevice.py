@@ -625,11 +625,13 @@ class BLEDevice(InterfaceDevice):
             log.error(f"error setting {name}", exc_info=1)
         return SpectrometerResponse(True)
 
-    # Vertical ROI #############################################################
-
-    async def set_vertical_roi(self, pair):
-        await self.set_start_line(pair[0])
-        await self.set_stop_line (pair[1])
+    async def set_auto_raman_params(self, data):
+        name = "AUTO_RAMAN_PARAMS"
+        log.debug(f"setting {name} to {data}")
+        try:
+            await self.write_char("GENERIC", self.generics.generate_write_request(name, data), ack_name=name)
+        except:
+            log.error(f"error setting {name}", exc_info=1)
         return SpectrometerResponse(True)
 
     async def set_start_line(self, n):
@@ -648,6 +650,11 @@ class BLEDevice(InterfaceDevice):
             await self.write_char("GENERIC", self.generics.generate_write_request(name, n))
         except:
             log.error(f"error setting {name}", exc_info=1)
+        return SpectrometerResponse(True)
+
+    async def set_vertical_roi(self, pair):
+        await self.set_start_line(pair[0])
+        await self.set_stop_line (pair[1])
         return SpectrometerResponse(True)
 
     # Laser Control ############################################################
@@ -840,8 +847,7 @@ class BLEDevice(InterfaceDevice):
     def acquire_data(self):
         """ Synchronous, because called by WrapperWorker """
 
-        auto_raman = self.take_one_request and self.take_one_request.auto_raman_request
-        future = asyncio.run_coroutine_threadsafe(self.get_spectrum(auto_raman=auto_raman), self.run_loop)
+        future = asyncio.run_coroutine_threadsafe(self.get_spectrum(), self.run_loop)
         spectrum = future.result()
 
         log.debug(f"acquire_data: received spectrum of length {len(spectrum)}: {spectrum[:10]}")
@@ -945,22 +951,27 @@ class BLEDevice(InterfaceDevice):
             self.spectrum[self.pixels_read] = intensity
             self.pixels_read += 1
 
-    async def get_spectrum(self, auto_raman=False):
+    async def get_spectrum(self):
         """
         This is an asynchronous high-level function which wraps the mechanical 
         steps of sending an ACQUIRE and receiving the full SPECTRA in response.
         """
+
+        auto_raman_request = self.take_one_request.auto_raman_request if self.take_one_request else None= 
+        if auto_raman_request:
+            await self.set_auto_raman_params(auto_raman_request.serialize())
+
         self.pixels_read = 0
         self.spectrum = [0] * self.settings.pixels()
 
         # send the ACQUIRE
-        spectrum_type = 2 if auto_raman else 0
+        spectrum_type = 2 if auto_raman_request else 0
         log.debug(f"sending ACQUIRE with type {spectrum_type}")
         await self.write_char("ACQUIRE", [spectrum_type])
 
         # compute timeout
-        if auto_raman:
-            timeout_ms = 30_000 # MZ: take this from AutoRamanRequest
+        if auto_raman_request:
+            timeout_ms = auto_raman_request.max_ms + 6000
         else:
             timeout_ms = ( 4 
                          * max(self.settings.state.prev_integration_time_ms, self.settings.state.integration_time_ms) 
@@ -992,7 +1003,7 @@ class BLEDevice(InterfaceDevice):
         # @todo add invert_detector
         # @todo add many things...
             
-        if auto_raman:
+        if auto_raman_request:
             self.queue_message("progress_bar", 100)
 
         return self.spectrum
