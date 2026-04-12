@@ -52,6 +52,7 @@ class SpectrometerSettings:
         self.detector_serial_number = None          # Andor
         self.microcontroller_serial_number = None   # STM32H7
         self.fpga_options = FPGAOptions()
+        self.cpu_unique_id = None
 
         # semi-permanent attributes
         self.eeprom = EEPROM()

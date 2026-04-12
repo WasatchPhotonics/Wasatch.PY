@@ -74,6 +74,7 @@ class SpectrometerState:
         self.battery_raw = None        
         self.battery_temperature_deg_c = None
         self.battery_charger_temperature_deg_c = None
+        self.power_connection_state = None
 
         # wasatch.DetectorRegions
         self.detector_regions = None

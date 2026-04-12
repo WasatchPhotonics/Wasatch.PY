@@ -284,16 +284,24 @@ class BLEDevice(InterfaceDevice):
 
         # Generics         Name                        Lvl  Set   Get Size
         self.generics = Generics()
-        self.generics.add("LASER_TEC_MODE",             0, 0x84, 0x85, 1)
-        self.generics.add("GAIN_DB",                    0, 0xb7, 0xc5, 2, data_type="funky_float", epsilon=0.01)
-        self.generics.add("INTEGRATION_TIME_MS",        0, 0xb2, 0xbf, 3)
-        self.generics.add("LASER_WARNING_DELAY_SEC",    0, 0x8a, 0x8b, 1)
-        self.generics.add("EEPROM_DATA",                1, None, 0x01, 1, data_type="raw_data")
-        self.generics.add("START_LINE",                 1, 0x21, 0x22, 2)
-        self.generics.add("STOP_LINE",                  1, 0x23, 0x24, 2)
-        self.generics.add("AMBIENT_TEMPERATURE_DEG_C",  1, None, 0x2a, 1)
-        self.generics.add("POWER_WATCHDOG_SEC",         1, 0x30, 0x31, 2)
-        self.generics.add("SCANS_TO_AVERAGE",           1, 0x62, 0x63, 2)
+        self.generics.add("LASER_TEC_MODE",            0, 0x84, 0x85,  1)
+        self.generics.add("POWER_OFF",                 0, 0x87, None,  1)
+        self.generics.add("LASER_WARNING_DELAY_SEC",   0, 0x8a, 0x8b,  1)
+        self.generics.add("RESET_UNIT",                0, 0x93, None,  1)
+        self.generics.add("AUTO_RAMAN_PARAMS",         0, 0x95, 0x98, 23)
+        self.generics.add("IMAGE_SENSOR_STATE",        0, None, 0x97,  1)
+        self.generics.add("INTEGRATION_TIME_MS",       0, 0xb2, 0xbf,  3)
+        self.generics.add("GAIN_DB",                   0, 0xb7, 0xc5,  2, data_type="funky_float", epsilon=0.01)
+                                                       
+        self.generics.add("EEPROM_DATA",               1, None, 0x01, 64, data_type="raw_data")
+        self.generics.add("START_LINE",                1, 0x21, 0x22,  2)
+        self.generics.add("STOP_LINE",                 1, 0x23, 0x24,  2)
+        self.generics.add("AMBIENT_TEMPERATURE_DEG_C", 1, None, 0x2a,  1)
+        self.generics.add("CPU_UNIQUE_ID",             1, None, 0x2c, 12, data_type="raw_data")
+        self.generics.add("POWER_WATCHDOG_SEC",        1, 0x30, 0x31,  2)
+        self.generics.add("SCANS_TO_AVERAGE",          1, 0x62, 0x63,  2)
+        self.generics.add("USB_ADAPTER_INFO",          1, None, 0x78,  5, data_type="raw_data")
+        self.generics.add("LASER_OFF_DELAY_MS",        1, 0x90, 0x91,  2)
 
         # InterfaceDevice niceties
         self.settings = SpectrometerSettings(self.device_id)
@@ -375,6 +383,13 @@ class BLEDevice(InterfaceDevice):
 
         log.debug("connect_async: initializing scan averaging")
         await self.set_scans_to_average(1)
+
+        # learn more about the device
+        self.settings.cpu_unique_id = await self.get_cpu_unique_id()
+        log.debug("connect_async: cpu_unique_id = {self.settings.cpu_unique_id}")
+
+        self.settings.state.power_connection_state = await.get_power_connection_state()
+        log.debug("connect_async: power_connection_state = {self.settings.state.power_connection_state}")
 
         ########################################################################
         # done
@@ -641,13 +656,21 @@ class BLEDevice(InterfaceDevice):
         index = self.LASER_TEC_MODES.index(mode)
         await self.write_char("GENERIC", self.generics.generate_write_request("LASER_TEC_MODE", index))
 
-    # Watchdogs ################################################################
+    # Miscellaneous ############################################################
 
     async def set_power_watchdog_sec(self, sec):
         await self.write_char("GENERIC", self.generics.generate_write_request("POWER_WATCHDOG_SEC", sec))
 
     async def set_laser_warning_delay_sec(self, sec):
         await self.write_char("GENERIC", self.generics.generate_write_request("LASER_WARNING_DELAY_SEC", sec))
+
+    async def get_cpu_unique_id(self):
+        await data = self.get_generic_value("CPU_UNIQUE_ID")
+        return "".join([ f"{c:02x}" for c in data ])
+
+    async def get_power_connection_state(self):
+        await data = self.get_generic_value("USB_ADAPTER_INFO")
+        return USBCPowerConnectionState(data)
 
     # EEPROM ###################################################################
 
@@ -693,10 +716,6 @@ class BLEDevice(InterfaceDevice):
 
     async def get_generic_value(self, name):
         """
-        This method is not currently used in BLEDevice, but it is definitely used
-        in ble-util.py, and will be needed in BLEDevice when we get around to 
-        adding some getter methods (not heavily used by ENLIGHTEN).
-
         This method needs to be in BLEDevice, rather than Generics, because it
         uses write_char.
         """
