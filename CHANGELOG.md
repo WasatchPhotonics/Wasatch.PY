@@ -1,5 +1,7 @@
 # Changelog
 
+- 2026-??-?? 2.3.23
+    - tidied BLEDevice
 - 2026-04-10 2.3.22
     - added Reading.protocol
     - XS
