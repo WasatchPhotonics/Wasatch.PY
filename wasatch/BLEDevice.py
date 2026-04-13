@@ -967,6 +967,7 @@ class BLEDevice(InterfaceDevice):
         reading.take_one_request = self.take_one_request
         reading.timestamp_complete = datetime.now()
         reading.battery_percentage = state.battery_percentage
+        reading.power_connection_state = state.power_connection_state
         reading.ambient_temperature_degC = state.ambient_temperature_deg_c # deg_c -> degC :-(
 
         self.take_one_request = None
@@ -1130,6 +1131,7 @@ class BLEDevice(InterfaceDevice):
         await self.update_battery_state_async()
         await self.update_laser_state_async()
         await self.get_ambient_temperature_deg_c_async()
+        await self.get_power_connection_state_async()
 
         self.last_status_update_time = datetime.now()
 

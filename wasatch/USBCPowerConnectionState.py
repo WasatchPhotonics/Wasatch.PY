@@ -1,3 +1,8 @@
+import logging
+from . import utils
+
+log = logging.getLogger(__name__)
+
 class USBCPowerConnectionState:
     """
     Making this a standalone class because might end up using from both FID (USB)
@@ -39,10 +44,11 @@ class USBCPowerConnectionState:
         """
         if data is None or len(data) < 1:
             return
+
         if len(data) >= 1: self.bc_12_adapter_type = self.BC_12_ADAPTER_TYPES.get(data[0], None)
         if len(data) >= 2: self.bc_12_charger_type = self.BC_12_CHARGER_TYPES.get(data[1], None)
         if len(data) >= 3: self.type_c_cc_current_capability = self.TYPE_C_CC_CURRENT_CAPABILITY.get(data[2], None)
-        if len(data) >= 5: self.current_limit_mA = data[3] << 8 + data[4]
+        if len(data) >= 5: self.current_limit_mA = (data[3] << 8) + data[4]
 
     def __repr__(self):
         tok = []
