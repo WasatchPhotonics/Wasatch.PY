@@ -9,6 +9,9 @@
         - added SET_POWER_OFF, SET_RESET_UNIT, GET/SET_AUTO_RAMAN_PARAMS, 
           GET_IMAGE_SENSOR_STATE, GET_CPU_UNIQUE_ID, GET_USB_ADAPTER_INFO, 
           GET/SET_LASER_OFF_DELAY_MS
+        - suffixed all async methods with _async
+        - provided synchronous wrappers around user-facing asynchronous calls
+        - added BLEDevice.testing for enlighten.plugins.RnD.BluetoothTester
 - 2026-04-10 2.3.22
     - added Reading.protocol
     - XS
