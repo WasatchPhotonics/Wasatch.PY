@@ -310,21 +310,21 @@ class BLEDevice(InterfaceDevice):
 
         self.name_by_uuid = { self.wrap_uuid(code): name for name, code in self.code_by_name.items() }
 
-        # Generics         Name                        Lvl  Set   Get Size
+        # Generics         Name                       Lvl  Set   Get Size
         self.generics = Generics()
-        self.generics.add("LASER_TEC_MODE",            0, 0x84, 0x85,  1) # TEST [w]
-        self.generics.add("POWER_OFF",                 0, 0x87, None,  1) # TEST [w]
+        self.generics.add("LASER_TEC_MODE",            0, 0x84, 0x85,  1) # TEST [passed]
+        self.generics.add("POWER_OFF",                 0, 0x87, None,  1) # TEST [passed]
         self.generics.add("LASER_WARNING_DELAY_SEC",   0, 0x8a, 0x8b,  1) # TEST [w]
         self.generics.add("RESET_UNIT",                0, 0x93, None,  1) # TEST [w]
         self.generics.add("AUTO_RAMAN_PARAMS",         0, 0x95, 0x98, 23) # TEST [w]
-        self.generics.add("IMAGE_SENSOR_STATE",        0, None, 0x97,  1) # TEST [w]
-        self.generics.add("INTEGRATION_TIME_MS",       0, 0xb2, 0xbf,  3)
-        self.generics.add("GAIN_DB",                   0, 0xb7, 0xc5,  2, data_type="funky_float", epsilon=0.01)
+        self.generics.add("IMAGE_SENSOR_STATE",        0, None, 0x97,  1) # TEST [passed]
+        self.generics.add("INTEGRATION_TIME_MS",       0, 0xb2, 0xbf,  3) # TEST [passed]
+        self.generics.add("GAIN_DB",                   0, 0xb7, 0xc5,  2, data_type="funky_float", epsilon=0.01) 
                                                        
         self.generics.add("EEPROM_DATA",               1, None, 0x01, 64, data_type="raw_data")
         self.generics.add("START_LINE",                1, 0x21, 0x22,  2) # TEST [w]
         self.generics.add("STOP_LINE",                 1, 0x23, 0x24,  2) # TEST [w]
-        self.generics.add("AMBIENT_TEMPERATURE_DEG_C", 1, None, 0x2a,  1) # TEST [w]
+        self.generics.add("AMBIENT_TEMPERATURE_DEG_C", 1, None, 0x2a,  1) # TEST [passed]
         self.generics.add("CPU_UNIQUE_ID",             1, None, 0x2c, 12, data_type="raw_data")
         self.generics.add("POWER_WATCHDOG_SEC",        1, 0x30, 0x31,  2) # TEST [w]
         self.generics.add("SCANS_TO_AVERAGE",          1, 0x62, 0x63,  2) # TEST
@@ -399,28 +399,28 @@ class BLEDevice(InterfaceDevice):
         # post-EEPROM connection tasks
         ########################################################################
 
-        log.debug("connect_async: processing retrieved EEPROM")
+        log.debug(f"connect_async: processing retrieved EEPROM")
         self.settings.update_wavecal()
 
-        log.debug("connect_async: initializing LASER_STATE")
+        log.debug(f"connect_async: initializing LASER_STATE")
         await self.update_laser_state_async()
 
-        log.debug("connect_async: initializing BATTERY_STATE")
+        log.debug(f"connect_async: initializing BATTERY_STATE")
         await self.update_battery_state_async()
 
-        log.debug("connect_async: initializing integration time")
+        log.debug(f"connect_async: initializing integration time")
         self.integration_time_ms = self.settings.eeprom.startup_integration_time_ms
         await self.set_integration_time_ms_async(self.integration_time_ms)
 
-        log.debug("connect_async: initializing scan averaging")
+        log.debug(f"connect_async: initializing scan averaging")
         await self.set_scans_to_average_async(1)
 
         # learn more about the device
         self.settings.microcontroller_serial_number = await self.get_cpu_unique_id_async()
-        log.debug("connect_async: cpu_unique_id = {self.settings.cpu_unique_id}")
+        log.debug(f"connect_async: cpu_unique_id = {self.settings.microcontroller_serial_number}")
 
         self.settings.state.power_connection_state = await self.get_power_connection_state_async()
-        log.debug("connect_async: power_connection_state = {self.settings.state.power_connection_state}")
+        log.debug(f"connect_async: power_connection_state = {self.settings.state.power_connection_state}")
 
         ########################################################################
         # done
@@ -435,7 +435,7 @@ class BLEDevice(InterfaceDevice):
         elapsed_sec = (datetime.now() - start_time).total_seconds()
         log.debug(f"connect_async: connection took {elapsed_sec:.2f} sec")
 
-        log.debug("connect_async: done")
+        log.debug(f"connect_async: done")
         return SpectrometerResponse(True)
 
     async def load_device_information_async(self):
@@ -550,7 +550,7 @@ class BLEDevice(InterfaceDevice):
             raise RuntimeError("attempt to read {name} returned no data")
 
         if not quiet:
-            log.debug(f"<< read_char_async({name}, min_len {min_len}): {response}")
+            log.debug(f"<< read_char_async({name}, min_len {min_len}): {utils.to_hex(response)}")
 
         if min_len is not None and len(response) < min_len:
             raise RuntimeError(f"characteristic {name} returned insufficient data ({len(response)} < {min_len})")
@@ -695,16 +695,46 @@ class BLEDevice(InterfaceDevice):
     async def set_laser_warning_delay_sec_async(self, sec):
         await self.write_generic_async("LASER_WARNING_DELAY_SEC", sec)
 
-    def get_cpu_unique_id(self):
+    def get_cpu_unique_id(self, arg=None):
         future = asyncio.run_coroutine_threadsafe(self.get_cpu_unique_id_async(), self.run_loop)
         return SpectrometerResponse(future.result())
     async def get_cpu_unique_id_async(self):
-        data = await self.get_generic_value_async("CPU_UNIQUE_ID")
-        value = "".join([ f"{c:02x}" for c in data ])
-        self.settings.microcontroller_serial_number = value
-        return value
+        """
+        2 bytes of X coordinate (4 BCD nibbles)
+        2 bytes of Y coordinate (4 BCD nibbles)
+        1 byte of wafer number (8 bit unsigned) Bits 32:39
+        3 bytes of LOT number (ASCII encoded) Bits 40:63
+        4 bytes of LOT number (ASCII encoded) Bits 64:95
 
-    def get_power_connection_state(self):
+        example: [ x45, 0x00, 0x48, 0x00, 0x14, 0x51, 0x33, 0x33, 0x32, 0x36, 0x31, 0x30 ]
+                   ----x----  -----y----  wafer ------LOT 1-----  --------LOT 2---------
+
+        yields:  pos (45, 48), wafer 20, lot Q33-2610
+        """
+        data = await self.get_generic_value_async("CPU_UNIQUE_ID")
+
+        value_hex_str = "".join([ f"{c:02x}" for c in data ])
+        self.settings.microcontroller_serial_number = value_hex_str
+
+        if len(data) == 12:
+            # MZ: I'm not sure if I'm decoding these two fields of 4 BCD digits
+            # in the right order, but it doesn't really matter. In this method,
+            # 0x1234 would yields decimal 1234, which I think is the intention.
+            x = ( ((data[0] >> 0) & 0xf) *    1 +
+                  ((data[0] >> 4) & 0xf) *   10 + 
+                  ((data[1] >> 0) & 0xf) *  100 +
+                  ((data[1] >> 4) & 0xf) * 1000 )
+            y = ( ((data[2] >> 0) & 0xf) *    1 +
+                  ((data[2] >> 4) & 0xf) *   10 + 
+                  ((data[3] >> 0) & 0xf) *  100 +
+                  ((data[3] >> 4) & 0xf) * 1000 )
+            wafer = data[4]
+            lot = "".join([chr(data[i]) for i in range(5, 8)]) + "-" + "".join([chr(data[i]) for i in range(8, 12)])
+            log.debug(f"decoded CPU_UNIQUE_ID: pos ({x}, {y}), wafer {wafer}, lot {lot}")
+
+        return value_hex_str
+
+    def get_power_connection_state(self, arg=None):
         future = asyncio.run_coroutine_threadsafe(self.get_power_connection_state_async(), self.run_loop)
         return SpectrometerResponse(future.result())
     async def get_power_connection_state_async(self):
@@ -713,7 +743,7 @@ class BLEDevice(InterfaceDevice):
         self.settings.state.power_connection_state = state
         return state
 
-    def get_image_sensor_state(self):
+    def get_image_sensor_state(self, arg=None):
         future = asyncio.run_coroutine_threadsafe(self.get_image_sensor_state_async(), self.run_loop)
         return SpectrometerResponse(future.result())
     async def get_image_sensor_state_async(self):
@@ -723,7 +753,7 @@ class BLEDevice(InterfaceDevice):
             self.queue_message("marquee_info", msg)
         return state
 
-    def get_ambient_temperature_deg_c(self):
+    def get_ambient_temperature_deg_c(self, arg=None):
         future = asyncio.run_coroutine_threadsafe(self.get_ambient_temperature_deg_c_async(), self.run_loop)
         return SpectrometerResponse(future.result())
     async def get_ambient_temperature_deg_c_async(self):
@@ -830,7 +860,7 @@ class BLEDevice(InterfaceDevice):
         """
         if buf is None:
             log.debug("updating battery state")
-            buf = await self.read_char_async("BATTERY_STATE", 2)
+            buf = await self.read_char_async("BATTERY_STATE", 5)
         if buf is None:
             return
 
@@ -841,7 +871,7 @@ class BLEDevice(InterfaceDevice):
         state.battery_charger_temperature_deg_c = buf[4]
 
         log.debug(f"updated battery state: chg {state.battery_charging}, " +
-                  f"perc {state.battery_percentage}, " + 
+                  f"perc {state.battery_percentage:.2f}, " + 
                   f"temp {state.battery_temperature_deg_c}C, " +
                   f"chgTemp {state.battery_temperature_deg_c}C")
 
@@ -935,8 +965,9 @@ class BLEDevice(InterfaceDevice):
         reading.laser_is_firing = state.laser_is_firing
         reading.battery_charging = state.battery_charging
         reading.take_one_request = self.take_one_request
-        reading.battery_percentage = state.battery_percentage
         reading.timestamp_complete = datetime.now()
+        reading.battery_percentage = state.battery_percentage
+        reading.ambient_temperature_degC = state.ambient_temperature_deg_c # deg_c -> degC :-(
 
         self.take_one_request = None
 
@@ -1208,7 +1239,9 @@ class Generic:
     
     def serialize(self, value):
         data = []
-        if self.data_type == "funky_float":
+        if value is None:
+            pass
+        elif self.data_type == "funky_float":
             data.append(int(value) & 0xff)
             data.append(int((value - int(value)) * 256) & 0xff)
         elif self.data_type == "raw_data":
@@ -1287,7 +1320,7 @@ class Generics:
     def add(self, name, tier, setter, getter, size, epsilon=0, data_type=None):
         self.generics[name] = Generic(name, tier, setter, getter, size, epsilon=epsilon, data_type=data_type)
 
-    def generate_write_request(self, name, value):
+    def generate_write_request(self, name, value=None):
         return self.generics[name].generate_write_request(value)
 
     def generate_read_request(self, name):

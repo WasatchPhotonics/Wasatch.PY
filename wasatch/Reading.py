@@ -10,6 +10,10 @@ log = logging.getLogger(__name__)
 class Reading:
 
     def clear(self):
+        """ 
+        Many of these are (deliberately) historical duplicates of fields in 
+        SpectrometerSettings, SpectrometerState etc.
+        """
         self.device_id                 = None
         self.timestamp                 = None
         self.timestamp_complete        = None

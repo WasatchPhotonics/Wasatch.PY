@@ -12,6 +12,10 @@
         - suffixed all async methods with _async
         - provided synchronous wrappers around user-facing asynchronous calls
         - added BLEDevice.testing for enlighten.plugins.RnD.BluetoothTester
+        - battery percentage matches USB
+        - ambient_temperature_deg_c now flowing up to ENLIGHTEN
+        - POWER_OFF working
+        - decoding STM32 CPU_UNIQUE_ID (debug-only)
 - 2026-04-10 2.3.22
     - added Reading.protocol
     - XS
