@@ -7,14 +7,15 @@ from datetime import datetime
 from functools import partial
 from threading import Thread
 
-from wasatch.EEPROM               import EEPROM
-from wasatch.Reading              import Reading
-from wasatch.ControlObject        import ControlObject
-from wasatch.StatusMessage        import StatusMessage
-from wasatch.InterfaceDevice      import InterfaceDevice
-from wasatch.SpectrometerRequest  import SpectrometerRequest
-from wasatch.SpectrometerSettings import SpectrometerSettings
-from wasatch.SpectrometerResponse import SpectrometerResponse, ErrorLevel
+from wasatch.EEPROM                   import EEPROM
+from wasatch.Reading                  import Reading
+from wasatch.ControlObject            import ControlObject
+from wasatch.StatusMessage            import StatusMessage
+from wasatch.InterfaceDevice          import InterfaceDevice
+from wasatch.SpectrometerRequest      import SpectrometerRequest
+from wasatch.SpectrometerSettings     import SpectrometerSettings
+from wasatch.SpectrometerResponse     import SpectrometerResponse, ErrorLevel
+from wasatch.USBCPowerConnectionState import USBCPowerConnectionState
 
 from . import utils
 
@@ -626,8 +627,8 @@ class BLEDevice(InterfaceDevice):
     # Acquisition Parameters ###################################################
 
     def set_integration_time_ms(self, ms):
-        future = asyncio.run_coroutine_threadsafe(self.set_integration_time_async(ms), self.run_loop)
-        return SpectrometerResult(future.result())
+        future = asyncio.run_coroutine_threadsafe(self.set_integration_time_ms_async(ms), self.run_loop)
+        return SpectrometerResponse(future.result())
     async def set_integration_time_ms_async(self, ms):
         ms = int(round(ms))
         await self.write_generic_async("INTEGRATION_TIME_MS", ms)
@@ -636,14 +637,14 @@ class BLEDevice(InterfaceDevice):
 
     def set_gain_db(self, db):
         future = asyncio.run_coroutine_threadsafe(self.set_gain_db_async(db), self.run_loop)
-        return SpectrometerResult(future.result())
+        return SpectrometerResponse(future.result())
     async def set_gain_db_async(self, db):
         await self.write_generic_async("GAIN_DB", db)
         self.settings.state.gain_db = db
 
     def set_scans_to_average(self, n):
         future = asyncio.run_coroutine_threadsafe(self.set_scans_to_average_async(n), self.run_loop)
-        return SpectrometerResult(future.result())
+        return SpectrometerResponse(future.result())
     async def set_scans_to_average_async(self, n):
         name = "SCANS_TO_AVERAGE"
         await self.write_generic_async("SCANS_TO_AVERAGE", n)
@@ -651,19 +652,19 @@ class BLEDevice(InterfaceDevice):
 
     def set_auto_raman_params(self, data):
         future = asyncio.run_coroutine_threadsafe(self.set_auto_raman_params_async(data), self.run_loop)
-        return SpectrometerResult(future.result())
+        return SpectrometerResponse(future.result())
     async def set_auto_raman_params_async(self, data):
         await self.write_generic_async("AUTO_RAMAN_PARAMS", data)
 
     def set_start_line(self, n):
         future = asyncio.run_coroutine_threadsafe(self.set_start_line_async(n), self.run_loop)
-        return SpectrometerResult(future.result())
+        return SpectrometerResponse(future.result())
     async def set_start_line_async(self, n):
         await self.write_generic_async("START_LINE", n)
 
     def set_stop_line(self, n):
         future = asyncio.run_coroutine_threadsafe(self.set_stop_line_async(n), self.run_loop)
-        return SpectrometerResult(future.result())
+        return SpectrometerResponse(future.result())
     async def set_stop_line_async(self, n):
         await self.write_generic_async("STOP_LINE", n)
 
@@ -676,7 +677,7 @@ class BLEDevice(InterfaceDevice):
 
     def set_laser_tec_mode(self, n):
         future = asyncio.run_coroutine_threadsafe(self.set_laser_tec_mode_async(n), self.run_loop)
-        return SpectrometerResult(future.result())
+        return SpectrometerResponse(future.result())
     async def set_laser_tec_mode_async(self, n):
         await self.write_generic_async("LASER_TEC_MODE", n)
 
@@ -684,19 +685,19 @@ class BLEDevice(InterfaceDevice):
 
     def set_power_watchdog_sec(self, sec):
         future = asyncio.run_coroutine_threadsafe(self.set_power_watchdog_sec_async(n), self.run_loop)
-        return SpectrometerResult(future.result())
+        return SpectrometerResponse(future.result())
     async def set_power_watchdog_sec_async(self, sec):
         await self.write_generic_async("POWER_WATCHDOG_SEC", sec)
 
     def set_laser_warning_delay_sec(self, sec):
         future = asyncio.run_coroutine_threadsafe(self.set_laser_warning_delay_sec_async(n), self.run_loop)
-        return SpectrometerResult(future.result())
+        return SpectrometerResponse(future.result())
     async def set_laser_warning_delay_sec_async(self, sec):
         await self.write_generic_async("LASER_WARNING_DELAY_SEC", sec)
 
     def get_cpu_unique_id(self):
         future = asyncio.run_coroutine_threadsafe(self.get_cpu_unique_id_async(), self.run_loop)
-        return SpectrometerResult(future.result())
+        return SpectrometerResponse(future.result())
     async def get_cpu_unique_id_async(self):
         data = await self.get_generic_value_async("CPU_UNIQUE_ID")
         value = "".join([ f"{c:02x}" for c in data ])
@@ -705,7 +706,7 @@ class BLEDevice(InterfaceDevice):
 
     def get_power_connection_state(self):
         future = asyncio.run_coroutine_threadsafe(self.get_power_connection_state_async(), self.run_loop)
-        return SpectrometerResult(future.result())
+        return SpectrometerResponse(future.result())
     async def get_power_connection_state_async(self):
         data = await self.get_generic_value_async("USB_ADAPTER_INFO")
         state = USBCPowerConnectionState(data)
@@ -714,7 +715,7 @@ class BLEDevice(InterfaceDevice):
 
     def get_image_sensor_state(self):
         future = asyncio.run_coroutine_threadsafe(self.get_image_sensor_state_async(), self.run_loop)
-        return SpectrometerResult(future.result())
+        return SpectrometerResponse(future.result())
     async def get_image_sensor_state_async(self):
         state = await self.get_generic_value_async("IMAGE_SENSOR_STATE")
         if self.testing:
@@ -724,7 +725,7 @@ class BLEDevice(InterfaceDevice):
 
     def get_ambient_temperature_deg_c(self):
         future = asyncio.run_coroutine_threadsafe(self.get_ambient_temperature_deg_c_async(), self.run_loop)
-        return SpectrometerResult(future.result())
+        return SpectrometerResponse(future.result())
     async def get_ambient_temperature_deg_c_async(self):
         temp = await self.get_generic_value_async("AMBIENT_TEMPERATURE_DEG_C")
         self.settings.state.ambient_temperature_deg_c = temp
@@ -732,13 +733,13 @@ class BLEDevice(InterfaceDevice):
 
     def set_reset_unit(self, arg=None):
         future = asyncio.run_coroutine_threadsafe(self.set_reset_unit_async(), self.run_loop)
-        return SpectrometerResult(future.result())
+        return SpectrometerResponse(future.result())
     async def set_reset_unit_async(self):
         await self.write_char_async("GENERIC", self.generics.generate_write_request("RESET_UNIT"))
 
     def set_power_off(self, arg=None):
         future = asyncio.run_coroutine_threadsafe(self.set_power_off_async(), self.run_loop)
-        return SpectrometerResult(future.result())
+        return SpectrometerResponse(future.result())
     async def set_power_off_async(self, arg=None):
         await self.write_char_async("GENERIC", self.generics.generate_write_request("POWER_OFF"))
 
@@ -818,7 +819,7 @@ class BLEDevice(InterfaceDevice):
 
     def update_battery_state(self, arg=None):
         future = asyncio.run_coroutine_threadsafe(self.update_battery_state_async(), self.run_loop)
-        return SpectrometerResult(future.result())
+        return SpectrometerResponse(future.result())
     async def update_battery_state_async(self, buf=None):
         """
         These will be pushed automatically 2/min from Central, if-and-only-if
@@ -853,7 +854,7 @@ class BLEDevice(InterfaceDevice):
 
     def update_laser_state(self, arg=None):
         future = asyncio.run_coroutine_threadsafe(self.update_laser_state_async(), self.run_loop)
-        return SpectrometerResult(future.result())
+        return SpectrometerResponse(future.result())
     async def update_laser_state_async(self, buf=None):
         if buf is None:
             log.debug("updating laser state")
@@ -870,11 +871,11 @@ class BLEDevice(InterfaceDevice):
 
         # skip bytes 5 and 6 reserved (used to be laser_warning_delay_ms)
 
-        if len(buf) >= 7: 
+        if len(buf) >= 8: 
             state.laser_can_fire  = buf[7] & 0x01
             state.laser_is_firing = buf[7] & 0x02
 
-        if len(buf) >= 8: 
+        if len(buf) >= 9: 
             state.laser_pwm_perc = buf[8]
 
         log.debug(f"updated laser state: enabled {state.laser_enabled}, " +
@@ -885,7 +886,7 @@ class BLEDevice(InterfaceDevice):
 
     def set_laser_enable(self, flag):
         future = asyncio.run_coroutine_threadsafe(self.set_laser_enable_async(flag), self.run_loop)
-        return SpectrometerResult(future.result())
+        return SpectrometerResponse(future.result())
     async def set_laser_enable_async(self, flag):
         log.debug(f"setting laser enable {flag}")
         self.laser_enable = flag
@@ -911,6 +912,8 @@ class BLEDevice(InterfaceDevice):
 
     def acquire_data(self):
         """ Synchronous, because called by WrapperWorker """
+
+        auto_raman = self.take_one_request and self.take_one_request.auto_raman_request
 
         future = asyncio.run_coroutine_threadsafe(self.get_spectrum_async(), self.run_loop)
         spectrum = future.result()
@@ -1022,7 +1025,7 @@ class BLEDevice(InterfaceDevice):
 
     def get_spectrum(self, arg=None):
         future = asyncio.run_coroutine_threadsafe(self.get_spectrum_async(), self.run_loop)
-        return SpectrometerResult(future.result())
+        return SpectrometerResponse(future.result())
     async def get_spectrum_async(self):
         """
         This is an asynchronous high-level function which wraps the mechanical 
@@ -1082,7 +1085,7 @@ class BLEDevice(InterfaceDevice):
 
     def update_status(self, arg=None):
         future = asyncio.run_coroutine_threadsafe(self.update_status_async(), self.run_loop)
-        return SpectrometerResult(future.result())
+        return SpectrometerResponse(future.result())
     async def update_status_async(self):
         """
         Low-rate function to update miscellaneous status attributes to flow up 
