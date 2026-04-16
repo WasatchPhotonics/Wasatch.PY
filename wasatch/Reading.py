@@ -10,6 +10,10 @@ log = logging.getLogger(__name__)
 class Reading:
 
     def clear(self):
+        """ 
+        Many of these are (deliberately) historical duplicates of fields in 
+        SpectrometerSettings, SpectrometerState etc.
+        """
         self.device_id                 = None
         self.timestamp                 = None
         self.timestamp_complete        = None
@@ -34,6 +38,7 @@ class Reading:
         self.battery_raw               = None
         self.battery_percentage        = None
         self.battery_charging          = None
+        self.power_connection_state    = None
         self.laser_can_fire            = False  # per interlock board
         self.laser_is_firing           = False  # per interlock board, not laser_enable
         self.laser_tec_enabled         = False

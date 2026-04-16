@@ -1,5 +1,23 @@
 # Changelog
 
+- 2026-04-16 2.3.23
+    - XS BLE
+        - tidied BLEDevice
+        - added USBCPowerConnectionState
+        - added SpectrometerState.power_connection_state
+        - added SpectrometerSettings.cpu_unique_id
+        - added SET_POWER_OFF, SET_RESET_UNIT, GET/SET_AUTO_RAMAN_PARAMS, 
+          GET_IMAGE_SENSOR_STATE, GET_CPU_UNIQUE_ID, GET_USB_ADAPTER_INFO, 
+          GET/SET_LASER_OFF_DELAY_MS
+        - suffixed all async methods with _async
+        - provided synchronous wrappers around user-facing asynchronous calls
+        - added BLEDevice.testing for enlighten.plugins.RnD.BluetoothTester
+        - battery percentage matches USB
+        - ambient_temperature_deg_c now flowing up to ENLIGHTEN
+        - POWER_OFF working
+        - decoding STM32 CPU_UNIQUE_ID (debug-only)
+        - ignore 1-line vertical ROI
+        - SET_AUTO_RAMAN_PARAMS bugfix
 - 2026-04-10 2.3.22
     - added Reading.protocol
     - XS
