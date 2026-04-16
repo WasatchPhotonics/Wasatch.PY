@@ -316,7 +316,7 @@ class BLEDevice(InterfaceDevice):
         self.generics.add("POWER_OFF",                 0, 0x87, None,  1) # TEST [passed]
         self.generics.add("LASER_WARNING_DELAY_SEC",   0, 0x8a, 0x8b,  1) # TEST [w]
         self.generics.add("RESET_UNIT",                0, 0x93, None,  1) # TEST [w]
-        self.generics.add("AUTO_RAMAN_PARAMS",         0, 0x95, 0x98, 23) # TEST [w]
+        self.generics.add("AUTO_RAMAN_PARAMS",         0, 0x95, 0x98, 23, data_type="raw_data") # TEST [w]
         self.generics.add("IMAGE_SENSOR_STATE",        0, None, 0x97,  1) # TEST [passed]
         self.generics.add("INTEGRATION_TIME_MS",       0, 0xb2, 0xbf,  3) # TEST [passed]
         self.generics.add("GAIN_DB",                   0, 0xb7, 0xc5,  2, data_type="funky_float", epsilon=0.01) 

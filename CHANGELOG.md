@@ -17,6 +17,7 @@
         - POWER_OFF working
         - decoding STM32 CPU_UNIQUE_ID (debug-only)
         - ignore 1-line vertical ROI
+        - SET_AUTO_RAMAN_PARAMS bugfix
 - 2026-04-10 2.3.22
     - added Reading.protocol
     - XS
