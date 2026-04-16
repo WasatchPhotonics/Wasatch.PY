@@ -1,6 +1,6 @@
 # Changelog
 
-- 2026-??-?? 2.3.23
+- 2026-04-16 2.3.23
     - XS BLE
         - tidied BLEDevice
         - added USBCPowerConnectionState
