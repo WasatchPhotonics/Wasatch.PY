@@ -669,8 +669,14 @@ class BLEDevice(InterfaceDevice):
         await self.write_generic_async("STOP_LINE", n)
 
     def set_vertical_roi(self, pair):
-        self.set_start_line(pair[0])
-        self.set_stop_line (pair[1])
+        start_line = pair[0]
+        stop_line = pair[1]
+        if stop_line <= start_line:
+            log.debug("declining to set 1-line vertical ROI")
+            return SpectrometerResponse(False)
+
+        self.set_start_line(start_line)
+        self.set_stop_line (stop_line)
         return SpectrometerResponse(True)
 
     # Laser Control ############################################################

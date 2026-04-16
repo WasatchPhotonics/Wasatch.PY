@@ -16,6 +16,7 @@
         - ambient_temperature_deg_c now flowing up to ENLIGHTEN
         - POWER_OFF working
         - decoding STM32 CPU_UNIQUE_ID (debug-only)
+        - ignore 1-line vertical ROI
 - 2026-04-10 2.3.22
     - added Reading.protocol
     - XS
