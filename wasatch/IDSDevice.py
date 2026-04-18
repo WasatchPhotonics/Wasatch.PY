@@ -149,7 +149,8 @@ class IDSDevice(InterfaceDevice):
                    "roi_horizontal_end",
                    "roi_horizontal_start",
                    "roi_vertical_region_1_start",
-                   "roi_vertical_region_1_end" ]:
+                   "roi_vertical_region_1_end",
+                   "avg_resolution" ]:
             stomp(k)
         for k, attr in [ [ "wp_model",         "model" ],
                          [ "wp_serial_number", "serial_number" ] ]:

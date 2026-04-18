@@ -154,7 +154,7 @@ class EEPROM:
         self.detector_timeout_sec        = 0
         self.horiz_binning_mode          = 0
         self.startup_scans_to_average    = 1
-        self.laser_attenuator            = 127
+        self.laser_attenuator            = 40 # recommended range 10-40 decimal
                                          
         self.wavelength_coeffs           = []
         self.degC_to_dac_coeffs          = []
