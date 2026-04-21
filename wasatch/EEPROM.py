@@ -546,11 +546,14 @@ class EEPROM:
         # Page 8
         # ######################################################################
 
-        if "XS" in self.model.upper(): # and self.format >= 18:
-            
+        if "XS" in self.model.upper(): 
+
             s = self.unpack_field("laser_password", quiet=True)
-            if s is None or len(s) < 4 or any([c in [0x00, 0xff] for c in s]):
+            if s is None:
                 log.debug("no laser password found")
+                self.laser_password = None
+            elif len(s) < 4 or any([not (31 < ord(c) < 128) for c in s]):
+                log.debug("no valid laser password found")
                 self.laser_password = None
 
         # ######################################################################

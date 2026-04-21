@@ -99,7 +99,6 @@ class SpectrometerState:
         self.mod_enabled = False
         self.mod_period_us = 0 
         self.mod_width_us = 0
-        self.laser_pwm_perc = None # range (0, 100)
 
         # (gen 2.0 stuff, not yet used)
         self.analog_out_enabled = False
