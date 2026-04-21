@@ -2,7 +2,7 @@
 
 - 2026-??-?? 2.3.25
     - tweak laser password validation logic
-    - testing laser PWM
+    - laser PWM works
 - 2026-04-18 2.3.24
     - add avg_resolution to IDSDevice EEPROM
     - change XS attenuator default from 127 to 40

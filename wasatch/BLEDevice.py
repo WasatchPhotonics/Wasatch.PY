@@ -340,6 +340,8 @@ class BLEDevice(InterfaceDevice):
 
         self.testing = False
         self.last_status_update_time = None
+        self.next_laser_enable = False
+        self.next_laser_power_perc = 100
         
         # ability to bridge sync-async
         self.run_loop = self.get_run_loop()
@@ -886,6 +888,7 @@ class BLEDevice(InterfaceDevice):
     ############################################################################
 
     async def laser_state_notification_async(self, sender, data):
+        log.debug(f"received laser_state_notification: data {data}")
         await self.update_laser_state_from_device_async(data)
 
     def update_laser_state_from_device(self, arg=None):
@@ -898,6 +901,7 @@ class BLEDevice(InterfaceDevice):
         if buf is None:
             return
 
+        # note that we're reading these into SpectrometerState, not self.next_FOO
         state = self.settings.state
 
         if len(buf) >= 4:
@@ -925,26 +929,25 @@ class BLEDevice(InterfaceDevice):
         return SpectrometerResponse(future.result())
     async def set_laser_enable_async(self, flag):
         log.debug(f"setting laser enable {flag}")
-        self.settings.state.laser_enable = flag
+        self.next_laser_enable = flag
         await self.sync_laser_state_to_device_async()
 
     async def sync_laser_state_to_device_async(self):
         log.debug(f"sync_laser_state_to_device_async: start")
 
-        state = self.settings.state
+        pwm_perc = int(min(100, self.next_laser_power_perc)) & 0xff
 
-        # note that we're reading these values from SELF (not STATE) -> DEVICE
-        data = [ 0xff,                    # 0: mode (NO CHANGE)
-                 0xff,                    # 1: type (NO CHANGE)
-                 0x01 if state.laser_enable else 0x00,  # 2: enable
+        data = [ 0x00,                    # 0: mode (reserved)
+                 0x00,                    # 1: type (reserved)
+                 0x01 if self.next_laser_enable else 0x00, # 2: enable
                  0xff,                    # 3: laser watchdog (NO CHANGE)
                  0xff,                    # 4: laser watchdog (NO CHANGE)
                  0x00,                    # 5: reserved (legacy laser_warning_delay_ms)
                  0x00,                    # 6: reserved (legacy laser_warning_delay_ms)
                  0xff,                    # 7: read-only status_mask (laser_can_fire, laser_is_firing etc)
-                 state.laser_power_perc ] # 8: laser PWM
+                 pwm_perc ]               # 8: laser PWM
 
-        log.debug(f"sync_laser_state_to_device_asyhc: calling write_char_async('LASER_STATE') with data {data}")
+        log.debug(f"sync_laser_state_to_device_async: calling write_char_async('LASER_STATE') with data {data}")
         await self.write_char_async("LASER_STATE", data)
         log.debug(f"sync_laser_state_to_device_async: done")
 
@@ -953,7 +956,7 @@ class BLEDevice(InterfaceDevice):
         return SpectrometerResponse(future.result())
     async def set_laser_power_perc_async(self, perc):
         log.debug(f"setting laser power perc {perc}")
-        self.laser_power_perc = perc 
+        self.next_laser_power_perc = perc 
         await self.sync_laser_state_to_device_async()
 
     ############################################################################
