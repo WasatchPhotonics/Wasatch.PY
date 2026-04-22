@@ -146,10 +146,11 @@ class WasatchDeviceWrapper:
     # could include "FILE:/path/to/dir", etc. However, device_id is just
     # a string scalar to this class, and actually parsing / using it should be
     # entirely encapsulated within WasatchDevice and lower using DeviceID.
-    def __init__(self, device_id, log_level, callback=None):
+    def __init__(self, device_id, log_level, callback=None, safe_mode=False):
         self.device_id = device_id
         self.log_level = log_level
         self.callback = callback
+        self.safe_mode = safe_mode
 
         self.settings_queue = Queue() # spectrometer -> GUI (SpectrometerSettings, one-time)
         self.response_queue = Queue() # spectrometer -> GUI (Readings)
@@ -237,7 +238,8 @@ class WasatchDeviceWrapper:
             message_queue  = self.message_queue,  # Main <-- child /  SpectrometerMessage?
             class_name     = self.class_name,
             log_level      = self.log_level,
-            callback       = self.callback)
+            callback       = self.callback,
+            safe_mode      = self.safe_mode)
         log.debug("device wrapper: Instance created for worker")
 
         self.wrapper_worker.daemon = True

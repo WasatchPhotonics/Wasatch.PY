@@ -74,6 +74,8 @@ class SpectrometerSettings:
         self.update_wavecal()
         self.update_raman_intensity_factors()
 
+        self.eeprom_backup = None # used by both FID and enlighten.Spectrometer
+
         # ENLIGHTEN sends this so individual driver processes can adaptively scale USB timeouts
         self.num_connected_devices = 1
 

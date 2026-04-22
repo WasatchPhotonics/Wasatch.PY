@@ -110,7 +110,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.ccd_temperature_invalid = False
 
         self.settings = SpectrometerSettings(device_id)
-        self.eeprom_backup = None
 
         self.alerts = set()
 
@@ -3724,8 +3723,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         """
         log.debug("fid.update_session_eeprom: %s updating EEPROM instance", self.settings.eeprom.serial_number)
 
-        if not self.eeprom_backup:
-            self.eeprom_backup = copy.deepcopy(self.settings.eeprom)
+        if not self.settings.eeprom_backup:
+            self.settings.eeprom_backup = copy.deepcopy(self.settings.eeprom)
 
         self.settings.eeprom.update_editable(pair[1])
         return SpectrometerResponse(data=True)
@@ -3737,8 +3736,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         """
         log.debug("fid.replace_session_eeprom: %s replacing EEPROM instance", self.settings.eeprom.serial_number)
 
-        if not self.eeprom_backup:
-            self.eeprom_backup = copy.deepcopy(self.settings.eeprom)
+        if not self.settings.eeprom_backup:
+            self.settings.eeprom_backup = copy.deepcopy(self.settings.eeprom)
 
         self.settings.eeprom = pair[1]
         self.settings.eeprom.dump()
@@ -3746,15 +3745,15 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
     ## Actually store the current session EEPROM fields to the spectrometer.
     def write_eeprom(self):
-        if not self.eeprom_backup:
+        if not self.settings.eeprom_backup:
             log.critical("expected to update or replace EEPROM object before write command")
             self.queue_message("marquee_error", "Failed to write EEPROM")
             return SpectrometerResponse(data=False, error_msg="failed to write eeprom")
 
         # backup contents of previous EEPROM in log
         log.debug("Original EEPROM contents")
-        self.eeprom_backup.dump()
-        log.debug("Original EEPROM buffers: %s", self.eeprom_backup.buffers)
+        self.settings.eeprom_backup.dump()
+        log.debug("Original EEPROM buffers: %s", self.settings.eeprom_backup.buffers)
 
         try:
             self.settings.eeprom.generate_write_buffers()
