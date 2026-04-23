@@ -8,7 +8,8 @@ import re
 
 from . import utils
 
-from .ROI import ROI
+from .AssemblyRevision import AssemblyRevision
+from .ROI              import ROI
 
 log = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ log = logging.getLogger(__name__)
 # @see 24LC128 for FX2 (16KB, https://www.microchip.com/en-us/product/24LC128)
 class EEPROM:
 
-    LATEST_REV = 18
+    LATEST_REV = 19
 
     MAX_PAGES = 9
     PAGE_LENGTH = 64
@@ -35,10 +36,12 @@ class EEPROM:
 
     DEFAULT_LASER_WATCHDOG_SEC = 10
 
+    # @see https://docs.python.org/2/library/struct.html#format-characters
+    # (capitals are unsigned)
     EEPROM_FIELDS = [
         ((0,  0, 16), "s", "model"),
         ((0, 16, 16), "s", "serial_number"),
-        ((0, 32,  4), "I", "baud_rate"),
+        ((0, 32,  4), "I", "baud_rate"), # deprecated
         ((0, 36,  1), "?", "has_cooling"),
         ((0, 37,  1), "?", "has_battery"),
         ((0, 38,  1), "?", "has_laser"),
@@ -83,12 +86,13 @@ class EEPROM:
         ((2, 37,  2), "H", "roi_vertical_region_2_end"),
         ((2, 39,  2), "H", "roi_vertical_region_3_start"),
         ((2, 41,  2), "H", "roi_vertical_region_3_end"),
-        ((2, 43,  4), "f", "linearity_c0"),
+        ((2, 43,  4), "f", "linearity_c0"), # deprecated...
         ((2, 47,  4), "f", "linearity_c1"),
         ((2, 51,  4), "f", "linearity_c2"),
         ((2, 55,  4), "f", "linearity_c3"),
         ((2, 59,  4), "f", "linearity_c4"),
 
+        ((3, 11,  1), "b", "max_laser_temp_deg_c"),
         ((3, 12,  4), "f", "laser_power_c0"),
         ((3, 16,  4), "f", "laser_power_c1"),
         ((3, 20,  4), "f", "laser_power_c2"),
@@ -109,6 +113,7 @@ class EEPROM:
         ((4,  0, 64), "s", "user_data"),
 
         ((5, 30, 16), "s", "product_configuration"),
+        ((5, 45,  6), "*", "assembly_revision_packed"),
         ((5, 63,  1), "B", "subformat"),
 
         ((8,  0, 15), "s", "laser_password"),
@@ -118,7 +123,7 @@ class EEPROM:
 
         self.model                       = None
         self.serial_number               = None
-        self.baud_rate                   = 0
+        self.baud_rate                   = 0 # deprecated
         self.has_cooling                 = False    # explicitly means detector TEC, not laser
         self.has_battery                 = False
         self.has_laser                   = False
@@ -182,8 +187,10 @@ class EEPROM:
         self.roi_vertical_region_2_end   = 0
         self.roi_vertical_region_3_start = 0
         self.roi_vertical_region_3_end   = 0
-        self.linearity_coeffs            = []
+        self.linearity_coeffs            = [] # deprecated
 
+
+        self.max_laser_temp_deg_c        = None
         self.max_laser_power_mW          = 0.0
         self.min_laser_power_mW          = 0.0
         self.laser_power_coeffs          = []
@@ -194,6 +201,8 @@ class EEPROM:
 
         self.bad_pixels                  = [] # should be set, not list (but this works with EEPROMEditor)
         self.product_configuration       = None
+        self.assembly_revision_packed    = None
+        self.assembly_revision           = None
 
         self.laser_password              = None
 
@@ -225,7 +234,7 @@ class EEPROM:
             "laser_power_coeffs",
             "laser_warmup_sec",
             "laser_watchdog_sec",
-            "linearity_coeffs",
+           #"linearity_coeffs", # deprecated
             "max_laser_power_mW",
             "min_laser_power_mW",
             "raman_intensity_coeffs",
@@ -337,7 +346,7 @@ class EEPROM:
 
         self.model                           = self.unpack((0,  0, 16), "s", "model")
         self.serial_number                   = self.unpack((0, 16, 16), "s", "serial")
-        self.baud_rate                       = self.unpack((0, 32,  4), "I", "baud")
+        self.baud_rate                       = 0 # self.unpack((0, 32,  4), "I", "baud") # deprecated
         self.has_cooling                     = self.unpack((0, 36,  1), "?", "cooling")
         self.has_battery                     = self.unpack((0, 37,  1), "?", "battery")
         self.has_laser                       = self.unpack((0, 38,  1), "?", "laser")
@@ -422,16 +431,20 @@ class EEPROM:
         self.roi_vertical_region_3_start     = self.unpack((2, 39,  2), "H" if self.format >= 4 else "h")
         self.roi_vertical_region_3_end       = self.unpack((2, 41,  2), "H" if self.format >= 4 else "h")
         self.linearity_coeffs = []
-        self.linearity_coeffs          .append(self.unpack((2, 43,  4), "f", "linearity_coeff_0")) # overloading for secondary ADC
-        self.linearity_coeffs          .append(self.unpack((2, 47,  4), "f"))
-        self.linearity_coeffs          .append(self.unpack((2, 51,  4), "f"))
-        self.linearity_coeffs          .append(self.unpack((2, 55,  4), "f"))
-        self.linearity_coeffs          .append(self.unpack((2, 59,  4), "f"))
+        if False: # deprecated
+            self.linearity_coeffs          .append(self.unpack((2, 43,  4), "f", "linearity_coeff_0")) # overloading for secondary ADC
+            self.linearity_coeffs          .append(self.unpack((2, 47,  4), "f"))
+            self.linearity_coeffs          .append(self.unpack((2, 51,  4), "f"))
+            self.linearity_coeffs          .append(self.unpack((2, 55,  4), "f"))
+            self.linearity_coeffs          .append(self.unpack((2, 59,  4), "f"))
 
         # ######################################################################
         # Page 3
         # ######################################################################
         
+        if self.format >= 18:
+            self.unpack_field("max_laser_temp_deg_c")
+
         self.laser_power_coeffs = []
         self.laser_power_coeffs        .append(self.unpack((3, 12,  4), "f", "laser_power_coeff_0"))
         self.laser_power_coeffs        .append(self.unpack((3, 16,  4), "f"))
@@ -486,6 +499,9 @@ class EEPROM:
 
         if self.format >= 5:
             self.product_configuration       = self.unpack((5,  30, 16), "s", "product_configuration")
+        if self.format >= 18:
+            self.unpack_field("assembly_revision_packed")
+            self.assembly_revision = AssemblyRevision(self.assembly_revision_packed)
         if self.format >= 7:
             self.subformat                   = self.unpack((5,  63,  1), "B", "subformat")
 
@@ -638,7 +654,7 @@ class EEPROM:
 
         self.pack((0,  0, 16), "s", self.model)
         self.pack((0, 16, 16), "s", self.serial_number)
-        self.pack((0, 32,  4), "I", self.baud_rate)
+        self.pack((0, 32,  4), "I", self.baud_rate) # deprecated (zero)
         self.pack((0, 36,  1), "?", self.has_cooling)
         self.pack((0, 37,  1), "?", self.has_battery)
         self.pack((0, 38,  1), "?", self.has_laser)
@@ -703,14 +719,16 @@ class EEPROM:
         self.pack((2, 39,  2), "H", self.roi_vertical_region_3_start)
         self.pack((2, 41,  2), "H", self.roi_vertical_region_3_end)
 
-        if self.linearity_coeffs is not None:
-            for i in range(min(5, len(self.linearity_coeffs))):
-                self.pack((2, 43 + i * 4,  4), "f", self.linearity_coeffs[i])
+        if False: # deprecated
+            if self.linearity_coeffs is not None: 
+                for i in range(min(5, len(self.linearity_coeffs))):
+                    self.pack((2, 43 + i * 4,  4), "f", self.linearity_coeffs[i])
 
         # ######################################################################
         # Page 3
         # ######################################################################
 
+        self.pack_field("max_laser_temp_deg_c")
         if self.laser_power_coeffs is not None:
             for i in range(min(4, len(self.laser_power_coeffs))):
                 self.pack((3, 12 + i * 4,  4), "f", self.laser_power_coeffs[i])
@@ -753,6 +771,9 @@ class EEPROM:
             self.pack((5, i * 2, 2), "h", value)
 
         self.pack((5, 30, 16), "s", self.product_configuration)
+        if self.assembly_revision:
+            self.assembly_revision_packed = self.assembly_revision.serialize()
+            self.pack_field("assembly_revision_packed")
         self.pack((5, 63,  1), "B", self.subformat)
 
         # ######################################################################
@@ -871,6 +892,9 @@ class EEPROM:
                 if c == 0:
                     break
                 unpack_result += chr(c)
+        elif data_type == "*":
+            # non-standard Wasatch extension
+            unpack_result = buf[start_byte:end_byte]
         else:
             unpack_result = 0
             try:
@@ -929,6 +953,13 @@ class EEPROM:
                     buf[start_byte + i] = ord(value[i])
                 else:
                     buf[start_byte + i] = 0
+        elif data_type == "*":
+            # non-standard extension
+            for i in range(start_byte, end_byte):
+                buf[i] = 0
+            if value is not None:
+                for i in range(min(length, len(value))):
+                    buf[i] = value[i]
         else:
             if data_type == "f":
                 value = float(value)
@@ -1000,7 +1031,7 @@ class EEPROM:
         log.debug("EEPROM settings:")
         log.debug("  Model:            %s", self.model)
         log.debug("  Serial Number:    %s", self.serial_number)
-        log.debug("  Baud Rate:        %d", self.baud_rate)
+       #log.debug("  Baud Rate:        %d", self.baud_rate) # deprecated
         log.debug("  Has Cooling:      %s", self.has_cooling)
         log.debug("  Has Battery:      %s", self.has_battery)
         log.debug("  Has Laser:        %s", self.has_laser)
@@ -1055,8 +1086,9 @@ class EEPROM:
         log.debug("  ROI Vert Reg 1:   (%d, %d)", self.roi_vertical_region_1_start, self.roi_vertical_region_1_end)
         log.debug("  ROI Vert Reg 2:   (%d, %d)", self.roi_vertical_region_2_start, self.roi_vertical_region_2_end)
         log.debug("  ROI Vert Reg 3:   (%d, %d)", self.roi_vertical_region_3_start, self.roi_vertical_region_3_end)
-        log.debug("  Linearity Coeffs: %s", self.linearity_coeffs)
+       #log.debug("  Linearity Coeffs: %s", self.linearity_coeffs) # deprecated
         log.debug("")
+        log.debug("  Max Laser Temp:   %d degC", self.max_laser_temp_deg_c)
         log.debug("  Laser coeffs:     %s", self.laser_power_coeffs)
         log.debug("  Max Laser Power:  %s mW", self.max_laser_power_mW)
         log.debug("  Min Laser Power:  %s mW", self.min_laser_power_mW)
@@ -1066,6 +1098,7 @@ class EEPROM:
         log.debug("")
         log.debug("  Bad Pixels:       %s", self.bad_pixels)
         log.debug("  Product Config:   %s", self.product_configuration)
+        log.debug("  Assembly Rev:     %s", self.assembly_revision)
 
         if self.subformat == 1:
             self.dump_raman_intensity_calibration()

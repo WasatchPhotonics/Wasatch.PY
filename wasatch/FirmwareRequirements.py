@@ -17,10 +17,11 @@ class FirmwareRequirements:
 
         self.feature_versions = {
             "imx_stabilization":                { "microcontroller": { "min": "1.0.7.0" } },
-            "microcontroller_serial_number":    { "microcontroller": { "min": "1.0.4.5", "unsupported": [ "11.3.0.37" ] } },
-            "get_ble_firmware_version":         { "microcontroller": { "min": "1.0.4.5", "unsupported": [ "11.3.0.37", "1.0.33.7" ] } },
-            "get_laser_warning_delay_sec":      { "microcontroller": { "min": "1.0.4.5", "unsupported": [ "11.3.0.37" ] } },
-            "hamamatsu_vertical_roi":           { "microcontroller": { "min": "10.0.0.47" } }, # , "fpga": { "min": "35_12_0", "includes": "_" } },
+            "microcontroller_serial_number":    { "microcontroller": { "min": "1.0.4.5",  "unsupported": [ "11.3.0.37" ] } },
+            "get_ble_firmware_version":         { "microcontroller": { "min": "1.0.4.5",  "unsupported": [ "11.3.0.37", "1.0.33.7" ] } },
+            "get_laser_warning_delay_sec":      { "microcontroller": { "min": "1.0.4.5",  "unsupported": [ "11.3.0.37" ] } },
+            "get_power_connection_state":       { "microcontroller": { "min": "1.0.63.5", "unsupported": [ "11.3.0.37" ] } },
+            "hamamatsu_vertical_roi":           { "microcontroller": { "min": "10.0.0.47" } }, 
             "xs_area_scan_offset_kludge":       { "fpga": { "min": "01_04_01", "max": "01_04_30", "includes": "_" } },
         }
 

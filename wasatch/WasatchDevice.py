@@ -120,6 +120,7 @@ class WasatchDevice(InterfaceDevice):
         self.process_id = os.getpid()
         self.last_memory_check = datetime.datetime.now()
         self.last_battery_percentage = 0
+        self.late_arriving_timestamp = datetime.datetime.now()
 
         self.process_f = self._init_process_funcs()
 
@@ -608,6 +609,18 @@ class WasatchDevice(InterfaceDevice):
             else:
                 if reading is not None:
                     reading.battery_percentage = self.last_battery_percentage
+
+        # slow poll for late-arriving attributes
+        if self.settings.is_xs():
+            if (datetime.datetime.now() - self.late_arriving_timestamp).total_seconds() > 10:
+                self.late_arriving_timestamp = datetime.datetime.now()
+
+                # BLE Firmware Version
+                if not self.settings.ble_firmware_version:
+                    if not self.settings.eeprom.disable_ble_power:
+                        self.hardware.get_ble_firmware_version()
+                        if self.settings.ble_firmware_version:
+                            self.hardware.queue_message("received_ble_firmware_version", True)
 
         self.hardware.update_firmware_log()
 

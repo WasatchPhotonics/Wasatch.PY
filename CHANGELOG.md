@@ -4,7 +4,15 @@
     - tweak laser password validation logic
     - laser PWM works
     - starting to consider Safe Mode
-    - consolidating EEPROM backup location
+    - enabled get_microcontroller_serial_number
+    - testing get_power_connection_state
+    - added periodic check for late-arriving attributes like ble_firmware_version
+    - EEPROM updates
+        - bumped to version 19
+        - consolidating backup location
+        - deprecated baud_rate, linearity_coeffs
+        - added max_laser_temp_deg_c
+        - added assembly_revision (and AssemblyRevision)
 - 2026-04-18 2.3.24
     - add avg_resolution to IDSDevice EEPROM
     - change XS attenuator default from 127 to 40

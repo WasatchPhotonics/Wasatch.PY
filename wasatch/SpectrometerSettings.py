@@ -391,9 +391,10 @@ class SpectrometerSettings:
 
     def is_xs(self):
         return (self.is_imx() 
-                or "micro" in self.full_model().lower()
-                or "sig"   in self.full_model().lower()
-                or "xs"    in self.full_model().lower()
+                or "micro"  in self.full_model().lower()
+                or "sig"    in self.full_model().lower()
+                or "xs"     in self.full_model().lower()
+                or '0x4000' in str(self.device_id)
                 or self.is_spi())
 
     def supports_feature(self, feature):

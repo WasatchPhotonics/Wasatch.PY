@@ -41,6 +41,9 @@ class USBCPowerConnectionState:
     def parse_data(self, data):
         """
         This is based on the data structure defined in ENG-0120 Rev 9.
+
+        BLE: 0x01 00 03 0b b8
+        USB: GET_POWER_CONNECTION_STATE: _get_code: request 0xff value 0x0078 index 0x0000 length 5 = [00 07 00 00 00]
         """
         if data is None or len(data) < 1:
             return
@@ -50,7 +53,23 @@ class USBCPowerConnectionState:
         if len(data) >= 3: self.type_c_cc_current_capability = self.TYPE_C_CC_CURRENT_CAPABILITY.get(data[2], None)
         if len(data) >= 5: self.current_limit_mA = (data[3] << 8) + data[4]
 
-    def __repr__(self):
+    def short(self):
+        tok = []
+        if self.bc_12_adapter_type: 
+            tok.append(self.bc_12_adapter_type)
+
+        if self.bc_12_charger_type: 
+            tok.append(self.bc_12_charger_type)
+
+        if self.type_c_cc_current_capability: 
+            tok.append(self.type_c_cc_current_capability)
+
+        if self.current_limit_mA: 
+            tok.append(f"{self.current_limit_mA}mA")
+
+        return "/".join(tok)
+
+    def long(self):
         tok = []
         if self.bc_12_adapter_type: 
             tok.append(f"BC 1.2 Adapter Type {self.bc_12_adapter_type}")
@@ -65,3 +84,6 @@ class USBCPowerConnectionState:
             tok.append(f"Current Limit {self.current_limit_mA}mA")
 
         return ", ".join(tok)
+
+    def __repr__(self):
+        return self.short()

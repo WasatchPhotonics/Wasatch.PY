@@ -13,23 +13,24 @@ from time   import sleep
 
 from . import utils
 
-from .SpectrometerSettings import SpectrometerSettings
-from .SpectrometerResponse import SpectrometerResponse, ErrorLevel
-from .SpectrometerRequest  import SpectrometerRequest
-from .SpectrometerState    import SpectrometerState
-from .InterfaceDevice      import InterfaceDevice
-from .DetectorRegions      import DetectorRegions
-from .ControlObject        import ControlObject
-from .StatusMessage        import StatusMessage
-from .RealUSBDevice        import RealUSBDevice
-from .MockUSBDevice        import MockUSBDevice
-from .AreaScanImage        import AreaScanImage
-from .DetectorROI          import DetectorROI
-from .PollStatus           import PollStatus
-from .Reading              import Reading
-from .EEPROM               import EEPROM
-from .IMX385               import IMX385
-from .ROI                  import ROI
+from .USBCPowerConnectionState import USBCPowerConnectionState
+from .SpectrometerSettings     import SpectrometerSettings
+from .SpectrometerResponse     import SpectrometerResponse, ErrorLevel
+from .SpectrometerRequest      import SpectrometerRequest
+from .SpectrometerState        import SpectrometerState
+from .InterfaceDevice          import InterfaceDevice
+from .DetectorRegions          import DetectorRegions
+from .ControlObject            import ControlObject
+from .StatusMessage            import StatusMessage
+from .RealUSBDevice            import RealUSBDevice
+from .MockUSBDevice            import MockUSBDevice
+from .AreaScanImage            import AreaScanImage
+from .DetectorROI              import DetectorROI
+from .PollStatus               import PollStatus
+from .Reading                  import Reading
+from .EEPROM                   import EEPROM
+from .IMX385                   import IMX385
+from .ROI                      import ROI
 
 log = logging.getLogger(__name__)
 
@@ -267,22 +268,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.get_fpga_firmware_version()
         log.debug(f"FPGA firmware version {self.settings.fpga_firmware_version}")
 
-        # self.get_microcontroller_serial_number()
-        # log.debug(f"Microcontroller serial number {self.settings.microcontroller_serial_number}")
+        self.get_microcontroller_serial_number()
+        log.debug(f"Microcontroller serial number {self.settings.microcontroller_serial_number}")
 
-        # issue: BL652 may not be fully booted if this was a hotplug. We could
-        #        of course re-poll if None, but the initial SpectrometerSettings
-        #        will already have been used to populate the EEPROMEditor. What
-        #        we really need to do is send a "change" in this setting upstream
-        #        via the MessageQueue, and have a listener in ENLIGHTEN/caller
-        #        for such updates. The way we mainly do this now is by adding
-        #        fields to Reading (like temperature, battery, laser interlock
-        #        etc), since most dynamic (uncommanded) changes in spectrometer 
-        #        state are usually measurement-related. It would be a little 
-        #        weird to add a "dynamic firmware version" to Reading, implying
-        #        that firmware versions might suddenly change mid-runtime...
-        # self.get_ble_firmware_version()
-        # log.debug(f"BLE firmware version {self.settings.ble_firmware_version}")
+        self.get_power_connection_state()
+        log.debug(f"Power connection state {self.settings.state.power_connection_state}")
 
         # ######################################################################
         # model-specific settings
@@ -461,6 +451,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.connecting = False
 
         self.settings.state.dump("FID.post_connect")
+
+        if self.settings.is_xs():
+            self.queue_message("marquee_info", "stabilizing sensor")
 
         return SpectrometerResponse(self.connected)
         
@@ -1225,8 +1218,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return SpectrometerResponse(data=s)
 
     def get_microcontroller_serial_number(self):
-        if not self.settings.is_arm():
-            log.debug("GET_MICROCONTROLLER_SERIAL_NUMBER requires ARM")
+        if not self.settings.is_xs():
+            log.debug("GET_MICROCONTROLLER_SERIAL_NUMBER requires XS")
             return None
 
         if not self.settings.supports_feature("microcontroller_serial_number"):
@@ -1250,19 +1243,19 @@ class FeatureIdentificationDevice(InterfaceDevice):
     def get_ble_firmware_version(self):
         if not self.settings.is_arm():
             log.debug("GET_BLE_FIRMWARE_VERSION requires ARM")
-            return None
+            return
 
         if not self.settings.supports_feature("get_ble_firmware_version"):
             log.debug("GET_BLE_FIRMWARE_VERSION not supported on this firmware")
-            return None
+            return
 
         result = self._get_code(0xff, wValue=0x2d, wLength=32, label="GET_BLE_FIRMWARE_VERSION")
         if result is None:
-            return None
+            return
 
         data = result.data
         if data is None:
-            return None
+            return
 
         s = ""
         for c in data:
@@ -1271,6 +1264,34 @@ class FeatureIdentificationDevice(InterfaceDevice):
             s += chr(c)
         self.settings.ble_firmware_version = s
         return SpectrometerResponse(data=s)
+
+    def get_power_connection_state(self):
+        if not self.settings.is_xs():
+            log.debug("GET_POWER_CONNECTION_STATE requires XS")
+            return
+
+        if not self.settings.supports_feature("get_power_connection_state"):
+            log.debug("GET_POWER_CONNECTION_STATE not supported on this firmware")
+            return
+
+        result = self._get_code(0xff, wValue=0x78, wLength=5, label="GET_POWER_CONNECTION_STATE")
+        if result is None:
+            return
+
+        data = result.data
+        if data is None:
+            return
+
+        if len(data) != 5:
+            log.error(f"get_power_connection_state: expected 5 bytes, received {len(data)}")
+            return
+
+        state = USBCPowerConnectionState(data)
+        self.settings.state.power_connection_state = state
+
+        log.debug(f"Power connection state: {state} ({state.long()})")
+
+        return SpectrometerResponse(data=state)
 
     def apply_edc(self, spectrum):
         """
