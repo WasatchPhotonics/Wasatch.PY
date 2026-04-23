@@ -47,7 +47,7 @@ class AssemblyRevision(dict):
 
     def __repr__(self):
         s = ""
-        if self.partnumber:
+        if self.partnumber and self.partnumber != 140_000:
             s += f"{self.partnumber}"
             if self.variant:
                 s += f"-{self.variant}"
