@@ -1,4 +1,5 @@
 import json
+from . import utils
 
 class AssemblyRevision(dict):
     """
@@ -10,6 +11,9 @@ class AssemblyRevision(dict):
         self.partnumber = None
         self.variant = None
         self.revision = None
+
+        if isinstance(data, str):
+            data = utils.hex_string_to_data(data)
 
         self.parse_data(data)
 

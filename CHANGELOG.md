@@ -11,10 +11,26 @@
         - bumped to version 19
         - consolidating backup location
         - deprecated baud_rate, linearity_coeffs
-        - added max_laser_temp_deg_c
-        - added assembly_revision (and AssemblyRevision)
         - made EEPROM subclasses JSON serializable (hopefully)
         - fixed EEPROM.pack for binary types ("*")
+        - moved further into (un)pack_field
+        - revisited user_text / user_data relationship
+        - added:
+            - acc_cont_strobe_count
+            - acc_cont_strobe_delay_us
+            - acc_cont_strobe_period_us
+            - acc_cont_strobe_width_us
+            - acc_state
+            - acc_state_gpio1
+            - acc_state_gpio2
+            - assembly_revision (and AssemblyRevision)
+            - feature_mask_xs
+            - light_source_type
+            - max_battery_temp_deg_c
+            - max_laser_temp_deg_c
+            - pixel_calibration_type
+            - startup_laser_tec_setpoint
+
 - 2026-04-18 2.3.24
     - add avg_resolution to IDSDevice EEPROM
     - change XS attenuator default from 127 to 40

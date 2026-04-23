@@ -2319,8 +2319,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
         environmental conditions.
         """
         if not self.settings.eeprom.has_cooling:
-            log.error("unable to control TEC: EEPROM reports no cooling")
-            return SpectrometerResponse(data=False, error_lvl=ErrorLevel.low, error_msg="unable to control TEC: EEPROM reports no cooling")
+            msg = "unable to configure detector TEC: EEPROM reports no cooling"
+            log.error(msg)
+            return SpectrometerResponse(data=False, error_lvl=ErrorLevel.low, error_msg=msg)
 
         if degC < self.settings.eeprom.min_temp_degC:
             log.critical("set_detector_tec_setpoint_degC: setpoint %f below min %f", degC, self.settings.eeprom.min_temp_degC)
@@ -2355,12 +2356,14 @@ class FeatureIdentificationDevice(InterfaceDevice):
     ## @todo rename set_detector_tec_enable
     def set_tec_enable(self, flag: bool):
         if not self.settings.eeprom.has_cooling:
-            log.debug("unable to control TEC: EEPROM reports no cooling")
-            return SpectrometerResponse(data=False, error_msg="unable to control TEC: EEPROM reports no cooling")
+            msg = "unable to control detector TEC: EEPROM reports no cooling"
+            log.debug(msg)
+            return SpectrometerResponse(data=False, error_msg=msg)
 
         if not self.settings.eeprom.has_detector_tec_calibration():
-            log.debug("unable to control TEC: EEPROM missing valid TEC calibration")
-            return SpectrometerResponse(data=False, error_msg="unable to control TEC: EEPROM missing valid TEC calibration")
+            msg = "unable to control detector TEC: EEPROM missing valid TEC calibration"
+            log.debug(msg)
+            return SpectrometerResponse(data=False, error_msg=msg)
 
         value = 1 if flag else 0
 
@@ -3464,7 +3467,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
     def get_tec_enabled(self):
         if not self.settings.eeprom.has_cooling:
-            log.error("unable to control TEC: EEPROM reports no cooling")
+            log.error("unable to control detector TEC: EEPROM reports no cooling")
             return SpectrometerResponse(data=False, error_msg="no cooling reported")
         res = self._get_code(0xda, label="GET_CCD_TEC_ENABLED", msb_len=1)
         res.data = 0 != res.data

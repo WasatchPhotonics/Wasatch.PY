@@ -742,6 +742,18 @@ def to_hex(a):
         return "[ ]"
     return "[ " + ", ".join([f"0x{v:02x}" for v in a]) + " ]"
 
+def hex_string_to_data(s):
+    if s:
+        s = s.removeprefix("0x")
+    if s is None or not len(s):
+        return None
+    data = []
+    for i in range(len(s) // 2):
+        offset = i * 2
+        value = s[offset:offset + 2]
+        data.append(int(value, 16))
+    return data
+
 def from_db_to_linear(x):
     return 10 ** (x / 20.)
 

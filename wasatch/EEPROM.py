@@ -55,7 +55,9 @@ class EEPROM:
         ((0, 52,  2), "h", "detector_offset"), 
         ((0, 54,  4), "f", "detector_gain_odd"), 
         ((0, 58,  2), "h", "detector_offset_odd"), 
+        ((0, 60,  2), "h", "startup_laser_tec_setpoint"), 
         ((0, 63,  1), "B", "format"), 
+
         ((1,  0,  4), "f", "wavecal_c0"),
         ((1,  4,  4), "f", "wavecal_c1"),
         ((1,  8,  4), "f", "wavecal_c2"),
@@ -105,19 +107,30 @@ class EEPROM:
         ((3, 44,  4), "I", "max_integration_time_ms"),
         ((3, 48,  4), "f", "avg_resolution"),
         ((3, 52,  2), "H", "laser_watchdog_sec"),
+        ((3, 54,  1), "B", "light_source_type"),
         ((3, 55,  2), "H", "power_timeout_sec"),
         ((3, 57,  2), "H", "detector_timeout_sec"),
         ((3, 59,  1), "B", "horiz_binning_mode"),
         ((3, 60,  1), "B", "startup_scans_to_average"),
         ((3, 61,  1), "B", "laser_attenuator"),
 
-        ((4,  0, 64), "s", "user_data"),
+        ((4,  0, 64), "*", "user_data"),
 
         ((5, 30, 16), "s", "product_configuration"),
         ((5, 45,  6), "*", "assembly_revision_packed"),
         ((5, 63,  1), "B", "subformat"),
 
         ((8,  0, 15), "s", "laser_password"),
+        ((8, 16,  4), "I", "feature_mask_xs"),
+        ((8, 20,  2), "H", "acc_state"),
+        ((8, 22,  1), "B", "acc_state_gpio1"),
+        ((8, 23,  1), "B", "acc_state_gpio2"),
+        ((8, 24,  4), "I", "acc_cont_strobe_period_us"),
+        ((8, 28,  4), "I", "acc_cont_strobe_width_us"),
+        ((8, 32,  4), "I", "acc_cont_strobe_delay_us"),
+        ((8, 36,  2), "H", "acc_cont_strobe_count"),
+        ((8, 38,  1), "b", "max_battery_temp_deg_c"),
+        ((8, 39,  1), "b", "pixel_calibration_type"),
     ]
 
     def __init__(self):
@@ -206,6 +219,16 @@ class EEPROM:
         self.assembly_revision           = None
 
         self.laser_password              = None
+        self.feature_mask_xs             = None
+        self.acc_state                   = None
+        self.acc_state_gpio1             = None
+        self.acc_state_gpio2             = None
+        self.acc_cont_strobe_period_us   = None
+        self.acc_cont_strobe_width_us    = None
+        self.acc_cont_strobe_delay_us    = None
+        self.acc_cont_strobe_count       = None
+        self.max_battery_temp_deg_c      = None
+        self.pixel_calibration_type      = None
 
         self.format                      = EEPROM.LATEST_REV
         self.subformat                   = 0 # determines format of pages 6-7
@@ -338,21 +361,18 @@ class EEPROM:
     # @see https://docs.python.org/2/library/struct.html#format-characters
     # (capitals are unsigned)
     def read_eeprom(self):
-        self.format = self.unpack((0, 63,  1), "B", "format")
+        self.unpack_field("format")
         log.debug("parsing EEPROM format %d", self.format)
 
         # ######################################################################
         # Page 0
         # ######################################################################
 
-        self.model                           = self.unpack((0,  0, 16), "s", "model")
-        self.serial_number                   = self.unpack((0, 16, 16), "s", "serial")
-        self.baud_rate                       = 0 # self.unpack((0, 32,  4), "I", "baud") # deprecated
-        self.has_cooling                     = self.unpack((0, 36,  1), "?", "cooling")
-        self.has_battery                     = self.unpack((0, 37,  1), "?", "battery")
-        self.has_laser                       = self.unpack((0, 38,  1), "?", "laser")
+        for name in [ "model", "serial_number", "has_cooling", "has_battery", "has_laser" ]:
+            self.unpack_field(name)
+
         if self.format > 9:
-            self.feature_mask                = self.unpack((0, 39,  2), "H", "feature_mask")
+            self.unpack_field("feature_mask")
         elif self.format >= 3:
             self.excitation_nm               = self.unpack((0, 39,  2), "H", "excitation_nm (unsigned)")
         else:
@@ -367,16 +387,13 @@ class EEPROM:
         #       EEPROM until we start bumping production spectrometers to
         #       EEPROM Page 0 Revision 3!
         if self.format >= 3:
-            self.startup_integration_time_ms = self.unpack((0, 43,  2), "H", "startup_integration_time_ms")
-            self.startup_temp_degC           = self.unpack((0, 45,  2), "h", "startup_temp_degC")
-            self.startup_triggering_scheme   = self.unpack((0, 47,  1), "B", "startup_triggering_scheme")
-            self.detector_gain               = self.unpack((0, 48,  4), "f", "detector_gain") # "even pixels" for InGaAs
-            self.detector_offset             = self.unpack((0, 52,  2), "h", "detector_offset") # "even pixels" for InGaAs
-            self.detector_gain_odd           = self.unpack((0, 54,  4), "f", "detector_gain_odd") # InGaAs-only
-            self.detector_offset_odd         = self.unpack((0, 58,  2), "h", "detector_offset_odd") # InGaAs-only
+            for name in [ "startup_integration_time_ms", "startup_temp_degC", "startup_triggering_scheme",
+                          "detector_gain", "detector_offset", "detector_gain_odd", "detector_offset_odd" ]:
+                self.unpack_field(name)
 
         if self.format >= 16:
-            self.startup_laser_tec_setpoint  = self.unpack((0, 60,  2), "H", "startup_laser_tec_setpoint") & 0xfff # XS-only
+            self.unpack_field("startup_laser_tec_setpoint")
+            self.startup_laser_tec_setpoint &= 0xfff
 
         # ######################################################################
         # Page 1
@@ -406,10 +423,12 @@ class EEPROM:
         # Page 2                    
         # ######################################################################
 
-        self.detector                        = self.unpack((2,  0, 16), "s", "detector")
-        self.active_pixels_horizontal        = self.unpack((2, 16,  2), "H", "active_pixels_horizontal")
+        for name in [ "detector", "active_pixels_horizontal" ]:
+            self.unpack_field(name)
+
         if self.format >= 10:
-            self.laser_warmup_sec            = self.unpack((2, 18,  1), "B", "laser_warmup_sec")
+            self.unpack_field("laser_warmup_sec")
+
         self.active_pixels_vertical          = self.unpack((2, 19,  2), "H" if self.format >= 4 else "h")
 
         if self.format >= 8:
@@ -432,12 +451,6 @@ class EEPROM:
         self.roi_vertical_region_3_start     = self.unpack((2, 39,  2), "H" if self.format >= 4 else "h")
         self.roi_vertical_region_3_end       = self.unpack((2, 41,  2), "H" if self.format >= 4 else "h")
         self.linearity_coeffs = []
-        if False: # deprecated
-            self.linearity_coeffs          .append(self.unpack((2, 43,  4), "f", "linearity_coeff_0")) # overloading for secondary ADC
-            self.linearity_coeffs          .append(self.unpack((2, 47,  4), "f"))
-            self.linearity_coeffs          .append(self.unpack((2, 51,  4), "f"))
-            self.linearity_coeffs          .append(self.unpack((2, 55,  4), "f"))
-            self.linearity_coeffs          .append(self.unpack((2, 59,  4), "f"))
 
         # ######################################################################
         # Page 3
@@ -455,25 +468,25 @@ class EEPROM:
         self.min_laser_power_mW              = self.unpack((3, 32,  4), "f", "min_laser_power_mW")
 
         if self.format >= 4:
-            self.excitation_nm_float         = self.unpack((3, 36,  4), "f", "excitation(float)")
+            self.unpack_field("excitation_nm_float")
         else:
             self.excitation_nm_float = self.excitation_nm
 
         if self.format >= 5:
-            self.min_integration_time_ms     = self.unpack((3, 40,  4), "I", "min_integration_time_ms")
-            self.max_integration_time_ms     = self.unpack((3, 44,  4), "I", "max_integration_time_ms")
+            self.unpack_field("min_integration_time_ms")
+            self.unpack_field("max_integration_time_ms")
 
         if self.format >= 7:
-            self.avg_resolution              = self.unpack((3, 48,  4), "f", "avg_resolution")
+            self.unpack_field("avg_resolution")
 
         if self.format >= 15:
-            self.laser_watchdog_sec          = self.unpack((3, 52,  2), "H", "laser_watchdog_sec")
-            self.light_source_type           = self.unpack((3, 54,  1), "B", "light_source_type")
+            self.unpack_field("laser_watchdog_sec")
+            self.unpack_field("light_source_type")
 
         if self.format >= 16:
-            self.power_timeout_sec           = self.unpack((3, 55,  2), "H", "power_timeout_sec")
-            self.detector_timeout_sec        = self.unpack((3, 57,  2), "H", "detector_timeout_sec")
-            self.horiz_binning_mode          = self.unpack((3, 59,  1), "B", "horiz_binning_mode")
+            self.unpack_field("power_timeout_sec")
+            self.unpack_field("detector_timeout_sec")
+            self.unpack_field("horiz_binning_mode")
 
         if self.format >= 18:
             self.unpack_field("startup_scans_to_average")
@@ -499,12 +512,12 @@ class EEPROM:
         self.bad_pixels.sort()
 
         if self.format >= 5:
-            self.product_configuration       = self.unpack((5,  30, 16), "s", "product_configuration")
+            self.unpack_field("product_configuration")
         if self.format >= 18:
             self.unpack_field("assembly_revision_packed")
             self.assembly_revision = AssemblyRevision(self.assembly_revision_packed)
         if self.format >= 7:
-            self.subformat                   = self.unpack((5,  63,  1), "B", "subformat")
+            self.unpack_field("subformat")
 
         # ######################################################################
         # Page 6-7
@@ -572,6 +585,13 @@ class EEPROM:
             elif len(s) < 4 or any([not (31 < ord(c) < 128) for c in s]):
                 log.debug("no valid laser password found")
                 self.laser_password = None
+
+            for name in [ "feature_mask_xs", "acc_state", 
+                          "acc_state_gpio1", "acc_state_gpio2", 
+                          "acc_cont_strobe_period_us", "acc_cont_strobe_width_us", 
+                          "acc_cont_strobe_delay_us", "acc_cont_strobe_count", 
+                          "max_battery_temp_deg_c", "pixel_calibration_type" ]:
+                self.unpack_field(name)
 
         # ######################################################################
         # sanity checks
@@ -653,22 +673,15 @@ class EEPROM:
         # Page 0
         # ######################################################################
 
-        self.pack((0,  0, 16), "s", self.model)
-        self.pack((0, 16, 16), "s", self.serial_number)
-        self.pack((0, 32,  4), "I", self.baud_rate) # deprecated (zero)
-        self.pack((0, 36,  1), "?", self.has_cooling)
-        self.pack((0, 37,  1), "?", self.has_battery)
-        self.pack((0, 38,  1), "?", self.has_laser)
+        for name in [ "model", "serial_number", 
+                      "has_cooling", "has_battery", "has_laser", 
+                      "slit_size_um", "startup_integration_time_ms",
+                      "startup_temp_degC", "startup_triggering_scheme", 
+                      "detector_gain", "detector_offset", "detector_gain_odd", "detector_offset_odd", 
+                      "startup_laser_tec_setpoint"]:
+            self.pack_field(name)
+
         self.pack((0, 39,  2), "H", self.generate_feature_mask(), "FeatureMask")
-        self.pack((0, 41,  2), "H", self.slit_size_um)
-        self.pack((0, 43,  2), "H", self.startup_integration_time_ms)
-        self.pack((0, 45,  2), "h", self.startup_temp_degC)
-        self.pack((0, 47,  1), "B", self.startup_triggering_scheme)
-        self.pack((0, 48,  4), "f", self.detector_gain)
-        self.pack((0, 52,  2), "h", self.detector_offset)
-        self.pack((0, 54,  4), "f", self.detector_gain_odd)
-        self.pack((0, 58,  2), "h", self.detector_offset_odd)
-        self.pack((0, 60,  2), "H", self.startup_laser_tec_setpoint)
 
         # ######################################################################
         # Page 1
@@ -687,44 +700,33 @@ class EEPROM:
             for i in range(min(3, len(self.adc_to_degC_coeffs))):
                 self.pack((1, 32 + i * 4,  4), "f", self.adc_to_degC_coeffs[i])
 
-        self.pack((1, 28,  2), "h", self.max_temp_degC)
-        self.pack((1, 30,  2), "h", self.min_temp_degC)
-        self.pack((1, 44,  2), "h", self.tec_r298)
-        self.pack((1, 46,  2), "h", self.tec_beta)
-        self.pack((1, 48, 12), "s", self.calibration_date)
-        self.pack((1, 60,  3), "s", self.calibrated_by)
+        for name in [ "max_temp_degC", "min_temp_degC", "tec_r298", "tec_beta",
+                      "calibration_date", "calibrated_by" ]:
+            self.pack_field(name)
                                     
         # ######################################################################
         # Page 2                    
         # ######################################################################
 
-        self.pack((2,  0, 16), "s", self.detector)
-        self.pack((2, 16,  2), "H", self.active_pixels_horizontal)
-        self.pack((2, 18,  1), "B", self.laser_warmup_sec)
-        self.pack((2, 19,  2), "H", self.active_pixels_vertical)
+        for name in [ "detector", "active_pixels_horizontal", "laser_warmup_sec",
+                      "active_pixels_vertical" ]:
+            self.pack_field(name)
+
         if self.format < 7:
-            self.pack((2, 21,  2), "H", max(0xffff, self.min_integration_time_ms))
-            self.pack((2, 23,  2), "H", max(0xffff, self.max_integration_time_ms))
+            self.pack_field("min_integration_time_ms")
+            self.pack_field("max_integration_time_ms")
         else:
             coeff = 0.0
             if len(wavelength_coeffs) > 4:
                 coeff = wavelength_coeffs[4]
             self.pack((2, 21,  4), "f", coeff)
-        self.pack((2, 25,  2), "H", self.actual_pixels_horizontal)
-        self.pack((2, 27,  2), "H", self.multi_wavelength_calibration.get("roi_horizontal_start"))
-        self.pack((2, 29,  2), "H", self.multi_wavelength_calibration.get("roi_horizontal_end"))
-        self.pack((2, 31,  2), "H", self.roi_vertical_region_1_start)
-        self.pack((2, 33,  2), "H", self.roi_vertical_region_1_end)
-        self.pack((2, 35,  2), "H", self.roi_vertical_region_2_start)
-        self.pack((2, 37,  2), "H", self.roi_vertical_region_2_end)
-        self.pack((2, 39,  2), "H", self.roi_vertical_region_3_start)
-        self.pack((2, 41,  2), "H", self.roi_vertical_region_3_end)
 
-        if False: # deprecated
-            if self.linearity_coeffs is not None: 
-                for i in range(min(5, len(self.linearity_coeffs))):
-                    self.pack((2, 43 + i * 4,  4), "f", self.linearity_coeffs[i])
-
+        for name in [ "actual_pixels_horizontal", 
+                      "roi_vertical_region_1_start", "roi_vertical_region_1_end",
+                      "roi_vertical_region_2_start", "roi_vertical_region_2_end",
+                      "roi_vertical_region_3_start", "roi_vertical_region_3_end" ]:
+            self.pack_field(name)
+            
         # ######################################################################
         # Page 3
         # ######################################################################
@@ -734,25 +736,28 @@ class EEPROM:
             for i in range(min(4, len(self.laser_power_coeffs))):
                 self.pack((3, 12 + i * 4,  4), "f", self.laser_power_coeffs[i])
 
-        self.pack((3, 28,  4), "f", self.max_laser_power_mW)
-        self.pack((3, 32,  4), "f", self.min_laser_power_mW)
+        for name in [ "max_laser_power_mW", "min_laser_power_mW",
+                      "min_integration_time_ms", "max_integration_time_ms",
+                      "laser_watchdog_sec", "light_source_type",
+                      "power_timeout_sec", "detector_timeout_sec", 
+                      "startup_scans_to_average", "laser_attenuator" ]:
+            self.pack_field(name)
+
         self.pack((3, 36,  4), "f", self.multi_wavelength_calibration.get("excitation_nm_float"))
-        self.pack((3, 40,  4), "I", self.min_integration_time_ms)
-        self.pack((3, 44,  4), "I", self.max_integration_time_ms)
         self.pack((3, 48,  4), "f", self.multi_wavelength_calibration.get("avg_resolution"))
-        self.pack((3, 52,  2), "H", self.laser_watchdog_sec)
-        self.pack((3, 54,  1), "B", self.light_source_type)
-        self.pack((3, 55,  2), "H", self.power_timeout_sec)
-        self.pack((3, 57,  2), "H", self.detector_timeout_sec)
         self.pack((3, 59,  1), "B", self.multi_wavelength_calibration.get("horiz_binning_mode"))
-        self.pack_field("startup_scans_to_average")
-        self.pack_field("laser_attenuator")
 
         # ######################################################################
         # Page 4
         # ######################################################################
 
-        self.pack((4,  0, 63), "s", self.user_text)
+        if self.user_text and self.user_data is None:
+            # regenerate user_data from user_text
+            self.user_data = [0] * self.PAGE_LENGTH
+            length = len(self.user_text)
+            for i in range(min(length, self.PAGE_LENGTH)):
+                self.user_data[i] = ord(self.user_text[i])
+        self.pack_field("user_data")
 
         # ######################################################################
         # Page 5
@@ -771,11 +776,14 @@ class EEPROM:
                 value = -1
             self.pack((5, i * 2, 2), "h", value)
 
-        self.pack((5, 30, 16), "s", self.product_configuration)
-        if self.assembly_revision:
-            self.assembly_revision_packed = self.assembly_revision.serialize()
+        for name in [ "product_configuration", "subformat" ]:
+            self.pack_field(name)
+
+        if self.format >= 18:
+            if self.assembly_revision:
+                self.assembly_revision_packed = self.assembly_revision.serialize()
             self.pack_field("assembly_revision_packed")
-        self.pack((5, 63,  1), "B", self.subformat)
+            # self.dump_write_buffers("after packing assembly_revision_packed")
 
         # ######################################################################
         # Page 6-7
@@ -804,6 +812,15 @@ class EEPROM:
         if self.model and "XS" in self.model.upper():
             # self.pack((8,  0, 16), "s", self.laser_password)
             self.pack_field("laser_password", quiet=True)
+
+            for name in [ "feature_mask_xs", "acc_state", 
+                          "acc_state_gpio1", "acc_state_gpio2", 
+                          "acc_cont_strobe_period_us", "acc_cont_strobe_width_us", 
+                          "acc_cont_strobe_delay_us", "acc_cont_strobe_count", 
+                          "max_battery_temp_deg_c", "pixel_calibration_type" ]:
+                self.pack_field(name)
+
+        self.dump_write_buffers("end of generate_write_buffers")
 
     # ##########################################################################
     #                                                                          #
@@ -932,7 +949,7 @@ class EEPROM:
         end_byte   = start_byte + length
 
         if page > len(self.write_buffers):
-            log.error("error unpacking EEPROM page %d, offset %d, len %d as %s: invalid page (label %s)", 
+            log.error("error packing EEPROM page %d, offset %d, len %d as %s: invalid page (label %s)", 
                 page, start_byte, length, data_type, label, exc_info=1)
             return
 
@@ -956,17 +973,14 @@ class EEPROM:
                     buf[start_byte + i] = 0
         elif data_type == "*":
             for i in range(start_byte, end_byte):
+                log.debug(f"pack: clearing buf {page}, byte {i}")
                 buf[i] = 0
             if isinstance(value, str):
-                value = value.removeprefix("0x")
-                new_value = []
-                for i in range(len(value) // 2):
-                    b = value[i*2:i*2+2]
-                    new_value.append(int(b, 16))
-                value = new_value
-            if isinstance(value, list):
-                for i in range(min(length, len(value))):
-                    buf[start_byte + i] = value[i]
+                value = utils.hex_string_to_data(value)
+                log.debug(f"pack: preparing to pack value {value}")
+            for i in range(min(length, len(value))):
+                offset = start_byte + i
+                buf[offset] = value[i]
         else:
             if data_type == "f":
                 value = float(value)
@@ -1032,6 +1046,11 @@ class EEPROM:
         self.multi_wavelength_calibration = tmp_mwc
 
         return s
+
+    def dump_write_buffers(self, label=None):
+        log.debug(f"EEPROM.write_buffers: {label}")
+        for i in range(len(self.write_buffers)):
+            log.debug(f"  page {i}: {utils.to_hex(self.write_buffers[i])}")
 
     ## log this object
     def dump(self):
