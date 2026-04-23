@@ -1,6 +1,7 @@
 import hashlib
 import logging
 import struct
+import numpy as np
 import array
 import copy
 import json
@@ -954,12 +955,18 @@ class EEPROM:
                 else:
                     buf[start_byte + i] = 0
         elif data_type == "*":
-            # non-standard extension
             for i in range(start_byte, end_byte):
                 buf[i] = 0
-            if value is not None:
+            if isinstance(value, str):
+                value = value.removeprefix("0x")
+                new_value = []
+                for i in range(len(value) // 2):
+                    b = value[i*2:i*2+2]
+                    new_value.append(int(b, 16))
+                value = new_value
+            if isinstance(value, list):
                 for i in range(min(length, len(value))):
-                    buf[i] = value[i]
+                    buf[start_byte + i] = value[i]
         else:
             if data_type == "f":
                 value = float(value)
@@ -1015,7 +1022,7 @@ class EEPROM:
         # this does take an allow_nan argument, but it throws an exception on NaN, 
         # rather than replacing with null :-(
         # https://stackoverflow.com/questions/6601812/sending-nan-in-json
-        s = json.dumps(self.__dict__, indent=2, sort_keys=True)
+        s = json.dumps(self.__dict__, indent=2, sort_keys=True, default=lambda x: x.tolist() if isinstance(x, np.ndarray) else None)
         if not allow_nan:
             s = re.sub(r"\bNaN\b", "null", s)
 

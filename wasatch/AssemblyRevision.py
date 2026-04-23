@@ -1,9 +1,12 @@
-class AssemblyRevision:
+import json
+
+class AssemblyRevision(dict):
     """
     Making this a standalone class because might end up using from both FID (USB)
     and BLEDevice.
     """
     def __init__(self, data=None):
+        dict.__init__(self) # https://stackoverflow.com/a/31207881
         self.partnumber = None
         self.variant = None
         self.revision = None

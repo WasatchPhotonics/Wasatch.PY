@@ -1,17 +1,15 @@
-import logging
+import json
 from . import utils
 
-log = logging.getLogger(__name__)
-
-class USBCPowerConnectionState:
+class USBCPowerConnectionState(dict):
     """
     Making this a standalone class because might end up using from both FID (USB)
     and BLEDevice.
     """
     BC_12_ADAPTER_TYPES = {
-        1: "SDP",
-        2: "CDP",
-        3: "DCP" 
+        1: "SDP", # Standard Downstream Port
+        2: "CDP", # Charging Downstream Port
+        3: "DCP"  # Dedicated Charging Port
     }
 
     BC_12_CHARGER_TYPES = {
@@ -20,7 +18,7 @@ class USBCPowerConnectionState:
         3: "Apple 1A",
         4: "Apple 2A",
         5: "Apple 12W",
-        6: "DCP 3A",
+        6: "DCP 3A", # Dedicated Charging Port
         7: "Unknown"
     }
 
@@ -31,6 +29,8 @@ class USBCPowerConnectionState:
     }
 
     def __init__(self, data=None):
+        dict.__init__(self) # https://stackoverflow.com/a/31207881
+
         self.bc_12_adapter_type = None
         self.bc_12_charger_type = None
         self.type_c_cc_current_capability = None
@@ -87,3 +87,6 @@ class USBCPowerConnectionState:
 
     def __repr__(self):
         return self.short()
+
+    def toJSON(self):
+        return json.dumps(self, default=lambda o: o.__dict__, sort_keys=True, indent=2)
