@@ -1114,7 +1114,7 @@ class EEPROM:
         log.debug("  ROI Vert Reg 3:   (%d, %d)", self.roi_vertical_region_3_start, self.roi_vertical_region_3_end)
        #log.debug("  Linearity Coeffs: %s", self.linearity_coeffs) # deprecated
         log.debug("")
-        log.debug("  Max Laser Temp:   %d degC", self.max_laser_temp_deg_c)
+        log.debug("  Max Laser Temp:   %s", f"{self.max_laser_temp_deg_c} degC" if self.max_laser_temp_deg_c is not None else None)
         log.debug("  Laser coeffs:     %s", self.laser_power_coeffs)
         log.debug("  Max Laser Power:  %s mW", self.max_laser_power_mW)
         log.debug("  Min Laser Power:  %s mW", self.min_laser_power_mW)

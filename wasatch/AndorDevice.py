@@ -214,8 +214,11 @@ class AndorDevice(InterfaceDevice):
             return
 
     def set_fan_enable(self, x):
-        self.check_result(self.driver.SetFanMode(int(x)), f"Andor Fan On {x}")
-        return SpectrometerResponse()
+        try:
+            self.check_result(self.driver.SetFanMode(int(x)), f"Andor Fan On {x}")
+        except:
+            return SpectrometerResponse(False)
+        return SpectrometerResponse(True)
 
     def _get_default_data_dir(self):
         if os.name == "nt":

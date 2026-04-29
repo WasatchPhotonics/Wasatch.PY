@@ -1,13 +1,20 @@
 # Changelog
 
 - 2026-??-?? 2.3.25
-    - tweak laser password validation logic
-    - laser PWM works
-    - starting to consider Safe Mode
-    - enabled get_microcontroller_serial_number
-    - testing get_power_connection_state
-    - added periodic check for late-arriving attributes like ble_firmware_version
-    - add default laser warning delay sec for old FW
+    - USB
+        - enabled get_microcontroller_serial_number
+        - testing get_power_connection_state
+        - added periodic check for late-arriving attributes like ble_firmware_version
+    - BLE
+        - laser PWM works
+    - Laser control
+        - tweak laser password validation logic
+        - add default laser warning delay sec for old FW
+    - InterfaceDevice
+        - moved message_queue, alert_queue up from WasatchDevice/FID
+    - IDSDevice
+        - added laser_device (incl EEPROM)
+        - support Auto-Raman
     - EEPROM updates
         - bumped to version 19
         - consolidating backup location
@@ -31,12 +38,7 @@
             - max_laser_temp_deg_c
             - pixel_calibration_type
             - startup_laser_tec_setpoint
-    - InterfaceDevice
-        - moved message_queue, alert_queue up from WasatchDevice/FID
-    - IDSDevice
-        - added laser_device (incl EEPROM)
-    - AutoRaman
-        - added auto_collection_mode for IDS
+    - starting to consider Safe Mode
 - 2026-04-18 2.3.24
     - add avg_resolution to IDSDevice EEPROM
     - change XS attenuator default from 127 to 40
