@@ -42,24 +42,9 @@ class OceanDevice(InterfaceDevice):
     """
 
     def __init__(self, device_id, message_queue=None, alert_queue=None):
-        super().__init__()
-        # if passed a string representation of a DeviceID, deserialize it
-        if type(device_id) is str:
-            device_id = DeviceID(label=device_id)
-
-        self.device_id      = device_id
-        self.message_queue  = message_queue
-        self.alert_queue    = alert_queue
-
-        #self.lock = threading.Lock()
+        super().__init__(device_id=device_id, message_queue=message_queue, alert_queue=alert_queue)
 
         self.connected = False
-
-        # Receives ENLIGHTEN's 'change settings' commands in the spectrometer
-        # process. Although a logical queue, has nothing to do with multiprocessing.
-        self.command_queue = []
-
-        self.immediate_mode = False
 
         self.settings = SpectrometerSettings(self.device_id)
         self.summed_spectra         = None
@@ -67,10 +52,6 @@ class OceanDevice(InterfaceDevice):
         self.session_reading_count  = 0
         self.take_one               = False
         self.failure_count          = 0
-
-        self.process_id = os.getpid()
-        self.last_memory_check = datetime.datetime.now()
-        self.last_battery_percentage = 0
 
         self.process_f = self._init_process_funcs()
 

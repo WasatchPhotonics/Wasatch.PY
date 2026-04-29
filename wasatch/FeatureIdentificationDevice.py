@@ -85,16 +85,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
     def __init__(self, device_id, message_queue=None, alert_queue=None):
         """
         Instantiate a FeatureIdentificationDevice with from the given device_id.
-        @param device_id [in] device ID ("USB:0x24aa:0x1000:1:24")
         @param message_queue [in] if provided, provides an outbound (from FID 
                to WrapperWorker) queue for writing StatusMessage objects upstream
-        @param alert_queue [in] if provided, accepts an inbound (from 
-               WrapperWorker to FID) queue for receiving AlertMessage objects 
         """
-        super().__init__()
-        self.device_id = device_id
-        self.message_queue = message_queue
-        self.alert_queue = alert_queue
+        super().__init__(device_id=device_id, message_queue=message_queue, alert_queue=alert_queue)
 
         self.device = None
         if "MOCK" in str(device_id).upper():
@@ -111,8 +105,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.ccd_temperature_invalid = False
 
         self.settings = SpectrometerSettings(device_id)
-
-        self.alerts = set()
 
         # ######################################################################
         # these are "driver state" within FeatureIdentificationDevice, and don't
@@ -388,7 +380,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         log.debug("configuring FPGA")
 
         # automatically push EEPROM values to the FPGA (on modern EEPROMs)
-        # (this will work on Series-XS as well, even if we subsequently track its gain
+        # (this will work on XS as well, even if we subsequently track its gain
         #  somewhat differently as state.gain_db)
         if self.settings.eeprom.format >= 4:
             log.debug("sending gain/offset to FPGA")
@@ -1033,7 +1025,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         if update_session_eeprom:
             self.settings.eeprom.detector_gain = gain
 
-        if self.settings.is_micro():
+        if self.settings.is_xs():
             self.settings.state.gain_db = gain
 
         return SpectrometerResponse(data=gain)
@@ -1096,7 +1088,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.settings.eeprom.detector_gain = gain
 
         if self.settings.is_xs():
-            # self.queue_message("marquee_info", "sensor is stabilizing (gain)")
             self.settings.state.gain_db = gain
 
         return result
@@ -1333,13 +1324,12 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return [ v - avg_dark for v in spectrum ]
 
     def get_line(self, trigger=True, auto_raman_params=None):
-        """ legacy alias """
         return self.get_spectrum(trigger, auto_raman_params)
 
     def generate_timeout_ms(self):
         max_integ_ms = max(self.settings.state.integration_time_ms, self.settings.state.prev_integration_time_ms)
         if self.settings.is_xs():
-            # we have no idea if Series-XS has to "wake up" the sensor, so wait
+            # we have no idea if XS has to "wake up" the sensor, so wait
             # long enough for 20ms + 8 throwaway frames if need be (IMX385 datasheet p69)
             if self.settings.state.onboard_averaging:
                 timeout_ms = max_integ_ms * (self.settings.state.scans_to_average + 7) + 500 * self.settings.num_connected_devices + 20
@@ -1362,6 +1352,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         @param trigger (Input) send an initial ACQUIRE
         @param auto_raman_params (Input) if present, use VR_ACQUIRE_AUTO_RAMAN 
                  rather than the usual VR_ACQUIRE_CCD
+
         @returns tuple of (spectrum[], area_scan_row_count) for success
         @returns None when it times-out while waiting for an external trigger
                  (interpret as, "didn't find any fish this time, try again in a bit")
@@ -1610,7 +1601,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         ########################################################################
 
         if not self.settings.state.area_scan_enabled:
-            if self.settings.is_micro() and utils.all_same(spectrum):
+            if self.settings.is_xs() and utils.all_same(spectrum):
                 response.error_msg = "skipping flat spectrum"
                 response.error_lvl = ErrorLevel.low
                 response.keep_alive = True
@@ -1729,10 +1720,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.require_throwaway(ms != self.settings.state.integration_time_ms)
         self.settings.state.prev_integration_time_ms = self.settings.state.integration_time_ms
         self.settings.state.integration_time_ms = ms
-
-        if self.settings.is_xs():
-            # self.queue_message("marquee_info", "sensor is stabilizing (int time)")
-            pass
 
         return result
 
@@ -1853,6 +1840,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
     def get_area_scan_xs(self):
         """
         @returns Reading(spectrum, AreaScanImage(data=nd_array))
+        @see sensor docs in IMX385.py
+
+        Physically, the largest area scan image ENLIGHTEN or WPSC can generate is
+        (1952, 1097).
         """
         start = self.settings.eeprom.roi_vertical_region_1_start
         stop  = self.settings.eeprom.roi_vertical_region_1_end
@@ -2573,7 +2564,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.set_strobe_enable(flag)
 
         if self.settings.is_xs():
-            # Series-XS getLaserEnable doesn't provide immediate confirmation 
+            # XS getLaserEnable doesn't provide immediate confirmation 
             # because it's comingled with laserWatchdogSec and probably 
             # laserDelaySec
             return SpectrometerResponse(data=True)
@@ -2830,9 +2821,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
             return SpectrometerResponse(data=None, error_msg=msg)
 
         if not self.settings.supports_feature("get_laser_warning_delay_sec"):
-            msg = "GET_LASER_WARNING_DELAY_SEC not supported on this firmware"
-            log.error(msg)
-            return SpectrometerResponse(data=None, error_msg=msg)
+            log.error("GET_LASER_WARNING_DELAY_SEC not supported on this firmware, returning default 3")
+            return SpectrometerResponse(data=3)
 
         result = self._get_code(0x8b, lsb_len=1, label="GET_LASER_WARNING_DELAY_SEC")
         self.settings.state.laser_warning_delay_sec = result.data
@@ -2960,8 +2950,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
     ##
     # Enable "Raman mode" (automatic laser) in the spectrometer firmware.
     def set_raman_mode_enable_NOT_USED(self, flag: bool):
-        if not self.settings.is_micro():
-            log.debug("Raman mode only supported on Series-XS")
+        if not self.settings.is_xs():
+            log.debug("Raman mode only supported on XS")
             return SpectrometerResponse(data=False, error_msg="raman mode not supported")
 
         return self._send_code(bRequest        = 0xff,
@@ -2976,8 +2966,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return res
 
     def set_raman_delay_ms(self, ms: int):
-        if not self.settings.is_micro():
-            log.debug("Raman delay only supported on Series-XS")
+        if not self.settings.is_xs():
+            log.debug("Raman delay only supported on XS")
             return SpectrometerResponse(data=False, error_msg="raman delay not supported")
 
         # send value as big-endian
@@ -3001,11 +2991,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
     #       logic itself is fixed), always send a DISABLE_LASER before changing the 
     #       watchdog period.
     def set_laser_watchdog_sec(self, sec):
-        if not self.settings.is_micro():
-            log.error("Laser watchdog only supported on Series-XS")
+        if not self.settings.is_xs():
+            log.error("Laser watchdog only supported on XS")
             return SpectrometerResponse(data=False, error_msg="laser watchdog not supported")
 
-        # remove this call after the Series-XS ARM / FPGA watchdog are fixed
+        # remove this call after the XS ARM / FPGA watchdog are fixed
         # MZ: are they fixed? can I remove this?
         # self.set_laser_enable(False)
 
@@ -3029,7 +3019,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         @note we are not currently using this function
         """
-        if not self.settings.is_micro() or not self.settings.eeprom.has_laser:
+        if not self.settings.is_xs() or not self.settings.eeprom.has_laser:
             return SpectrometerResponse(data=False, error_msg="update laser watchdog not supported")
 
         int_ms = self.settings.state.integration_time_ms
@@ -3042,7 +3032,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return self.set_laser_watchdog_sec(watchdog_sec)
 
     def update_vertical_roi(self):
-        if self.settings.is_micro():
+        if self.settings.is_xs():
             roi = self.settings.get_vertical_roi()
             if roi is not None:
                 self.set_vertical_roi(roi)
@@ -3054,7 +3044,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         if self.settings.fpga_firmware_version == "000-008" and self.settings.microcontroller_firmware_version == "0.1.0.7":
             return SpectrometerResponse(data=False)
 
-        if not self.settings.is_micro():
+        if not self.settings.is_xs():
             if not self.settings.supports_feature("hamamatsu_vertical_roi"):
                 log.warning("Vertical Binning only configurable on XS and prototype X/XM")
                 return SpectrometerResponse(data=False, error_msg="vertical binning not supported")
@@ -3080,6 +3070,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         if self.settings.is_xs():
             # ARM has USB opcodes for start/stop line
+
+            # Note that we should never have a start line less than 8, or stop 
+            # line above 1087 (see IMX385.py), but I'm not sure I want to clamp
+            # that here. Leaving that for WPSC to write to the EEPROM.
             self._send_code(bRequest=0xff, wValue=0x21, wIndex=start, label="SET_CMOS_START_LINE")
             self._send_code(bRequest=0xff, wValue=0x23, wIndex=end,   label="SET_CMOS_STOP_LINE")
         else:
@@ -3107,8 +3101,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
     # b11   12-bit     12-bit
     # \endverbatim
     def set_pixel_mode(self, mode: float):
-        if not self.settings.is_micro():
-            log.debug("Pixel Mode only configurable on Series-XS")
+        if not self.settings.is_xs():
+            log.debug("Pixel Mode only configurable on XS")
             return SpectrometerResponse(data=False, error_msg="pixel mode not supported")
 
         # we only care about the two least-significant bits
@@ -3172,8 +3166,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         
         @param args: either a DetectorROI or a tuple of (region, y0, y1, x0, x1)
         """
-        if not self.settings.is_micro():
-            log.debug("Detector ROI only configurable on Series-XS")
+        if not self.settings.is_xs():
+            log.debug("Detector ROI only configurable on XS")
             return SpectrometerResponse(data=False, error_msg="Detector ROI not configurable")
 
         if isinstance(args, DetectorROI):
@@ -3824,54 +3818,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
         logging.getLogger().setLevel(lvl)
         return SpectrometerResponse()
 
-    def queue_message(self, setting, value):
-        """
-        If an upstream queue is defined, send the name-value pair.  Does nothing
-        if the caller hasn't provided a queue.
-
-        "setting" is application (caller) dependent, but ENLIGHTEN currently uses
-        "marquee_info" and "marquee_error".
-        """
-        if self.message_queue is None:
-            return SpectrometerResponse(data=False)
-
-        msg = StatusMessage(setting, value)
-        try:
-            self.message_queue.put(msg) 
-        except:
-            log.error("failed to enqueue StatusMessage (%s, %s)", setting, value, exc_info=1)
-            return SpectrometerResponse(data=False, error_msg="failed to enqueue messsage")
-        return SpectrometerResponse(data=True)
-
-    def check_alert(self, s):
-        log.debug(f"checking for alert {s}")
-        self.refresh_alerts()
-        if s in self.alerts:
-            log.debug(f"found {s} (clearing)")
-            self.alerts.remove(s)
-            return True
-
-    def refresh_alerts(self):
-        if self.alert_queue is None:
-            return
-
-        if self.alert_queue.empty():
-            return
-
-        while not self.alert_queue.empty():
-            alert = self.alert_queue.get_nowait()
-            if alert is None:
-                continue
-            elif isinstance(alert, ControlObject):
-                if alert.value:
-                    log.debug(f"raised alert {alert.setting}")
-                    self.alerts.add(alert.setting)
-                else:
-                    log.debug(f"cleared alert {alert.setting}")
-                    self.alerts.discard(alert.setting)
-            else:
-                log.error(f"non-ControlObject found in alerts_queue: {alert}")
-
     def _init_process_funcs(self):
         """
         Is it the expectation that all of these functions will return 
@@ -3978,6 +3924,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 "set_laser_power_require_modulation",
                 "set_laser_tec_mode",
                 "set_laser_temperature_setpoint_raw",
+                "set_laser_warning_delay_sec",
                 "set_laser_watchdog_sec",
                 "set_log_level",
                 "set_mod_delay_us",
@@ -4006,6 +3953,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # Long term, the upstream requests should be changed to match the new format
         # This is an easy fix for the time being to make things behave
         ##################################################################
+
+        # MZ: deprecate these from ENLIGHTEN? Also used by AutoRaman
+
         # spectrometer control
         process_f["laser_enable"]                       = lambda x: self.set_laser_enable(bool(x))
         process_f["integration_time_ms"]                = lambda x: self.set_integration_time_ms(x)
@@ -4025,7 +3975,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
         process_f["laser_power_high_resolution"]        = lambda x: self.set_laser_power_high_resolution(x)
         process_f["laser_power_require_modulation"]     = lambda x: self.set_laser_power_require_modulation(x)
         process_f["selected_laser"]                     = lambda x: self.set_selected_laser(int(x))
-        process_f["set_laser_warning_delay_sec"]        = lambda x: self.set_laser_warning_delay_sec(int(x))
 
         process_f["high_gain_mode_enable"]              = lambda x: self.set_high_gain_mode_enable(bool(x))
         process_f["trigger_source"]                     = lambda x: self.set_trigger_source(int(x))
@@ -4050,7 +3999,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # BatchCollection
         process_f["take_one_request"]                   = lambda x: self.settings.state.set("take_one_request", x)
 
-        # Series-XS
+        # XS
        #f["raman_mode_enable"]                          = lambda x: self.set_raman_mode_enable(bool(x))
         process_f["raman_delay_ms"]                     = lambda x: self.set_raman_delay_ms(int(round(x)))
         process_f["laser_watchdog_sec"]                 = lambda x: self.set_laser_watchdog_sec(int(round(x)))

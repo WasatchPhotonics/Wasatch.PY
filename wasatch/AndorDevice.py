@@ -55,28 +55,14 @@ class AndorDevice(InterfaceDevice):
     DRIVER_NOT_INSTALLED = False
 
     def __init__(self, device_id, message_queue=None, alert_queue=None):
-        # if passed a string representation of a DeviceID, deserialize it
-        super().__init__()
+        super().__init__(device_id=device_id, message_queue=message_queue, alert_queue=alert_queue)
 
         if self.DRIVER_NOT_INSTALLED:
             raise InterfaceDeviceClassUnavailable("Andor driver not installed")
 
-        if type(device_id) is str:
-            device_id = DeviceID(label=device_id)
-
-        self.device_id      = device_id
-        self.message_queue  = message_queue
-        self.alert_queue    = alert_queue
-
         self.load_error_codes()
 
         self.connected = False
-
-        # Receives ENLIGHTEN's 'change settings' commands in the spectrometer
-        # process. 
-        self.command_queue = []
-
-        self.immediate_mode = False
 
         # An AndorDevice has-a SpectrometerSettings, which has-a EEPROM, which 
         # has-a MultiWavelengthCalibration
@@ -570,6 +556,7 @@ class AndorDevice(InterfaceDevice):
                 self.settings.eeprom.multi_wavelength_calibration.set(v, self.config_values[k])
 
         # same spelling
+        # consider just using self.settings.eeprom.fields.keys()
         for k in [ 'model', 
                    'stubbed', 
                    'detector', 

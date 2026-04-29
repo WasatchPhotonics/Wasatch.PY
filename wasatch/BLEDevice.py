@@ -247,9 +247,11 @@ class BLEDevice(InterfaceDevice):
 
     CONNECT_TIMEOUT_SEC = 10
 
-    MAX_EEPROM_PAGES = 8 # separate from EEPROMFields, as XS BLE FW may not be in sync
+    # separate from EEPROMFields, as XS BLE FW may not be in sync
+    MAX_EEPROM_PAGES = 8 
 
-    STATUS_UPDATE_PERIOD_SEC = 60 # update Ambient temperature etc via acquire_data
+    # update Ambient temperature etc via acquire_data
+    STATUS_UPDATE_PERIOD_SEC = 60 
 
     LASER_TEC_MODES = {
         0: 'OFF', 
@@ -292,11 +294,7 @@ class BLEDevice(InterfaceDevice):
     }
 
     def __init__(self, device_id, message_queue=None, alert_queue=None):
-        super().__init__()
-
-        self.device_id      = device_id
-        self.message_queue  = message_queue
-        self.alert_queue    = alert_queue
+        super().__init__(device_id=device_id, message_queue=message_queue, alert_queue=alert_queue)
 
         # all Characteristics to which we're subscribed for notifications
         self.notifications = set() 

@@ -477,6 +477,8 @@ class IDSCamera:
     def set_integration_time_ms(self, ms):
         # manually clamp to apparent "multi-UserSet" range of (15ms, 120sec)
         # deliberately round to ms resolution to simplify barrier comparisons
+        if ms is None:
+            ms = 15
         ms = int(round(min(120_000, max(ms, 15)), 0))
 
         us = ms * 1000.0

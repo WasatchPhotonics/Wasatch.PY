@@ -1146,6 +1146,11 @@ class EEPROM:
         return EEPROM.LATEST_REV
 
     def get_horizontal_roi(self):
+        """
+        Note that on XS (see IMX385.py), our horizontal ROI for good signal 
+        should not extend outside (16, 1935). However, I'm not sure I want to
+        clamp that here. Leaving to WPSC to properly configure the EEPROM.
+        """
         start  = self.multi_wavelength_calibration.get("roi_horizontal_start", default=-1)
         end    = self.multi_wavelength_calibration.get("roi_horizontal_end", default=-1)
 

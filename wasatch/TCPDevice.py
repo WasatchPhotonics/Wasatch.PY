@@ -20,9 +20,8 @@ class TCPDevice(InterfaceDevice):
     ############################################################################
 
     def __init__(self, device_id, message_queue=None, alert_queue=None):
-        super().__init__()
+        super().__init__(device_id=device_id, message_queue=message_queue, alert_queue=alert_queue)
 
-        self.device_id = device_id
         if device_id.type != "TCP":
             raise RuntimeError("TCPDevice can only be constructed with TCP DeviceID")
 
