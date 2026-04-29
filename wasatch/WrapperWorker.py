@@ -66,6 +66,7 @@ class WrapperWorker(threading.Thread):
             class_name,
             log_level,
             callback=None,
+            safe_mode=False,
             alert_queue=None):
 
         threading.Thread.__init__(self)

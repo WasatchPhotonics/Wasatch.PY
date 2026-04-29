@@ -111,6 +111,10 @@ log = logging.getLogger(__name__)
 #
 class WasatchDeviceWrapper:
 
+    # ##########################################################################
+    # Class Constants
+    # ##########################################################################
+
     ACQUISITION_MODE_KEEP_ALL      = 0 # don't drop frames
     ACQUISITION_MODE_LATEST        = 1 # only grab most-recent frame (allow dropping)
     ACQUISITION_MODE_KEEP_COMPLETE = 2 # generally grab most-recent frame (allow dropping),
@@ -119,7 +123,13 @@ class WasatchDeviceWrapper:
                                        # frame IS a partial summation contributor, then send it on.
 
     MAX_SETTINGS_POLL_SEC = 2
-    UNAVAILABLE_CLASS_NAMES = set()
+
+    # ##########################################################################
+    # Class Attributes
+    # ##########################################################################
+
+    unavailable_class_names = set()
+    interface_devices = set()
 
     # ##########################################################################
     #                                                                          #
@@ -129,7 +139,11 @@ class WasatchDeviceWrapper:
 
     @classmethod
     def is_device_class_available(cls, class_name):
-        return class_name not in cls.UNAVAILABLE_CLASS_NAMES
+        return class_name not in cls.unavailable_class_names
+
+    @classmethod
+    def get_interface_devices(cls):
+        return list(cls.interface_devices)
 
     # ##########################################################################
     #                                                                          #
@@ -146,10 +160,11 @@ class WasatchDeviceWrapper:
     # could include "FILE:/path/to/dir", etc. However, device_id is just
     # a string scalar to this class, and actually parsing / using it should be
     # entirely encapsulated within WasatchDevice and lower using DeviceID.
-    def __init__(self, device_id, log_level, callback=None):
+    def __init__(self, device_id, log_level, callback=None, safe_mode=False):
         self.device_id = device_id
         self.log_level = log_level
         self.callback = callback
+        self.safe_mode = safe_mode
 
         self.settings_queue = Queue() # spectrometer -> GUI (SpectrometerSettings, one-time)
         self.response_queue = Queue() # spectrometer -> GUI (Readings)
@@ -237,7 +252,8 @@ class WasatchDeviceWrapper:
             message_queue  = self.message_queue,  # Main <-- child /  SpectrometerMessage?
             class_name     = self.class_name,
             log_level      = self.log_level,
-            callback       = self.callback)
+            callback       = self.callback,
+            safe_mode      = self.safe_mode)
         log.debug("device wrapper: Instance created for worker")
 
         self.wrapper_worker.daemon = True
@@ -301,16 +317,17 @@ class WasatchDeviceWrapper:
         elif isinstance(result.data, InterfaceDeviceClassUnavailable):
             response.error_msg = f"{self.class_name} unavailable"
             log.critical(f"poll_settings: {response.error_msg}")
-            self.UNAVAILABLE_CLASS_NAMES.add(self.class_name)
+            WasatchDeviceWrapper.unavailable_class_names.add(self.class_name)
 
         elif isinstance(result.data, SpectrometerSettings):
             # as long as no error_msg is set, ENLIGHTEN will interpret this as success
             # (note we're still just returning data=True)
             log.info(f"poll_settings: successfully received SpectrometerSettings for device")
             self.connected = True
-            self.settings = result.data 
             self.connect_start_time = datetime.datetime(year=datetime.MAXYEAR, month=1, day=1)
+            self.settings = result.data 
             self.settings.state.dump("WasatchDeviceWrapper.poll_settings")
+            WasatchDeviceWrapper.interface_devices.add(self.wrapper_worker.connected_device)
 
         else:
             response.error_msg = f"received unsupported result (neither SpectrometerSettings nor InterfaceDeviceClassUnavailable): {result}"
@@ -325,6 +342,8 @@ class WasatchDeviceWrapper:
     def disconnect(self):
         # send poison pill to the child
         self.closing = True
+        if self.wrapper_worker.connected_device:
+            WasatchDeviceWrapper.interface_devices.remove(self.wrapper_worker.connected_device)
         log.debug("disconnect: sending poison pill downstream")
         try:
             self.command_queue.put(None) 

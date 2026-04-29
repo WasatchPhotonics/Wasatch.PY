@@ -1,5 +1,44 @@
 # Changelog
 
+- 2026-??-?? 2.3.25
+    - USB
+        - enabled get_microcontroller_serial_number
+        - testing get_power_connection_state
+        - added periodic check for late-arriving attributes like ble_firmware_version
+    - BLE
+        - laser PWM works
+    - Laser control
+        - tweak laser password validation logic
+        - add default laser warning delay sec for old FW
+    - InterfaceDevice
+        - moved message_queue, alert_queue up from WasatchDevice/FID
+    - IDSDevice
+        - added laser_device (incl EEPROM)
+        - support Auto-Raman
+    - EEPROM updates
+        - bumped to version 19
+        - consolidating backup location
+        - deprecated baud_rate, linearity_coeffs
+        - made EEPROM subclasses JSON serializable (hopefully)
+        - fixed EEPROM.pack for binary types ("*")
+        - moved further into (un)pack_field
+        - revisited user_text / user_data relationship
+        - added:
+            - acc_cont_strobe_count
+            - acc_cont_strobe_delay_us
+            - acc_cont_strobe_period_us
+            - acc_cont_strobe_width_us
+            - acc_state
+            - acc_state_gpio1
+            - acc_state_gpio2
+            - assembly_revision (and AssemblyRevision)
+            - feature_mask_xs
+            - light_source_type
+            - max_battery_temp_deg_c
+            - max_laser_temp_deg_c
+            - pixel_calibration_type
+            - startup_laser_tec_setpoint
+    - starting to consider Safe Mode
 - 2026-04-18 2.3.24
     - add avg_resolution to IDSDevice EEPROM
     - change XS attenuator default from 127 to 40

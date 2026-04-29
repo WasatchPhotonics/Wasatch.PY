@@ -6,6 +6,11 @@ from .AbstractUSBDevice import AbstractUSBDevice
 log = logging.getLogger(__name__)
 
 class RealUSBDevice(AbstractUSBDevice):
+    """
+    Note that this is NOT an InterfaceDevice.
+
+    FeatureIdentificationDevice has one of these (or a MockUSBDevice, in virtual testing).
+    """
 
     def __init__(self,device_id):
         self.device_id = device_id

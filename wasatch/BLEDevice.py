@@ -247,9 +247,11 @@ class BLEDevice(InterfaceDevice):
 
     CONNECT_TIMEOUT_SEC = 10
 
-    MAX_EEPROM_PAGES = 8 # separate from EEPROMFields, as XS BLE FW may not be in sync
+    # separate from EEPROMFields, as XS BLE FW may not be in sync
+    MAX_EEPROM_PAGES = 8 
 
-    STATUS_UPDATE_PERIOD_SEC = 60 # update Ambient temperature etc via acquire_data
+    # update Ambient temperature etc via acquire_data
+    STATUS_UPDATE_PERIOD_SEC = 60 
 
     LASER_TEC_MODES = {
         0: 'OFF', 
@@ -292,11 +294,7 @@ class BLEDevice(InterfaceDevice):
     }
 
     def __init__(self, device_id, message_queue=None, alert_queue=None):
-        super().__init__()
-
-        self.device_id      = device_id
-        self.message_queue  = message_queue
-        self.alert_queue    = alert_queue
+        super().__init__(device_id=device_id, message_queue=message_queue, alert_queue=alert_queue)
 
         # all Characteristics to which we're subscribed for notifications
         self.notifications = set() 
@@ -340,6 +338,8 @@ class BLEDevice(InterfaceDevice):
 
         self.testing = False
         self.last_status_update_time = None
+        self.next_laser_enable = False
+        self.next_laser_power_perc = 100
         
         # ability to bridge sync-async
         self.run_loop = self.get_run_loop()
@@ -403,10 +403,10 @@ class BLEDevice(InterfaceDevice):
         self.settings.update_wavecal()
 
         log.debug(f"connect_async: initializing LASER_STATE")
-        await self.update_laser_state_async()
+        await self.update_laser_state_from_device_async()
 
         log.debug(f"connect_async: initializing BATTERY_STATE")
-        await self.update_battery_state_async()
+        await self.update_battery_state_from_device_async()
 
         log.debug(f"connect_async: initializing integration time")
         self.integration_time_ms = self.settings.eeprom.startup_integration_time_ms
@@ -851,12 +851,12 @@ class BLEDevice(InterfaceDevice):
     ############################################################################
 
     async def battery_notification_async(self, sender, data):
-        await self.update_battery_state_async(data)
+        await self.update_battery_state_from_device_async(data)
 
-    def update_battery_state(self, arg=None):
-        future = asyncio.run_coroutine_threadsafe(self.update_battery_state_async(), self.run_loop)
+    def update_battery_state_from_device(self, arg=None):
+        future = asyncio.run_coroutine_threadsafe(self.update_battery_state_from_device_async(), self.run_loop)
         return SpectrometerResponse(future.result())
-    async def update_battery_state_async(self, buf=None):
+    async def update_battery_state_from_device_async(self, buf=None):
         """
         These will be pushed automatically 2/min from Central, if-and-only-if
         no acquisition is occuring at the time of the scheduled event. However,
@@ -886,18 +886,20 @@ class BLEDevice(InterfaceDevice):
     ############################################################################
 
     async def laser_state_notification_async(self, sender, data):
-        await self.update_laser_state_async(data)
+        log.debug(f"received laser_state_notification: data {data}")
+        await self.update_laser_state_from_device_async(data)
 
-    def update_laser_state(self, arg=None):
-        future = asyncio.run_coroutine_threadsafe(self.update_laser_state_async(), self.run_loop)
+    def update_laser_state_from_device(self, arg=None):
+        future = asyncio.run_coroutine_threadsafe(self.update_laser_state_from_device_async(), self.run_loop)
         return SpectrometerResponse(future.result())
-    async def update_laser_state_async(self, buf=None):
+    async def update_laser_state_from_device_async(self, buf=None):
         if buf is None:
             log.debug("updating laser state")
             buf = await self.read_char_async("LASER_STATE", 7)
         if buf is None:
             return
 
+        # note that we're reading these into SpectrometerState, not self.next_FOO
         state = self.settings.state
 
         if len(buf) >= 4:
@@ -912,35 +914,48 @@ class BLEDevice(InterfaceDevice):
             state.laser_is_firing = buf[7] & 0x02
 
         if len(buf) >= 9: 
-            state.laser_pwm_perc = buf[8]
+            state.laser_power_perc = buf[8]
 
         log.debug(f"updated laser state: enabled {state.laser_enabled}, " +
                   f"watchdog {state.laser_watchdog_sec}sec, " +
                   f"can_fire {state.laser_can_fire}, " +
                   f"is_firing {state.laser_is_firing}, " + 
-                  f"PWM {state.laser_pwm_perc}")
+                  f"PWM {state.laser_power_perc}")
 
     def set_laser_enable(self, flag):
         future = asyncio.run_coroutine_threadsafe(self.set_laser_enable_async(flag), self.run_loop)
         return SpectrometerResponse(future.result())
     async def set_laser_enable_async(self, flag):
         log.debug(f"setting laser enable {flag}")
-        self.laser_enable = flag
-        await self.sync_laser_state_async()
+        self.next_laser_enable = flag
+        await self.sync_laser_state_to_device_async()
 
-    async def sync_laser_state_async(self):
-        log.debug(f"sync_laser_state_async: start")
+    async def sync_laser_state_to_device_async(self):
+        log.debug(f"sync_laser_state_to_device_async: start")
 
-        data = [ 0xff,                   # mode (NO CHANGE)
-                 0xff,                   # type (NO CHANGE)
-                 0x01 if self.laser_enable else 0x00, 
-                 0xff,                   # laser watchdog (NO CHANGE)
-                 0x00,                   # reserved (legacy laser_warning_delay_ms)
-                 0x00 ]                  # reserved (legacy laser_warning_delay_ms)
+        pwm_perc = int(min(100, self.next_laser_power_perc)) & 0xff
 
-        log.debug(f"sync_laser_state_asyhc: calling write_char_async('LASER_STATE') with data {data}")
+        data = [ 0x00,                    # 0: mode (reserved)
+                 0x00,                    # 1: type (reserved)
+                 0x01 if self.next_laser_enable else 0x00, # 2: enable
+                 0xff,                    # 3: laser watchdog (NO CHANGE)
+                 0xff,                    # 4: laser watchdog (NO CHANGE)
+                 0x00,                    # 5: reserved (legacy laser_warning_delay_ms)
+                 0x00,                    # 6: reserved (legacy laser_warning_delay_ms)
+                 0xff,                    # 7: read-only status_mask (laser_can_fire, laser_is_firing etc)
+                 pwm_perc ]               # 8: laser PWM
+
+        log.debug(f"sync_laser_state_to_device_async: calling write_char_async('LASER_STATE') with data {data}")
         await self.write_char_async("LASER_STATE", data)
-        log.debug(f"sync_laser_state_async: done")
+        log.debug(f"sync_laser_state_to_device_async: done")
+
+    def set_laser_power_perc(self, perc):
+        future = asyncio.run_coroutine_threadsafe(self.set_laser_power_perc_async(perc), self.run_loop)
+        return SpectrometerResponse(future.result())
+    async def set_laser_power_perc_async(self, perc):
+        log.debug(f"setting laser power perc {perc}")
+        self.next_laser_power_perc = perc 
+        await self.sync_laser_state_to_device_async()
 
     ############################################################################
     # ACQUIRE and SPECTRA Characteristics
@@ -1134,8 +1149,8 @@ class BLEDevice(InterfaceDevice):
         this lets software drive (and initialize) that loop directly. Also, we 
         can add non-"urgent" attributes like ambient temperature, etc.
         """
-        await self.update_battery_state_async()
-        await self.update_laser_state_async()
+        await self.update_battery_state_from_device_async()
+        await self.update_laser_state_from_device_async()
         await self.get_ambient_temperature_deg_c_async()
         await self.get_power_connection_state_async()
 
@@ -1196,6 +1211,9 @@ class BLEDevice(InterfaceDevice):
         f["get_image_sensor_state"]  = self.get_image_sensor_state
         f["update_status"]           = self.update_status
         f["vertical_binning"]        = self.set_vertical_roi
+        f["laser_power_perc"]        = self.set_laser_power_perc
+        f["laser_power_mW"]          = None
+        f["laser_power_require_modulation"] = None
         return f
 
     ############################################################################

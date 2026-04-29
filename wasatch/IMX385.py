@@ -5,6 +5,33 @@ log = logging.getLogger(__name__)
 
 class IMX385:
     """
+    @par ROI and Area Scan
+
+    The max vertical ROI we can set is 1097 pixels tall (0, 1096), and 
+    includes both the 1920x1080 "recording area" and the "effective margin 
+    for color processing."
+
+    We should never have a start line less than 8, or stop line above 1087,
+    as the sensor barely receives light there.
+
+    The horizontal region returned includes all 1952 physical columns:
+
+           4 ignored optical black
+           4 ignored area of effective pixel side
+           8 effective margin of color processing
+        1920 recording area
+           9 effective margin of color processing
+           4 ignored area of effective pixel side
+           3 horizontal dummy
+        ---- ------------------------------------
+        1952 total
+
+    Therefore, our default horizontal ROI for good signal should start at 
+    (16, 1935).
+
+    Physically, the largest area scan image ENLIGHTEN or WPSC can generate is
+    (1952, 1097).
+
     Long-term, it might be worth having separate classes for HorizontalBinning 
     and IMX385, which would allow characteristics for other sensors to go into 
     other classes. That would suggest having different EEPROM fields for color-

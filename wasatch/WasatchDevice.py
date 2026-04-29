@@ -83,24 +83,13 @@ class WasatchDevice(InterfaceDevice):
     def __init__(self, device_id, message_queue=None, alert_queue=None):
         """
         @param device_id      a DeviceID instance OR string label thereof
-        @param message_queue  if provided, used to send status back to caller
-        @param alert_queue    if provided, used to receive hints and realtime interrupts from caller
         """
-        # if passed a string representation of a DeviceID, deserialize it
-        if type(device_id) is str:
-            device_id = DeviceID(label=device_id)
-
-        self.device_id      = device_id
-        self.message_queue  = message_queue # outgoing notifications to ENLIGHTEN
-        self.alert_queue    = alert_queue   # incoming alerts from ENLIGHTEN 
-
-        self.lock = threading.Lock()
+        super().__init__(device_id=device_id, message_queue=message_queue, alert_queue=alert_queue)
 
         self.connected = False
         self.hardware = None                # FeatureIdentificationDevice
 
-        # Receives ENLIGHTEN's 'change settings' commands in the spectrometer
-        # process. Although a logical queue, has nothing to do with multiprocessing.
+        # Receives ENLIGHTEN's 'change settings' commands from the WrapperWorker.
         self.command_queue = []
 
         # Enable for "immediate mode" by clients like WasatchShell (by default,
@@ -109,6 +98,7 @@ class WasatchDevice(InterfaceDevice):
         self.immediate_mode = False
 
         self.settings = SpectrometerSettings()
+        self.auto_raman = None
 
         # Any particular reason these aren't in FeatureIdentificationDevice?
         self.summed_spectra         = None
@@ -120,10 +110,9 @@ class WasatchDevice(InterfaceDevice):
         self.process_id = os.getpid()
         self.last_memory_check = datetime.datetime.now()
         self.last_battery_percentage = 0
+        self.late_arriving_timestamp = datetime.datetime.now()
 
         self.process_f = self._init_process_funcs()
-
-        self.auto_raman = AutoRaman(self)
 
     # ######################################################################## #
     #                                                                          #
@@ -211,6 +200,11 @@ class WasatchDevice(InterfaceDevice):
         self.settings.update_wavecal()
         self.settings.update_raman_intensity_factors()
         self.settings.dump()
+
+        # AutoRaman takes an InterfaceDevice, and technically either 
+        # WasatchDevice or FeatureIdentificationDevice could probably work, but 
+        # leaning toward FID
+        self.auto_raman = AutoRaman(idevice=self.hardware)
 
     # ######################################################################## #
     #                                                                          #
@@ -365,11 +359,11 @@ class WasatchDevice(InterfaceDevice):
 
         dark_reading = SpectrometerResponse()
         if auto_enable_laser and tor.take_dark:
-            log.debug(f"AUTO-RAMAN ==> taking internal dark")
+            log.debug(f"OLD-AUTO-RAMAN ==> taking internal dark")
 
             # disable laser if it was on
             if self.settings.state.laser_enabled:
-                log.debug("AUTO-RAMAN ==> disabling laser for internal dark")
+                log.debug("OLD-AUTO-RAMAN ==> disabling laser for internal dark")
                 self.hardware.handle_requests([SpectrometerRequest('set_laser_enable', args=[False])])
                 time.sleep(1) 
 
@@ -383,7 +377,7 @@ class WasatchDevice(InterfaceDevice):
                 return acquire_response
 
         if auto_enable_laser:
-            log.debug(f"AUTO-RAMAN ==> acquire_spectum: enabling laser")
+            log.debug(f"OLD-AUTO-RAMAN ==> acquire_spectum: enabling laser")
             req = SpectrometerRequest('set_laser_enable', args=[True])
             self.hardware.handle_requests([req])
             if self.hardware.shutdown_requested:
@@ -392,7 +386,7 @@ class WasatchDevice(InterfaceDevice):
                 return acquire_response
 
             if tor:
-                log.debug(f"AUTO-RAMAN ==> acquire_spectum: sleeping {tor.laser_warmup_ms}ms for laser to warmup")
+                log.debug(f"OLD-AUTO-RAMAN ==> acquire_spectum: sleeping {tor.laser_warmup_ms}ms for laser to warmup")
                 time.sleep(tor.laser_warmup_ms / 1000.0)
 
             self.perform_optional_throwaways()
@@ -609,10 +603,22 @@ class WasatchDevice(InterfaceDevice):
                 if reading is not None:
                     reading.battery_percentage = self.last_battery_percentage
 
+        # slow poll for late-arriving attributes
+        if self.settings.is_xs():
+            if (datetime.datetime.now() - self.late_arriving_timestamp).total_seconds() > 10:
+                self.late_arriving_timestamp = datetime.datetime.now()
+
+                # BLE Firmware Version
+                if not self.settings.ble_firmware_version:
+                    if not self.settings.eeprom.disable_ble_power:
+                        self.hardware.get_ble_firmware_version()
+                        if self.settings.ble_firmware_version:
+                            self.queue_message("received_ble_firmware_version", True)
+
         self.hardware.update_firmware_log()
 
         if auto_enable_laser:
-            log.debug(f"AUTO-RAMAN ==> done")
+            log.debug(f"OLD-AUTO-RAMAN ==> done")
 
         if tor and not reading.keep_alive:
             reading.take_one_request = tor
@@ -1021,7 +1027,7 @@ class WasatchDevice(InterfaceDevice):
         As you can see in WasatchDevice._init_process_funcs, the only commands
         that _actually_ get executed from here are CONNECT, DISCONNECT and
         ACQUIRE_DATA. Everything else is going to get passed to change_setting,
-        which will localling process those few specific to WasatchDevice, then
+        which will locally process those few specific to WasatchDevice, then
         push the rest on command_queue for eventual ordered execution by 
         process_commands the next time acquire_data is called by WrapperWorker.
         """
