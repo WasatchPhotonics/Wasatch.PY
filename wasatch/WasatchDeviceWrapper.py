@@ -343,7 +343,11 @@ class WasatchDeviceWrapper:
         # send poison pill to the child
         self.closing = True
         if self.wrapper_worker.connected_device:
-            WasatchDeviceWrapper.interface_devices.remove(self.wrapper_worker.connected_device)
+            try:
+                WasatchDeviceWrapper.interface_devices.remove(self.wrapper_worker.connected_device)
+            except:
+                log.error("disconnect: failed to remove interface device", exc_info=1)
+
         log.debug("disconnect: sending poison pill downstream")
         try:
             self.command_queue.put(None) 
