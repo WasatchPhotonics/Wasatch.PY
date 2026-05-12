@@ -378,11 +378,27 @@ class AndorDevice(InterfaceDevice):
             return self.temperature_cache_value
 
     def _close_ex_shutter(self):
+        # SetShutterEx(typ, internalMode, closingTimeMS, openingTimeMS, externalMode)
+        # where:
+        # - typ: 
+        #       0 = output TTL LOW to open shutter
+        #       1 = output TTL HIGH to open shutter
+        #
+        # - mode:
+        #       0 = Fully Auto
+        #       1 = Permanently Open
+        #       2 = Permanently Closed
+        #       3 = UNDEFINED
+        #       4 = Open for FVB series
+        #       5 = Open for any series
+
+        # set TTL HIGH="open", internalMode PermanentlyOpen, externalMode PermanentlyClosed
         self.check_result(self.driver.SetShutterEx(1, 1, self.SHUTTER_SPEED_MS, self.SHUTTER_SPEED_MS, 2), "SetShutterEx(2)")
         self.settings.state.shutter_enabled = False
         return SpectrometerResponse(True)
 
     def _open_ex_shutter(self):
+        # set TTL HIGH="open", internalMode PermanentlyOpen, externalMode PermanentlyOpen
         self.check_result(self.driver.SetShutterEx(1, 1, self.SHUTTER_SPEED_MS, self.SHUTTER_SPEED_MS, 1), "SetShutterEx(1)")
         self.settings.state.shutter_enabled = True
         return SpectrometerResponse(True)
@@ -450,6 +466,7 @@ class AndorDevice(InterfaceDevice):
         self.init_detector_speed() # step 12+13
 
         # step 14
+        # set internal shutter to PermanentlyOpen, external shutter to Automatic
         self.check_result(self.driver.SetShutterEx(1, 1, self.SHUTTER_SPEED_MS, self.SHUTTER_SPEED_MS, 0), "SetShutterEx(fully automatic external with internal always open)")
         self.settings.state.shutter_enabled = True
 
