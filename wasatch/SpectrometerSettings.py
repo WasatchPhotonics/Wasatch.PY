@@ -68,6 +68,8 @@ class SpectrometerSettings:
         self.wavenumbers = None
         self.raman_intensity_factors = None
         self.linear_pixel_calibration = None
+        self.ingaas_correction = None
+        self.etalon_correction = None
 
         self.lock_wavecal = False
 
