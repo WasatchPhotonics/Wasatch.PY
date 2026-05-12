@@ -55,7 +55,10 @@ class ProcessedReading:
         self.recordable_reference = None
         self.recordable_dark = None
 
-        self.declared_match = None
+        self.library_matching_compound = None 
+        self.library_matching_score = None # may be (0, 1) or (0, 100) depending on plugin / algorithm
+        self.library_matching_engine = None # KIA, Pearson etc
+
         self.first_pixel = -1 # only used in .cropped (set by enlighten.HorizROI.process)
         self.plugin_metadata = None
 
