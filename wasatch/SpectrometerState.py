@@ -92,8 +92,17 @@ class SpectrometerState:
 
         self.fan_enabled = False
         self.lamp_enabled = False
-        self.shutter_enabled = False
        #self.strobe_enabled = False  # this is not a thing -- the proper field is self.laser_enabled
+
+        # MZ: rename to "_open" or "_closed"
+        # ...or is this "shutter CONTROL is enabled?"
+        #
+        # Per AndorDevice.acquire_data where TakeOneRequest.take_dark is True,
+        # shutter_enabled == True appears to be "SHUTTER CLOSED"
+        #
+        # HOWEVER, per AndorDevice.set_shutter_enable, shutter_enabled == True appears to be "SHUTTER OPEN" :-(
+        #
+        self.shutter_enabled = False 
 
         # these are NOT currently used by laser power settings, though they could be
         self.mod_enabled = False
