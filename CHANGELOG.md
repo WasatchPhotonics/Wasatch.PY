@@ -15,6 +15,8 @@
     - IDSDevice
         - added laser_device (incl EEPROM)
         - support Auto-Raman
+    - AndorDevice
+        - STARTED shutter fixes
     - EEPROM updates
         - bumped to version 19
         - consolidating backup location

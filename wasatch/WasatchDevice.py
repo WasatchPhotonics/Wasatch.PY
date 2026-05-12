@@ -623,12 +623,21 @@ class WasatchDevice(InterfaceDevice):
         if tor and not reading.keep_alive:
             reading.take_one_request = tor
 
-            # this was for a "fast BatchCollection" with a streaming multi-reading TakeOneRequest
-            if tor.readings_target:
-                tor.readings_current += 1
+            # The populated readings_target indicates this was for a "fast 
+            # BatchCollection" with a streaming multi-reading TakeOneRequest.
+            # However, empirical testing demonstrated we don't want to increment
+            # readings_current here, because WasatchDevice and WrapperWorker DO 
+            # NOT KNOW how many Readings will be successfully received by the
+            # caller -- WasatchDeviceWrapper may "drop Readings on the floor" if
+            # the caller is not able to keep up with the stream. Therefore, we
+            # need to let the caller increment this upon successful receipt of
+            # each Reading. [#587]
+            #
+            # if tor.readings_target:
+            #     tor.readings_current += 1
 
             if not tor.readings_target or tor.readings_current >= tor.readings_target:
-                log.debug(f"completed {tor}")
+                log.debug(f"completed TakeOneRequest {tor} because no target ({tor.readings_target}) or current ({tor.readings_current}) >= target ({tor.readings_target})")
                 self.take_one_request = None
 
         log.debug("device.acquire_spectrum: returning %s", reading)
