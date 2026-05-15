@@ -386,7 +386,7 @@ class SpectrometerSettings:
         return '0x136e' in str(self.device_id)
 
     def is_ids(self): 
-        return 'IDSPeak' in str(self.device_id)
+        return 'IDSPeak' in str(self.device_id) or "IMX662-AAMR-C" in self.eeprom.detector
 
     def is_sig(self):
         return self.is_xs()

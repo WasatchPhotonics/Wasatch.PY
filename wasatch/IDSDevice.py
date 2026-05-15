@@ -5,6 +5,7 @@ import os
 
 from .SpectrometerResponse  import SpectrometerResponse, ErrorLevel
 from .SpectrometerSettings  import SpectrometerSettings
+from .SpectrometerRequest   import SpectrometerRequest
 from .InterfaceDevice       import InterfaceDevice
 from .IDSCamera             import IDSCamera
 from .AutoRaman             import AutoRaman
@@ -103,26 +104,32 @@ class IDSDevice(InterfaceDevice):
             self.settings = SpectrometerSettings(self.device_id)
             self.settings.eeprom.excitation_nm_float = 785 
             self.settings.eeprom.wavecal_coeffs = [0, 1, 0, 0, 0]
-            self.settings.eeprom.min_integration_time_ms = 15       # Default UserSet
-            self.settings.eeprom.max_integration_time_ms = 120_000  # LongExposure UserSet
-
-            # stomp from camera
-            self.settings.eeprom.model = self.camera.model_name
-            self.settings.eeprom.detector = self.camera.sensor_name
             self.settings.eeprom.serial_number = self.camera.serial_number
-            self.settings.eeprom.detector_serial_number = self.camera.serial_number
-            self.settings.eeprom.active_pixels_horizontal = self.camera.width
-            self.settings.eeprom.active_pixels_vertical = self.camera.height
             self.settings.eeprom.roi_vertical_region_1_start = 0
             self.settings.eeprom.roi_vertical_region_1_end = self.camera.height
-            self.settings.eeprom.invert_x_axis = True
 
-            # stomp from virtual eeprom
-            self.init_from_json()
-            self.settings.eeprom.multi_wavelength_calibration.initialize()
+        # stomp these regardless of what the EEPROM says
+        self.settings.eeprom.min_integration_time_ms = 15       # Default UserSet
+        self.settings.eeprom.max_integration_time_ms = 120_000  # LongExposure UserSet
+        self.settings.eeprom.invert_x_axis = True
 
-            # now that we've got our "final settings," compute derived values
-            self.settings.update_wavecal()
+        # stomp from camera
+        self.settings.eeprom.model = self.camera.model_name
+        self.settings.eeprom.detector = self.camera.sensor_name
+        self.settings.eeprom.detector_serial_number = self.camera.serial_number
+        self.settings.eeprom.active_pixels_horizontal = self.camera.width
+        self.settings.eeprom.active_pixels_vertical = self.camera.height
+
+        if self.settings.eeprom.roi_vertical_region_1_start >= self.settings.eeprom.roi_vertical_region_1_end:
+            self.settings.eeprom.roi_vertical_region_1_start = 0
+            self.settings.eeprom.roi_vertical_region_1_end = self.camera.height
+
+        # stomp from virtual eeprom
+        self.init_from_json()
+        self.settings.eeprom.multi_wavelength_calibration.initialize()
+
+        # now that we've got our "final settings," compute derived values
+        self.settings.update_wavecal()
 
         # pass vertical ROI down into Camera (where binning occurs)
         self.set_start_line(self.settings.eeprom.roi_vertical_region_1_start)
@@ -136,6 +143,8 @@ class IDSDevice(InterfaceDevice):
         self.camera.set_rotate_180(self.settings.eeprom.invert_x_axis)
 
         self.auto_raman = AutoRaman(idevice=self, auto_collection_mode=True)
+
+        self.settings.dump()
 
         log.debug("connect: success")
         return SpectrometerResponse(True)
@@ -391,9 +400,10 @@ class IDSDevice(InterfaceDevice):
         return self.laser_device.handle_requests([SpectrometerRequest("is_laser_firing")])[0]
 
     def set_laser_enable(self, flag):
+        log.debug(f"set_laser_enable: flag {flag}")
         if not self.laser_device:
             return SpectrometerResponse(False)
-        return self.laser_device.handle_requests([SpectrometerRequest('set_laser_enable', args=[flag])])[0]
+        self.laser_device.handle_requests([SpectrometerRequest('set_laser_enable', args=[flag])])
 
     def get_laser_tec_mode(self):
         if not self.laser_device:
@@ -470,6 +480,8 @@ class IDSDevice(InterfaceDevice):
         process_f["area_scan_enable"]    = lambda x: self.set_area_scan_enable(bool(x))
 
         process_f["output_format_name"] = lambda x: self.set_output_format_name(x)
+
+        process_f["laser_enable"]        = lambda x: self.set_laser_enable(x)
 
         process_f["update_eeprom"]       = lambda x: self.update_eeprom(x)
         process_f["replace_eeprom"]      = lambda x: self.replace_eeprom(x)
