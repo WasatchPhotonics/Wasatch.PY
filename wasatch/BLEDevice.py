@@ -1271,7 +1271,7 @@ class Generic:
             data.append(int(value) & 0xff)
             data.append(int((value - int(value)) * 256) & 0xff)
         elif self.data_type == "raw_data":
-            data = value # for writing EEPROM
+            data = value # for writing EEPROM, AUTO_RAMAN_PARAMS etc
         else: 
             # assume big-endian uint[size]            
             for i in range(self.size):

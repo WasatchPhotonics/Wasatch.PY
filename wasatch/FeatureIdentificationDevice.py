@@ -445,7 +445,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.settings.state.dump("FID.post_connect")
 
         if self.settings.is_xs():
-            self.queue_message("marquee_info", "stabilizing sensor")
+            self.queue_message("marquee_info", "stabilizing sensor (please wait)")
 
         return SpectrometerResponse(self.connected)
         
@@ -3315,7 +3315,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
     # Shutter
     # ##########################################################################
 
-    def set_shutter_enable(self, flag: bool):
+    def set_shutter_open(self, flag: bool):
         if not (self.settings.is_gen15() and self.settings.eeprom.has_shutter):
             log.debug("shutter requires Gen 1.5 and has_shutter flag")
             return SpectrometerResponse(data=False, error_msg="shutter requires gen1.5")
@@ -3326,11 +3326,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
                                data_or_wLength = [0] * 8,
                                label           = "SET_SHUTTER_ENABLE")
 
-    def get_shutter_enabled(self):
+    def get_shutter_open(self):
         if not (self.settings.is_gen15() and self.settings.eeprom.has_shutter):
             log.debug("shutter requires Gen 1.5 and has_shutter flag")
             return SpectrometerResponse(data=False, error_msg="shutter requires gen1.5")
-        res = SpectrometerResponse(data=0 != self._get_code(0x31, label="GET_SHUTTER_ENABLED", msb_len=1))
+        res = SpectrometerResponse(data=0 != self._get_code(0x31, label="GET_SHUTTER_OPEN", msb_len=1))
         res.data = 0 != res.data
         return res 
 
@@ -3889,7 +3889,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 "get_selected_adc",
                 "get_selected_laser",
                 "get_sensor_line_length",
-                "get_shutter_enabled",
+                "get_shutter_open",
                 "get_strobe_enabled",
                 "get_tec_enabled",
                 "get_trigger_delay",
@@ -3935,7 +3935,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 "set_pixel_mode",
                 "set_raman_delay_ms",
                 "set_selected_laser",
-                "set_shutter_enable",
+                "set_shutter_open",
                 "set_single_region",
                 "set_strobe_enable",
                 "set_tec_enable",
@@ -3990,7 +3990,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         process_f["accessory_enable"]                   = lambda x: self.set_accessory_enable(bool(x))
         process_f["fan_enable"]                         = lambda x: self.set_fan_enable(bool(x))
         process_f["lamp_enable"]                        = lambda x: self.set_lamp_enable(bool(x))
-        process_f["shutter_enable"]                     = lambda x: self.set_shutter_enable(bool(x))
+        process_f["shutter_open"]                       = lambda x: self.set_shutter_open(bool(x))
         process_f["strobe_enable"]                      = lambda x: self.set_strobe_enable(bool(x))
         process_f["mod_enable"]                         = lambda x: self.set_mod_enable(bool(x))
         process_f["mod_period_us"]                      = lambda x: self.set_mod_period_us(int(round(x)))

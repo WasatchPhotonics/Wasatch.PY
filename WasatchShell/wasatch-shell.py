@@ -105,7 +105,7 @@ class WasatchShell:
                 "get_selected_adc",                         # SR
                 "get_selected_laser",                       # SR
                 "get_sensor_line_length",                   # SR
-                "get_shutter_enabled",                      # SR
+                "get_shutter_open",                         # SR
                 "get_strobe_enabled",                       # SR
                 "get_tec_enabled",                          # SR
                 "get_trigger_delay",                        # SR
@@ -146,7 +146,7 @@ class WasatchShell:
                                                
         set_fan_enable                         - takes bool argument
         set_lamp_enable                        - takes bool argument
-        set_shutter_enable                     - takes bool argument
+        set_shutter_open                       - takes bool argument
         set_strobe_enable                      - takes bool argument
         set_mod_enable                         - takes bool argument
         set_mod_period_us                      - takes int argument
@@ -394,8 +394,8 @@ class WasatchShell:
                             self.device.change_setting("lamp_enable", self.read_bool())
                             self.display(1)
 
-                        elif command == "set_shutter_enable":
-                            self.device.change_setting("shutter_enable", self.read_bool())
+                        elif command == "set_shutter_open":
+                            self.device.change_setting("shutter_open", self.read_bool())
                             self.display(1)
 
                         elif command == "set_strobe_enable":

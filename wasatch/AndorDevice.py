@@ -165,7 +165,7 @@ class AndorDevice(InterfaceDevice):
         except:
             log.error(f"failed to enqueue StatusMessage {msg}", exc_info=1)
 
-    def not_implemented(self):
+    def not_implemented(self, arg):
         pass
 
     def _init_process_funcs(self):
@@ -173,7 +173,7 @@ class AndorDevice(InterfaceDevice):
 
         process_f["connect"]                    = self.connect
         process_f["acquire_data"]               = self.acquire_data
-        process_f["set_shutter_enable"]         = self.set_shutter_enable
+        process_f["set_shutter_open"]           = self.set_shutter_open
         process_f["set_integration_time_ms"]    = self.set_integration_time_ms
         process_f["get_serial_number"]          = self.get_serial_number
         process_f["init_tec_setpoint"]          = self.init_tec_setpoint
@@ -195,7 +195,7 @@ class AndorDevice(InterfaceDevice):
         ##################################################################
         process_f["integration_time_ms"]        = lambda x: self.set_integration_time_ms(x)
         process_f["fan_enable"]                 = lambda x: self.set_fan_enable(bool(x))
-        process_f["shutter_enable"]             = lambda x: self.set_shutter_enable(bool(x))
+        process_f["shutter_open"]               = lambda x: self.set_shutter_open(bool(x))
         process_f["detector_tec_enable"]        = lambda x: self.toggle_tec(bool(x))
         process_f["detector_tec_setpoint_degC"] = lambda x: self.set_tec_setpoint(int(round(x)))
 
@@ -394,13 +394,13 @@ class AndorDevice(InterfaceDevice):
 
         # set TTL HIGH="open", internalMode PermanentlyOpen, externalMode PermanentlyClosed
         self.check_result(self.driver.SetShutterEx(1, 1, self.SHUTTER_SPEED_MS, self.SHUTTER_SPEED_MS, 2), "SetShutterEx(2)")
-        self.settings.state.shutter_enabled = False
+        self.settings.state.shutter_open = False
         return SpectrometerResponse(True)
 
     def _open_ex_shutter(self):
         # set TTL HIGH="open", internalMode PermanentlyOpen, externalMode PermanentlyOpen
         self.check_result(self.driver.SetShutterEx(1, 1, self.SHUTTER_SPEED_MS, self.SHUTTER_SPEED_MS, 1), "SetShutterEx(1)")
-        self.settings.state.shutter_enabled = True
+        self.settings.state.shutter_open = True
         return SpectrometerResponse(True)
 
     ###############################################################
@@ -468,7 +468,7 @@ class AndorDevice(InterfaceDevice):
         # step 14
         # set internal shutter to PermanentlyOpen, external shutter to Automatic
         self.check_result(self.driver.SetShutterEx(1, 1, self.SHUTTER_SPEED_MS, self.SHUTTER_SPEED_MS, 0), "SetShutterEx(fully automatic external with internal always open)")
-        self.settings.state.shutter_enabled = True
+        self.settings.state.shutter_open = True 
 
         # step 15
         self.set_integration_time_ms(self.settings.eeprom.startup_integration_time_ms)
@@ -610,11 +610,11 @@ class AndorDevice(InterfaceDevice):
         tor = self.take_one_request
         log.debug(f"acquire_data: tor {tor}")
         if tor and tor.take_dark:
-            self.set_shutter_enable(True)
+            self.set_shutter_open(False)
             dark_reading = self._take_one_averaged_reading()
-            if dark is None:
+            if dark_reading is None:
                 return SpectrometerResponse(False, error_msg="failed to collect dark")
-            self.set_shutter_enable(False)
+            self.set_shutter_open(True)
 
         # get spectrum (potentially averaged)
         reading = self._take_one_averaged_reading()
@@ -654,8 +654,8 @@ class AndorDevice(InterfaceDevice):
         log.debug(f"acquire_data: reading {reading}")
         return SpectrometerResponse(data=reading)
 
-    def set_shutter_enable(self, enable):
-        if enable:
+    def set_shutter_open(self, flag):
+        if flag:
             return self._open_ex_shutter()
         else:
             return self._close_ex_shutter()
