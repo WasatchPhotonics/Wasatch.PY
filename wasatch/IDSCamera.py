@@ -383,6 +383,7 @@ class IDSCamera:
         self.start_line = 0
         self.stop_line = self.height - 1
 
+        log.debug("connect: calling set_user_set")
         self.set_user_set("Default")
 
         # default to 15ms
@@ -400,6 +401,7 @@ class IDSCamera:
         return "LongExposure" == selector.CurrentEntry().SymbolicValue()
 
     def set_user_set(self, entry):
+        log.debug("set_user_set: start")
         if entry not in ["Default", "LongExposure"]:
             log.error(f"ignoring unsupported UserSetSelector {entry}")
             return
@@ -438,6 +440,7 @@ class IDSCamera:
 
         # MZ: this can take 247ms, so only do once
         if not self.dumped:
+            log.debug("dumping tree")
             self.dump_node(name="Root")
             self.dumped = True
 

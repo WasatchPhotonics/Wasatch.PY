@@ -21,7 +21,6 @@ class IDSDevice(InterfaceDevice):
     """
     @see https://www.ids-imaging.us/manuals/ids-peak/ids-peak-api-documentation/2.15.0/en/python.html
     """
-
     ############################################################################
     # lifecycle
     ############################################################################
@@ -79,10 +78,17 @@ class IDSDevice(InterfaceDevice):
 
         log.debug(f"connect: trying to start {self.device_id}")
         self.camera.start()
+        
+        # This is silly, but we can't do this import at the "top-level"
+        # because it creates a circular dependency through WrapperWorker.
+        # Just delay it until runtime.
+        log.debug(f"connect: delayed WasatchDeviceWrapper import")
+        from .WasatchDeviceWrapper import WasatchDeviceWrapper
 
         # attempt to link to an existing InterfaceDevice (presumably a 
         # WasatchDevice) with a laser but no detector
         log.debug("connect: searching for available laser partner")
+
         for interface_device in WasatchDeviceWrapper.get_interface_devices():
             if not interface_device.settings.eeprom.detector or "none" in interface_device.settings.eeprom.detector.lower():
                 if interface_device.settings.eeprom.has_laser:
@@ -91,6 +97,7 @@ class IDSDevice(InterfaceDevice):
 
         if self.laser_device:
             log.debug("using laser_device EEPROM")
+            self.settings = self.laser_device.settings
         else:
             # initialize default settings
             self.settings = SpectrometerSettings(self.device_id)
@@ -123,7 +130,7 @@ class IDSDevice(InterfaceDevice):
         # no need to pass horizontal ROI, because that's handled in ENLIGHTEN
 
         self.set_integration_time_ms(self.settings.eeprom.startup_integration_time_ms)
-        self.set_gain_db(self.settings.eeprom.startup_gain_db)
+        self.set_detector_gain(self.settings.eeprom.detector_gain)
 
         # since area scan is so important to this camera, perform full rotation
         self.camera.set_rotate_180(self.settings.eeprom.invert_x_axis)
@@ -408,6 +415,21 @@ class IDSDevice(InterfaceDevice):
             return SpectrometerResponse(None)
         return self.laser_device.handle_requests([SpectrometerRequest("get_ambient_temperature_degC")])[0]
 
+    def update_eeprom(self, pair):
+        if not self.laser_device:
+            return SpectrometerResponse(None)
+        return self.laser_device.handle_requests([SpectrometerRequest('update_eeprom', args=[pair])])[0]
+
+    def replace_eeprom(self, pair):
+        if not self.laser_device:
+            return SpectrometerResponse(None)
+        return self.laser_device.handle_requests([SpectrometerRequest('replace_eeprom', args=[pair])])[0]
+
+    def write_eeprom(self):
+        if not self.laser_device:
+            return SpectrometerResponse(None)
+        return self.laser_device.handle_requests([SpectrometerRequest("write_eeprom")])[0]
+
     ############################################################################
     # utility
     ############################################################################
@@ -448,5 +470,9 @@ class IDSDevice(InterfaceDevice):
         process_f["area_scan_enable"]    = lambda x: self.set_area_scan_enable(bool(x))
 
         process_f["output_format_name"] = lambda x: self.set_output_format_name(x)
+
+        process_f["update_eeprom"]       = lambda x: self.update_eeprom(x)
+        process_f["replace_eeprom"]      = lambda x: self.replace_eeprom(x)
+        process_f["write_eeprom"]        = lambda x: self.write_eeprom()
 
         return process_f
