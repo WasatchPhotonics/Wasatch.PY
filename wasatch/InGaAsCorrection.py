@@ -1,3 +1,4 @@
+import struct
 import logging
 
 log = logging.getLogger(__name__)
@@ -10,6 +11,7 @@ class InGaAsCorrection:
     def __init__(self, pixels=512):
         self.pixels = pixels
 
+        self.enabled = False
         self.mode = None
         self.offsets = None 
         self.slopes = None 
@@ -36,7 +38,7 @@ class InGaAsCorrection:
 
     def eeprom_page_range(self):
         first = 10
-        count = self.pixels * self.BYTES_PER_FLOAT / self.BYTES_PER_PAGE
+        count = self.pixels * self.BYTES_PER_FLOAT // self.BYTES_PER_PAGE
         count *= 2 # offsets + slopes
         return (first, count)
 
@@ -45,26 +47,29 @@ class InGaAsCorrection:
         self.offsets = []
         self.slopes = []
 
-        half = len(buffers) / 2
+        half = len(buffers) // 2
 
         # offsets
         for buf in buffers[:half]:
-            for index in range(self.BYTES_PER_PAGE / self.BYTES_PER_FLOAT):
+            for index in range(self.BYTES_PER_PAGE // self.BYTES_PER_FLOAT):
                 value = struct.unpack("f", buf[index:index+4])[0]
                 self.offsets.append(value)
 
         # slopes
         for buf in buffers[half:]:
-            for index in range(self.BYTES_PER_PAGE / self.BYTES_PER_FLOAT):
+            for index in range(self.BYTES_PER_PAGE // self.BYTES_PER_FLOAT):
                 value = struct.unpack("f", buf[index:index+4])[0]
                 self.slopes.append(value)
 
         log.debug("parsed {len(self.offsets)} offsets and {len(self.slopes)} slopes from {len(buffers)} pages")
 
     def apply(self, spectrum):
+        if not self.enabled:
+            return spectrum
+
         if self.mode != "default":
             log.error("unimplemented mode {self.mode}")
-            return
+            return spectrum
 
         smoothed = [] 
         for i, intensity in enumerate(spectrum):

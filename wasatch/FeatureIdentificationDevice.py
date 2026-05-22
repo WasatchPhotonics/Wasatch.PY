@@ -894,7 +894,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 if v != 0xff:
                     all_ones = False
                     break
-        if buffers_all_ones:
+        if all_ones:
             return SpectrometerResponse(data=False, error_msg="EEPROM appears unprogrammed", error_lvl=ErrorLevel.low)
 
         self.settings.eeprom.parse(buffers)
@@ -914,12 +914,12 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         if self.settings.eeprom.pixel_correction_type == ee.PIXEL_CORRECTION_ETALON:
             corr = EtalonCorrection(self.settings.pixels())
-            first, count = corr.page_range(pixels=self.settings.pixels()) 
+            first, count = corr.eeprom_page_range()
 
             log.debug(f"EtalonCorrection spans {count} pages starting at {first}")
             if count:
                 log.debug(f"loading extra EEPROM pages")
-                buffers = _read_eeprom_pages(first, count)
+                buffers = self._read_eeprom_pages(first, count)
 
                 log.debug(f"parsing extra buffers")
                 if corr.parse_eeprom_buffers(buffers):
@@ -930,12 +930,12 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         if self.settings.eeprom.pixel_correction_type == ee.PIXEL_CORRECTION_INGAAS:
             corr = InGaAsCorrection(self.settings.pixels())
-            first, count = corr.page_range(pixels=self.settings.pixels()) 
+            first, count = corr.eeprom_page_range()
 
             log.debug(f"InGaAsCorrection spans {count} pages starting at {first}")
             if count:
                 log.debug(f"loading extra EEPROM pages")
-                buffers = _read_eeprom_pages(first, count)
+                buffers = self._read_eeprom_pages(first, count)
 
                 log.debug(f"parsing extra buffers")
                 if corr.parse_eeprom_buffers(buffers):
@@ -3513,6 +3513,18 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return SpectrometerResponse(data=degC)
 
     # ##########################################################################
+    # Pixel Correction
+    # ##########################################################################
+
+    def set_etalon_correction_enable(self, flag):
+        if self.settings.etalon_correction:
+            self.settings.etalon_correction.enabled = flag
+
+    def set_ingaas_correction_enable(self, flag):
+        if self.settings.ingaas_correction:
+            self.settings.ingaas_correction.enabled = flag
+
+    # ##########################################################################
     # added for wasatch-shell
     # ##########################################################################
 
@@ -3969,8 +3981,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 "set_detector_roi",
                 "set_detector_tec_setpoint_degC",
                 "set_dfu_enable",
+                "set_etalon_correction_enable",
                 "set_fan_enable",
                 "set_high_gain_mode_enable",
+                "set_ingaas_correction_enable",
                 "set_integration_time_ms",
                 "set_lamp_enable",
                 "set_laser_enable",
