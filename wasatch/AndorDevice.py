@@ -171,33 +171,32 @@ class AndorDevice(InterfaceDevice):
     def _init_process_funcs(self):
         process_f = {}
 
-        process_f["connect"]                    = self.connect
-        process_f["acquire_data"]               = self.acquire_data
-        process_f["set_shutter_open"]           = self.set_shutter_open
-        process_f["set_integration_time_ms"]    = self.set_integration_time_ms
-        process_f["get_serial_number"]          = self.get_serial_number
-        process_f["init_tec_setpoint"]          = self.init_tec_setpoint
-        process_f["set_tec_setpoint"]           = self.set_tec_setpoint
-        process_f["init_detector_area"]         = self.init_detector_area
-        process_f["scans_to_average"]           = self.set_scans_to_average
-        process_f["high_gain_mode_enable"]      = self.high_gain_mode_enable
-        process_f["save_config"]                = self.save_config
+        # setting and function have same name
+        for fn_name in [
+                "connect",
+                "acquire_data",
+                "set_shutter_open",
+                "set_integration_time_ms",
+                "get_serial_number",
+                "init_tec_setpoint",
+                "set_tec_setpoint",
+                "init_detector_area",
+                "scans_to_average",
+                "high_gain_mode_enable",
+                "save_config",
+                "set_vertical_binning",
+                "set_ingaas_correction_enable",
+                "set_etalon_correction_enable" ]:
+            process_f[fn_name] = getattr(self, fn_name)
+
+        # setting and function have different names
+        process_f["integration_time_ms"]        = self.set_integration_time_ms
+        process_f["fan_enable"]                 = self.set_fan_enable
+        process_f["shutter_open"]               = self.set_shutter_open
+        process_f["detector_tec_enable"]        = self.set_detector_tec_enable
+        process_f["detector_tec_setpoint_degC"] = self.set_tec_setpoint
         process_f["vertical_binning"]           = self.set_vertical_binning
         process_f["take_one_request"]           = self.set_take_one_request
-
-        process_f["reset_scan_averaging"]       = self.not_implemented
-        process_f["heartbeat"]                  = lambda x: None
-
-        ##################################################################
-        # What follows is the old init-lambdas that are squashed into process_f
-        # Long term, the upstream requests should be changed to match the new format
-        # This is an easy fix for the time being to make things behave
-        ##################################################################
-        process_f["integration_time_ms"]        = lambda x: self.set_integration_time_ms(x)
-        process_f["fan_enable"]                 = lambda x: self.set_fan_enable(bool(x))
-        process_f["shutter_open"]               = lambda x: self.set_shutter_open(bool(x))
-        process_f["detector_tec_enable"]        = lambda x: self.toggle_tec(bool(x))
-        process_f["detector_tec_setpoint_degC"] = lambda x: self.set_tec_setpoint(int(round(x)))
 
         return process_f
 
@@ -213,7 +212,8 @@ class AndorDevice(InterfaceDevice):
             log.debug(f"for {enabled} setting gain to {self.gain_options[0]}")
             return
 
-    def set_fan_enable(self, x):
+    def set_fan_enable(self, flag):
+        flag = True if flag else False
         try:
             self.check_result(self.driver.SetFanMode(int(x)), f"Andor Fan On {x}")
         except:
@@ -259,6 +259,12 @@ class AndorDevice(InterfaceDevice):
         # Andor cameras can return all zeros when saturated
         if not spectrum.any():
             self._queue_message("marquee_error", "Andor camera is saturated")
+
+        if self.settings.ingaas_correction:
+            spectrum = self.settings.ingaas_correction.apply(spectrum)
+
+        if self.settings.etalon_correction:
+            spectrum = self.settings.etalon_correction.apply(spectrum)
 
         # log.debug(f"_get_spectrum_raw: returning spectrum {spectrum}")
         return spectrum
@@ -566,8 +572,9 @@ class AndorDevice(InterfaceDevice):
         """
         Loads configuration from file `self.config_file` and populates `self.settings.eeprom` with members.
         """
-        f = open(self.config_file,)
-        self.config_values = dict(json.load(f))
+        with open(self.config_file) as f:
+            self.config_values = json.load(f)
+
         log.debug(f"loaded {self.config_file}: {self.config_values}")
 
         # handle wp_ prefixes
@@ -603,6 +610,9 @@ class AndorDevice(InterfaceDevice):
         # post-load initialization
         if 'startup_temp_degC' in self.config_values:
             self.set_tec_setpoint(self.settings.eeprom.startup_temp_degC)
+
+        # pick up Pixel Corrections like EtalonCorrection, InGaAsCorrection etc
+        self.settings.augment_from_json_data(data)
 
     def acquire_data(self):
         # handle TakeOneRequest.take_dark
@@ -703,16 +713,17 @@ class AndorDevice(InterfaceDevice):
 
         return SpectrometerResponse(True)
 
-    def toggle_tec(self, toggle_state):
-        c_toggle = c_int(toggle_state)
-        self.tec_enabled = c_toggle.value
-        if self.tec_enabled:
+    def set_detector_tec_enable(self, flag):
+        flag = True if flag else False
+        self.tec_enabled = flag
+        if flag:
             self.check_result(self.driver.CoolerON(), "CoolerON")
         else:
             self.check_result(self.driver.CoolerOFF(), "CoolerOFF")
         return SpectrometerResponse(True)
 
     def set_tec_setpoint(self, set_temp):
+        set_temp = int(round(set_temp, 0))
         if set_temp < self.settings.eeprom.min_temp_degC or set_temp > self.settings.eeprom.max_temp_degC:
             log.error(f"requested temp of {set_temp}, but it is outside range ({self.settings.eeprom.min_temp_degC}C, {self.settings.eeprom.max_temp_degC}C)")
             return
@@ -782,6 +793,14 @@ class AndorDevice(InterfaceDevice):
         self.check_result(self.driver.SetHSSpeed(0, HSnumber), f"SetHSSpeed({HSnumber})") # 13.5
         log.debug(f"set AD channel {ADnumber} with horizontal speed {HSnumber} ({STemp})")
         return SpectrometerResponse(True)
+
+    def set_ingaas_correction_enable(self, flag):
+        if self.settings.ingaas_correction:
+            self.settings.ingaas_correction.enable = flag
+            
+    def set_etalon_correction_enable(self, flag):
+        if self.settings.etalon_correction:
+            self.settings.etalon_correction.enable = flag
 
     def set_scans_to_average(self, value):
         value = int(value)

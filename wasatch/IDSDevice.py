@@ -173,7 +173,13 @@ class IDSDevice(InterfaceDevice):
                 5.00E-11
           ],
           "wp_model": "WP-785XS-FS-OEM+STARVIS",
-          "wp_serial_number": "WP-02288"
+          "wp_serial_number": "WP-02288",
+
+          "pixel_corrections": { 
+            "etalon_correction": {
+                "mode": "default",
+                "factors": [ ... ]
+            }
         }
 
         """
@@ -208,6 +214,9 @@ class IDSDevice(InterfaceDevice):
         for k, attr in [ [ "wp_model",         "model" ],
                          [ "wp_serial_number", "serial_number" ] ]:
             stomp(k, attr)
+
+        # pick up Pixel Corrections like EtalonCorrection
+        self.settings.augment_from_json_data(data)
 
     def set_integration_time_ms(self, ms):
         """
@@ -303,6 +312,10 @@ class IDSDevice(InterfaceDevice):
             return SpectrometerResponse(False)
 
         spectrum = self.apply_horizontal_binning(spectrum)
+
+        if self.settings.etalon_correction:
+            spectrum = self.settings.etalon_correction.apply(spectrum)
+
         return spectrum
 
     def apply_horizontal_binning(self, spectrum):
@@ -450,7 +463,11 @@ class IDSDevice(InterfaceDevice):
     def init_process_funcs(self):
         process_f = {}
 
+        # setting and function have the same name
         for fn_name in [ 
+                "connect",
+                "disconnect",
+                "acquire_data",
                 "can_laser_fire",
                 "get_ambient_temperature_degC",
                 "get_laser_tec_mode",
@@ -459,32 +476,24 @@ class IDSDevice(InterfaceDevice):
                 "set_detector_gain",
                 "set_integration_time_ms",
                 "set_laser_enable",
+                "update_eeprom",
+                "replace_eeprom",
+                "write_eeprom",
                 "set_laser_warning_delay_sec",
+                "set_etalon_correction_enable",
             ]:
             process_f[fn_name] = getattr(self, fn_name)
 
-        process_f["connect"]             = self.connect
-        process_f["disconnect"]          = self.disconnect
-        process_f["close"]               = self.disconnect
-
-        process_f["acquire_data"]        = self.acquire_data
-        process_f["get_line"]            = self.get_spectrum
-                                         
+        # setting and function have different names
         process_f["gain_db"]             = lambda x: self.set_gain_db(float(x)) 
         process_f["integration_time_ms"] = lambda x: self.set_integration_time_ms(int(x))
         process_f["scans_to_average"]    = lambda x: self.set_scans_to_average(int(x))
-
         process_f["vertical_binning"]    = lambda x: self.set_vertical_roi(x)
         process_f["start_line"]          = lambda x: self.set_start_line(x)
         process_f["stop_line"]           = lambda x: self.set_stop_line(x)
         process_f["area_scan_enable"]    = lambda x: self.set_area_scan_enable(bool(x))
-
-        process_f["output_format_name"] = lambda x: self.set_output_format_name(x)
-
+        process_f["output_format_name"]  = lambda x: self.set_output_format_name(x)
         process_f["laser_enable"]        = lambda x: self.set_laser_enable(x)
 
-        process_f["update_eeprom"]       = lambda x: self.update_eeprom(x)
-        process_f["replace_eeprom"]      = lambda x: self.replace_eeprom(x)
-        process_f["write_eeprom"]        = lambda x: self.write_eeprom()
 
         return process_f

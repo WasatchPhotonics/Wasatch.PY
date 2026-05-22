@@ -473,6 +473,11 @@ class SpectrometerSettings:
 
         with open(pathname) as f:
             data = json.load(f)
+            self.augment_from_json_data(data)
+
+    def augment_from_json_data(self, data):
+        if data is None:
+            return
 
         # stomp any pixel calibrations found on the EEPROM with external JSON versiosn
         if "pixel_calibrations" in data:
