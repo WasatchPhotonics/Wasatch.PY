@@ -35,6 +35,11 @@ class EEPROM:
     RAMAN_INTENSITY_CALIBRATION_ORDER = 5
     MAX_BAD_PIXELS = 15
 
+    PIXEL_CORRECTION_NONE = 0
+    PIXEL_CORRECTION_USER_DATA = 1
+    PIXEL_CORRECTION_ETALON = 2 
+    PIXEL_CORRECTION_INGAAS = 3
+
     DEFAULT_LASER_WATCHDOG_SEC = 10
 
     # @see https://docs.python.org/2/library/struct.html#format-characters
@@ -130,7 +135,7 @@ class EEPROM:
         ((8, 32,  4), "I", "acc_cont_strobe_delay_us"),
         ((8, 36,  2), "H", "acc_cont_strobe_count"),
         ((8, 38,  1), "b", "max_battery_temp_deg_c"),
-        ((8, 39,  1), "b", "pixel_calibration_type"),
+        ((8, 39,  1), "b", "pixel_correction_type"),
     ]
 
     def __init__(self):
@@ -228,7 +233,7 @@ class EEPROM:
         self.acc_cont_strobe_delay_us    = None
         self.acc_cont_strobe_count       = None
         self.max_battery_temp_deg_c      = None
-        self.pixel_calibration_type      = None
+        self.pixel_correction_type       = None
 
         self.format                      = EEPROM.LATEST_REV
         self.subformat                   = 0 # determines format of pages 6-7
@@ -590,7 +595,7 @@ class EEPROM:
                           "acc_state_gpio1", "acc_state_gpio2", 
                           "acc_cont_strobe_period_us", "acc_cont_strobe_width_us", 
                           "acc_cont_strobe_delay_us", "acc_cont_strobe_count", 
-                          "max_battery_temp_deg_c", "pixel_calibration_type" ]:
+                          "max_battery_temp_deg_c", "pixel_correction_type" ]:
                 self.unpack_field(name)
 
         # ######################################################################
@@ -617,6 +622,7 @@ class EEPROM:
         if self.min_laser_power_mW > self.max_laser_power_mW:
             (self.min_laser_power_mW, self.max_laser_power_mW) = \
             (self.max_laser_power_mW, self.min_laser_power_mW)
+
 
     ############################################################################
     #                                                                          #
@@ -817,7 +823,7 @@ class EEPROM:
                           "acc_state_gpio1", "acc_state_gpio2", 
                           "acc_cont_strobe_period_us", "acc_cont_strobe_width_us", 
                           "acc_cont_strobe_delay_us", "acc_cont_strobe_count", 
-                          "max_battery_temp_deg_c", "pixel_calibration_type" ]:
+                          "max_battery_temp_deg_c", "pixel_correction_type" ]:
                 self.pack_field(name)
 
         self.dump_write_buffers("end of generate_write_buffers")

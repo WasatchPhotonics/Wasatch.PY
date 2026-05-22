@@ -18,6 +18,8 @@ from .SpectrometerSettings     import SpectrometerSettings
 from .SpectrometerResponse     import SpectrometerResponse, ErrorLevel
 from .SpectrometerRequest      import SpectrometerRequest
 from .SpectrometerState        import SpectrometerState
+from .EtalonCorrection         import EtalonCorrection
+from .InGaAsCorrection         import InGaAsCorrection
 from .InterfaceDevice          import InterfaceDevice
 from .DetectorRegions          import DetectorRegions
 from .ControlObject            import ControlObject
@@ -282,11 +284,19 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         log.debug("reading EEPROM")
 
+        # first, read the basic 8/9 EEPROM pages
         result = self._read_eeprom()
         if not result.data:
             log.error(f"failed to read EEPROM, got error message of {result.error_msg}")
             self.connecting = False
             return result
+
+        # if the EEPROM indicated that it contains an onboard pixel correction, load that
+        self._read_pixel_correction_from_eeprom()
+
+        # before "applying" the settings we loaded from EEPROM, augment / stomp 
+        # them with optional external JSON file
+        self.settings.augment_from_json_file(basename=self.settings.eeprom.serial_number)
 
         # ######################################################################
         # Laser defaults
@@ -609,16 +619,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         return True
 
-    def _apply_linear_pixel_calibration(self, spectrum):
-        if not self.settings.linear_pixel_calibration:
-            return
-
-        (slopes, offsets) = self.settings.linear_pixel_calibration
-        smoothed = [] # could be faster in Numpy
-        for i, intensity in enumerate(spectrum):
-            smoothed.append(intensity * slopes[i] + offsets[i])
-        return smoothed
-
     def _apply_horizontal_binning(self, spectrum):
         if not self.settings.eeprom.horiz_binning_enabled:
             return spectrum
@@ -860,35 +860,89 @@ class FeatureIdentificationDevice(InterfaceDevice):
     # initialization
     # ##########################################################################
 
-    def _read_eeprom(self):
+    def _read_eeprom_pages(self, first, count):
         buffers = []
-        for page in range(EEPROM.MAX_PAGES):
+        for page in range(first, first + count):
             buf = None
             try:
                 response = self.get_upper_code(0x01, page, label="GET_MODEL_CONFIG(%d)" % page)
                 buf = response.data
                 if response.error_lvl != ErrorLevel.ok:
-                    return response
+                    log.error("unable to read EEPROM page {page}")
+                    return 
             except:
                 log.error("exception reading upper_code 0x01 with page %d", page, exc_info=1)
+                return
+
             if buf is None:
-                msg = "unable to read EEPROM (null buf)"
-                log.error(msg)
-                return SpectrometerResponse(False, error_lvl=ErrorLevel.medium, error_msg=msg)
-            elif len(buf) < 64:
-                msg = f"unable to read EEPROM received buf of {buf} and len {len(buf)}"
-                log.error(msg)
-                return SpectrometerResponse(False, error_lvl=ErrorLevel.medium, error_msg=msg)
+                log.error("unable to read EEPROM (null buf)")
+                return
+
+            if len(buf) < 64:
+                log.error(f"unable to read EEPROM received buf of {buf} and len {len(buf)}")
+                return
+
             buffers.append(buf)
+        return buffers
 
-        flat_buffers_all_ones = True
-        for page in buffers:
-            for byte in page:
-                flat_buffers_all_ones = flat_buffers_all_ones and (byte == 0xFF)
+    def _read_eeprom(self):
+        buffers = self._read_eeprom_pages(0, EEPROM.MAX_PAGES)
 
-        if flat_buffers_all_ones:
-            return SpectrometerResponse(data=False, error_msg="Saw all Fs for EEPROM. Check EEPROM Programmed.", error_lvl=ErrorLevel.low)
-        return SpectrometerResponse(data=self.settings.eeprom.parse(buffers))
+        all_ones = True
+        for buf in buffers:
+            for v in buf:
+                if v != 0xff:
+                    all_ones = False
+                    break
+        if buffers_all_ones:
+            return SpectrometerResponse(data=False, error_msg="EEPROM appears unprogrammed", error_lvl=ErrorLevel.low)
+
+        self.settings.eeprom.parse(buffers)
+        return SpectrometerResponse(True)
+
+    def _read_pixel_correction_from_eeprom(self):
+        ee = self.settings.eeprom
+
+        # Load a pixel correction from the EEPROM if one is present. It is 
+        # assumed that if pixel_calibration_type is set, then the indicated 
+        # calibration is present on the EEPROM (not in an external JSON file).
+        if self.settings.eeprom.pixel_correction_type == ee.PIXEL_CORRECTION_NONE:
+            return
+
+        if self.settings.eeprom.pixel_correction_type == ee.PIXEL_CORRECTION_USER_DATA:
+            return
+
+        if self.settings.eeprom.pixel_correction_type == ee.PIXEL_CORRECTION_ETALON:
+            corr = EtalonCorrection(self.settings.pixels())
+            first, count = corr.page_range(pixels=self.settings.pixels()) 
+
+            log.debug(f"EtalonCorrection spans {count} pages starting at {first}")
+            if count:
+                log.debug(f"loading extra EEPROM pages")
+                buffers = _read_eeprom_pages(first, count)
+
+                log.debug(f"parsing extra buffers")
+                if corr.parse_eeprom_buffers(buffers):
+                    log.debug(f"storing successful EtalonCorrection")
+                    self.settings.etalon_correction = corr
+            log.error("unable to load EtalonCorrection")
+            return
+
+        if self.settings.eeprom.pixel_correction_type == ee.PIXEL_CORRECTION_INGAAS:
+            corr = InGaAsCorrection(self.settings.pixels())
+            first, count = corr.page_range(pixels=self.settings.pixels()) 
+
+            log.debug(f"InGaAsCorrection spans {count} pages starting at {first}")
+            if count:
+                log.debug(f"loading extra EEPROM pages")
+                buffers = _read_eeprom_pages(first, count)
+
+                log.debug(f"parsing extra buffers")
+                if corr.parse_eeprom_buffers(buffers):
+                    log.debug(f"storing successful InGaAsCorrection")
+                    self.settings.ingaas_correction = corr
+            log.error("unable to load InGaAsCorrection")
+            return
 
     def has_linearity_coeffs(self):
         """
@@ -1619,15 +1673,18 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 self._correct_bad_pixels(spectrum)
 
         ########################################################################
-        # Linear Pixel Calibration (experimental)
+        # InGaAs Correction (experimental)
         ########################################################################
 
-        # should be done AFTER detector inversion (because that's how calibration
-        # is generated) and AFTER bad pixel correction
+        if self.settings.ingaas_correction:
+            spectrum = self.settings.ingaas_correction.apply(spectrum)
 
-        if not self.settings.state.area_scan_enabled:
-            if self.settings.linear_pixel_calibration:
-                spectrum = self._apply_linear_pixel_calibration(spectrum)
+        ########################################################################
+        # Etalon Correction (experimental)
+        ########################################################################
+
+        if self.settings.etalon_correction:
+            spectrum = self.settings.etalon_correction.apply(spectrum)
 
         ########################################################################
         # horizontal binning
@@ -4036,7 +4093,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
         process_f["invert_x_axis"]                      = lambda x: self.settings.eeprom.set("invert_x_axis", bool(x))
         process_f["horiz_binning_enable"]               = lambda x: self.settings.eeprom.set("horiz_binning_enabled", bool(x))
         process_f["wavenumber_correction"]              = lambda x: self.settings.set_wavenumber_correction(float(x))
-        process_f["linear_pixel_calibration"]           = lambda x: self.settings.set_linear_pixel_calibration(x)
         process_f["onboard_scans_to_average"]           = lambda x: self.set_onboard_scans_to_average(int(x))
 
         # heartbeats & connection data

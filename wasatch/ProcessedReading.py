@@ -67,6 +67,9 @@ class ProcessedReading:
         self.cropped = None
         self.interpolated = None
 
+        self.spectrum_dalai = None
+        self.wavenumbers_dalai = None
+
     ##
     # @param d (Input) if instantiating from a dict (External API or loaded JSON),
     #                  this is the dictionary containing parsed values
