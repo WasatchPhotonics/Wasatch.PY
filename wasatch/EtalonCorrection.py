@@ -1,3 +1,5 @@
+import math
+import numpy as np
 import struct
 import logging
 
@@ -40,13 +42,22 @@ class EtalonCorrection:
         return (first, count)
 
     def parse_eeprom_buffers(self, buffers):
+        log.debug("parsing EEPROM factors")
         self.mode = "default" # save your funky stuff for JSON
         self.factors = []
         for buf in buffers:
             for index in range(self.BYTES_PER_PAGE // self.BYTES_PER_FLOAT):
-                value = struct.unpack("f", buf[index:index+4])[0]
+                offset = index * 4
+                value = struct.unpack("f", buf[offset:offset+4])[0]
                 self.factors.append(value)
-        log.debug("parsed {len(self.factors)} factors from {len(buffers)} pages")
+
+        hi = max(self.factors)
+        lo = min(self.factors)
+        mean = np.mean(self.factors)
+
+        log.debug(f"parsed {len(self.factors)} factors from {len(buffers)} pages (lo {lo}, hi {hi}, mean {mean})")
+
+        return True
 
     def apply(self, spectrum):
         if not self.enabled:
@@ -56,7 +67,7 @@ class EtalonCorrection:
             log.error("unimplemented mode {self.mode}")
             return spectrum
 
-        smoothed = [] 
+        corrected = [] 
         for i, intensity in enumerate(spectrum):
-            smoothed.append(intensity * self.factors[i])
-        return smoothed
+            corrected.append(intensity * self.factors[i])
+        return corrected

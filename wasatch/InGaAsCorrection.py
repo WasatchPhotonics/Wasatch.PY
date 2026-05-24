@@ -52,13 +52,15 @@ class InGaAsCorrection:
         # offsets
         for buf in buffers[:half]:
             for index in range(self.BYTES_PER_PAGE // self.BYTES_PER_FLOAT):
-                value = struct.unpack("f", buf[index:index+4])[0]
+                offset = index * 4
+                value = struct.unpack("f", buf[offset:offset+4])[0]
                 self.offsets.append(value)
 
         # slopes
         for buf in buffers[half:]:
             for index in range(self.BYTES_PER_PAGE // self.BYTES_PER_FLOAT):
-                value = struct.unpack("f", buf[index:index+4])[0]
+                offset = index * 4
+                value = struct.unpack("f", buf[offset:offset+4])[0]
                 self.slopes.append(value)
 
         log.debug("parsed {len(self.offsets)} offsets and {len(self.slopes)} slopes from {len(buffers)} pages")

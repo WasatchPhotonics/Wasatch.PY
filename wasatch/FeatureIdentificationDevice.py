@@ -925,7 +925,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 if corr.parse_eeprom_buffers(buffers):
                     log.debug(f"storing successful EtalonCorrection")
                     self.settings.etalon_correction = corr
-            log.error("unable to load EtalonCorrection")
+                else:
+                    log.error("unable to parse EtalonCorrection")
             return
 
         if self.settings.eeprom.pixel_correction_type == ee.PIXEL_CORRECTION_INGAAS:

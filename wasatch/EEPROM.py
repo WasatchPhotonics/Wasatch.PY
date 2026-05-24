@@ -234,16 +234,16 @@ class EEPROM:
         self.assembly_revision           = None
 
         self.laser_password              = None
-        self.feature_mask_xs             = None
-        self.acc_state                   = None
-        self.acc_state_gpio1             = None
-        self.acc_state_gpio2             = None
-        self.acc_cont_strobe_period_us   = None
-        self.acc_cont_strobe_width_us    = None
-        self.acc_cont_strobe_delay_us    = None
-        self.acc_cont_strobe_count       = None
+        self.feature_mask_xs             = 0
+        self.acc_state                   = 0
+        self.acc_state_gpio1             = 0
+        self.acc_state_gpio2             = 0
+        self.acc_cont_strobe_period_us   = 0
+        self.acc_cont_strobe_width_us    = 0
+        self.acc_cont_strobe_delay_us    = 0
+        self.acc_cont_strobe_count       = 0
         self.max_battery_temp_deg_c      = None
-        self.pixel_correction_type       = None
+        self.pixel_correction_type       = 0
 
         self.usb_manufacturer_name       = None
         self.aux_button_function         = None
