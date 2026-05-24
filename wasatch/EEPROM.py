@@ -136,6 +136,11 @@ class EEPROM:
         ((8, 36,  2), "H", "acc_cont_strobe_count"),
         ((8, 38,  1), "b", "max_battery_temp_deg_c"),
         ((8, 39,  1), "b", "pixel_correction_type"),
+
+        ((8, 40, 20), "s", "usb_manufacturer_name"),
+        ((8, 60,  1), "B", "aux_button_function"),
+        ((8, 61,  1), "B", "aux_button_param"),
+        ((8, 63,  1), "B", "latched_hardware_failures"),
     ]
 
     def __init__(self):
@@ -160,6 +165,11 @@ class EEPROM:
         self.has_shutter                 = False
         self.disable_ble_power           = False
         self.disable_laser_armed_indicator = False
+        self.ble_door_sensor             = False
+        self.ext_laser_control           = False
+        self.aux_button_laser_enable     = False
+        self.disable_laser_sub_sys       = False
+        self.leave_acc_5v_out_powered    = False
         self.excitation_nm               = 0.0
         self.excitation_nm_float         = 0.0
         self.slit_size_um                = 0
@@ -234,6 +244,11 @@ class EEPROM:
         self.acc_cont_strobe_count       = None
         self.max_battery_temp_deg_c      = None
         self.pixel_correction_type       = None
+
+        self.usb_manufacturer_name       = None
+        self.aux_button_function         = None
+        self.aux_button_param            = None
+        self.latched_hardware_failures   = None
 
         self.format                      = EEPROM.LATEST_REV
         self.subformat                   = 0 # determines format of pages 6-7
@@ -595,8 +610,26 @@ class EEPROM:
                           "acc_state_gpio1", "acc_state_gpio2", 
                           "acc_cont_strobe_period_us", "acc_cont_strobe_width_us", 
                           "acc_cont_strobe_delay_us", "acc_cont_strobe_count", 
-                          "max_battery_temp_deg_c", "pixel_correction_type" ]:
+                          "max_battery_temp_deg_c", "pixel_correction_type", "usb_manufacturer_name", 
+                          "aux_button_function", "aux_button_param", "latched_hardware_failures" ]:
                 self.unpack_field(name)
+
+            # parse FeatureMaskXS
+            if self.format >= 19:
+                self.ble_door_sensor            = 0 != self.feature_mask_xs & 0x0000_0001
+                self.ext_laser_control          = 0 != self.feature_mask_xs & 0x0000_0002
+                self.aux_button_laser_enable    = 0 != self.feature_mask_xs & 0x0000_0004
+                self.disable_laser_sub_sys      = 0 != self.feature_mask_xs & 0x0000_0008
+                self.leave_acc_5v_out_powered   = 0 != self.feature_mask_xs & 0x0000_0010
+            else:
+                self.ble_door_sensor            = False
+                self.ext_laser_control          = False
+                self.aux_button_laser_enable    = False
+                self.disable_laser_sub_sys      = False
+                self.leave_acc_5v_out_powered   = False
+
+
+        self.dump_feature_masks()
 
         # ######################################################################
         # sanity checks
@@ -645,6 +678,15 @@ class EEPROM:
         mask |= 0x0400 if self.laser_interlock_excluded      else 0
         mask |= 0x0800 if self.laser_timeout_after_count     else 0
         mask |= 0x1000 if self.is_oem                        else 0
+        return mask
+
+    def generate_feature_mask_xs(self):
+        mask = 0
+        mask |= 0x0000_0001 if self.ble_door_sensor          else 0
+        mask |= 0x0000_0002 if self.ext_laser_control        else 0
+        mask |= 0x0000_0004 if self.aux_button_laser_enable  else 0
+        mask |= 0x0000_0008 if self.disable_laser_sub_sys    else 0
+        mask |= 0x0000_0010 if self.leave_acc_5v_out_powered else 0
         return mask
 
     ##
@@ -815,15 +857,19 @@ class EEPROM:
         # Page 8
         # ######################################################################
 
+        # this might not get all units...
         if self.model and "XS" in self.model.upper():
-            # self.pack((8,  0, 16), "s", self.laser_password)
+
             self.pack_field("laser_password", quiet=True)
+
+            self.feature_mask_xs = self.generate_feature_mask_xs()
 
             for name in [ "feature_mask_xs", "acc_state", 
                           "acc_state_gpio1", "acc_state_gpio2", 
                           "acc_cont_strobe_period_us", "acc_cont_strobe_width_us", 
                           "acc_cont_strobe_delay_us", "acc_cont_strobe_count", 
-                          "max_battery_temp_deg_c", "pixel_correction_type" ]:
+                          "max_battery_temp_deg_c", "pixel_correction_type", 
+                          "usb_manufacturer_name", "aux_button_function", "aux_button_param" ]:
                 self.pack_field(name)
 
         self.dump_write_buffers("end of generate_write_buffers")
@@ -1057,6 +1103,29 @@ class EEPROM:
         log.debug(f"EEPROM.write_buffers: {label}")
         for i in range(len(self.write_buffers)):
             log.debug(f"  page {i}: {utils.to_hex(self.write_buffers[i])}")
+
+    def dump_feature_masks(self):
+        log.debug(f"FeatureMask:")
+        log.debug(f"  invert_x_axis                 = {self.invert_x_axis}")
+        log.debug(f"  horiz_binning_enabled         = {self.horiz_binning_enabled}")
+        log.debug(f"  gen15                         = {self.gen15}")
+        log.debug(f"  cutoff_filter_installed       = {self.cutoff_filter_installed}")
+        log.debug(f"  hardware_even_odd             = {self.hardware_even_odd}")
+        log.debug(f"  sig_laser_tec                 = {self.sig_laser_tec}")
+        log.debug(f"  has_interlock_feedback        = {self.has_interlock_feedback}")
+        log.debug(f"  has_shutter                   = {self.has_shutter}")
+        log.debug(f"  disable_ble_power             = {self.disable_ble_power}")
+        log.debug(f"  disable_laser_armed_indicator = {self.disable_laser_armed_indicator}")
+        log.debug(f"  laser_interlock_excluded      = {self.laser_interlock_excluded}")
+        log.debug(f"  laser_timeout_after_count     = {self.laser_timeout_after_count}")
+        log.debug(f"  is_oem                        = {self.is_oem}")
+        log.debug(f"")
+        log.debug("FeatureMaskXS:")
+        log.debug(f"  ble_door_sensor               = {self.ble_door_sensor}")
+        log.debug(f"  ext_laser_control             = {self.ext_laser_control}")
+        log.debug(f"  aux_button_laser_enable       = {self.aux_button_laser_enable}")
+        log.debug(f"  disable_laser_sub_sys         = {self.disable_laser_sub_sys}")
+        log.debug(f"  leave_acc_5v_out_powered      = {self.leave_acc_5v_out_powered}")
 
     ## log this object
     def dump(self):
