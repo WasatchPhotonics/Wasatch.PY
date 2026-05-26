@@ -93,6 +93,8 @@ class DeviceFinderUSB:
     def bus_polling(self): # -> list[DeviceID] 
         device_ids = []
         count = 0
+
+        # CONNECT-6: this is the important bit
         devices = usb.core.find(find_all=True, backend=backend.get_backend())
         for device in devices:
             count += 1
@@ -106,6 +108,7 @@ class DeviceFinderUSB:
             if vid == self.WASATCH_VID and pid not in [ self.WP_HAMA_SILICON_PID, self.WP_HAMA_INGAAS_PID, self.WP_ARM_PID ]:
                 continue
 
+            # CONNECT-7: create a DeviceID for each USB device
             device_id = DeviceID(device=device)
             device_ids.append(device_id)
         return device_ids
@@ -166,6 +169,7 @@ class DeviceFinderUSB:
         return [DeviceID(device) for device in pyusb_devices]
 
     def find_usb_devices(self, poll = False):
+        """ CONNECT-5 """
         # log.debug("DeviceFinderUSB.find_usb_devices: starting")
         device_ids = []
 

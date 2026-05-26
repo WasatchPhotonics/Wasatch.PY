@@ -544,8 +544,8 @@ class AutoRaman:
             setting_to_attr.extend( [ ('get_laser_tec_mode', 'laser_tec_enabled'),
                                       ('get_ambient_temperature_degC', 'ambient_temperature_degC') ] )
         for (setting, attr_name) in setting_to_attr:
-            request = SpectrometerRequest(setting)
-            result = self.idevice.handle_requests([request])[0]
+            req = SpectrometerRequest(setting)
+            result = self.idevice.handle_requests([req])[0]
             if result is not None and not result.error_msg:
                 setattr(reading, attr_name, result.data)
 

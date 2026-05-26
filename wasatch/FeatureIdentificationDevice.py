@@ -1676,20 +1676,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 self._correct_bad_pixels(spectrum)
 
         ########################################################################
-        # InGaAs Correction (experimental)
-        ########################################################################
-
-        if self.settings.ingaas_correction:
-            spectrum = self.settings.ingaas_correction.apply(spectrum)
-
-        ########################################################################
-        # Etalon Correction (experimental)
-        ########################################################################
-
-        if self.settings.etalon_correction:
-            spectrum = self.settings.etalon_correction.apply(spectrum)
-
-        ########################################################################
         # horizontal binning
         ########################################################################
 
@@ -1699,6 +1685,17 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # Note: len(spectrum) may no longer == eeprom.actual_pixels_horizontal!
         # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
 
+        # MZ: moving these upstream to ENLIGHTEN, so ENLIGHTEN can save non-
+        # corrected darks
+        #
+        # # InGaAs Correction (experimental)
+        # if self.settings.ingaas_correction:
+        #     spectrum = self.settings.ingaas_correction.apply(spectrum)
+        #
+        # # Etalon Correction (experimental)
+        # if self.settings.etalon_correction:
+        #     spectrum = self.settings.etalon_correction.apply(spectrum)
+        
         ########################################################################
         # Graph Alternating Pixels
         ########################################################################

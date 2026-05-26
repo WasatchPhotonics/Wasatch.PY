@@ -18,6 +18,7 @@ class Reading:
         self.timestamp                 = None
         self.timestamp_complete        = None
         self.spectrum                  = None
+        self.spectrum_raw              = None
         self.laser_enabled             = None
         self.laser_temperature_raw     = 0
         self.laser_temperature_degC    = 0

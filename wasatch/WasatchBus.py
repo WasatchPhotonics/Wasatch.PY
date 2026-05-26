@@ -7,14 +7,15 @@ from usb import USBError
 
 log = logging.getLogger(__name__)
 
-##
-# The different bus classes don't use inheritance and don't follow a common ABC
-# or interface, but each should have an update() method, and each should have a 
-# 'device_ids' array.
-#
-# @param use_sim not used, left to avoid breaking old code
-# @param monitor_dir not used, left to avoid breaking old code
 class WasatchBus:
+    """
+    The different Bus classes don't use inheritance and don't follow a common ABC
+    or interface, but each should have an update() method, and each should have a 
+    'device_ids' array.
+    
+    @param use_sim not used, left to avoid breaking old code
+    @param monitor_dir not used, left to avoid breaking old code
+    """
     def __init__(self, use_sim=False, monitor_dir=None):
         self.device_ids = []
 
@@ -23,12 +24,10 @@ class WasatchBus:
 
         self.update()
 
-    ## called by enlighten.Controller.tick_bus_listener()
     def update(self, poll=False):
+        """ CONNECT-3: called by enlighten.Controller.tick_bus_listener() """
         device_ids = []
         if self.usb_bus:
-            # MZ: if we call .extend here...when are devices ever purged from the stateful list?
-            # self.device_ids.extend(self.usb_bus.update(poll)) 
             usb_device_ids = self.usb_bus.update(poll)
             device_ids.extend(usb_device_ids)
 
@@ -53,12 +52,11 @@ class USBBus:
 
     def __init__(self):
         self.backend_error_raised = False
-        # self.update()
 
     def update(self, poll=False):
-        """ Return a list of DeviceIDs on the USB bus """
         device_ids = []
         try:
+            """ CONNECT-4: generate a list of DeviceIDs on the USB bus """
             device_ids = self.finder.find_usb_devices(poll=True)
         except USBError:
             # MZ: this seems to happen when I run from Git Bash shell
