@@ -38,6 +38,8 @@ class Reading:
         self.battery_raw               = None
         self.battery_percentage        = None
         self.battery_charging          = None
+        self.battery_temp_deg_c        = None
+        self.battery_charger_temp_deg_c = None
         self.power_connection_state    = None
         self.laser_can_fire            = False  # per interlock board
         self.laser_is_firing           = False  # per interlock board, not laser_enable

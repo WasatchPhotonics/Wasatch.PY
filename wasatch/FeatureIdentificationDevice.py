@@ -985,6 +985,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 self.settings.state.battery_raw is None or \
                 (now - self.settings.state.battery_timestamp).total_seconds() > 1:
             self.settings.state.battery_timestamp = now
+
+            # length will grow to 5 in STM32 1.0.65.1
             response = self.get_upper_code(0x13, label="GET_BATTERY_STATE", msb_len=3)
             self.settings.state.battery_raw = response.data
             log.debug(f"battery_state_raw: 0x{self.settings.state.battery_raw:06x}")
