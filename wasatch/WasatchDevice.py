@@ -65,15 +65,17 @@ class WasatchDevice(InterfaceDevice):
 
     - FeatureIdentificationDevices, which follow the ENG-0001 API and
       have EEPROMs
+
     - StrokerDevices, which didn't have EEPROMs and didn't obey ENG-0001.
 
-    I don't know if we have an ENG document specifying the protocol that the old
-    Stroker electronics used. It was already deprecated when I started, and was 
-    rapidly removed from Wasatch.PY. Which kind of made this class superfluous.
+    I don't know if we even have an ENG document specifying the protocol that the
+    old Stroker electronics used. It was already deprecated when I started, and 
+    was rapidly removed from Wasatch.PY...which kind of makes this class 
+    superfluous :-(
 
     This class (and all who inherit InterfaceDevice) use a somewhat clunky
     data-passing and error-handling mechanism via SpectrometerRequest and
-    SpectrometerResponse objects. That could probably be streamlined.
+    SpectrometerResponse objects. That should probably be streamlined.
 
     Part of the legacy "ugly-isms" in this class date back to when ENLIGHTEN
     was multi-process rather than multi-threaded, and all data flows between
@@ -89,8 +91,10 @@ class WasatchDevice(InterfaceDevice):
         self.connected = False
         self.hardware = None                # FeatureIdentificationDevice
 
-        # Receives ENLIGHTEN's 'change settings' commands from the WrapperWorker.
-        self.command_queue = []
+        # Temporarily stores ENLIGHTEN's 'change settings' commands from the 
+        # WrapperWorker. Renamed from "command_queue" because IT IS NOT A QUEUE,
+        # and is not shared with WrapperWorker.
+        self.pending_commands = []
 
         # Enable for "immediate mode" by clients like WasatchShell (by default,
         # inbound commands are queued and executed at beginning of next acquire_data;
@@ -141,8 +145,7 @@ class WasatchDevice(InterfaceDevice):
     def disconnect(self):
         log.debug("WasatchDevice.disconnect: calling hardware disconnect")
         try:
-            req = SpectrometerRequest("disconnect")
-            self.hardware.handle_requests([req])
+            self.hardware.handle_cmd("disconnect")
         except:
             log.critical("Issue disconnecting hardware", exc_info=1)
 
@@ -183,10 +186,9 @@ class WasatchDevice(InterfaceDevice):
         # WasatchDevice and FID share same SpectrometerSettings
         self.settings = self.hardware.settings
 
-        req_int = SpectrometerRequest('get_integration_time_ms')
-        req_gain = SpectrometerRequest('get_detector_gain')
-        reqs = [req_int, req_gain]
-        self.hardware.handle_requests(reqs) 
+        # call these getters just to preload SpectrometerState
+        for getter in [ 'get_integration_time_ms', 'get_detector_gain' ]:
+            self.hardware.handle_cmd(getter)
 
         # could read the defaults for these ss.state volatiles from FID too:
         #
@@ -214,10 +216,15 @@ class WasatchDevice(InterfaceDevice):
 
     def acquire_data(self):
         """
-        Process all enqueued settings, then read actual data (spectrum and
-        temperatures) from the device.
+        Process all enqueued settings, then generate one Reading from the device
+        (a spectrum, followed by all the miscellaneous device metadata like 
+        temperatures, battery and laser state).
 
-        ENLIGHTEN calls this function via WrapperWorker.run().
+        ENLIGHTEN calls this function in a continuous loop in a Thread via 
+        WrapperWorker.run().
+
+        The most important thing is at the end of the function, it calls 
+        acquire_spectrum() which generates the actual Reading.
 
         @see Controller.acquire_reading
         """
@@ -229,7 +236,7 @@ class WasatchDevice(InterfaceDevice):
 
         # process queued commands, and find out if we've been asked to read a
         # spectrum
-        self.process_commands()
+        self.process_pending_commands()
 
         # if we don't yet have an integration time, nothing to do
         if self.settings.state.integration_time_ms <= 0:
@@ -364,7 +371,7 @@ class WasatchDevice(InterfaceDevice):
             # disable laser if it was on
             if self.settings.state.laser_enabled:
                 log.debug("OLD-AUTO-RAMAN ==> disabling laser for internal dark")
-                self.hardware.handle_requests([SpectrometerRequest('set_laser_enable', args=[False])])
+                self.hardware.handle_cmd('set_laser_enable', False)
                 time.sleep(1) 
 
             dark_reading = self.take_one_averaged_reading(label="internal dark")
@@ -378,8 +385,7 @@ class WasatchDevice(InterfaceDevice):
 
         if auto_enable_laser:
             log.debug(f"OLD-AUTO-RAMAN ==> acquire_spectum: enabling laser")
-            req = SpectrometerRequest('set_laser_enable', args=[True])
-            self.hardware.handle_requests([req])
+            self.hardware.handle_cmd('set_laser_enable', True)
             if self.hardware.shutdown_requested:
                 log.debug(f"auto_enable_laser shutdown requested")
                 acquire_response.poison_pill = True
@@ -423,8 +429,7 @@ class WasatchDevice(InterfaceDevice):
         def disable_laser(shutdown=False, label=None):
             if shutdown or auto_enable_laser:
                 log.debug(f"acquire_spectrum.disable_laser: shutdown {shutdown}, auto_enable_laser {auto_enable_laser}, label {label}")
-                req = SpectrometerRequest('set_laser_enable', args=[False])
-                self.hardware.handle_requests([req])
+                self.hardware.handle_cmd('set_laser_enable', False)
                 acquire_response.poison_pill = shutdown
             return acquire_response # for convenience
 
@@ -448,8 +453,7 @@ class WasatchDevice(InterfaceDevice):
                     func_attr.append( ('get_ambient_temperature_degC', 'ambient_temperature_degC') )
 
                 for (func, attr) in func_attr:
-                    req = SpectrometerRequest(func)
-                    res = self.hardware.handle_requests([req])[0]
+                    res = self.hardware.handle_cmd(func)
                     if res is None:
                         log.debug(f"WasatchDevice.acquire_spectrum: ignoring None {func} response")
                     else:
@@ -465,16 +469,14 @@ class WasatchDevice(InterfaceDevice):
                 # laser temperature
                 count = 2 if self.settings.state.secondary_adc_enabled else 1
                 for throwaway in range(count):
-                    req = SpectrometerRequest('get_laser_temperature_raw')
-                    res = self.hardware.handle_requests([req])[0]
+                    res = self.hardware.handle_cmd('get_laser_temperature_raw')
                     if res.error_msg != '':
                         return res
                     reading.laser_temperature_raw  = res.data
                     if self.hardware.shutdown_requested:
                         return disable_laser(shuttdown=True, label=f"reading laser temperature (throwaway {throwaway} of {count})")
 
-                req = SpectrometerRequest('get_laser_temperature_degC', args=[reading.laser_temperature_raw])
-                res = self.hardware.handle_requests([req])[0]
+                res = self.hardware.handle_cmd('get_laser_temperature_degC', reading.laser_temperature_raw)
                 if res.error_msg != '':
                     return res
                 reading.laser_temperature_degC = res.data
@@ -487,27 +489,23 @@ class WasatchDevice(InterfaceDevice):
         # read secondary ADC if requested
         if self.settings.state.secondary_adc_enabled:
             try:
-                req = SpectrometerRequest("select_adc", args=[1])
-                self.hardware.handle_requests([req])
+                self.hardware.handle_cmd("select_adc", 1)
                 if self.hardware.shutdown_requested:
                     return disable_laser(shutdown=True, label="select_adc[1]")
 
                 for throwaway in range(2):
-                    req = SpectrometerRequest("get_secondary_adc_raw")
-                    res = self.hardware.handle_requests([req])[0]
+                    res = self.hardware.handle_cmd("get_secondary_adc_raw")
                     if res.error_msg != '':
                         return res
                     reading.secondary_adc_raw = res.data
                     if self.hardware.shutdown_requested:
                         return disable_laser(shutdown=True, label="get_secondary_adc_raw")
 
-                req = SpectrometerRequest("get_secondary_adc_calibrated", args =[reading.secondary_adc_raw])
-                res = self.hardware.handle_requests([req])[0]
+                res = self.hardware.handle_cmd("get_secondary_adc_calibrated", reading.secondary_adc_raw)
                 if res.error_msg != '':
                     return res
                 reading.secondary_adc_calibrated = res.data 
-                req = SpectrometerRequest("select_adc", args=[0])
-                res = self.hardware.handle_requests([req])[0]
+                res = self.hardware.handle_cmd("select_adc", 0)
                 if res.error_msg != '':
                     return res
                 if self.hardware.shutdown_requested:
@@ -530,8 +528,7 @@ class WasatchDevice(InterfaceDevice):
         # read detector temperature if applicable
         if self.settings.eeprom.has_cooling:
             try:
-                req = SpectrometerRequest("get_detector_temperature_raw")
-                res = self.hardware.handle_requests([req])[0]
+                res = self.hardware.handle_cmd("get_detector_temperature_raw")
                 if res.error_msg != '':
                     return res
                 reading.detector_temperature_raw  = res.data
@@ -540,8 +537,7 @@ class WasatchDevice(InterfaceDevice):
                     acquire_response.poison_pill = True
                     return acquire_response
 
-                req = SpectrometerRequest("get_detector_temperature_degC", args=[reading.detector_temperature_raw])
-                res = self.hardware.handle_requests([req])[0]
+                res = self.hardware.handle_cmd("get_detector_temperature_degC", reading.detector_temperature_raw)
                 if res.error_msg != '':
                     return res
                 reading.detector_temperature_degC = res.data
@@ -567,9 +563,8 @@ class WasatchDevice(InterfaceDevice):
 
                 # note that the following 3 requests should actually only generate 
                 # one USB transaction as raw is cached internally
-                req = SpectrometerRequest("get_battery_state_raw")
-                res = self.hardware.handle_requests([req])[0]
-                if res.error_msg != '':
+                res = self.hardware.handle_cmd("get_battery_state_raw")
+                if res.error_msg:
                    return res
                 reading.battery_raw = res.data
                 if self.hardware.shutdown_requested:
@@ -577,9 +572,8 @@ class WasatchDevice(InterfaceDevice):
                     acquire_response.poison_pill = True
                     return acquire_response
 
-                req = SpectrometerRequest("get_battery_percentage")
-                res = self.hardware.handle_requests([req])[0]
-                if res.error_msg != '':
+                res = self.hardware.handle_cmd("get_battery_percentage")
+                if res.error_msg:
                    return res
                 reading.battery_percentage = res.data
                 if self.hardware.shutdown_requested:
@@ -588,9 +582,8 @@ class WasatchDevice(InterfaceDevice):
                     return acquire_response
                 self.last_battery_percentage = reading.battery_percentage
 
-                req = SpectrometerRequest("get_battery_percentage")
-                res = self.hardware.handle_requests([req])[0]
-                if res.error_msg != '':
+                res = self.hardware.handle_cmd("get_battery_percentage")
+                if res.error_msg:
                     return res
                 reading.battery_charging = res.data
                 if self.hardware.shutdown_requested:
@@ -679,9 +672,8 @@ class WasatchDevice(InterfaceDevice):
             self.hardware.remaining_throwaways = count
             while self.hardware.remaining_throwaways > 0:
                 log.debug(f"more than a second since last measurement, so performing wake-up throwaways ({self.hardware.remaining_throwaways - 1} remaining)")
-                req = SpectrometerRequest("get_spectrum")
-                res = self.hardware.handle_requests([req])[0]
-                if res.error_msg != '':
+                res = self.hardware.handle_cmd("get_spectrum")
+                if res.error_msg:
                     return res
 
     def take_one_averaged_reading(self, label=None):
@@ -730,8 +722,7 @@ class WasatchDevice(InterfaceDevice):
         # clear any pending throwaways
         while self.hardware.remaining_throwaways > 0:
             log.debug(f"clearing stabilization throwaway ({self.hardware.remaining_throwaways - 1} remaining)")
-            req = SpectrometerRequest("get_spectrum")
-            res = self.hardware.handle_requests([req])[0]
+            res = self.hardware.handle_cmd("get_spectrum")
             if res.error_msg != '':
                 log.debug(f"take_one_averaged_reading: returning while handling pending throwaways because error_msg {res.error_msg}")
                 return res
@@ -762,10 +753,8 @@ class WasatchDevice(InterfaceDevice):
             try:
                 keep_alive = False
                 while True:
-                    req = SpectrometerRequest("get_spectrum")
-                    res = self.hardware.handle_requests([req])[0]
-                    if res.error_msg != '':
-
+                    res = self.hardware.handle_cmd("get_spectrum")
+                    if res.error_msg:
                         if self.settings.is_ingaas():
                             if tried_reset:
                                 log.debug("take_one_averaged_reading: already tried InGaAs FPGA reset :-(")
@@ -774,12 +763,10 @@ class WasatchDevice(InterfaceDevice):
                                 self.hardware.reset_fpga()
                                 tried_reset = True
                                 continue
-
                         log.debug(f"take_one_averaged_reading: returning due to error_msg {res.error_msg}")
                         return res
 
-                    # @todo get rid of spectrum_and_row...get_spectrum() can go back to only returning spectrum
-                    spectrum_and_row = res.data
+                    spectrum = res.data
                     if res.poison_pill:
                         # float up poison
                         take_one_response.transfer_response(res)
@@ -790,18 +777,13 @@ class WasatchDevice(InterfaceDevice):
                         keep_alive = True
                         break
 
-                    if isinstance(spectrum_and_row, bool):
-                        # get_spectrum returned a poison-pill, so flow it upstream
-                        take_one_response.poison_pill = True
-                        return take_one_response
-
                     if self.hardware.shutdown_requested:
                         take_one_response.poison_pill = True
                         return take_one_response
 
-                    if spectrum_and_row is None or spectrum_and_row.spectrum is None:
-                        # FeatureIdentificationDevice can return None when waiting
-                        # on an external trigger.  
+                    if spectrum is None:
+                        # FeatureIdentificationDevice can return SpectrometerResponse(None) 
+                        # when waiting on an external trigger.  
                         log.debug("take_one_averaged_reading: get_spectrum None, sending keepalive for now")
                         take_one_response.transfer_response(res)
                         return take_one_response
@@ -813,7 +795,7 @@ class WasatchDevice(InterfaceDevice):
                     log.debug(f"take_one_averaged_reading: trying to populate keep_alive")
                     reading.spectrum = None
                 else:
-                    reading.spectrum = spectrum_and_row.spectrum
+                    reading.spectrum = spectrum
                     log.debug(f"take_one_averaged_reading: got {reading.spectrum[0:9]}")
 
                 reading.timestamp_complete  = datetime.datetime.now()
@@ -929,7 +911,7 @@ class WasatchDevice(InterfaceDevice):
     # either handle_requests (which does everything in process_f), or 
     # change_setting (which handles a few WasatchDevice-immediate settings).
     #
-    # The command_queue is populated by change_setting which only queues
+    # Pending_commands is populated by change_setting, which only queues
     # commands that neither it nor handle_requests knew what to do with, 
     # which should be a pretty small set.
     #
@@ -944,12 +926,12 @@ class WasatchDevice(InterfaceDevice):
     # In the normal multithreaded (ENLIGHTEN) workflow, this function is called
     # at the beginning of acquire_data, itself ticked regularly by
     # WrapperWorker.run.
-    def process_commands(self):
+    def process_pending_commands(self):
         retval = False
-        log.debug("process_commands: processing")
-        while len(self.command_queue) > 0:
-            control_object = self.command_queue.pop(0)
-            log.debug("process_commands: %s", control_object)
+        log.debug("process_pending_commands: processing")
+        while len(self.pending_commands) > 0:
+            control_object = self.pending_commands.pop(0)
+            log.debug("process_pending_commands: %s", control_object)
 
             # is this a command used by WasatchDevice itself, and not
             # passed down to FeatureIdentificationDevice?
@@ -957,13 +939,12 @@ class WasatchDevice(InterfaceDevice):
                 # MZ: does this ever happen? It looks like the current
                 #     request sent down from WrapperWorker is "acquire_data"
                 #     not "acquire"...
-                log.debug("process_commands: acquire found")
+                log.debug("process_pending_commands: acquire found")
                 retval = True
             else:
                 # send setting downstream to be processed by the spectrometer HAL
                 # (probably FeatureIdentificationDevice)
-                req = SpectrometerRequest(control_object.setting, args=[control_object.value])
-                self.hardware.handle_requests([req])
+                self.hardware.handle_cmd(control_object.setting, control_object.value)
 
         return retval
 
@@ -1026,7 +1007,7 @@ class WasatchDevice(InterfaceDevice):
     #                                                                          #
     # ######################################################################## #
 
-    def handle_requests(self, requests: list[SpectrometerRequest]): # -> list[SpectrometerResponse] 
+    def handle_requests(self, requests): 
         """
         Override handle_requests. 
         
@@ -1037,27 +1018,61 @@ class WasatchDevice(InterfaceDevice):
         that _actually_ get executed from here are CONNECT, DISCONNECT and
         ACQUIRE_DATA. Everything else is going to get passed to change_setting,
         which will locally process those few specific to WasatchDevice, then
-        push the rest on command_queue for eventual ordered execution by 
-        process_commands the next time acquire_data is called by WrapperWorker.
+        push the rest on pending_commands for eventual ordered execution by 
+        process_pending_commands the next time acquire_data is called by 
+        WrapperWorker.
         """
         responses = []
         for request in requests:
             try:
                 cmd = request.cmd
+                response = None
+                
+                # first check to see if this is a function supplied by 
+                # WasatchDevice itself (hint: that list contains "connect", 
+                # "disconnect", "acquire_data" and nothing else)
                 proc_func = self.process_f.get(cmd, None)
+
                 if proc_func is None:
+                    # just for funz, let's check to see if that function is 
+                    # handled by our hardware device (i.e. FeatureInterfaceDevice)
+                    proc_func = self.hardware.process_f.get(cmd, None)
+                    if proc_func is not None:
+                        log.debug(f"handle_requests: passing {cmd} directly to hardware")
+
+                if proc_func is None:
+                    # Neither WasatchDevice nor FeatureInterfaceDevice appear
+                    # to handle this command, so try sending it to 
+                    # change_setting. I'm not sure what is currently going down 
+                    # this path.
+                    #
+                    # Note that change_setting does not return anything, ever,
+                    # so anyone looking for a response from this will be 
+                    # disappointed. That is probably because "change_setting"
+                    # was intended to be a "fire-and-forget" COMMAND, not a 
+                    # "get information and return response" interface.
                     try:
-                        self.change_setting(cmd, *request.args, **request.kwargs)
+                        log.debug(f"handle_requests: proc_func is None for cmd {cmd}, so failing-over to change_setting")
+                        response = self.change_setting(cmd, *request.args, **request.kwargs)
                     except Exception as e:
                         log.error(f"error {e} with trying to set setting {cmd} with args and kwargs {request.args} and {request.kwargs}", exc_info=1)
-                        return []
-                elif request.args == [] and request.kwargs == {}:
-                    responses.append(proc_func())
+                        return response
                 else:
-                    responses.append(proc_func(*request.args, **request.kwargs))
+                    # apparently we found a function (either in WasatchDevice or 
+                    # FeatureInterfaceDevice) which can handle this command, so run 
+                    # the function, passing along any arguments we were given
+                    if request.args == [] and request.kwargs == {}:
+                        response = proc_func()
+                    else:
+                        response = proc_func(*request.args, **request.kwargs)
+
+                # deliberately not checking for None
+                responses.append(response)
             except Exception as e:
-                log.error(f"error in handling request {request} of {e}", exc_info=1)
+                log.error(f"error handling request {request} of {e}", exc_info=1)
                 responses.append(SpectrometerResponse(error_msg="error processing cmd", error_lvl=ErrorLevel.medium))
+
+        # log.debug(f"handle_requests: returning responses {responses}")
         return responses
 
     ##
@@ -1087,7 +1102,7 @@ class WasatchDevice(InterfaceDevice):
     #                be None or "anything" for commands like "acquire" which
     #                don't use the argument).
     # @param allow_immediate
-    def change_setting(self, setting: str, value: Any, allow_immediate: bool = True): # -> None 
+    def change_setting(self, setting: str, value: Any, allow_immediate: bool = True):
         log.debug(f"WasatchDevice.change_setting: {setting} -> {value}")
 
         # Since scan averaging lives in WasatchDevice, handle commands which affect
@@ -1109,11 +1124,11 @@ class WasatchDevice(InterfaceDevice):
             return
 
         control_object = ControlObject(setting, value)
-        self.command_queue.append(control_object)
+        self.pending_commands.append(control_object)
         log.debug("change_setting: queued %s", control_object)
 
         # always process trigger_source commands promptly (can't wait for end of
         # acquisition which may never come)
         if (allow_immediate and self.immediate_mode) or re.search(r"trigger|laser", setting):
             log.debug(f"immediately processing {control_object}")
-            self.process_commands()
+            self.process_pending_commands()

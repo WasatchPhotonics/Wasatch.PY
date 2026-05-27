@@ -1,12 +1,34 @@
 # Changelog
 
+_Note: in the following, FID = wasatch.FeatureInterfaceDevice_
+
 - 2026-05-27 2.4.0 (enlighten-4.2.2)
     - InterfaceDevice
-        - This was a major change this release. The InterfaceDevice base class 
-          has existed for years, but didn't contribute anything beyond 
-          handle_requests. I've moved message_queue and alert_queue up from 
-          WasatchDevice/FID so all InterfaceDevice subclasses can use that
-          functionality directly.
+        - This was a major change. The InterfaceDevice base class has existed for
+          years, but didn't contribute anything beyond handle_requests. I've 
+          moved message_queue and alert_queue up from WasatchDevice/FID so all 
+          InterfaceDevice subclasses can use that functionality directly.
+        - Also, the handle_requests([ SpectrometerRequest(cmd, args=[value]) ])[0]
+          syntax was neurose-inducing, so I've added convenience shortcuts for
+          handle_request(SpectrometerRequest) (singular), and handle_cmd(name[, value]).
+    - WasatchDevice
+        - Renamed command_queue to pending_commands to clarify IT IS NOT A QUEUE,
+          in the multithread sense, and is completely internal to WasatchDevice.
+        - In a potentially breaking change, handle_requests now directly peeks 
+          into FID to see which commands can be handled by "the hardware layer,"
+          and processes those commands in real-time, accumulating the list of 
+          responses. This allows callers to use gettor methods like
+          GET_LASER_WARNING_TIME_SEC and actually receive the response value,
+          which was previously impossible when such commands were shoved onto the
+          "pending command queue" (which offered no method for response delivery).
+    - FeatureInterfaceDevice
+        - deprecated SpectrumAndRow (legacy Area Scan design)
+        - removed handle_requests overload (not sure why this was there)
+        - added get_power_connection_state
+        - added periodic check for late-arriving attributes like ble_firmware_version
+        - enabled get_microcontroller_serial_number
+        - tweak laser password validation logic
+        - add default laser warning delay sec for old FW
     - IDSDevice
         - paired laser_device
             - A key goal for this release was to allow IDSDevice "sensor 
@@ -23,11 +45,11 @@
               joined at the InterfaceDevice level itself, which resolves the loop
               and makes the pair usable without WasatchDeviceWrapper (a class 
               essentially designed by and for ENLIGHTEN).
-        - Part of the point of the above was to support a subset of Auto-Raman,
+        - Part of the point of the above was to support a subtype of Auto-Raman,
           tentatively called Auto-Collection, which skips the integ/gain 
           optimization and goes straight for averaging dark-collected Raman
           within a measurement window.
-    - EEPROM updates
+    - EEPROM
         - A third key goal of this release was to support all the new EEPROM fields
           added from Rev18 to Rev19 of ENG-0034, including:
             - startup_laser_tec_setpoint
@@ -53,15 +75,8 @@
         - revisited user_text / user_data relationship
         - consolidating backup location when writing EEPROM (can probably just 
           get rid of this)
-    - USB (all XS)
-        - added get_power_connection_state
-        - added periodic check for late-arriving attributes like ble_firmware_version
-        - enabled get_microcontroller_serial_number
-    - BLE (XS)
+    - BLEDevice
         - added laser PWM
-    - Laser control
-        - tweak laser password validation logic
-        - add default laser warning delay sec for old FW
     - AndorDevice
         - renamed "shutter_enable" (whatever that meant) to "shutter_open"
     - starting to consider Safe Mode
