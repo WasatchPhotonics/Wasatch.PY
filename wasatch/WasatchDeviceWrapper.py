@@ -143,6 +143,10 @@ class WasatchDeviceWrapper:
 
     @classmethod
     def get_interface_devices(cls):
+        """ 
+        Return a list of all instantiated WasatchDevice, IDSDevice, BLEDevice or
+        similar objects. 
+        """
         return list(cls.interface_devices)
 
     # ##########################################################################
@@ -342,11 +346,12 @@ class WasatchDeviceWrapper:
     def disconnect(self):
         # send poison pill to the child
         self.closing = True
-        if self.wrapper_worker.connected_device:
+        connected_device = self.wrapper_worker.connected_device
+        if connected_device is not None:
             try:
-                WasatchDeviceWrapper.interface_devices.remove(self.wrapper_worker.connected_device)
+                WasatchDeviceWrapper.interface_devices.discard(connected_device)
             except:
-                log.error("disconnect: failed to remove interface device", exc_info=1)
+                log.error("disconnect: failed to discard interface device", exc_info=1)
 
         log.debug("disconnect: sending poison pill downstream")
         try:
