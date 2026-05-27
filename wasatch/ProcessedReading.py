@@ -58,6 +58,8 @@ class ProcessedReading:
         self.library_matching_compound = None 
         self.library_matching_score = None # may be (0, 1) or (0, 100) depending on plugin / algorithm
         self.library_matching_engine = None # KIA, Pearson etc
+        self.dalai_model_name = None
+        self.dalai_model_label = None
 
         self.first_pixel = -1 # only used in .cropped (set by enlighten.HorizROI.process)
         self.plugin_metadata = None
