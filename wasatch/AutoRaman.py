@@ -51,7 +51,7 @@ class AutoRaman:
     - settings
     - queue_message()
     - check_alert()
-    - handle_requests()
+    - handle_request()
         - sensor
             * get_spectrum([auto_raman_params])
             * set_integration_time_ms
@@ -106,6 +106,8 @@ class AutoRaman:
         self.progress_total = 0
         self.optimizing = False
 
+        self.settings = self.idevice.settings
+
     def measure(self, auto_raman_request):
         if auto_raman_request.onboard and not self.auto_collection_mode:
             return self.measure_firmware(auto_raman_request)
@@ -130,7 +132,7 @@ class AutoRaman:
 
         # perform the measurement -- all the work occurs here
         self.idevice.queue_message("progress_bar", -1)
-        result = self.idevice.handle_requests([req])[0]
+        result = self.idevice.handle_request([req])
         self.idevice.queue_message("progress_bar", 100)
 
         # process the result
@@ -157,7 +159,7 @@ class AutoRaman:
                                       ('get_ambient_temperature_degC', 'ambient_temperature_degC') ] )
         for (setting, attr_name) in setting_to_attr:
             request = SpectrometerRequest(setting)
-            result = self.self.idevice.handle_requests([request])[0]
+            result = self.self.idevice.handle_request([request])
             if result is not None:
                 setattr(reading, attr_name, result.data)
 
@@ -186,8 +188,6 @@ class AutoRaman:
             log.error("measure requires AutoRamanRequest")
             return None
 
-        self.settings = self.idevice.settings
-
         self.optimizing = True
 
         log.debug(f"measure: auto_raman_request {auto_raman_request}")
@@ -195,15 +195,14 @@ class AutoRaman:
 
         # cache initial state
         self.start_time = datetime.now()
-        initial_laser_warning_delay_sec = self.settings.state.laser_warning_delay_sec
+        cached_sec = None
+        new_sec = auto_raman_request.laser_warning_delay_sec 
+        if self.settings.is_xs() and new_sec != self.settings.state.laser_warning_delay_sec:
+            cached_sec = self.settings.state.laser_warning_delay_sec
+            log.debug(f"measure: caching initial_laser_warning_delay_sec {cached_sec}")
 
-        # apply requested laser warning delay
-        if self.settings.is_xs():
-            self.idevice.handle_requests([
-                SpectrometerRequest('set_laser_warning_delay_sec', args=[ 
-                    auto_raman_request.laser_warning_delay_sec 
-                ])
-            ])
+            new_sec = auto_raman_request.laser_warning_delay_sec 
+            self.idevice.handle_request(SpectrometerRequest('set_laser_warning_delay_sec', args=[ new_sec ]))
 
         ########################################################################
         # generate auto-Raman measurement
@@ -211,17 +210,16 @@ class AutoRaman:
 
         reading = self.get_auto_spectrum(auto_raman_request)
         if reading.spectrum is None:
-            log.debug("looks like Auto-Raman measurement was cancelled")
+            log.debug("measure: looks like Auto-Raman measurement was cancelled")
             self.set_laser_enable(False)
 
         # restore previous laser warning delay
-        if self.settings.is_xs():
-            self.idevice.handle_requests([
-                SpectrometerRequest('set_laser_warning_delay_sec', args=[ 
-                    initial_laser_warning_delay_sec
-                ])
-            ])
+        if cached_sec is not None:
+            log.debug(f"measure: restoring initial laser_warning_delay_sec {cached_sec}")
+            if self.settings.is_xs():
+                self.idevice.handle_request(SpectrometerRequest('set_laser_warning_delay_sec', args=[ cached_sec ]))
 
+        log.debug(f"measure: done")
         return SpectrometerResponse(data=reading)
 
     def bump_progress_bar(self):
@@ -455,8 +453,10 @@ class AutoRaman:
         self.enable_and_warmup_laser()
 
         if self.auto_collection_mode:
+            # we are defining Auto-Collection as "use longest-allowed integration
+            # time, but whatever gain is already set"
             opt_params = OptimizedAcquisitionParameters(int_time = request.max_integ_ms, 
-                                                        gain_db  = device.settings.state.gain_db)
+                                                        gain_db  = self.settings.state.gain_db)
         else:
             opt_params = self.optimize_acquisition_parameters(request)
             if not opt_params:
@@ -544,8 +544,7 @@ class AutoRaman:
             setting_to_attr.extend( [ ('get_laser_tec_mode', 'laser_tec_enabled'),
                                       ('get_ambient_temperature_degC', 'ambient_temperature_degC') ] )
         for (setting, attr_name) in setting_to_attr:
-            req = SpectrometerRequest(setting)
-            result = self.idevice.handle_requests([req])[0]
+            result = self.idevice.handle_request(SpectrometerRequest(setting))
             if result is not None and not result.error_msg:
                 setattr(reading, attr_name, result.data)
 
@@ -557,28 +556,35 @@ class AutoRaman:
     ############################################################################
 
     def get_laser_warning_delay_sec(self):
-        response = self.idevice.handle_requests([SpectrometerRequest('get_laser_warning_delay_sec')])[0]
+        response = self.idevice.handle_request(SpectrometerRequest('get_laser_warning_delay_sec'))
         log.debug(f"get_laser_warning_delay_sec: response {response}")
         if response is None or response.data is None:
-            return 5
+            default = 5
+            log.debug(f"defaulting laser_warning_delay to {default} for backward-compatibility")
+            return default
         return response.data
 
     def set_laser_enable(self, flag):
-        self.idevice.handle_requests([SpectrometerRequest('set_laser_enable', args=[flag])])
+        self.idevice.handle_request(SpectrometerRequest('set_laser_enable', args=[flag]))
 
     def set_integration_time_ms(self, ms):
         if ms != self.settings.state.integration_time_ms:
-            self.idevice.handle_requests([SpectrometerRequest('set_integration_time_ms', args=[ms])])
+            self.idevice.handle_request(SpectrometerRequest('set_integration_time_ms', args=[ms]))
 
     def set_gain_db(self, db):
         if self.settings.is_xs():
+            # MZ: gain resolution is limited to 0.1 dB, but Auto-Raman math will
+            # sometimes compute gain levels with unachieveable levels of 
+            # precision (1.2345 dB).
             if abs(db - self.settings.state.gain_db) > 0.05:
-                self.idevice.handle_requests([SpectrometerRequest('set_detector_gain', args=[db])])
+                self.idevice.handle_request(SpectrometerRequest('set_detector_gain', args=[db]))
 
     def get_spectrum(self):
-        result = self.idevice.handle_requests([SpectrometerRequest("get_spectrum")])[0]
-        if result is None or isinstance(result, bool) or result.error_msg != '':
+        result = self.idevice.handle_request(SpectrometerRequest("get_spectrum"))
+        if result is None or result.error_msg != '':
             raise(Exception(f"get_spectrum returned {result}"))
-        spectrum = result.data.spectrum
+
+        spectrum = result.data
+
         self.inter_spectrum_delay()
         return np.array(spectrum)
