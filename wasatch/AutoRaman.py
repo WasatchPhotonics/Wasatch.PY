@@ -25,12 +25,12 @@ class OptimizedAcquisitionParameters:
 
 class AutoRaman:
     """
-    This class encapsulates Dieter's Auto-Raman algorithm, which optimizes 
+    This class encapsulates Dieter's Auto-Raman algorithm, which optimizes
     integration time (and gain on XS series spectrometers) to achieve a
     target window of counts, then uses the configured measurement time
     to maximize scan averaging at with those acquisition parameters.
 
-    As calling software will not necessarily expect the configured "default" 
+    As calling software will not necessarily expect the configured "default"
     integration time and gain to change, the class restores those to previous
     levels after a measurement.
 
@@ -38,8 +38,8 @@ class AutoRaman:
 
     Auto-Collection mode was added to support STARVIS sensors with their
     much-deeper dynamic range. Essentially this skips the "optimization"
-    step of balancing integration time and gain, and simply uses 
-    AutoRamanRequest.max_integ_ms. Gain is left at whatever is already 
+    step of balancing integration time and gain, and simply uses
+    AutoRamanRequest.max_integ_ms. Gain is left at whatever is already
     configured.
 
     @par InterfaceDevice handle
@@ -69,7 +69,7 @@ class AutoRaman:
 
     Mark made the following changes from Dieter's original algo:
 
-    - don't take throwaways during averaged signal or dark collections, 
+    - don't take throwaways during averaged signal or dark collections,
       as acquisition parameters aren't changing and sensor should be
       stable
     - don't include laser warning delay when computing num_avg, since
@@ -77,17 +77,17 @@ class AutoRaman:
 
     Mark also made the following decisions regarding ENLIGHTEN integration:
 
-    - return the optimized integration time and gain back to ENLIGHTEN 
-      in the Reading object so they will be the new GUI settings if the 
+    - return the optimized integration time and gain back to ENLIGHTEN
+      in the Reading object so they will be the new GUI settings if the
       user simply hits "Play" to resume free-running spectra.
     - ENLIGHTEN will override the init_int_time and init_gain defaults
       in AutoRamanRequest so that if the user hits "Auto-Raman Measurement"
       a second time, the previous settings will be used as the new starting
-      point, and (ideally) the initial spectrum will determine that no further 
+      point, and (ideally) the initial spectrum will determine that no further
       optimization is required.
 
     Points to consider:
-    
+
     - consider rolling the "last optimization" measurement directly into the
       averaged sample spectra (since it had its own throwaway and presumably
       represents a "stable" reading). This could potentially allow for one more
@@ -113,7 +113,7 @@ class AutoRaman:
             return self.measure_firmware(auto_raman_request)
         else:
             return self.measure_software(auto_raman_request)
-            
+
     ############################################################################
     #                                                                          #
     #                          Firmware Implementation                         #
@@ -196,12 +196,12 @@ class AutoRaman:
         # cache initial state
         self.start_time = datetime.now()
         cached_sec = None
-        new_sec = auto_raman_request.laser_warning_delay_sec 
+        new_sec = auto_raman_request.laser_warning_delay_sec
         if self.settings.is_xs() and new_sec != self.settings.state.laser_warning_delay_sec:
             cached_sec = self.settings.state.laser_warning_delay_sec
             log.debug(f"measure: caching initial_laser_warning_delay_sec {cached_sec}")
 
-            new_sec = auto_raman_request.laser_warning_delay_sec 
+            new_sec = auto_raman_request.laser_warning_delay_sec
             self.idevice.handle_request(SpectrometerRequest('set_laser_warning_delay_sec', args=[ new_sec ]))
 
         ########################################################################
@@ -351,7 +351,7 @@ class AutoRaman:
                 # do not grow too fast
                 if scale_factor > request.max_factor:
                     scale_factor = request.max_factor
-                
+
                 # increase int time first
                 log.debug(f"optimize_acquisition_parameters: scaling int_time {int_time} UP by scale_factor {scale_factor:.2f}")
                 int_time *= scale_factor
@@ -397,19 +397,19 @@ class AutoRaman:
 
                     # prefer to increase integration time
                     if int_time < request.max_integ_ms:
-                        int_time += 1 
+                        int_time += 1
                     else:
                         # failover to increasing gain
                         if self.settings.is_xs() and (gain_db < request.max_gain_db):
-                            gain_db += 0.1 
-                        else: 
+                            gain_db += 0.1
+                        else:
                             quit_loop = True
                 else:
                     # was supposed to shrink
 
                     # prefer to shrink gain
                     if self.settings.is_xs() and (gain_db > request.min_gain_db):
-                        gain_db -= 0.1 
+                        gain_db -= 0.1
                     else:
                         # fail-over to shrinking integration
                         if int_time > request.min_integ_ms:
@@ -433,7 +433,7 @@ class AutoRaman:
             elif max_signal < request.min_counts and int_time >= request.max_integ_ms and gain_db >= request.max_gain_db:
                 log.debug("optimize_acquisition_parameters: can't achieve window within acquisition parameter limits")
                 quit_loop = True
-        
+
         return OptimizedAcquisitionParameters(int_time=int_time, gain_db=gain_db, optimized_spectrum=spectrum)
 
     def get_auto_spectrum(self, request):
@@ -455,7 +455,7 @@ class AutoRaman:
         if self.auto_collection_mode:
             # we are defining Auto-Collection as "use longest-allowed integration
             # time, but whatever gain is already set"
-            opt_params = OptimizedAcquisitionParameters(int_time = request.max_integ_ms, 
+            opt_params = OptimizedAcquisitionParameters(int_time = request.max_integ_ms,
                                                         gain_db  = self.settings.state.gain_db)
         else:
             opt_params = self.optimize_acquisition_parameters(request)
@@ -472,12 +472,14 @@ class AutoRaman:
 
         self.optimizing = False
         total = math.floor(request.max_ms / opt_params.int_time)   # total number of sample + dark spectra we have time for
-        num_avg = math.ceil((total + 1) / 2)            # how many darks to collect
+        num_avg = math.ceil((total + 1) / 2)   # how many darks to collect
         num_avg = max(1, num_avg)
         num_avg = min(num_avg, request.max_avg)
         self.progress_count = 0
-        self.progress_total = 2 * num_avg - 1           # darks + remaining samples
-        expected_ms = opt_params.int_time * self.progress_total 
+        self.progress_total = 2 * num_avg - 1  # darks + remaining samples
+        if self.auto_collection_mode:
+            self.progress_total += 1           # can't re-use last optimization reading, as there wasn't any
+        expected_ms = opt_params.int_time * self.progress_total
         log.debug(f"based on max_ms {request.max_ms} and int_time {opt_params.int_time} ms, computed num_avg {num_avg} (expected_ms {expected_ms})")
 
         ########################################################################
@@ -490,11 +492,11 @@ class AutoRaman:
 
         # 1. signal - laser is still on
         self.idevice.queue_message("marquee_info", f"averaging {num_avg} Raman spectra at {opt_params.int_time}ms")
-        avg_sample = self.get_avg_spectrum(opt_params.int_time, 
-                                           opt_params.gain_db, 
-                                           num_avg=num_avg, 
-                                           throwaway=False, 
-                                           first=opt_params.optimized_spectrum, 
+        avg_sample = self.get_avg_spectrum(opt_params.int_time,
+                                           opt_params.gain_db,
+                                           num_avg=num_avg,
+                                           throwaway=False,
+                                           first=opt_params.optimized_spectrum,
                                            label="signal")
         if avg_sample is None:
             return reading
@@ -510,17 +512,17 @@ class AutoRaman:
 
         # 3. take dark
         self.idevice.queue_message("marquee_info", f"averaging {num_avg} dark spectra at {opt_params.int_time}ms")
-        avg_dark = self.get_avg_spectrum(opt_params.int_time, 
-                                         opt_params.gain_db, 
-                                         num_avg=num_avg, 
-                                         throwaway=True, 
+        avg_dark = self.get_avg_spectrum(opt_params.int_time,
+                                         opt_params.gain_db,
+                                         num_avg=num_avg,
+                                         throwaway=True,
                                          label="dark")
         if avg_dark is None:
             return reading
         self.save(avg_dark, "averaged dark")
 
         # note that we don't actually perform dark subtraction here -- we return
-        # both the averaged Raman sample and the averaged dark, so that the 
+        # both the averaged Raman sample and the averaged dark, so that the
         # caller can decide when / how to perform dark subtraction
 
         reading.spectrum = avg_sample
@@ -574,7 +576,7 @@ class AutoRaman:
     def set_gain_db(self, db):
         if self.settings.is_xs():
             # MZ: gain resolution is limited to 0.1 dB, but Auto-Raman math will
-            # sometimes compute gain levels with unachieveable levels of 
+            # sometimes compute gain levels with unachieveable levels of
             # precision (1.2345 dB).
             if abs(db - self.settings.state.gain_db) > 0.05:
                 self.idevice.handle_request(SpectrometerRequest('set_detector_gain', args=[db]))
