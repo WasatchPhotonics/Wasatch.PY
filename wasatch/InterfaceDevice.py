@@ -53,6 +53,7 @@ class InterfaceDevice:
             except Exception as e:
                 log.error(f"error in handling request {request} of {e}", exc_info=1)
                 responses.append(SpectrometerResponse(error_msg="error processing cmd", error_lvl=ErrorLevel.medium))
+        # log.debug(f"handle_requests: returning responses {responses}")
         return responses
 
     def queue_message(self, setting, value):
