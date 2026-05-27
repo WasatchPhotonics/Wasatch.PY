@@ -39,45 +39,17 @@ log = logging.getLogger(__name__)
 MICROSEC_TO_SEC = 0.000001
 UNINITIALIZED_TEMPERATURE_DEG_C = -999
 
-class SpectrumAndRow:
-    def __init__(self, spectrum=None, row=-1):
-        self.spectrum = None
-        self.row = row
-
-        if spectrum is not None:
-            self.spectrum = spectrum.copy()
-
 class FeatureIdentificationDevice(InterfaceDevice):
     """
     This is the basic implementation of our FeatureIdentificationDevice (FID)
     spectrometer USB API as defined in ENG-0001.
+
     This class is roughly comparable to Wasatch.NET's Spectrometer.cs.
     
     This class is normally not accessed directly, but through the higher-level
     abstraction WasatchDevice.
     
     @see ENG-0001
-    ##########################################################################
-    This class adopts the external device interface structure
-    This invlovles receiving a request through the handle_request function
-    A request is processed based on the key in the request
-    The processing function passes the commands to the requested device
-    Once it recevies a response from the connected device it then passes that
-    back up the chain
-    @verbatim
-                               Enlighten Request
-                                       |
-                                handle_requests
-                                       |
-                                  -----------
-                                 |  |  |  |  | 
-             { get_laser status, acquire, set_laser_watchdog, etc....}
-                                 |  |  |  |  | 
-                                  -----------
-                                       |
-                                   _send_code
-    @endverbatim
-    ############################################################################
     """
 
     # ##########################################################################
@@ -138,28 +110,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         self.process_f = self._init_process_funcs()
         self.imx385 = IMX385()
-
-    def handle_requests(self, requests: list[SpectrometerRequest]):
-        """
-        @todo consider making 'requests' an object, and dynamically checking to 
-              see if it is a single SpectrometerRequest or a list[SpectrometerRequest];
-              if the former, only return a single SpectrometerResponse.
-        """
-        responses = []
-        for request in requests:
-            try:
-                cmd = request.cmd
-                proc_func = self.process_f.get(cmd, None)
-                if proc_func is None:
-                    responses.append(SpectrometerResponse(error_msg=f"unsupported cmd {request.cmd}", error_lvl=ErrorLevel.low))
-                elif request.args == [] and request.kwargs == {}:
-                    responses.append(proc_func())
-                else:
-                    responses.append(proc_func(*request.args, **request.kwargs))
-            except Exception as e:
-                log.error(f"error in handling request {request} of {e}", exc_info=1)
-                responses.append(SpectrometerResponse(error_msg="error processing cmd", error_lvl=ErrorLevel.medium))
-        return responses
 
     def connect(self, retries=0):
         """
@@ -1410,11 +1360,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
         @param auto_raman_params (Input) if present, use VR_ACQUIRE_AUTO_RAMAN 
                  rather than the usual VR_ACQUIRE_CCD
 
-        @returns tuple of (spectrum[], area_scan_row_count) for success
-        @returns None when it times-out while waiting for an external trigger
-                 (interpret as, "didn't find any fish this time, try again in a bit")
-        @returns False (bool) when it times-out or encounters an exception
-                 when NOT in external-triggered mode
+        @returns a SpectrometerResponse in all instances. response.data should 
+                 contain the spctrum on success, or None for other cases (check 
+                 error_msg). response.data may be None when it times-out while 
+                 waiting for an external trigger (interpret as, "didn't find any
+                 fish this time, try again in a bit")
         @throws exception on timeout (unless external triggering enabled)
         """
 
@@ -1721,9 +1671,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                     smoothed.append(averaged)
             spectrum = smoothed
 
-        # Somewhat oddly, we're currently returning a TUPLE of the spectrum and
-        # the area scan row count.  
-        response.data = SpectrumAndRow(spectrum, area_scan_row_count) 
+        response.data = spectrum
         return response
 
     def require_throwaway(self, flag):
@@ -2869,7 +2817,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
         if not self.settings.is_xs():
             log.error("laser warning delay only configurable on XS")
             return
-        return self._send_code(0x8a, value, label="SET_LASER_WARNING_DELAY_SEC")
+        response = self._send_code(0x8a, value, label="SET_LASER_WARNING_DELAY_SEC")
+        log.debug(f"set_laser_warning_delay_sec: response = {response}")
+        return response
 
     def get_laser_warning_delay_sec(self):
         if not self.settings.is_xs():
