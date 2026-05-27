@@ -41,6 +41,8 @@ class IDSDevice(InterfaceDevice):
 
         # populate on connection
         self.auto_raman = None 
+        
+        self.take_one_request = None
 
         # This may be set post-connection to connect this IDSDevice with a 
         # WasatchDevice (with coupled FeatureInterfaceDevice) serving as a 
@@ -316,7 +318,7 @@ class IDSDevice(InterfaceDevice):
         if self.settings.etalon_correction:
             spectrum = self.settings.etalon_correction.apply(spectrum)
 
-        return spectrum
+        return SpectrometerResponse(spectrum)
 
     def apply_horizontal_binning(self, spectrum):
         if not self.settings.eeprom.horiz_binning_enabled:
@@ -352,7 +354,42 @@ class IDSDevice(InterfaceDevice):
         self.summed_spectra = None
         self.sum_count = 0
 
+    def set_take_one_request(self, tor):
+        self.take_one_request = tor
+
     def acquire_data(self):
+        """
+        Unlike WasatchDevice.acquire_data, there is no division between 
+        "acquiring a spectrum" and "performing Area Scan," because literally
+        they're the same thing with IDS -- every Reading contains a full
+        AreaScanImage, in addition to the vertically-binned spectrum, and the
+        recipient can choose to display both, or either.
+
+        However, Auto-Raman (here called Auto-Collection, as there is no 
+        optimization stage) does represent a change.
+        """
+        if self.take_one_request and self.take_one_request.auto_raman_request:
+            return self.acquire_spectrum_auto_collection()
+        else:
+            return self.acquire_spectrum_standard()
+
+    def acquire_spectrum_auto_collection(self):
+        log.debug("acquire_spectrum_auto_collection: calling AutoRaman.measure")
+        spectrometer_response = self.auto_raman.measure(self.take_one_request.auto_raman_request)
+        reading = spectrometer_response.data
+        log.debug(f"acquire_spectrum_auto_collection: received {reading}")
+
+        # return the completed TakeOneRequest and clear our internal handle
+        #
+        # Note that Auto-Raman doesn't currently support "fast BatchCollection" 
+        # with TakeOneRequest.readings_target. I think that's okay, because that's
+        # not really what Auto-Raman is for.
+        reading.take_one_request = self.take_one_request
+        self.take_one_request = None
+
+        return spectrometer_response
+
+    def acquire_spectrum_standard(self):
         # pre-process scan averaging
         # log.debug(f"acquire_data: start (scans_to_average {self.settings.state.scans_to_average})")
         if self.settings.state.scans_to_average > 1:
@@ -360,7 +397,9 @@ class IDSDevice(InterfaceDevice):
                 self.reset_averaging()
 
         reading = Reading(self.device_id)
-        reading.spectrum = self.get_spectrum()
+        response = self.get_spectrum()
+        if response is not None:
+            reading.spectrum = response.data
 
         if not self.camera:
             return SpectrometerResponse(False)
@@ -405,53 +444,58 @@ class IDSDevice(InterfaceDevice):
     def can_laser_fire(self):
         if not self.laser_device:
             return SpectrometerResponse(False)
-        return self.laser_device.handle_requests([SpectrometerRequest("can_laser_fire")])[0]
+        return self.laser_device.handle_cmd("can_laser_fire")
 
     def is_laser_firing(self):
         if not self.laser_device:
             return SpectrometerResponse(False)
-        return self.laser_device.handle_requests([SpectrometerRequest("is_laser_firing")])[0]
+        return self.laser_device.handle_cmd("is_laser_firing")
 
     def set_laser_enable(self, flag):
         log.debug(f"set_laser_enable: flag {flag}")
         if not self.laser_device:
             return SpectrometerResponse(False)
-        self.laser_device.handle_requests([SpectrometerRequest('set_laser_enable', args=[flag])])
+        self.laser_device.handle_cmd('set_laser_enable', flag)
 
     def get_laser_tec_mode(self):
         if not self.laser_device:
             return SpectrometerResponse(None)
-        return self.laser_device.handle_requests([SpectrometerRequest("get_laser_tec_mode")])[0]
+        return self.laser_device.handle_cmd("get_laser_tec_mode")
 
     def get_laser_warning_delay_sec(self):
         if not self.laser_device:
             return SpectrometerResponse(3)
-        return self.laser_device.handle_requests([SpectrometerRequest("get_laser_warning_delay_sec")])[0]
+        return self.laser_device.handle_cmd("get_laser_warning_delay_sec")
 
     def set_laser_warning_delay_sec(self, sec):
         if not self.laser_device:
+            log.debug("set_laser_warning_delay_sec: have no laser_device, returning response(False)")
             return SpectrometerResponse(False)
-        return self.laser_device.handle_requests([SpectrometerRequest('set_laser_warning_delay_sec', args=[sec])])[0]
+
+        log.debug(f"set_laser_warning_delay_sec: sending 'set_laser_warning_delay_sec' to laser_device with args {sec}")
+        responses = self.laser_device.handle_cmd('set_laser_warning_delay_sec', sec)
+        log.debug(f"set_laser_warning_delay_sec: responses were {responses}")
+        return responses[0]
 
     def get_ambient_temperature_degC(self):
         if not self.laser_device:
             return SpectrometerResponse(None)
-        return self.laser_device.handle_requests([SpectrometerRequest("get_ambient_temperature_degC")])[0]
+        return self.laser_device.handle_cmd("get_ambient_temperature_degC")
 
     def update_eeprom(self, pair):
         if not self.laser_device:
             return SpectrometerResponse(None)
-        return self.laser_device.handle_requests([SpectrometerRequest('update_eeprom', args=[pair])])[0]
+        return self.laser_device.handle_cmd('update_eeprom', pair)
 
     def replace_eeprom(self, pair):
         if not self.laser_device:
             return SpectrometerResponse(None)
-        return self.laser_device.handle_requests([SpectrometerRequest('replace_eeprom', args=[pair])])[0]
+        return self.laser_device.handle_cmd('replace_eeprom', pair)
 
     def write_eeprom(self):
         if not self.laser_device:
             return SpectrometerResponse(None)
-        return self.laser_device.handle_requests([SpectrometerRequest("write_eeprom")])[0]
+        return self.laser_device.handle_cmd("write_eeprom")
 
     ############################################################################
     # utility
@@ -468,6 +512,7 @@ class IDSDevice(InterfaceDevice):
                 "connect",
                 "disconnect",
                 "acquire_data",
+                "get_spectrum",
                 "can_laser_fire",
                 "get_ambient_temperature_degC",
                 "get_laser_tec_mode",
@@ -480,7 +525,6 @@ class IDSDevice(InterfaceDevice):
                 "replace_eeprom",
                 "write_eeprom",
                 "set_laser_warning_delay_sec",
-                "set_etalon_correction_enable",
             ]:
             process_f[fn_name] = getattr(self, fn_name)
 
@@ -494,6 +538,6 @@ class IDSDevice(InterfaceDevice):
         process_f["area_scan_enable"]    = lambda x: self.set_area_scan_enable(bool(x))
         process_f["output_format_name"]  = lambda x: self.set_output_format_name(x)
         process_f["laser_enable"]        = lambda x: self.set_laser_enable(x)
-
+        process_f["take_one_request"]    = lambda x: self.set_take_one_request(x)
 
         return process_f
