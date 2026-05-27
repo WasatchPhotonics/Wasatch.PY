@@ -47,7 +47,6 @@ class EEPROM:
     EEPROM_FIELDS = [
         ((0,  0, 16), "s", "model"),
         ((0, 16, 16), "s", "serial_number"),
-        ((0, 32,  4), "I", "baud_rate"), # deprecated
         ((0, 36,  1), "?", "has_cooling"),
         ((0, 37,  1), "?", "has_battery"),
         ((0, 38,  1), "?", "has_laser"),
@@ -94,11 +93,6 @@ class EEPROM:
         ((2, 37,  2), "H", "roi_vertical_region_2_end"),
         ((2, 39,  2), "H", "roi_vertical_region_3_start"),
         ((2, 41,  2), "H", "roi_vertical_region_3_end"),
-        ((2, 43,  4), "f", "linearity_c0"), # deprecated...
-        ((2, 47,  4), "f", "linearity_c1"),
-        ((2, 51,  4), "f", "linearity_c2"),
-        ((2, 55,  4), "f", "linearity_c3"),
-        ((2, 59,  4), "f", "linearity_c4"),
 
         ((3, 11,  1), "b", "max_laser_temp_deg_c"),
         ((3, 12,  4), "f", "laser_power_c0"),
@@ -147,7 +141,6 @@ class EEPROM:
 
         self.model                       = None
         self.serial_number               = None
-        self.baud_rate                   = 0 # deprecated
         self.has_cooling                 = False    # explicitly means detector TEC, not laser
         self.has_battery                 = False
         self.has_laser                   = False
@@ -216,7 +209,6 @@ class EEPROM:
         self.roi_vertical_region_2_end   = 0
         self.roi_vertical_region_3_start = 0
         self.roi_vertical_region_3_end   = 0
-        self.linearity_coeffs            = [] # deprecated
 
 
         self.max_laser_temp_deg_c        = None
@@ -278,7 +270,6 @@ class EEPROM:
             "laser_power_coeffs",
             "laser_warmup_sec",
             "laser_watchdog_sec",
-           #"linearity_coeffs", # deprecated
             "max_laser_power_mW",
             "min_laser_power_mW",
             "raman_intensity_coeffs",
@@ -1132,7 +1123,6 @@ class EEPROM:
         log.debug("EEPROM settings:")
         log.debug("  Model:            %s", self.model)
         log.debug("  Serial Number:    %s", self.serial_number)
-       #log.debug("  Baud Rate:        %d", self.baud_rate) # deprecated
         log.debug("  Has Cooling:      %s", self.has_cooling)
         log.debug("  Has Battery:      %s", self.has_battery)
         log.debug("  Has Laser:        %s", self.has_laser)
@@ -1187,7 +1177,6 @@ class EEPROM:
         log.debug("  ROI Vert Reg 1:   (%d, %d)", self.roi_vertical_region_1_start, self.roi_vertical_region_1_end)
         log.debug("  ROI Vert Reg 2:   (%d, %d)", self.roi_vertical_region_2_start, self.roi_vertical_region_2_end)
         log.debug("  ROI Vert Reg 3:   (%d, %d)", self.roi_vertical_region_3_start, self.roi_vertical_region_3_end)
-       #log.debug("  Linearity Coeffs: %s", self.linearity_coeffs) # deprecated
         log.debug("")
         log.debug("  Max Laser Temp:   %s", f"{self.max_laser_temp_deg_c} degC" if self.max_laser_temp_deg_c is not None else None)
         log.debug("  Laser coeffs:     %s", self.laser_power_coeffs)

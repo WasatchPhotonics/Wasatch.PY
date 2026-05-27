@@ -1,45 +1,69 @@
 # Changelog
 
-- 2026-??-?? 2.3.25
-    - USB
-        - enabled get_microcontroller_serial_number
-        - testing get_power_connection_state
-        - added periodic check for late-arriving attributes like ble_firmware_version
-    - BLE
-        - laser PWM works
-    - Laser control
-        - tweak laser password validation logic
-        - add default laser warning delay sec for old FW
+- 2026-05-27 2.4.0 (enlighten-4.2.2)
     - InterfaceDevice
-        - moved message_queue, alert_queue up from WasatchDevice/FID
+        - This was a major change this release. The InterfaceDevice base class 
+          has existed for years, but didn't contribute anything beyond 
+          handle_requests. I've moved message_queue and alert_queue up from 
+          WasatchDevice/FID so all InterfaceDevice subclasses can use that
+          functionality directly.
     - IDSDevice
-        - added laser_device (incl EEPROM)
-        - support Auto-Raman
-    - AndorDevice
-        - STARTED shutter fixes
+        - paired laser_device
+            - A key goal for this release was to allow IDSDevice "sensor 
+              control" objects to "pair" with WasatchDevice "laser control" 
+              objects, for the new case where an IDS sensor was being combined 
+              with a Wasatch laser driver to create a 2-device Raman spectrometer. 
+            - Note that once "paired," they essentially merge EEPROMs (starting
+              with whatever WasatchDevice loaded from USB, then folding-in 
+              whatever IDSDevice found in JSON).
+            - In this first implementation, I chose to connect the two (make one 
+              device "discoverable" by the other) through WasatchDeviceWrapper. 
+              That created a weird import loop and maybe was higher than it 
+              needed to be. I may refactor this later so they're discoverable / 
+              joined at the InterfaceDevice level itself, which resolves the loop
+              and makes the pair usable without WasatchDeviceWrapper (a class 
+              essentially designed by and for ENLIGHTEN).
+        - Part of the point of the above was to support a subset of Auto-Raman,
+          tentatively called Auto-Collection, which skips the integ/gain 
+          optimization and goes straight for averaging dark-collected Raman
+          within a measurement window.
     - EEPROM updates
-        - bumped to version 19
-        - consolidating backup location
-        - deprecated baud_rate, linearity_coeffs
-        - made EEPROM subclasses JSON serializable (hopefully)
-        - fixed EEPROM.pack for binary types ("*")
-        - moved further into (un)pack_field
-        - revisited user_text / user_data relationship
-        - added:
+        - A third key goal of this release was to support all the new EEPROM fields
+          added from Rev18 to Rev19 of ENG-0034, including:
+            - startup_laser_tec_setpoint
+            - light_source_type
+            - assembly_revision (and AssemblyRevision)
+            - feature_mask_xs
+            - max_battery_temp_deg_c
+            - max_laser_temp_deg_c
+            - acc_state
+            - acc_state_gpio1
+            - acc_state_gpio2
             - acc_cont_strobe_count
             - acc_cont_strobe_delay_us
             - acc_cont_strobe_period_us
             - acc_cont_strobe_width_us
-            - acc_state
-            - acc_state_gpio1
-            - acc_state_gpio2
-            - assembly_revision (and AssemblyRevision)
-            - feature_mask_xs
-            - light_source_type
-            - max_battery_temp_deg_c
-            - max_laser_temp_deg_c
-            - pixel_calibration_type
-            - startup_laser_tec_setpoint
+            - pixel_correction_type
+        - deprecated baud_rate, linearity_coeffs
+        - made EEPROM subclasses JSON serializable (hopefully)
+        - fixed EEPROM.pack for binary types ("*") for our growing set of "binary" 
+          (marshalled) fields
+        - moved further into using the new un/pack_field functions, automatically
+          pulling offset/size/type from eeprom_fields table
+        - revisited user_text / user_data relationship
+        - consolidating backup location when writing EEPROM (can probably just 
+          get rid of this)
+    - USB (all XS)
+        - added get_power_connection_state
+        - added periodic check for late-arriving attributes like ble_firmware_version
+        - enabled get_microcontroller_serial_number
+    - BLE (XS)
+        - added laser PWM
+    - Laser control
+        - tweak laser password validation logic
+        - add default laser warning delay sec for old FW
+    - AndorDevice
+        - renamed "shutter_enable" (whatever that meant) to "shutter_open"
     - starting to consider Safe Mode
 - 2026-04-18 2.3.24
     - add avg_resolution to IDSDevice EEPROM
