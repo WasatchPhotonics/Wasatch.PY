@@ -1,7 +1,8 @@
 import logging
 
 from .SpectrometerResponse import SpectrometerResponse, ErrorLevel
-from .StatusMessage            import StatusMessage
+from .SpectrometerRequest  import SpectrometerRequest
+from .StatusMessage        import StatusMessage
 
 log = logging.getLogger(__name__)
 
@@ -35,6 +36,39 @@ class InterfaceDevice:
         self.remaining_throwaways = 0
         self.alerts = set()
 
+    def handle_cmd(self, cmd, arg=None, force=False):
+        """ 
+        handle_cmd('get_laser_temperature_deg_c') 
+            is a shortcut to 
+        handle_request(SpectrometerRequest('get_laser_temperature_deg_c'))
+
+        handle_cmd("select_adc", 1) 
+            is a shortcut to
+        handle_request(SpectrometerRequest("select_adc", args=[1]))
+
+        handle_cmd("take_one_request", None, force=True) 
+            is a shortcut to
+        handle_request(SpectrometerRequest("select_adc", args=[None]))
+        """
+        if arg is None and not force:
+            return self.handle_request(SpectrometerRequest(cmd))
+        else:
+            return self.handle_request(SpectrometerRequest(cmd, args=[arg]))
+
+    def handle_request(self, request):
+        """
+        handle_request(SpectrometerRequest('get_laser_temperature_deg_c')) 
+            is a shortcut to
+        handle_requests([SpectrometerRequest('get_laser_temperature_deg_c')])[0]
+        """
+        if isinstance(request, list):
+            log.error("handle_request received singular request of {len(request)} elements!")
+            request = request[0]
+
+        responses = self.handle_requests( [ request ] )
+        if responses is not None and len(responses) > 0:
+            return responses[0]
+
     def handle_requests(self, requests):
         responses = []
         for request in requests:
@@ -42,18 +76,14 @@ class InterfaceDevice:
                 cmd = request.cmd
                 proc_func = self.process_f.get(cmd, None)
                 if proc_func is None:
-                    log.error(f"handle_requests: unsupported command {request.cmd}")
                     responses.append(SpectrometerResponse(error_msg=f"unsupported cmd {request.cmd}", error_lvl=ErrorLevel.low))
                 elif request.args == [] and request.kwargs == {}:
-                    # log.debug(f"handle_requests: relaying {request.cmd} w/o args to {proc_func}")
                     responses.append(proc_func())
                 else:
-                    # log.debug(f"handle_requests: relaying {request.cmd} with args {request.args}, kwargs {request.kwargs} to proc_func {proc_func}")
                     responses.append(proc_func(*request.args, **request.kwargs))
             except Exception as e:
                 log.error(f"error in handling request {request} of {e}", exc_info=1)
                 responses.append(SpectrometerResponse(error_msg="error processing cmd", error_lvl=ErrorLevel.medium))
-        # log.debug(f"handle_requests: returning responses {responses}")
         return responses
 
     def queue_message(self, setting, value):
