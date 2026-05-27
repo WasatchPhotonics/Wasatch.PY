@@ -46,8 +46,6 @@ class WrapperWorker(threading.Thread):
     #   - note that this is essentially ADDED to the total measurement time
     #     of EACH AND EVERY INTEGRATION
     # TODO: replace if check for each type of spec with single call
-    # TODO: Create ABC of hardware device that keeps common functions like 
-    #       handle_requests
     #
     # For a long time we held this to 20Hz, and that was fine. Recently we tried
     # bumping it to 200Hz, and that worked fine on "fast" computers, but not so
@@ -96,19 +94,20 @@ class WrapperWorker(threading.Thread):
     # one of the three queues (cmd inputs, response outputs, and
     # a one-shot SpectrometerSettings).
     def run(self):
+        class_name = self.class_name
         try:
-            if self.class_name not in DEVICE_CLASSES:
-                log.critical(f"Unsupported device class {self.class_name}")
+            if class_name not in DEVICE_CLASSES:
+                log.critical(f"Unsupported device class {class_name}")
                 return self.settings_queue.put(None) 
                 
-            device_class = DEVICE_CLASSES[self.class_name]
+            device_class = DEVICE_CLASSES[class_name]
             log.debug(f"trying to instantiate {device_class}")
             self.connected_device = device_class(device_id = self.device_id,
                                                  message_queue = self.message_queue,
                                                  alert_queue = self.alert_queue)
         except Exception as ex:
             if isinstance(ex, InterfaceDeviceClassUnavailable):
-                log.debug(f"run: {self.class_name} unavailable")
+                log.debug(f"run: {class_name} unavailable")
                 # have WrapperWorker tell WasatchDeviceWrapper that the class_name 
                 # used for this class is unavailable for the remainder of this 
                 # session
@@ -119,20 +118,18 @@ class WrapperWorker(threading.Thread):
                 log.critical("exception instantiating device", exc_info=1)
                 return self.settings_queue.put(None) 
 
-        log.debug("calling connect")
-        ok = False
-        req = SpectrometerRequest("connect")
+        log.debug(f"calling connect on class_name {class_name}")
+        response = None
         try:
-            (ok,) = self.connected_device.handle_requests([req])
+            response = self.connected_device.handle_cmd("connect")
         except:
             log.critical("exception connecting", exc_info=1)
             return self.settings_queue.put_nowait(SpectrometerResponse(error_msg="exception while connecting"))
 
-        log.debug(f"on connect request got results of {ok}")
-
-        if not ok.data:
+        log.debug(f"connect response {response}")
+        if not response.data:
             log.critical("failed to connect")
-            return self.settings_queue.put_nowait(ok) 
+            return self.settings_queue.put_nowait(response) 
 
         log.debug("successfully connected")
 
@@ -165,16 +162,9 @@ class WrapperWorker(threading.Thread):
                         # applying the queued settings.
                     else:
                         try:
-                            log.debug("processing command queue: %s", record.setting)
-
-                            # basically, this simply moves each de-dupped command from
-                            # WasatchDeviceWrapper.command_queue to WasatchDevice.command_queue,
-                            # where it gets read during the next call to
-                            # WasatchDevice.acquire_data.
-                            if record.setting == "reset":
-                                log.debug(f"calling reset from command queue")
-                            req = SpectrometerRequest(record.setting, args=[record.value])
-                            self.connected_device.handle_requests([req])
+                            # run each command in sequence
+                            log.debug(f"sending {record.setting} -> {record.value} to {class_name}")
+                            self.connected_device.handle_cmd(record.setting, record.value, force=True)
      
                             # peek in some settings locally
                             if record.setting == "num_connected_devices":
@@ -188,10 +178,7 @@ class WrapperWorker(threading.Thread):
             if received_poison_pill_command:
                 # ...NOW we can break
                 log.critical("exiting per command queue (poison pill received)")
-                req = SpectrometerRequest("disconnect")
-                # I don't see this called. I think it should. 
-                # At minimum it's required for the BLE devices
-                self.connected_device.handle_requests([req]) 
+                self.connected_device.handle_cmd("disconnect")
                 break
 
             # ##################################################################
@@ -203,15 +190,9 @@ class WrapperWorker(threading.Thread):
                 # than subprocess_timeout_sec, this call itself will trigger
                 # shutdown.
                 log.debug("acquiring data")
-                req = SpectrometerRequest("acquire_data")
-                (reading_response,) = self.connected_device.handle_requests([req])
-                #log.debug("continuous_poll: acquire_data returned %s", str(reading))
+                reading_response = self.connected_device.handle_cmd("acquire_data")
             except:
                 log.critical("exception calling WasatchDevice.acquire_data", exc_info=1)
-                continue
-
-            if not isinstance(reading_response, SpectrometerResponse):
-                log.error(f"Reading is not type ReadingResponse. Should not get naked responses. Happened with request {req}")
                 continue
 
             log.debug(f"response {reading_response} data is {reading_response.data}")
