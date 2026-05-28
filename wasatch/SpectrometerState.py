@@ -1,7 +1,7 @@
 import datetime
 import logging
 
-from wasatch.PollStatus import PollStatus
+from wasatch.IMX385 import PollStatus
 
 log = logging.getLogger(__name__)
 
