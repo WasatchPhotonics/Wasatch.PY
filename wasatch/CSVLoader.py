@@ -180,9 +180,8 @@ class CSVLoader:
         # clear any arrays we ended up not filling
         self.processed_reading.post_load_cleanup()
 
-        log.debug("returning processed_reading:")
-        self.processed_reading.dump()
-
-        log.debug(f"returning metadata {self.metadata}")
+        # log.debug("returning processed_reading:")
+        # self.processed_reading.dump()
+        # log.debug(f"returning metadata {self.metadata}")
 
         return self.processed_reading, self.metadata

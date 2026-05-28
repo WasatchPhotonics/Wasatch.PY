@@ -1,5 +1,7 @@
-
 class AbstractUSBDevice:
+    """
+    This is NOT an InterfaceDevice. This is used by MockUSBDevice and RealUSBDevice.
+    """
 
     def __init__(self):
         pass

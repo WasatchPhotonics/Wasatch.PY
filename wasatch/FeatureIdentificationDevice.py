@@ -13,68 +13,41 @@ from time   import sleep
 
 from . import utils
 
-from .SpectrometerSettings import SpectrometerSettings
-from .SpectrometerResponse import SpectrometerResponse, ErrorLevel
-from .SpectrometerRequest  import SpectrometerRequest
-from .SpectrometerState    import SpectrometerState
-from .InterfaceDevice      import InterfaceDevice
-from .DetectorRegions      import DetectorRegions
-from .ControlObject        import ControlObject
-from .StatusMessage        import StatusMessage
-from .RealUSBDevice        import RealUSBDevice
-from .MockUSBDevice        import MockUSBDevice
-from .AreaScanImage        import AreaScanImage
-from .DetectorROI          import DetectorROI
-from .PollStatus           import PollStatus
-from .Reading              import Reading
-from .EEPROM               import EEPROM
-from .IMX385               import IMX385
-from .ROI                  import ROI
+from .USBCPowerConnectionState import USBCPowerConnectionState
+from .SpectrometerSettings     import SpectrometerSettings
+from .SpectrometerResponse     import SpectrometerResponse, ErrorLevel
+from .SpectrometerRequest      import SpectrometerRequest
+from .SpectrometerState        import SpectrometerState
+from .EtalonCorrection         import EtalonCorrection
+from .InGaAsCorrection         import InGaAsCorrection
+from .InterfaceDevice          import InterfaceDevice
+from .DetectorRegions          import DetectorRegions
+from .StatusMessage            import StatusMessage
+from .RealUSBDevice            import RealUSBDevice
+from .MockUSBDevice            import MockUSBDevice
+from .AreaScanImage            import AreaScanImage
+from .DetectorROI              import DetectorROI
+from .Reading                  import Reading
+from .EEPROM                   import EEPROM
+from .IMX385                   import IMX385, PollStatus
+from .ROI                      import ROI
 
 log = logging.getLogger(__name__)
 
 MICROSEC_TO_SEC = 0.000001
 UNINITIALIZED_TEMPERATURE_DEG_C = -999
 
-class SpectrumAndRow:
-    def __init__(self, spectrum=None, row=-1):
-        self.spectrum = None
-        self.row = row
-
-        if spectrum is not None:
-            self.spectrum = spectrum.copy()
-
 class FeatureIdentificationDevice(InterfaceDevice):
     """
     This is the basic implementation of our FeatureIdentificationDevice (FID)
     spectrometer USB API as defined in ENG-0001.
+
     This class is roughly comparable to Wasatch.NET's Spectrometer.cs.
     
     This class is normally not accessed directly, but through the higher-level
     abstraction WasatchDevice.
     
     @see ENG-0001
-    ##########################################################################
-    This class adopts the external device interface structure
-    This invlovles receiving a request through the handle_request function
-    A request is processed based on the key in the request
-    The processing function passes the commands to the requested device
-    Once it recevies a response from the connected device it then passes that
-    back up the chain
-    @verbatim
-                               Enlighten Request
-                                       |
-                                handle_requests
-                                       |
-                                  -----------
-                                 |  |  |  |  | 
-             { get_laser status, acquire, set_laser_watchdog, etc....}
-                                 |  |  |  |  | 
-                                  -----------
-                                       |
-                                   _send_code
-    @endverbatim
-    ############################################################################
     """
 
     # ##########################################################################
@@ -84,16 +57,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
     def __init__(self, device_id, message_queue=None, alert_queue=None):
         """
         Instantiate a FeatureIdentificationDevice with from the given device_id.
-        @param device_id [in] device ID ("USB:0x24aa:0x1000:1:24")
         @param message_queue [in] if provided, provides an outbound (from FID 
                to WrapperWorker) queue for writing StatusMessage objects upstream
-        @param alert_queue [in] if provided, accepts an inbound (from 
-               WrapperWorker to FID) queue for receiving AlertMessage objects 
         """
-        super().__init__()
-        self.device_id = device_id
-        self.message_queue = message_queue
-        self.alert_queue = alert_queue
+        super().__init__(device_id=device_id, message_queue=message_queue, alert_queue=alert_queue)
 
         self.device = None
         if "MOCK" in str(device_id).upper():
@@ -110,9 +77,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.ccd_temperature_invalid = False
 
         self.settings = SpectrometerSettings(device_id)
-        self.eeprom_backup = None
-
-        self.alerts = set()
 
         # ######################################################################
         # these are "driver state" within FeatureIdentificationDevice, and don't
@@ -144,28 +108,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         self.process_f = self._init_process_funcs()
         self.imx385 = IMX385()
-
-    def handle_requests(self, requests: list[SpectrometerRequest]):
-        """
-        @todo consider making 'requests' an object, and dynamically checking to 
-              see if it is a single SpectrometerRequest or a list[SpectrometerRequest];
-              if the former, only return a single SpectrometerResponse.
-        """
-        responses = []
-        for request in requests:
-            try:
-                cmd = request.cmd
-                proc_func = self.process_f.get(cmd, None)
-                if proc_func is None:
-                    responses.append(SpectrometerResponse(error_msg=f"unsupported cmd {request.cmd}", error_lvl=ErrorLevel.low))
-                elif request.args == [] and request.kwargs == {}:
-                    responses.append(proc_func())
-                else:
-                    responses.append(proc_func(*request.args, **request.kwargs))
-            except Exception as e:
-                log.error(f"error in handling request {request} of {e}", exc_info=1)
-                responses.append(SpectrometerResponse(error_msg="error processing cmd", error_lvl=ErrorLevel.medium))
-        return responses
 
     def connect(self, retries=0):
         """
@@ -213,10 +155,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.debug("on Windows, so NOT setting configuration and claiming interface")
         elif "macOS" in platform.platform():
             log.debug("on MacOS, so NOT setting configuration and claiming interface")
-        # elif "raspberrypi" in str(os.uname()):
-        #     log.debug("on Raspberry Pi, so NOT setting configuration and claiming interface")
         else:
-            log.debug("on posix, so setting configuration and claiming interface")
+            log.debug("on non-Mac posix, so setting configuration and claiming interface")
 
             # in the following, return SpectrometerResponse objects rather than 
             # raising exceptions so the user will have a more-useful error 
@@ -226,10 +166,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 log.debug("setting configuration")
                 self.device_type.set_configuration(device)
             except Exception as exc:
-                #####################################################################################################################
-                # This additional if statement is present for the Raspberry Pi. There is an issue with resource busy errors.
-                # Adding dev.reset() solves this. See https://stackoverflow.com/questions/29345325/raspberry-pyusb-gets-resource-busy
-                #####################################################################################################################
+                # This additional check is present for the Raspberry Pi. There is
+                # an issue with resource busy errors, solved by dev.reset().
+                # @see https://stackoverflow.com/questions/29345325/raspberry-pyusb-gets-resource-busy
                 if "Resource busy" in str(exc) and retries <= 3:
                     log.warn("Hardware Failure in setConfiguration. Resource busy error. Attempting to reattach driver by reset.")
                     self.device_type.reset(dev)
@@ -260,7 +199,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
         Perform additional setup after instantiating FID device.
         Split-out from physical / bus connect() to simplify MockSpectrometer.
         """
-
         # grab firmware versions early (and capture in debug log)
         self.get_microcontroller_firmware_version()
         log.debug(f"Microcontroller firmware version {self.settings.microcontroller_firmware_version}")
@@ -268,22 +206,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.get_fpga_firmware_version()
         log.debug(f"FPGA firmware version {self.settings.fpga_firmware_version}")
 
-        # self.get_microcontroller_serial_number()
-        # log.debug(f"Microcontroller serial number {self.settings.microcontroller_serial_number}")
+        self.get_microcontroller_serial_number()
+        log.debug(f"Microcontroller serial number {self.settings.microcontroller_serial_number}")
 
-        # issue: BL652 may not be fully booted if this was a hotplug. We could
-        #        of course re-poll if None, but the initial SpectrometerSettings
-        #        will already have been used to populate the EEPROMEditor. What
-        #        we really need to do is send a "change" in this setting upstream
-        #        via the MessageQueue, and have a listener in ENLIGHTEN/caller
-        #        for such updates. The way we mainly do this now is by adding
-        #        fields to Reading (like temperature, battery, laser interlock
-        #        etc), since most dynamic (uncommanded) changes in spectrometer 
-        #        state are usually measurement-related. It would be a little 
-        #        weird to add a "dynamic firmware version" to Reading, implying
-        #        that firmware versions might suddenly change mid-runtime...
-        # self.get_ble_firmware_version()
-        # log.debug(f"BLE firmware version {self.settings.ble_firmware_version}")
+        self.get_power_connection_state()
+        log.debug(f"Power connection state {self.settings.state.power_connection_state}")
 
         # ######################################################################
         # model-specific settings
@@ -301,11 +228,19 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         log.debug("reading EEPROM")
 
+        # first, read the basic 8/9 EEPROM pages
         result = self._read_eeprom()
         if not result.data:
             log.error(f"failed to read EEPROM, got error message of {result.error_msg}")
             self.connecting = False
             return result
+
+        # if the EEPROM indicated that it contains an onboard pixel correction, load that
+        self._read_pixel_correction_from_eeprom()
+
+        # before "applying" the settings we loaded from EEPROM, augment / stomp 
+        # them with optional external JSON file
+        self.settings.augment_from_json_file(basename=self.settings.eeprom.serial_number)
 
         # ######################################################################
         # Laser defaults
@@ -313,8 +248,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         if self.settings.eeprom.has_laser:
             log.debug("post_connect: setting laser defaults")
-            # MZ: why did we stop doing this?
-            # self.set_laser_enable(False)
+            self.set_laser_enable(False)
 
             self.settings.state.laser_power_mW = self.settings.eeprom.max_laser_power_mW
             self.settings.state.laser_power_perc = 100
@@ -399,7 +333,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         log.debug("configuring FPGA")
 
         # automatically push EEPROM values to the FPGA (on modern EEPROMs)
-        # (this will work on Series-XS as well, even if we subsequently track its gain
+        # (this will work on XS as well, even if we subsequently track its gain
         #  somewhat differently as state.gain_db)
         if self.settings.eeprom.format >= 4:
             log.debug("sending gain/offset to FPGA")
@@ -414,40 +348,74 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.update_vertical_roi() 
 
         # ######################################################################
-        # post-connection defaults
+        # triggering
         # ######################################################################
 
-        # default to internal triggering
         self.set_trigger_source(SpectrometerState.TRIGGER_SOURCE_INTERNAL)
+
+        # ######################################################################
+        # laser watchdog
+        # ######################################################################
 
         if self.settings.is_xs():
 
             if self.settings.eeprom.has_laser:
                 has_sml = self.settings.eeprom.has_sml()
                 sig_laser_tec = self.settings.eeprom.sig_laser_tec
-                log.debug(f"is_xs {self.settings.is_xs()}, has_laser {self.settings.eeprom.has_laser}, has_sml {has_sml}, sig_laser_tec {sig_laser_tec}")
-
-                # laser watchdog
                 sec = self.settings.eeprom.laser_watchdog_sec
+                
                 if sec <= 0 and has_sml and not sig_laser_tec:
                     sec = EEPROM.DEFAULT_LASER_WATCHDOG_SEC
                     log.debug(f"declining to disable laser watchdog for SML w/o TEC, defaulting to {sec}sec")
                 log.debug(f"post-connect: initializing laser watchdog to {sec}sec")
                 self.set_laser_watchdog_sec(sec)
 
-        self.set_integration_time_ms(self.settings.eeprom.startup_integration_time_ms)
+        # ######################################################################
+        # startup integration time
+        # ######################################################################
 
-        # # for now, enable Gen 1.5 accessory connector by default
-        # if self.settings.is_gen15():
-        #     log.debug("enabling Gen 1.5 accessory connector")
-        #     self.set_accessory_enable(True)
+        # first check what the device's current integration time is
+        existing_ms = 0
+        res = self.get_integration_time_ms()
+        if res:
+            existing_ms = res.data
+            log.debug(f"spectrometer already had integration time {existing_ms}ms")
+
+        ms = self.settings.eeprom.startup_integration_time_ms
+        log.debug(f"applying startup integration time {ms}ms")
+        self.set_integration_time_ms(ms)
+
+        if existing_ms and self.settings.is_xs():
+            # MZ: there was an issue here. Assume the XS sensor was already 
+            # running, and had a LONG integration time [A] (1sec). Here we send 
+            # the "startup" time of [B] (1ms). 500ms later ENLIGHTEN gets around
+            # to applying its "persisted" setting [C] (1sec) from enlighten.ini 
+            # (which it can't lookup until AFTER it gets the serial number).
+            #
+            # In this situation, FW can still be blocking on waiting for the 
+            # original free-running [A] 1sec integration to complete, and won't 
+            # be able to finish applying [B] (1ms) until that is done. As a 
+            # result, it completely drops ENLIGHTEN's command to apply [C] (1sec).
+            #
+            # For now, wait for the PREVIOUS (free-running) integration to 
+            # complete before kicking-off ENLIGHTEN (returning True from this
+            # function). This ensures that the "startup" integration time should
+            # be in effect when ENLIGHTEN starts its run loop, and when ENLIGHTEN
+            # sends its own "persisted" integration time from enlighten.ini, it 
+            # will actually latch.
+            #
+            # Another option would be to have FW re-apply EEPROM defaults at USB
+            # disconnection...not sure if that would be appreciated by all 
+            # customers...
+            log.debug(f"sleeping {existing_ms}ms for startup integration time to latch")
+            sleep(existing_ms / 1000.0)
 
         # ######################################################################
         # Area Scan
         # ######################################################################
 
         if self.settings.is_xs():
-            self.settings.eeprom.actual_pixels_vertical = 1080 # MZ: probably higher
+            self.settings.eeprom.actual_pixels_vertical = 1080 # MZ: 1097?
         else:
             self.settings.eeprom.actual_pixels_vertical = 70
 
@@ -463,6 +431,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         self.settings.state.dump("FID.post_connect")
 
+        if self.settings.is_xs():
+            self.queue_message("marquee_info", "stabilizing sensor (please wait)")
+
         return SpectrometerResponse(self.connected)
         
     def reset_area_scan_frame(self):
@@ -477,7 +448,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         log.debug("fid.disconnect: releasing interface")
         try:
-            #result = self.device_type.release_interface(self.device, 0)
+            # MZ: maybe we should track whether we called claim_interface() in 
+            # the first place?
+            #
+            # result = self.device_type.release_interface(self.device, 0)
+
             try:
                 self.device_type.reset(self.device)
             except:
@@ -624,16 +599,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
         log.debug("after: %d, %d, %d, %d, %d", spectrum[0], spectrum[1], spectrum[2], spectrum[3], spectrum[4])
 
         return True
-
-    def _apply_linear_pixel_calibration(self, spectrum):
-        if not self.settings.linear_pixel_calibration:
-            return
-
-        (slopes, offsets) = self.settings.linear_pixel_calibration
-        smoothed = [] # could be faster in Numpy
-        for i, intensity in enumerate(spectrum):
-            smoothed.append(intensity * slopes[i] + offsets[i])
-        return smoothed
 
     def _apply_horizontal_binning(self, spectrum):
         if not self.settings.eeprom.horiz_binning_enabled:
@@ -876,35 +841,90 @@ class FeatureIdentificationDevice(InterfaceDevice):
     # initialization
     # ##########################################################################
 
-    def _read_eeprom(self):
+    def _read_eeprom_pages(self, first, count):
         buffers = []
-        for page in range(EEPROM.MAX_PAGES):
+        for page in range(first, first + count):
             buf = None
             try:
                 response = self.get_upper_code(0x01, page, label="GET_MODEL_CONFIG(%d)" % page)
                 buf = response.data
                 if response.error_lvl != ErrorLevel.ok:
-                    return response
+                    log.error("unable to read EEPROM page {page}")
+                    return 
             except:
                 log.error("exception reading upper_code 0x01 with page %d", page, exc_info=1)
+                return
+
             if buf is None:
-                msg = "unable to read EEPROM (null buf)"
-                log.error(msg)
-                return SpectrometerResponse(False, error_lvl=ErrorLevel.medium, error_msg=msg)
-            elif len(buf) < 64:
-                msg = f"unable to read EEPROM received buf of {buf} and len {len(buf)}"
-                log.error(msg)
-                return SpectrometerResponse(False, error_lvl=ErrorLevel.medium, error_msg=msg)
+                log.error("unable to read EEPROM (null buf)")
+                return
+
+            if len(buf) < 64:
+                log.error(f"unable to read EEPROM received buf of {buf} and len {len(buf)}")
+                return
+
             buffers.append(buf)
+        return buffers
 
-        flat_buffers_all_ones = True
-        for page in buffers:
-            for byte in page:
-                flat_buffers_all_ones = flat_buffers_all_ones and (byte == 0xFF)
+    def _read_eeprom(self):
+        buffers = self._read_eeprom_pages(0, EEPROM.MAX_PAGES)
 
-        if flat_buffers_all_ones:
-            return SpectrometerResponse(data=False, error_msg="Saw all Fs for EEPROM. Check EEPROM Programmed.", error_lvl=ErrorLevel.low)
-        return SpectrometerResponse(data=self.settings.eeprom.parse(buffers))
+        all_ones = True
+        for buf in buffers:
+            for v in buf:
+                if v != 0xff:
+                    all_ones = False
+                    break
+        if all_ones:
+            return SpectrometerResponse(data=False, error_msg="EEPROM appears unprogrammed", error_lvl=ErrorLevel.low)
+
+        self.settings.eeprom.parse(buffers)
+        return SpectrometerResponse(True)
+
+    def _read_pixel_correction_from_eeprom(self):
+        ee = self.settings.eeprom
+
+        # Load a pixel correction from the EEPROM if one is present. It is 
+        # assumed that if pixel_calibration_type is set, then the indicated 
+        # calibration is present on the EEPROM (not in an external JSON file).
+        if self.settings.eeprom.pixel_correction_type == ee.PIXEL_CORRECTION_NONE:
+            return
+
+        if self.settings.eeprom.pixel_correction_type == ee.PIXEL_CORRECTION_USER_DATA:
+            return
+
+        if self.settings.eeprom.pixel_correction_type == ee.PIXEL_CORRECTION_ETALON:
+            corr = EtalonCorrection(self.settings.pixels())
+            first, count = corr.eeprom_page_range()
+
+            log.debug(f"EtalonCorrection spans {count} pages starting at {first}")
+            if count:
+                log.debug(f"loading extra EEPROM pages")
+                buffers = self._read_eeprom_pages(first, count)
+
+                log.debug(f"parsing extra buffers")
+                if corr.parse_eeprom_buffers(buffers):
+                    log.debug(f"storing successful EtalonCorrection")
+                    self.settings.etalon_correction = corr
+                else:
+                    log.error("unable to parse EtalonCorrection")
+            return
+
+        if self.settings.eeprom.pixel_correction_type == ee.PIXEL_CORRECTION_INGAAS:
+            corr = InGaAsCorrection(self.settings.pixels())
+            first, count = corr.eeprom_page_range()
+
+            log.debug(f"InGaAsCorrection spans {count} pages starting at {first}")
+            if count:
+                log.debug(f"loading extra EEPROM pages")
+                buffers = self._read_eeprom_pages(first, count)
+
+                log.debug(f"parsing extra buffers")
+                if corr.parse_eeprom_buffers(buffers):
+                    log.debug(f"storing successful InGaAsCorrection")
+                    self.settings.ingaas_correction = corr
+            log.error("unable to load InGaAsCorrection")
+            return
 
     def has_linearity_coeffs(self):
         """
@@ -946,6 +966,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 self.settings.state.battery_raw is None or \
                 (now - self.settings.state.battery_timestamp).total_seconds() > 1:
             self.settings.state.battery_timestamp = now
+
+            # length will grow to 5 in STM32 1.0.65.1
             response = self.get_upper_code(0x13, label="GET_BATTERY_STATE", msb_len=3)
             self.settings.state.battery_raw = response.data
             log.debug(f"battery_state_raw: 0x{self.settings.state.battery_raw:06x}")
@@ -1041,7 +1063,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         if update_session_eeprom:
             self.settings.eeprom.detector_gain = gain
 
-        if self.settings.is_micro():
+        if self.settings.is_xs():
             self.settings.state.gain_db = gain
 
         return SpectrometerResponse(data=gain)
@@ -1104,7 +1126,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.settings.eeprom.detector_gain = gain
 
         if self.settings.is_xs():
-            # self.queue_message("marquee_info", "sensor is stabilizing (gain)")
             self.settings.state.gain_db = gain
 
         return result
@@ -1202,9 +1223,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         res = self._get_code(0xc0, label="GET_CODE_REVISION")
         result = res.data
-        version = "?.?.?.?"
+        version = None
         if result is not None and len(result) >= 4:
             version = "%d.%d.%d.%d" % (result[3], result[2], result[1], result[0]) # MSB-LSB
+        else:
+            log.error("unable to read firmware version! This is bad: {res}")
 
         self.settings.microcontroller_firmware_version = version
         return SpectrometerResponse(data=version)
@@ -1226,8 +1249,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return SpectrometerResponse(data=s)
 
     def get_microcontroller_serial_number(self):
-        if not self.settings.is_arm():
-            log.debug("GET_MICROCONTROLLER_SERIAL_NUMBER requires ARM")
+        if not self.settings.is_xs():
+            log.debug("GET_MICROCONTROLLER_SERIAL_NUMBER requires XS")
             return None
 
         if not self.settings.supports_feature("microcontroller_serial_number"):
@@ -1251,19 +1274,19 @@ class FeatureIdentificationDevice(InterfaceDevice):
     def get_ble_firmware_version(self):
         if not self.settings.is_arm():
             log.debug("GET_BLE_FIRMWARE_VERSION requires ARM")
-            return None
+            return
 
         if not self.settings.supports_feature("get_ble_firmware_version"):
             log.debug("GET_BLE_FIRMWARE_VERSION not supported on this firmware")
-            return None
+            return
 
         result = self._get_code(0xff, wValue=0x2d, wLength=32, label="GET_BLE_FIRMWARE_VERSION")
         if result is None:
-            return None
+            return
 
         data = result.data
         if data is None:
-            return None
+            return
 
         s = ""
         for c in data:
@@ -1272,6 +1295,34 @@ class FeatureIdentificationDevice(InterfaceDevice):
             s += chr(c)
         self.settings.ble_firmware_version = s
         return SpectrometerResponse(data=s)
+
+    def get_power_connection_state(self):
+        if not self.settings.is_xs():
+            log.debug("GET_POWER_CONNECTION_STATE requires XS")
+            return
+
+        if not self.settings.supports_feature("get_power_connection_state"):
+            log.debug("GET_POWER_CONNECTION_STATE not supported on this firmware")
+            return
+
+        result = self._get_code(0xff, wValue=0x78, wLength=5, label="GET_POWER_CONNECTION_STATE")
+        if result is None:
+            return
+
+        data = result.data
+        if data is None:
+            return
+
+        if len(data) != 5:
+            log.error(f"get_power_connection_state: expected 5 bytes, received {len(data)}")
+            return
+
+        state = USBCPowerConnectionState(data)
+        self.settings.state.power_connection_state = state
+
+        log.debug(f"Power connection state: {state} ({state.long()})")
+
+        return SpectrometerResponse(data=state)
 
     def apply_edc(self, spectrum):
         """
@@ -1313,13 +1364,12 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return [ v - avg_dark for v in spectrum ]
 
     def get_line(self, trigger=True, auto_raman_params=None):
-        """ legacy alias """
         return self.get_spectrum(trigger, auto_raman_params)
 
     def generate_timeout_ms(self):
         max_integ_ms = max(self.settings.state.integration_time_ms, self.settings.state.prev_integration_time_ms)
         if self.settings.is_xs():
-            # we have no idea if Series-XS has to "wake up" the sensor, so wait
+            # we have no idea if XS has to "wake up" the sensor, so wait
             # long enough for 20ms + 8 throwaway frames if need be (IMX385 datasheet p69)
             if self.settings.state.onboard_averaging:
                 timeout_ms = max_integ_ms * (self.settings.state.scans_to_average + 7) + 500 * self.settings.num_connected_devices + 20
@@ -1342,11 +1392,12 @@ class FeatureIdentificationDevice(InterfaceDevice):
         @param trigger (Input) send an initial ACQUIRE
         @param auto_raman_params (Input) if present, use VR_ACQUIRE_AUTO_RAMAN 
                  rather than the usual VR_ACQUIRE_CCD
-        @returns tuple of (spectrum[], area_scan_row_count) for success
-        @returns None when it times-out while waiting for an external trigger
-                 (interpret as, "didn't find any fish this time, try again in a bit")
-        @returns False (bool) when it times-out or encounters an exception
-                 when NOT in external-triggered mode
+
+        @returns a SpectrometerResponse in all instances. response.data should 
+                 contain the spctrum on success, or None for other cases (check 
+                 error_msg). response.data may be None when it times-out while 
+                 waiting for an external trigger (interpret as, "didn't find any
+                 fish this time, try again in a bit")
         @throws exception on timeout (unless external triggering enabled)
         """
 
@@ -1590,7 +1641,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         ########################################################################
 
         if not self.settings.state.area_scan_enabled:
-            if self.settings.is_micro() and utils.all_same(spectrum):
+            if self.settings.is_xs() and utils.all_same(spectrum):
                 response.error_msg = "skipping flat spectrum"
                 response.error_lvl = ErrorLevel.low
                 response.keep_alive = True
@@ -1608,17 +1659,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 self._correct_bad_pixels(spectrum)
 
         ########################################################################
-        # Linear Pixel Calibration (experimental)
-        ########################################################################
-
-        # should be done AFTER detector inversion (because that's how calibration
-        # is generated) and AFTER bad pixel correction
-
-        if not self.settings.state.area_scan_enabled:
-            if self.settings.linear_pixel_calibration:
-                spectrum = self._apply_linear_pixel_calibration(spectrum)
-
-        ########################################################################
         # horizontal binning
         ########################################################################
 
@@ -1628,6 +1668,17 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # Note: len(spectrum) may no longer == eeprom.actual_pixels_horizontal!
         # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
 
+        # MZ: moving these upstream to ENLIGHTEN, so ENLIGHTEN can save non-
+        # corrected darks
+        #
+        # # InGaAs Correction (experimental)
+        # if self.settings.ingaas_correction:
+        #     spectrum = self.settings.ingaas_correction.apply(spectrum)
+        #
+        # # Etalon Correction (experimental)
+        # if self.settings.etalon_correction:
+        #     spectrum = self.settings.etalon_correction.apply(spectrum)
+        
         ########################################################################
         # Graph Alternating Pixels
         ########################################################################
@@ -1653,9 +1704,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                     smoothed.append(averaged)
             spectrum = smoothed
 
-        # Somewhat oddly, we're currently returning a TUPLE of the spectrum and
-        # the area scan row count.  
-        response.data = SpectrumAndRow(spectrum, area_scan_row_count) 
+        response.data = spectrum
         return response
 
     def require_throwaway(self, flag):
@@ -1684,6 +1733,12 @@ class FeatureIdentificationDevice(InterfaceDevice):
     def get_scans_to_average(self):
         return self._get_upper_code(0x63, lsb_len=2)
 
+    def set_scans_to_average(self, n):
+        self.settings.scans_to_average = int(n)
+
+    def reset_scan_averaging(self, arg):
+        self.settings.scans_to_average = 0
+
     def set_integration_time_ms(self, ms: float):
         """
         Send the updated integration time in a control message to the device
@@ -1709,10 +1764,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.require_throwaway(ms != self.settings.state.integration_time_ms)
         self.settings.state.prev_integration_time_ms = self.settings.state.integration_time_ms
         self.settings.state.integration_time_ms = ms
-
-        if self.settings.is_xs():
-            # self.queue_message("marquee_info", "sensor is stabilizing (int time)")
-            pass
 
         return result
 
@@ -1833,6 +1884,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
     def get_area_scan_xs(self):
         """
         @returns Reading(spectrum, AreaScanImage(data=nd_array))
+        @see sensor docs in IMX385.py
+
+        Physically, the largest area scan image ENLIGHTEN or WPSC can generate is
+        (1952, 1097).
         """
         start = self.settings.eeprom.roi_vertical_region_1_start
         stop  = self.settings.eeprom.roi_vertical_region_1_end
@@ -2299,8 +2354,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
         environmental conditions.
         """
         if not self.settings.eeprom.has_cooling:
-            log.error("unable to control TEC: EEPROM reports no cooling")
-            return SpectrometerResponse(data=False, error_lvl=ErrorLevel.low, error_msg="unable to control TEC: EEPROM reports no cooling")
+            msg = "unable to configure detector TEC: EEPROM reports no cooling"
+            log.error(msg)
+            return SpectrometerResponse(data=False, error_lvl=ErrorLevel.low, error_msg=msg)
 
         if degC < self.settings.eeprom.min_temp_degC:
             log.critical("set_detector_tec_setpoint_degC: setpoint %f below min %f", degC, self.settings.eeprom.min_temp_degC)
@@ -2335,12 +2391,14 @@ class FeatureIdentificationDevice(InterfaceDevice):
     ## @todo rename set_detector_tec_enable
     def set_tec_enable(self, flag: bool):
         if not self.settings.eeprom.has_cooling:
-            log.debug("unable to control TEC: EEPROM reports no cooling")
-            return SpectrometerResponse(data=False, error_msg="unable to control TEC: EEPROM reports no cooling")
+            msg = "unable to control detector TEC: EEPROM reports no cooling"
+            log.debug(msg)
+            return SpectrometerResponse(data=False, error_msg=msg)
 
         if not self.settings.eeprom.has_detector_tec_calibration():
-            log.debug("unable to control TEC: EEPROM missing valid TEC calibration")
-            return SpectrometerResponse(data=False, error_msg="unable to control TEC: EEPROM missing valid TEC calibration")
+            msg = "unable to control detector TEC: EEPROM missing valid TEC calibration"
+            log.debug(msg)
+            return SpectrometerResponse(data=False, error_msg=msg)
 
         value = 1 if flag else 0
 
@@ -2550,7 +2608,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.set_strobe_enable(flag)
 
         if self.settings.is_xs():
-            # Series-XS getLaserEnable doesn't provide immediate confirmation 
+            # XS getLaserEnable doesn't provide immediate confirmation 
             # because it's comingled with laserWatchdogSec and probably 
             # laserDelaySec
             return SpectrometerResponse(data=True)
@@ -2798,7 +2856,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
         if not self.settings.is_xs():
             log.error("laser warning delay only configurable on XS")
             return
-        return self._send_code(0x8a, value, label="SET_LASER_WARNING_DELAY_SEC")
+        response = self._send_code(0x8a, value, label="SET_LASER_WARNING_DELAY_SEC")
+        log.debug(f"set_laser_warning_delay_sec: response = {response}")
+        return response
 
     def get_laser_warning_delay_sec(self):
         if not self.settings.is_xs():
@@ -2807,9 +2867,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
             return SpectrometerResponse(data=None, error_msg=msg)
 
         if not self.settings.supports_feature("get_laser_warning_delay_sec"):
-            msg = "GET_LASER_WARNING_DELAY_SEC not supported on this firmware"
-            log.error(msg)
-            return SpectrometerResponse(data=None, error_msg=msg)
+            log.error("GET_LASER_WARNING_DELAY_SEC not supported on this firmware, returning default 3")
+            return SpectrometerResponse(data=3)
 
         result = self._get_code(0x8b, lsb_len=1, label="GET_LASER_WARNING_DELAY_SEC")
         self.settings.state.laser_warning_delay_sec = result.data
@@ -2937,8 +2996,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
     ##
     # Enable "Raman mode" (automatic laser) in the spectrometer firmware.
     def set_raman_mode_enable_NOT_USED(self, flag: bool):
-        if not self.settings.is_micro():
-            log.debug("Raman mode only supported on Series-XS")
+        if not self.settings.is_xs():
+            log.debug("Raman mode only supported on XS")
             return SpectrometerResponse(data=False, error_msg="raman mode not supported")
 
         return self._send_code(bRequest        = 0xff,
@@ -2953,8 +3012,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return res
 
     def set_raman_delay_ms(self, ms: int):
-        if not self.settings.is_micro():
-            log.debug("Raman delay only supported on Series-XS")
+        if not self.settings.is_xs():
+            log.debug("Raman delay only supported on XS")
             return SpectrometerResponse(data=False, error_msg="raman delay not supported")
 
         # send value as big-endian
@@ -2978,11 +3037,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
     #       logic itself is fixed), always send a DISABLE_LASER before changing the 
     #       watchdog period.
     def set_laser_watchdog_sec(self, sec):
-        if not self.settings.is_micro():
-            log.error("Laser watchdog only supported on Series-XS")
+        if not self.settings.is_xs():
+            log.error("Laser watchdog only supported on XS")
             return SpectrometerResponse(data=False, error_msg="laser watchdog not supported")
 
-        # remove this call after the Series-XS ARM / FPGA watchdog are fixed
+        # remove this call after the XS ARM / FPGA watchdog are fixed
         # MZ: are they fixed? can I remove this?
         # self.set_laser_enable(False)
 
@@ -3006,7 +3065,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         @note we are not currently using this function
         """
-        if not self.settings.is_micro() or not self.settings.eeprom.has_laser:
+        if not self.settings.is_xs() or not self.settings.eeprom.has_laser:
             return SpectrometerResponse(data=False, error_msg="update laser watchdog not supported")
 
         int_ms = self.settings.state.integration_time_ms
@@ -3019,7 +3078,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return self.set_laser_watchdog_sec(watchdog_sec)
 
     def update_vertical_roi(self):
-        if self.settings.is_micro():
+        if self.settings.is_xs():
             roi = self.settings.get_vertical_roi()
             if roi is not None:
                 self.set_vertical_roi(roi)
@@ -3031,7 +3090,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         if self.settings.fpga_firmware_version == "000-008" and self.settings.microcontroller_firmware_version == "0.1.0.7":
             return SpectrometerResponse(data=False)
 
-        if not self.settings.is_micro():
+        if not self.settings.is_xs():
             if not self.settings.supports_feature("hamamatsu_vertical_roi"):
                 log.warning("Vertical Binning only configurable on XS and prototype X/XM")
                 return SpectrometerResponse(data=False, error_msg="vertical binning not supported")
@@ -3057,6 +3116,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         if self.settings.is_xs():
             # ARM has USB opcodes for start/stop line
+
+            # Note that we should never have a start line less than 8, or stop 
+            # line above 1087 (see IMX385.py), but I'm not sure I want to clamp
+            # that here. Leaving that for WPSC to write to the EEPROM.
             self._send_code(bRequest=0xff, wValue=0x21, wIndex=start, label="SET_CMOS_START_LINE")
             self._send_code(bRequest=0xff, wValue=0x23, wIndex=end,   label="SET_CMOS_STOP_LINE")
         else:
@@ -3084,8 +3147,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
     # b11   12-bit     12-bit
     # \endverbatim
     def set_pixel_mode(self, mode: float):
-        if not self.settings.is_micro():
-            log.debug("Pixel Mode only configurable on Series-XS")
+        if not self.settings.is_xs():
+            log.debug("Pixel Mode only configurable on XS")
             return SpectrometerResponse(data=False, error_msg="pixel mode not supported")
 
         # we only care about the two least-significant bits
@@ -3149,8 +3212,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         
         @param args: either a DetectorROI or a tuple of (region, y0, y1, x0, x1)
         """
-        if not self.settings.is_micro():
-            log.debug("Detector ROI only configurable on Series-XS")
+        if not self.settings.is_xs():
+            log.debug("Detector ROI only configurable on XS")
             return SpectrometerResponse(data=False, error_msg="Detector ROI not configurable")
 
         if isinstance(args, DetectorROI):
@@ -3298,7 +3361,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
     # Shutter
     # ##########################################################################
 
-    def set_shutter_enable(self, flag: bool):
+    def set_shutter_open(self, flag: bool):
         if not (self.settings.is_gen15() and self.settings.eeprom.has_shutter):
             log.debug("shutter requires Gen 1.5 and has_shutter flag")
             return SpectrometerResponse(data=False, error_msg="shutter requires gen1.5")
@@ -3309,11 +3372,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
                                data_or_wLength = [0] * 8,
                                label           = "SET_SHUTTER_ENABLE")
 
-    def get_shutter_enabled(self):
+    def get_shutter_open(self):
         if not (self.settings.is_gen15() and self.settings.eeprom.has_shutter):
             log.debug("shutter requires Gen 1.5 and has_shutter flag")
             return SpectrometerResponse(data=False, error_msg="shutter requires gen1.5")
-        res = SpectrometerResponse(data=0 != self._get_code(0x31, label="GET_SHUTTER_ENABLED", msb_len=1))
+        res = SpectrometerResponse(data=0 != self._get_code(0x31, label="GET_SHUTTER_OPEN", msb_len=1))
         res.data = 0 != res.data
         return res 
 
@@ -3439,12 +3502,24 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return SpectrometerResponse(data=degC)
 
     # ##########################################################################
+    # Pixel Correction
+    # ##########################################################################
+
+    def set_etalon_correction_enable(self, flag):
+        if self.settings.etalon_correction:
+            self.settings.etalon_correction.enabled = flag
+
+    def set_ingaas_correction_enable(self, flag):
+        if self.settings.ingaas_correction:
+            self.settings.ingaas_correction.enabled = flag
+
+    # ##########################################################################
     # added for wasatch-shell
     # ##########################################################################
 
     def get_tec_enabled(self):
         if not self.settings.eeprom.has_cooling:
-            log.error("unable to control TEC: EEPROM reports no cooling")
+            log.error("unable to control detector TEC: EEPROM reports no cooling")
             return SpectrometerResponse(data=False, error_msg="no cooling reported")
         res = self._get_code(0xda, label="GET_CCD_TEC_ENABLED", msb_len=1)
         res.data = 0 != res.data
@@ -3724,8 +3799,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         """
         log.debug("fid.update_session_eeprom: %s updating EEPROM instance", self.settings.eeprom.serial_number)
 
-        if not self.eeprom_backup:
-            self.eeprom_backup = copy.deepcopy(self.settings.eeprom)
+        if not self.settings.eeprom_backup:
+            self.settings.eeprom_backup = copy.deepcopy(self.settings.eeprom)
 
         self.settings.eeprom.update_editable(pair[1])
         return SpectrometerResponse(data=True)
@@ -3737,8 +3812,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         """
         log.debug("fid.replace_session_eeprom: %s replacing EEPROM instance", self.settings.eeprom.serial_number)
 
-        if not self.eeprom_backup:
-            self.eeprom_backup = copy.deepcopy(self.settings.eeprom)
+        if not self.settings.eeprom_backup:
+            self.settings.eeprom_backup = copy.deepcopy(self.settings.eeprom)
 
         self.settings.eeprom = pair[1]
         self.settings.eeprom.dump()
@@ -3746,15 +3821,15 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
     ## Actually store the current session EEPROM fields to the spectrometer.
     def write_eeprom(self):
-        if not self.eeprom_backup:
+        if not self.settings.eeprom_backup:
             log.critical("expected to update or replace EEPROM object before write command")
             self.queue_message("marquee_error", "Failed to write EEPROM")
             return SpectrometerResponse(data=False, error_msg="failed to write eeprom")
 
         # backup contents of previous EEPROM in log
         log.debug("Original EEPROM contents")
-        self.eeprom_backup.dump()
-        log.debug("Original EEPROM buffers: %s", self.eeprom_backup.buffers)
+        self.settings.eeprom_backup.dump()
+        log.debug("Original EEPROM buffers: %s", self.settings.eeprom_backup.buffers)
 
         try:
             self.settings.eeprom.generate_write_buffers()
@@ -3800,54 +3875,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
         log.debug("fid.set_log_level: setting to %s", lvl)
         logging.getLogger().setLevel(lvl)
         return SpectrometerResponse()
-
-    def queue_message(self, setting, value):
-        """
-        If an upstream queue is defined, send the name-value pair.  Does nothing
-        if the caller hasn't provided a queue.
-
-        "setting" is application (caller) dependent, but ENLIGHTEN currently uses
-        "marquee_info" and "marquee_error".
-        """
-        if self.message_queue is None:
-            return SpectrometerResponse(data=False)
-
-        msg = StatusMessage(setting, value)
-        try:
-            self.message_queue.put(msg) 
-        except:
-            log.error("failed to enqueue StatusMessage (%s, %s)", setting, value, exc_info=1)
-            return SpectrometerResponse(data=False, error_msg="failed to enqueue messsage")
-        return SpectrometerResponse(data=True)
-
-    def check_alert(self, s):
-        log.debug(f"checking for alert {s}")
-        self.refresh_alerts()
-        if s in self.alerts:
-            log.debug(f"found {s} (clearing)")
-            self.alerts.remove(s)
-            return True
-
-    def refresh_alerts(self):
-        if self.alert_queue is None:
-            return
-
-        if self.alert_queue.empty():
-            return
-
-        while not self.alert_queue.empty():
-            alert = self.alert_queue.get_nowait()
-            if alert is None:
-                continue
-            elif isinstance(alert, ControlObject):
-                if alert.value:
-                    log.debug(f"raised alert {alert.setting}")
-                    self.alerts.add(alert.setting)
-                else:
-                    log.debug(f"cleared alert {alert.setting}")
-                    self.alerts.discard(alert.setting)
-            else:
-                log.error(f"non-ControlObject found in alerts_queue: {alert}")
 
     def _init_process_funcs(self):
         """
@@ -3920,7 +3947,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 "get_selected_adc",
                 "get_selected_laser",
                 "get_sensor_line_length",
-                "get_shutter_enabled",
+                "get_shutter_open",
                 "get_strobe_enabled",
                 "get_tec_enabled",
                 "get_trigger_delay",
@@ -3943,8 +3970,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 "set_detector_roi",
                 "set_detector_tec_setpoint_degC",
                 "set_dfu_enable",
+                "set_etalon_correction_enable",
                 "set_fan_enable",
                 "set_high_gain_mode_enable",
+                "set_ingaas_correction_enable",
                 "set_integration_time_ms",
                 "set_lamp_enable",
                 "set_laser_enable",
@@ -3955,6 +3984,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 "set_laser_power_require_modulation",
                 "set_laser_tec_mode",
                 "set_laser_temperature_setpoint_raw",
+                "set_laser_warning_delay_sec",
                 "set_laser_watchdog_sec",
                 "set_log_level",
                 "set_mod_delay_us",
@@ -3965,7 +3995,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 "set_pixel_mode",
                 "set_raman_delay_ms",
                 "set_selected_laser",
-                "set_shutter_enable",
+                "set_shutter_open",
                 "set_single_region",
                 "set_strobe_enable",
                 "set_tec_enable",
@@ -3983,6 +4013,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # Long term, the upstream requests should be changed to match the new format
         # This is an easy fix for the time being to make things behave
         ##################################################################
+
+        # MZ: deprecate these from ENLIGHTEN? Also used by AutoRaman
+
         # spectrometer control
         process_f["laser_enable"]                       = lambda x: self.set_laser_enable(bool(x))
         process_f["integration_time_ms"]                = lambda x: self.set_integration_time_ms(x)
@@ -4002,7 +4035,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
         process_f["laser_power_high_resolution"]        = lambda x: self.set_laser_power_high_resolution(x)
         process_f["laser_power_require_modulation"]     = lambda x: self.set_laser_power_require_modulation(x)
         process_f["selected_laser"]                     = lambda x: self.set_selected_laser(int(x))
-        process_f["set_laser_warning_delay_sec"]        = lambda x: self.set_laser_warning_delay_sec(int(x))
 
         process_f["high_gain_mode_enable"]              = lambda x: self.set_high_gain_mode_enable(bool(x))
         process_f["trigger_source"]                     = lambda x: self.set_trigger_source(int(x))
@@ -4018,17 +4050,13 @@ class FeatureIdentificationDevice(InterfaceDevice):
         process_f["accessory_enable"]                   = lambda x: self.set_accessory_enable(bool(x))
         process_f["fan_enable"]                         = lambda x: self.set_fan_enable(bool(x))
         process_f["lamp_enable"]                        = lambda x: self.set_lamp_enable(bool(x))
-        process_f["shutter_enable"]                     = lambda x: self.set_shutter_enable(bool(x))
+        process_f["shutter_open"]                       = lambda x: self.set_shutter_open(bool(x))
         process_f["strobe_enable"]                      = lambda x: self.set_strobe_enable(bool(x))
         process_f["mod_enable"]                         = lambda x: self.set_mod_enable(bool(x))
         process_f["mod_period_us"]                      = lambda x: self.set_mod_period_us(int(round(x)))
         process_f["mod_width_us"]                       = lambda x: self.set_mod_width_us(int(round(x)))
 
-        # BatchCollection
-        process_f["take_one_request"]                   = lambda x: self.settings.state.set("take_one_request", x)
-
-        # Series-XS
-       #f["raman_mode_enable"]                          = lambda x: self.set_raman_mode_enable(bool(x))
+        # XS
         process_f["raman_delay_ms"]                     = lambda x: self.set_raman_delay_ms(int(round(x)))
         process_f["laser_watchdog_sec"]                 = lambda x: self.set_laser_watchdog_sec(int(round(x)))
 
@@ -4064,7 +4092,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
         process_f["invert_x_axis"]                      = lambda x: self.settings.eeprom.set("invert_x_axis", bool(x))
         process_f["horiz_binning_enable"]               = lambda x: self.settings.eeprom.set("horiz_binning_enabled", bool(x))
         process_f["wavenumber_correction"]              = lambda x: self.settings.set_wavenumber_correction(float(x))
-        process_f["linear_pixel_calibration"]           = lambda x: self.settings.set_linear_pixel_calibration(x)
         process_f["onboard_scans_to_average"]           = lambda x: self.set_onboard_scans_to_average(int(x))
 
         # heartbeats & connection data
@@ -4074,5 +4101,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         process_f["subprocess_timeout_sec"]             = lambda x: None
         process_f["heartbeat"]                          = lambda x: None
         process_f["reset"]                              = self.reset
+
+        process_f["scans_to_average"]                   = self.set_scans_to_average
+        process_f["reset_scan_averaging"]               = self.reset_scan_averaging
 
         return process_f

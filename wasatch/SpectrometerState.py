@@ -1,7 +1,7 @@
 import datetime
 import logging
 
-from wasatch.PollStatus import PollStatus
+from wasatch.IMX385 import PollStatus
 
 log = logging.getLogger(__name__)
 
@@ -92,14 +92,16 @@ class SpectrometerState:
 
         self.fan_enabled = False
         self.lamp_enabled = False
-        self.shutter_enabled = False
        #self.strobe_enabled = False  # this is not a thing -- the proper field is self.laser_enabled
+        self.shutter_open = True
+
+        # XS V2 OEM Accessory Connector
+        self.acc_connector = None
 
         # these are NOT currently used by laser power settings, though they could be
         self.mod_enabled = False
         self.mod_period_us = 0 
         self.mod_width_us = 0
-        self.laser_pwm_perc = None # range (0, 100)
 
         # (gen 2.0 stuff, not yet used)
         self.analog_out_enabled = False

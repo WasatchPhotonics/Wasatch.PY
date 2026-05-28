@@ -55,7 +55,12 @@ class ProcessedReading:
         self.recordable_reference = None
         self.recordable_dark = None
 
-        self.declared_match = None
+        self.library_matching_compound = None 
+        self.library_matching_score = None # may be (0, 1) or (0, 100) depending on plugin / algorithm
+        self.library_matching_engine = None # KIA, Pearson etc
+        self.dalai_model_name = None
+        self.dalai_model_label = None
+
         self.first_pixel = -1 # only used in .cropped (set by enlighten.HorizROI.process)
         self.plugin_metadata = None
 
@@ -63,6 +68,7 @@ class ProcessedReading:
         # (just proc/raw/dark/ref/wl/wn, no further recursion)
         self.cropped = None
         self.interpolated = None
+        self.dalai = None
 
     ##
     # @param d (Input) if instantiating from a dict (External API or loaded JSON),
@@ -139,17 +145,39 @@ class ProcessedReading:
     def is_interpolated(self): 
         return self.interpolated is not None 
 
+    def has_dalai(self): 
+        return self.dalai is not None
+
     def has_processed(self): 
         return self.processed is not None 
 
     def _get_array(self, name, stage):
+        # by default, return the requested array from the first-available of 
+        # these "stages" of historical processing: take it from interpolated
+        # if available, otherwise from cropped if that's available, otherwise
+        # just the parent ProcessedReading object. The idea is that each "layer"
+        # of processing was deliberately added and _improves_ the data, and
+        # whoever is calling to get the latest spectrum probably wants _the
+        # latest_ spectrum with the highest-level of processing applied.
+        #
+        # Note that we are NOT including DALAI at the top of that list, which
+        # would mean that any caller "downstream" of DALAI would receive the 
+        # DALAI-processed spectrum. There may come a day when we want to do
+        # that, but not right now. At the moment, the desire very much is to
+        # always prefer "raw data" (and "processed" counts at this point), 
+        # and only provide "synthetic" data if explicitly asked, and then
+        # in a secondary graph, secondary CSV, etc.
         sources = [self.interpolated, self.cropped, self]
         if stage:
+            # The caller has specified they want a specific stage of processed
+            # data, rather than the "latest", so let them do that.
             stage = stage.lower()
             if stage == "cropped":
                 sources = [self.cropped, self]
             elif stage == "orig":
                 sources = [self]
+            elif stage == "dalai": 
+                sources = [self.dalai]
 
         for obj in sources:
             if obj is not None:

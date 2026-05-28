@@ -15,6 +15,9 @@ from wasatch.EEPROM import EEPROM
 log = logging.getLogger(__name__)
 
 class MockUSBDevice(AbstractUSBDevice):
+    """
+    Note that this is NOT an InterfaceDevice.
+    """
 
     def __init__(self, spec_name, eeprom_name, eeprom_overrides=None, spectra_option=None):
         self.spec_name = spec_name

@@ -33,6 +33,11 @@ log = logging.getLogger(__name__)
 # 2. A place where the GUI can store settings of MANY different connected
 #    spectrometers, and quickly switch between them.
 #
+# TODO:
+#
+# Generalize the loading of JSON-based settings, so IDS and Andor can share
+# some common functionality, noting that even X / XM are now going to need this
+# for PixelCalibration.
 class SpectrometerSettings:
 
     ##
@@ -53,7 +58,10 @@ class SpectrometerSettings:
         self.microcontroller_serial_number = None   # i.e. cpu_unique_id (STM32H7 etc)
         self.fpga_options = FPGAOptions()
 
-        # semi-permanent attributes
+        # note that while SpectrometerSettings INSTANTIATES an EEPROM, it does not
+        # attempt to populate it, as that is very much an InterfaceDevice-specific
+        # operation (depending on whether a given device type has a large EEPROM,
+        # small EEPROM, or no EEPROM at all).
         self.eeprom = EEPROM()
 
         # expose some hardware attributes upstream (let ENLIGHTEN know if device
@@ -66,21 +74,29 @@ class SpectrometerSettings:
         # derived attributes
         self.wavelengths = None
         self.wavenumbers = None
+
         self.raman_intensity_factors = None
-        self.linear_pixel_calibration = None
+        self.etalon_correction = None
+        self.ingaas_correction = None
 
         self.lock_wavecal = False
-
         self.update_wavecal()
         self.update_raman_intensity_factors()
 
-        # ENLIGHTEN sends this so individual driver processes can adaptively scale USB timeouts
+        self.eeprom_backup = None # used by both FID and enlighten.Spectrometer
+
+        # ENLIGHTEN sends this so individual worker threads can adaptively scale timeouts
+        # MZ: although we could arguably just add a static InterfaceDevice.count()
         self.num_connected_devices = 1
 
         if d is not None:
             self.load_from_dict(d)
 
         self.firmware_requirements = FirmwareRequirements(self)
+
+        # set by enlighten.factory.DiagnosticFeature, allows code to output 
+        # messages or whatever that users wouldn't normally see
+        self.diagnostic_mdoe = False
 
     def set_num_connected_devices(self, n):
         self.num_connected_devices = n
@@ -262,20 +278,6 @@ class SpectrometerSettings:
             self.raman_intensity_factors = None
         log.debug(f"generated {len(self.raman_intensity_factors)} Raman intensity factors")
 
-    def set_linear_pixel_calibration(self, data):
-        self.linear_pixel_calibration = None
-        try:
-            slopes = data[0]
-            offsets = data[1]
-            if len(slopes) != len(offsets) or len(slopes) != self.pixels():
-                raise ValueError("length mismatch: slopes {len(slopes)}, offsets {len(offsets)}, pixels {self.pixels()}")
-            self.linear_pixel_calibration = (slopes, offsets)
-        except:
-            log.error("set_linear_pixel_calibration requires 2-element tuple, " +
-                      "where first element is array of slopes and second of " +
-                      "offsets, both lengths matching the detector pixel count", exc_info=1)
-            return
-
     def set_wavenumber_correction(self, cm):
         self.state.wavenumber_correction = cm
         self.update_wavecal()
@@ -382,16 +384,17 @@ class SpectrometerSettings:
         return '0x136e' in str(self.device_id)
 
     def is_ids(self): 
-        return 'IDSPeak' in str(self.device_id)
+        return 'IDSPeak' in str(self.device_id) or "IMX662-AAMR-C" in self.eeprom.detector
 
     def is_sig(self):
         return self.is_xs()
 
     def is_xs(self):
         return (self.is_imx() 
-                or "micro" in self.full_model().lower()
-                or "sig"   in self.full_model().lower()
-                or "xs"    in self.full_model().lower()
+                or "micro"  in self.full_model().lower()
+                or "sig"    in self.full_model().lower()
+                or "xs"     in self.full_model().lower()
+                or '0x4000' in str(self.device_id)
                 or self.is_spi())
 
     def supports_feature(self, feature):
@@ -446,3 +449,53 @@ class SpectrometerSettings:
 
         if self.eeprom:
             self.eeprom.dump()
+
+    def default_data_dir(self):
+        """ borrowed from enlighten.common """
+        if os.name == "nt":
+            return os.path.join(os.path.expanduser("~"), "Documents", "EnlightenSpectra")
+        return os.path.join(os.environ["HOME"], "EnlightenSpectra")
+
+    def augment_from_json_file(self, basename=None, pathname=None):
+        if not basename and not pathname:
+            log.error("augment_from_json_file requires basename or pathname")
+            return
+
+        if pathname and not os.path.exists(pathname):
+            log.error(f"augment_from_json_file cannot find {pathname}")
+            return
+
+        if basename:
+            search_dirs = [ ".", os.path.join(self.default_data_dir(), "config") ]
+            for dir_ in search_dirs:
+                testname = os.path.join(dir_, f"{basename}.json")
+                if os.path.exists(testname):
+                    pathname = testname
+                    break
+            if not pathname:
+                log.debug(f"unable to find {basename}.json in search_dirs {search_dirs}")
+                return
+
+        with open(pathname) as f:
+            data = json.load(f)
+            self.augment_from_json_data(data)
+
+    def augment_from_json_data(self, data):
+        if data is None:
+            return
+
+        # stomp any pixel calibrations found on the EEPROM with external JSON versiosn
+        if "pixel_calibrations" in data:
+            pc = data["pixel_calibrations"]
+
+            if "etalon_correction" in pc:
+                if self.etalon_correction:
+                    log.error("stomping pre-existing (EEPROM?) EtalonCorrection from JSON")
+                self.etalon_correction = EtalonCorrection(self.pixels)
+                self.etalon_correction.parse_json_data(pc["etalon_correction"])
+
+            if "ingaas_correction" in pc:
+                if self.ingaas_correction:
+                    log.error("stomping pre-existing (EEPROM?) InGaAsCorrection from JSON")
+                self.ingaas_correction = InGaAsCorrection(self.pixels)
+                self.ingaas_correction.parse_json_data(pc["ingaas_correction"])

@@ -52,27 +52,6 @@ class SPIDevice(InterfaceDevice):
     """
     This implements SPI communication via the FT232H usb converter.
 
-    This class adopts the external device interface structure.
-    This involves receiving a request through the handle_request function.
-    A request is processed based on the key in the request.
-    The processing function passes the commands to the requested device.
-    Once it receives a response from the connected device it then passes that
-    back up the chain.
-
-    @verbatim
-                               Enlighten Request
-                                       |
-                                handle_requests
-                                       |
-                                 ------------
-                                /   /  |  \  \ 
-             { get_laser status, acquire, set_laser_watchdog, etc....}
-                                \   \  |  /  /
-                                 ------------
-                                       |
-                         {self.driver.some_spi_call}
-    @endverbatim
-
     @see https://github.com/WasatchPhotonics/Python-USB-WP-Raman-Examples/blob/master/SPI/spi_console.py
     """
 
@@ -87,7 +66,7 @@ class SPIDevice(InterfaceDevice):
     lock = threading.Lock()
 
     def __init__(self, device_id, message_queue=None, alert_queue=None):
-        super().__init__()
+        super().__init__(device_id=device_id, message_queue=message_queue, alert_queue=alert_queue)
 
         ########################################################################
         # Attempt to import dependencies (connects to FT232H)
@@ -122,23 +101,9 @@ class SPIDevice(InterfaceDevice):
         # Proceed with initialization
         ########################################################################
 
-        # if passed a string representation of a DeviceID, deserialize it
-        if type(device_id) is str:
-            device_id = DeviceID(label=device_id)
-
-        self.device_id      = device_id
-        self.message_queue  = message_queue
-        self.alert_queue    = alert_queue
-
         self.connected = False
         self.disconnect = False
         self.acquiring = False
-
-        # Receives ENLIGHTEN's 'change settings' commands in the spectrometer
-        # process. Although a logical queue, has nothing to do with multiprocessing.
-        self.command_queue = []
-
-        self.immediate_mode = False
 
         self.settings = SpectrometerSettings(self.device_id)
         self.summed_spectra         = None
@@ -147,9 +112,6 @@ class SPIDevice(InterfaceDevice):
         self.take_one               = False
         self.failure_count          = 0
 
-        self.process_id = os.getpid()
-        self.last_memory_check = datetime.datetime.now()
-        self.last_battery_percentage = 0
         self.lambdas = None
         self.spec_index = 0
         self._scan_averaging = 1
