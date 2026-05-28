@@ -9,7 +9,6 @@ from threading import Thread
 
 from wasatch.EEPROM                   import EEPROM
 from wasatch.Reading                  import Reading
-from wasatch.ControlObject            import ControlObject
 from wasatch.StatusMessage            import StatusMessage
 from wasatch.InterfaceDevice          import InterfaceDevice
 from wasatch.SpectrometerRequest      import SpectrometerRequest
