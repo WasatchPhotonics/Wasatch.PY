@@ -22,16 +22,14 @@ from .EtalonCorrection         import EtalonCorrection
 from .InGaAsCorrection         import InGaAsCorrection
 from .InterfaceDevice          import InterfaceDevice
 from .DetectorRegions          import DetectorRegions
-from .ControlObject            import ControlObject
 from .StatusMessage            import StatusMessage
 from .RealUSBDevice            import RealUSBDevice
 from .MockUSBDevice            import MockUSBDevice
 from .AreaScanImage            import AreaScanImage
 from .DetectorROI              import DetectorROI
-from .PollStatus               import PollStatus
 from .Reading                  import Reading
 from .EEPROM                   import EEPROM
-from .IMX385                   import IMX385
+from .IMX385                   import IMX385, PollStatus
 from .ROI                      import ROI
 
 log = logging.getLogger(__name__)
@@ -157,10 +155,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.debug("on Windows, so NOT setting configuration and claiming interface")
         elif "macOS" in platform.platform():
             log.debug("on MacOS, so NOT setting configuration and claiming interface")
-        # elif "raspberrypi" in str(os.uname()):
-        #     log.debug("on Raspberry Pi, so NOT setting configuration and claiming interface")
         else:
-            log.debug("on posix, so setting configuration and claiming interface")
+            log.debug("on non-Mac posix, so setting configuration and claiming interface")
 
             # in the following, return SpectrometerResponse objects rather than 
             # raising exceptions so the user will have a more-useful error 
@@ -170,10 +166,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 log.debug("setting configuration")
                 self.device_type.set_configuration(device)
             except Exception as exc:
-                #####################################################################################################################
-                # This additional if statement is present for the Raspberry Pi. There is an issue with resource busy errors.
-                # Adding dev.reset() solves this. See https://stackoverflow.com/questions/29345325/raspberry-pyusb-gets-resource-busy
-                #####################################################################################################################
+                # This additional check is present for the Raspberry Pi. There is
+                # an issue with resource busy errors, solved by dev.reset().
+                # @see https://stackoverflow.com/questions/29345325/raspberry-pyusb-gets-resource-busy
                 if "Resource busy" in str(exc) and retries <= 3:
                     log.warn("Hardware Failure in setConfiguration. Resource busy error. Attempting to reattach driver by reset.")
                     self.device_type.reset(dev)
@@ -204,7 +199,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
         Perform additional setup after instantiating FID device.
         Split-out from physical / bus connect() to simplify MockSpectrometer.
         """
-
         # grab firmware versions early (and capture in debug log)
         self.get_microcontroller_firmware_version()
         log.debug(f"Microcontroller firmware version {self.settings.microcontroller_firmware_version}")
@@ -254,8 +248,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         if self.settings.eeprom.has_laser:
             log.debug("post_connect: setting laser defaults")
-            # MZ: why did we stop doing this?
-            # self.set_laser_enable(False)
+            self.set_laser_enable(False)
 
             self.settings.state.laser_power_mW = self.settings.eeprom.max_laser_power_mW
             self.settings.state.laser_power_perc = 100
@@ -355,40 +348,74 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.update_vertical_roi() 
 
         # ######################################################################
-        # post-connection defaults
+        # triggering
         # ######################################################################
 
-        # default to internal triggering
         self.set_trigger_source(SpectrometerState.TRIGGER_SOURCE_INTERNAL)
+
+        # ######################################################################
+        # laser watchdog
+        # ######################################################################
 
         if self.settings.is_xs():
 
             if self.settings.eeprom.has_laser:
                 has_sml = self.settings.eeprom.has_sml()
                 sig_laser_tec = self.settings.eeprom.sig_laser_tec
-                log.debug(f"is_xs {self.settings.is_xs()}, has_laser {self.settings.eeprom.has_laser}, has_sml {has_sml}, sig_laser_tec {sig_laser_tec}")
-
-                # laser watchdog
                 sec = self.settings.eeprom.laser_watchdog_sec
+                
                 if sec <= 0 and has_sml and not sig_laser_tec:
                     sec = EEPROM.DEFAULT_LASER_WATCHDOG_SEC
                     log.debug(f"declining to disable laser watchdog for SML w/o TEC, defaulting to {sec}sec")
                 log.debug(f"post-connect: initializing laser watchdog to {sec}sec")
                 self.set_laser_watchdog_sec(sec)
 
-        self.set_integration_time_ms(self.settings.eeprom.startup_integration_time_ms)
+        # ######################################################################
+        # startup integration time
+        # ######################################################################
 
-        # # for now, enable Gen 1.5 accessory connector by default
-        # if self.settings.is_gen15():
-        #     log.debug("enabling Gen 1.5 accessory connector")
-        #     self.set_accessory_enable(True)
+        # first check what the device's current integration time is
+        existing_ms = 0
+        res = self.get_integration_time_ms()
+        if res:
+            existing_ms = res.data
+            log.debug(f"spectrometer already had integration time {existing_ms}ms")
+
+        ms = self.settings.eeprom.startup_integration_time_ms
+        log.debug(f"applying startup integration time {ms}ms")
+        self.set_integration_time_ms(ms)
+
+        if existing_ms and self.settings.is_xs():
+            # MZ: there was an issue here. Assume the XS sensor was already 
+            # running, and had a LONG integration time [A] (1sec). Here we send 
+            # the "startup" time of [B] (1ms). 500ms later ENLIGHTEN gets around
+            # to applying its "persisted" setting [C] (1sec) from enlighten.ini 
+            # (which it can't lookup until AFTER it gets the serial number).
+            #
+            # In this situation, FW can still be blocking on waiting for the 
+            # original free-running [A] 1sec integration to complete, and won't 
+            # be able to finish applying [B] (1ms) until that is done. As a 
+            # result, it completely drops ENLIGHTEN's command to apply [C] (1sec).
+            #
+            # For now, wait for the PREVIOUS (free-running) integration to 
+            # complete before kicking-off ENLIGHTEN (returning True from this
+            # function). This ensures that the "startup" integration time should
+            # be in effect when ENLIGHTEN starts its run loop, and when ENLIGHTEN
+            # sends its own "persisted" integration time from enlighten.ini, it 
+            # will actually latch.
+            #
+            # Another option would be to have FW re-apply EEPROM defaults at USB
+            # disconnection...not sure if that would be appreciated by all 
+            # customers...
+            log.debug(f"sleeping {existing_ms}ms for startup integration time to latch")
+            sleep(existing_ms / 1000.0)
 
         # ######################################################################
         # Area Scan
         # ######################################################################
 
         if self.settings.is_xs():
-            self.settings.eeprom.actual_pixels_vertical = 1080 # MZ: probably higher
+            self.settings.eeprom.actual_pixels_vertical = 1080 # MZ: 1097?
         else:
             self.settings.eeprom.actual_pixels_vertical = 70
 
@@ -421,7 +448,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         log.debug("fid.disconnect: releasing interface")
         try:
-            #result = self.device_type.release_interface(self.device, 0)
+            # MZ: maybe we should track whether we called claim_interface() in 
+            # the first place?
+            #
+            # result = self.device_type.release_interface(self.device, 0)
+
             try:
                 self.device_type.reset(self.device)
             except:
@@ -1192,9 +1223,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         res = self._get_code(0xc0, label="GET_CODE_REVISION")
         result = res.data
-        version = "?.?.?.?"
+        version = None
         if result is not None and len(result) >= 4:
             version = "%d.%d.%d.%d" % (result[3], result[2], result[1], result[0]) # MSB-LSB
+        else:
+            log.error("unable to read firmware version! This is bad: {res}")
 
         self.settings.microcontroller_firmware_version = version
         return SpectrometerResponse(data=version)
@@ -1699,6 +1732,12 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
     def get_scans_to_average(self):
         return self._get_upper_code(0x63, lsb_len=2)
+
+    def set_scans_to_average(self, n):
+        self.settings.scans_to_average = int(n)
+
+    def reset_scan_averaging(self, arg):
+        self.settings.scans_to_average = 0
 
     def set_integration_time_ms(self, ms: float):
         """
@@ -4017,11 +4056,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         process_f["mod_period_us"]                      = lambda x: self.set_mod_period_us(int(round(x)))
         process_f["mod_width_us"]                       = lambda x: self.set_mod_width_us(int(round(x)))
 
-        # BatchCollection
-        process_f["take_one_request"]                   = lambda x: self.settings.state.set("take_one_request", x)
-
         # XS
-       #f["raman_mode_enable"]                          = lambda x: self.set_raman_mode_enable(bool(x))
         process_f["raman_delay_ms"]                     = lambda x: self.set_raman_delay_ms(int(round(x)))
         process_f["laser_watchdog_sec"]                 = lambda x: self.set_laser_watchdog_sec(int(round(x)))
 
@@ -4066,5 +4101,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         process_f["subprocess_timeout_sec"]             = lambda x: None
         process_f["heartbeat"]                          = lambda x: None
         process_f["reset"]                              = self.reset
+
+        process_f["scans_to_average"]                   = self.set_scans_to_average
+        process_f["reset_scan_averaging"]               = self.reset_scan_averaging
 
         return process_f
