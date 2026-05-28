@@ -86,12 +86,17 @@ class SpectrometerSettings:
         self.eeprom_backup = None # used by both FID and enlighten.Spectrometer
 
         # ENLIGHTEN sends this so individual worker threads can adaptively scale timeouts
+        # MZ: although we could arguably just add a static InterfaceDevice.count()
         self.num_connected_devices = 1
 
         if d is not None:
             self.load_from_dict(d)
 
         self.firmware_requirements = FirmwareRequirements(self)
+
+        # set by enlighten.factory.DiagnosticFeature, allows code to output 
+        # messages or whatever that users wouldn't normally see
+        self.diagnostic_mdoe = False
 
     def set_num_connected_devices(self, n):
         self.num_connected_devices = n
