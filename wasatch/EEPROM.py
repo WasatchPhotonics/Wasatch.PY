@@ -605,6 +605,14 @@ class EEPROM:
                           "aux_button_function", "aux_button_param", "latched_hardware_failures" ]:
                 self.unpack_field(name)
 
+            # clamp strobe at int32.max until enlighten.device.EEPROMEditor 
+            # handles uint32 (mainly a problem on EEPROMs < format 18)
+            for name in [ "acc_cont_strobe_period_us", "acc_cont_strobe_width_us", 
+                          "acc_cont_strobe_delay_us", "acc_cont_strobe_count" ]:
+                value = getattr(self, name)
+                clamped = min(value, 0x7fff)
+                setattr(self, name, clamped)
+
             # parse FeatureMaskXS
             if self.format >= 19:
                 self.ble_door_sensor            = 0 != self.feature_mask_xs & 0x0000_0001
