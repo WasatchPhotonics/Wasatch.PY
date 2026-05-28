@@ -18,27 +18,7 @@ log = logging.getLogger(__name__)
 
 class OceanDevice(InterfaceDevice):
     """
-    This is the basic implementation of our interface with Ocean Spectrometers     
-
-    ##########################################################################
-    This class adopts the external device interface structure
-    This invlovles receiving a request through the handle_request function
-    A request is processed based on the key in the request
-    The processing function passes the commands to the requested device
-    Once it recevies a response from the connected device it then passes that
-    back up the chain
-                               Enlighten Request
-                                       |
-                                handle_requests
-                                       |
-                                 ------------
-                                /   /  |  \  \
-             { get_laser status, acquire, set_laser_watchdog, etc....}
-                                \   \  |  /  /
-                                 ------------
-                                       |
-                               {self.ocean_call}
-    ############################################################################
+    This is our interface to Ocean Opitics Spectrometers.
     """
 
     def __init__(self, device_id, message_queue=None, alert_queue=None):

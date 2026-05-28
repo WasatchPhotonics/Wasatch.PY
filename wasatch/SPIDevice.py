@@ -52,27 +52,6 @@ class SPIDevice(InterfaceDevice):
     """
     This implements SPI communication via the FT232H usb converter.
 
-    This class adopts the external device interface structure.
-    This involves receiving a request through the handle_request function.
-    A request is processed based on the key in the request.
-    The processing function passes the commands to the requested device.
-    Once it receives a response from the connected device it then passes that
-    back up the chain.
-
-    @verbatim
-                               Enlighten Request
-                                       |
-                                handle_requests
-                                       |
-                                 ------------
-                                /   /  |  \  \ 
-             { get_laser status, acquire, set_laser_watchdog, etc....}
-                                \   \  |  /  /
-                                 ------------
-                                       |
-                         {self.driver.some_spi_call}
-    @endverbatim
-
     @see https://github.com/WasatchPhotonics/Python-USB-WP-Raman-Examples/blob/master/SPI/spi_console.py
     """
 
