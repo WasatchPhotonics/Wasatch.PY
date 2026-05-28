@@ -4,10 +4,10 @@ import time
 import numpy as np
 import psutil
 import logging
-import datetime
 import threading
 from queue import Queue
 from typing import Any
+from datetime import datetime
 
 from .FeatureIdentificationDevice import FeatureIdentificationDevice
 from .SpectrometerSettings        import SpectrometerSettings
@@ -17,7 +17,6 @@ from .SpectrometerResponse        import ErrorLevel
 from .InterfaceDevice             import InterfaceDevice
 from .BalanceAcquisition          import BalanceAcquisition
 from .SpectrometerState           import SpectrometerState
-from .ControlObject               import ControlObject
 from .AutoRaman                   import AutoRaman
 from .DeviceID                    import DeviceID
 from .Reading                     import Reading
@@ -89,12 +88,7 @@ class WasatchDevice(InterfaceDevice):
         super().__init__(device_id=device_id, message_queue=message_queue, alert_queue=alert_queue)
 
         self.connected = False
-        self.hardware = None                # FeatureIdentificationDevice
-
-        # Temporarily stores ENLIGHTEN's 'change settings' commands from the 
-        # WrapperWorker. Renamed from "command_queue" because IT IS NOT A QUEUE,
-        # and is not shared with WrapperWorker.
-        self.pending_commands = []
+        self.hardware = None   # FeatureIdentificationDevice
 
         # Enable for "immediate mode" by clients like WasatchShell (by default,
         # inbound commands are queued and executed at beginning of next acquire_data;
@@ -104,7 +98,6 @@ class WasatchDevice(InterfaceDevice):
         self.settings = SpectrometerSettings()
         self.auto_raman = None
 
-        # Any particular reason these aren't in FeatureIdentificationDevice?
         self.summed_spectra         = None
         self.sum_count              = 0
         self.session_reading_count  = 0
@@ -112,9 +105,9 @@ class WasatchDevice(InterfaceDevice):
         self.last_complete_acquisition = None
 
         self.process_id = os.getpid()
-        self.last_memory_check = datetime.datetime.now()
+        self.last_memory_check = datetime.now()
         self.last_battery_percentage = 0
-        self.late_arriving_timestamp = datetime.datetime.now()
+        self.late_arriving_timestamp = datetime.now()
 
         self.process_f = self._init_process_funcs()
 
@@ -234,9 +227,8 @@ class WasatchDevice(InterfaceDevice):
             log.critical("acquire_data: hardware shutdown requested")
             return SpectrometerResponse(False, poison_pill=True)
 
-        # process queued commands, and find out if we've been asked to read a
-        # spectrum
-        self.process_pending_commands()
+        # process queued commands, and find out if we've been asked to read a spectrum
+        # self.process_pending_commands()
 
         # if we don't yet have an integration time, nothing to do
         if self.settings.state.integration_time_ms <= 0:
@@ -559,7 +551,7 @@ class WasatchDevice(InterfaceDevice):
 
         # read battery every 5sec
         if self.settings.eeprom.has_battery:
-            if self.settings.state.battery_timestamp is None or (datetime.datetime.now() - self.settings.state.battery_timestamp).total_seconds() > 5:
+            if self.settings.state.battery_timestamp is None or (datetime.now() - self.settings.state.battery_timestamp).total_seconds() > 5:
 
                 # note that the following 3 requests should actually only generate 
                 # one USB transaction as raw is cached internally
@@ -598,8 +590,8 @@ class WasatchDevice(InterfaceDevice):
 
         # slow poll for late-arriving attributes
         if self.settings.is_xs():
-            if (datetime.datetime.now() - self.late_arriving_timestamp).total_seconds() > 10:
-                self.late_arriving_timestamp = datetime.datetime.now()
+            if (datetime.now() - self.late_arriving_timestamp).total_seconds() > 10:
+                self.late_arriving_timestamp = datetime.now()
 
                 # BLE Firmware Version
                 if not self.settings.ble_firmware_version:
@@ -635,7 +627,7 @@ class WasatchDevice(InterfaceDevice):
 
         log.debug("device.acquire_spectrum: returning %s", reading)
         acquire_response.data = reading
-        self.last_complete_acquisition = datetime.datetime.now()
+        self.last_complete_acquisition = datetime.now()
         return acquire_response
 
     ##
@@ -663,7 +655,7 @@ class WasatchDevice(InterfaceDevice):
             # Assume that if we FINISHED the last measurement less than a second 
             # ago, the sensor probably has not gone to sleep and doesn't need SW-
             # driven warmups.
-            elapsed_sec_since_last_acquisition = (datetime.datetime.now() - self.last_complete_acquisition).total_seconds()
+            elapsed_sec_since_last_acquisition = (datetime.now() - self.last_complete_acquisition).total_seconds()
             if self.last_complete_acquisition is None or elapsed_sec_since_last_acquisition > 1:
                 # for now, default to 2sec worth of acquisitions
                 while count * (self.settings.state.integration_time_ms + readout_ms) < 2000:
@@ -798,7 +790,7 @@ class WasatchDevice(InterfaceDevice):
                     reading.spectrum = spectrum
                     log.debug(f"take_one_averaged_reading: got {reading.spectrum[0:9]}")
 
-                reading.timestamp_complete  = datetime.datetime.now()
+                reading.timestamp_complete  = datetime.now()
 
             except Exception as exc:
                 # if we got the timeout after switching from externally triggered back to internal, let it ride
@@ -894,7 +886,7 @@ class WasatchDevice(InterfaceDevice):
         return take_one_response
 
     def monitor_memory(self):
-        now = datetime.datetime.now()
+        now = datetime.now()
         if (now - self.last_memory_check).total_seconds() < 5:
             return
 
@@ -902,60 +894,22 @@ class WasatchDevice(InterfaceDevice):
         size_in_bytes = psutil.Process(self.process_id).memory_info().rss
         log.info("monitor_memory: PID %d memory = %d bytes", self.process_id, size_in_bytes)
 
-    ##
-    # Process every entry on the incoming command (settings) queue, writing each
-    # to the device.
-    #
-    # Essentially this iterates through all the (setting, value) pairs we've
-    # received through change_setting() which have not yet been processed by 
-    # either handle_requests (which does everything in process_f), or 
-    # change_setting (which handles a few WasatchDevice-immediate settings).
-    #
-    # Pending_commands is populated by change_setting, which only queues
-    # commands that neither it nor handle_requests knew what to do with, 
-    # which should be a pretty small set.
-    #
-    # Ridiculously, the commands processed here are then simply passed to 
-    # FeatureInterfaceDevice.handle_requests.
-    #
-    # Note that WrapperWorker.run "de-dupes" commands on
-    # receipt from ENLIGHTEN, so the command stream arising from that source
-    # should already be optimized and minimal.  Commands injected manually by
-    # calling WasatchDevice.change_setting() do not receive this treatment.
-    #
-    # In the normal multithreaded (ENLIGHTEN) workflow, this function is called
-    # at the beginning of acquire_data, itself ticked regularly by
-    # WrapperWorker.run.
-    def process_pending_commands(self):
-        retval = False
-        log.debug("process_pending_commands: processing")
-        while len(self.pending_commands) > 0:
-            control_object = self.pending_commands.pop(0)
-            log.debug("process_pending_commands: %s", control_object)
-
-            # is this a command used by WasatchDevice itself, and not
-            # passed down to FeatureIdentificationDevice?
-            if control_object.setting.lower() == "acquire":
-                # MZ: does this ever happen? It looks like the current
-                #     request sent down from WrapperWorker is "acquire_data"
-                #     not "acquire"...
-                log.debug("process_pending_commands: acquire found")
-                retval = True
-            else:
-                # send setting downstream to be processed by the spectrometer HAL
-                # (probably FeatureIdentificationDevice)
-                self.hardware.handle_cmd(control_object.setting, control_object.value)
-
-        return retval
-
-    def _init_process_funcs(self): # -> dict[str, Callable[..., Any]] 
+    def _init_process_funcs(self): 
         process_f = {}
 
         process_f["connect"] = self.connect
         process_f["disconnect"] = self.disconnect
         process_f["acquire_data"] = self.acquire_data
+        process_f["take_one_request"] = self.set_take_one_request
 
         return process_f
+
+    def set_take_one_request(self, tor):
+        """
+        This is in WasatchDevice rather than FID because it's WasatchDevice that
+        decides how to handle each acquire_data.
+        """
+        self.take_one_request = tor
 
     # ######################################################################## #
     #                                                                          #
@@ -1009,18 +963,9 @@ class WasatchDevice(InterfaceDevice):
 
     def handle_requests(self, requests): 
         """
-        Override handle_requests. 
-        
-        @note I didn't see a good way to override change_setting without having
-              to redo that pass-through. -ED
-
-        As you can see in WasatchDevice._init_process_funcs, the only commands
-        that _actually_ get executed from here are CONNECT, DISCONNECT and
-        ACQUIRE_DATA. Everything else is going to get passed to change_setting,
-        which will locally process those few specific to WasatchDevice, then
-        push the rest on pending_commands for eventual ordered execution by 
-        process_pending_commands the next time acquire_data is called by 
-        WrapperWorker.
+        Override handle_requests to distinguish between requests handled by
+        WasatchDevice (CONNECT, ACQUIRE, DISCONNECT) and FeatureInterfaceDevice 
+        (everything else).
         """
         responses = []
         for request in requests:
@@ -1028,107 +973,24 @@ class WasatchDevice(InterfaceDevice):
                 cmd = request.cmd
                 response = None
                 
-                # first check to see if this is a function supplied by 
-                # WasatchDevice itself (hint: that list contains "connect", 
-                # "disconnect", "acquire_data" and nothing else)
-                proc_func = self.process_f.get(cmd, None)
-
-                if proc_func is None:
-                    # just for funz, let's check to see if that function is 
-                    # handled by our hardware device (i.e. FeatureInterfaceDevice)
-                    proc_func = self.hardware.process_f.get(cmd, None)
-                    if proc_func is not None:
-                        log.debug(f"handle_requests: passing {cmd} directly to hardware")
-
-                if proc_func is None:
-                    # Neither WasatchDevice nor FeatureInterfaceDevice appear
-                    # to handle this command, so try sending it to 
-                    # change_setting. I'm not sure what is currently going down 
-                    # this path.
-                    #
-                    # Note that change_setting does not return anything, ever,
-                    # so anyone looking for a response from this will be 
-                    # disappointed. That is probably because "change_setting"
-                    # was intended to be a "fire-and-forget" COMMAND, not a 
-                    # "get information and return response" interface.
-                    try:
-                        log.debug(f"handle_requests: proc_func is None for cmd {cmd}, so failing-over to change_setting")
-                        response = self.change_setting(cmd, *request.args, **request.kwargs)
-                    except Exception as e:
-                        log.error(f"error {e} with trying to set setting {cmd} with args and kwargs {request.args} and {request.kwargs}", exc_info=1)
-                        return response
+                if cmd in self.process_f:
+                    proc_func = self.process_f[cmd] # request supported by WasatchDevice
+                elif cmd in self.hardware.process_f:
+                    proc_func = self.hardware.process_f[cmd] # request supported by FeatureInterfaceDevice
                 else:
-                    # apparently we found a function (either in WasatchDevice or 
-                    # FeatureInterfaceDevice) which can handle this command, so run 
-                    # the function, passing along any arguments we were given
-                    if request.args == [] and request.kwargs == {}:
-                        response = proc_func()
-                    else:
-                        response = proc_func(*request.args, **request.kwargs)
+                    self.queue_message("marquee_error", f"Unsupported command: {cmd}")
+                    continue
 
-                # deliberately not checking for None
+                # process the request using the function found
+                if request.args == [] and request.kwargs == {}:
+                    response = proc_func() # MZ: do we actually need this?
+                else:
+                    response = proc_func(*request.args, **request.kwargs)
+
                 responses.append(response)
             except Exception as e:
-                log.error(f"error handling request {request} of {e}", exc_info=1)
+                self.queue_message("marquee_error", f"exception processing {cmd}")
+                log.error(f"exception handling request {request} of {e}", exc_info=1)
                 responses.append(SpectrometerResponse(error_msg="error processing cmd", error_lvl=ErrorLevel.medium))
 
-        # log.debug(f"handle_requests: returning responses {responses}")
         return responses
-
-    ##
-    # Processes an incoming (setting, value) pair.
-    #
-    # ENLIGHTEN commands to WasatchDeviceWrapper USED TO be sent here by 
-    # WasatchDeviceWrapper. However, that is now handled via WrapperWorker -> 
-    # InterfaceDevice -> handle_requests. Therefore, this is now only invoked
-    # if WasatchDevice's override of handle_requests receives a setting that
-    # isn't declared by FeatureInterfaceDevice.
-    #
-    # Some settings are processed internally within this function, if the
-    # functionality they are controlling is implemented by WasatchDevice.
-    # This includes scan averaging, and anything related to scan averaging
-    # (such as "take one" behavior).
-    #
-    # Most tuples are queued to be sent downstream to the connected hardware
-    # (usually FeatureIdentificationDevice) at the start of the next
-    # acquisition.
-    #
-    # Some hardware settings (those involving triggering or the laser) are
-    # sent downstream immediately, rather than waiting for the next "scheduled"
-    # settings update.
-    #
-    # @param setting (Input) which setting to change
-    # @param value   (Input) the new value of the setting (required, but can
-    #                be None or "anything" for commands like "acquire" which
-    #                don't use the argument).
-    # @param allow_immediate
-    def change_setting(self, setting: str, value: Any, allow_immediate: bool = True):
-        log.debug(f"WasatchDevice.change_setting: {setting} -> {value}")
-
-        # Since scan averaging lives in WasatchDevice, handle commands which affect
-        # averaging at this level
-        if setting == "scans_to_average":
-            self.sum_count = 0
-            self.settings.state.scans_to_average = int(value)
-            return
-        elif setting == "reset_scan_averaging":
-            self.sum_count = 0
-            return
-        elif setting == "take_one_request":
-            self.sum_count = 0
-            self.take_one_request = value
-            return
-        elif setting == "cancel_take_one":
-            self.sum_count = 0
-            self.take_one_request = None
-            return
-
-        control_object = ControlObject(setting, value)
-        self.pending_commands.append(control_object)
-        log.debug("change_setting: queued %s", control_object)
-
-        # always process trigger_source commands promptly (can't wait for end of
-        # acquisition which may never come)
-        if (allow_immediate and self.immediate_mode) or re.search(r"trigger|laser", setting):
-            log.debug(f"immediately processing {control_object}")
-            self.process_pending_commands()

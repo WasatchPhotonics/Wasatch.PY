@@ -12,15 +12,14 @@ _Note: in the following, FID = wasatch.FeatureInterfaceDevice_
           syntax was neurose-inducing, so I've added convenience shortcuts for
           handle_request(SpectrometerRequest) (singular), and handle_cmd(name[, value]).
     - WasatchDevice
-        - Renamed command_queue to pending_commands to clarify IT IS NOT A QUEUE,
-          in the multithread sense, and is completely internal to WasatchDevice.
-        - In a potentially breaking change, handle_requests now directly peeks 
-          into FID to see which commands can be handled by "the hardware layer,"
-          and processes those commands in real-time, accumulating the list of 
-          responses. This allows callers to use gettor methods like
-          GET_LASER_WARNING_TIME_SEC and actually receive the response value,
-          which was previously impossible when such commands were shoved onto the
-          "pending command queue" (which offered no method for response delivery).
+        - deprecated command_queue (pending_commands)
+        - handle_requests now directly peeks into FID to see which commands can 
+          be handled by "the hardware layer," and processes those commands in 
+          real-time, accumulating the list of responses. This allows callers to 
+          use gettor methods like GET_LASER_WARNING_TIME_SEC and actually receive
+          the response value, which was previously impossible when such commands
+          were shoved onto the "pending command queue" (which offered no method 
+          for response delivery).
     - FeatureInterfaceDevice
         - deprecated SpectrumAndRow (legacy Area Scan design)
         - removed handle_requests overload (not sure why this was there)
@@ -79,6 +78,8 @@ _Note: in the following, FID = wasatch.FeatureInterfaceDevice_
         - added laser PWM
     - AndorDevice
         - renamed "shutter_enable" (whatever that meant) to "shutter_open"
+    - SpectrometerResponse
+        - deprecated progress and incomplete
     - starting to consider Safe Mode
 - 2026-04-18 2.3.24
     - add avg_resolution to IDSDevice EEPROM
