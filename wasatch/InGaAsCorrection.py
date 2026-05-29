@@ -19,12 +19,12 @@ class InGaAsCorrection:
     def parse_json_data(self, data):
         """
         {
-            "pixel_calibrations": {
+            "pixel_corrections": {
                 "etalon_correction": {
                     "mode": "default",
                     "factors": [ ... ]
                 },
-                "ingaas_even_odd": {  <-- data
+                "ingaas_correction": {  <-- YOU ARE HERE
                     "mode": "default",
                     "offsets": [ ... ],
                     "slopes": [ ... ]

@@ -10,6 +10,8 @@ from . import utils
 
 from .FirmwareRequirements import FirmwareRequirements
 from .SpectrometerState    import SpectrometerState
+from .EtalonCorrection     import EtalonCorrection
+from .InGaAsCorrection     import InGaAsCorrection
 from .MockUSBDevice        import MockUSBDevice
 from .RealUSBDevice        import RealUSBDevice
 from .HardwareInfo         import HardwareInfo
@@ -485,17 +487,17 @@ class SpectrometerSettings:
             return
 
         # stomp any pixel calibrations found on the EEPROM with external JSON versiosn
-        if "pixel_calibrations" in data:
-            pc = data["pixel_calibrations"]
+        if "pixel_corrections" in data:
+            pc = data["pixel_corrections"]
 
             if "etalon_correction" in pc:
                 if self.etalon_correction:
-                    log.error("stomping pre-existing (EEPROM?) EtalonCorrection from JSON")
+                    log.error("stomping EtalonCorrection from JSON")
                 self.etalon_correction = EtalonCorrection(self.pixels)
                 self.etalon_correction.parse_json_data(pc["etalon_correction"])
 
             if "ingaas_correction" in pc:
                 if self.ingaas_correction:
-                    log.error("stomping pre-existing (EEPROM?) InGaAsCorrection from JSON")
+                    log.error("stomping InGaAsCorrection from JSON")
                 self.ingaas_correction = InGaAsCorrection(self.pixels)
                 self.ingaas_correction.parse_json_data(pc["ingaas_correction"])
