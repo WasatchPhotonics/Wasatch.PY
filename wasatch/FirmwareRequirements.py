@@ -23,6 +23,8 @@ class FirmwareRequirements:
             "get_power_connection_state":       { "microcontroller": { "min": "1.0.63.5", "unsupported": [ "11.3.0.37" ] } },
             "hamamatsu_vertical_roi":           { "microcontroller": { "min": "10.0.0.47" } }, 
             "xs_area_scan_offset_kludge":       { "fpga": { "min": "01_04_01", "max": "01_04_30", "includes": "_" } },
+            "battery_state_length_5":           { "ble": { "min": "4.12.5" } }, # SiGFW-243
+            "ble_read_9th_eeprom_page":         { "ble": { "min": "4.12.9" } }, # SiGFW-250
         }
 
     def supports(self, feature):
@@ -35,6 +37,7 @@ class FirmwareRequirements:
 
         micro_ver = self.settings.microcontroller_firmware_version
         fpga_ver  = self.settings.fpga_firmware_version
+        ble_ver  = self.settings.ble_firmware_version
 
         reqts = self.feature_versions[feature]
 
@@ -68,6 +71,22 @@ class FirmwareRequirements:
                 max_ = reqt["max"]
                 if vercmp(fpga_ver, max_) > 0:
                     # log.debug(f"supports: {feature} NOT supported (fpga {fpga_ver} > max {max_}")
+                    return False
+
+        if "ble" in reqts:
+            reqt = reqts["ble"]
+            if "includes" in reqt:
+                if reqt["includes"] not in ble_ver:
+                    return False
+            if "min" in reqt:
+                min_ = reqt["min"]
+                if vercmp(ble_ver, min_) < 0:
+                    # log.debug(f"supports: {feature} NOT supported (ble {ble_ver} < min {min_}")
+                    return False
+            if "max" in reqt:
+                max_ = reqt["max"]
+                if vercmp(ble_ver, max_) > 0:
+                    # log.debug(f"supports: {feature} NOT supported (ble {ble_ver} > max {max_}")
                     return False
 
         # log.debug(f"supports: {feature} supported")
