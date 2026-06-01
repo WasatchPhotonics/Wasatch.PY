@@ -20,12 +20,12 @@ class EtalonCorrection:
     def parse_json_data(self, data):
         """
         {
-            "pixel_calibrations": {
-                "etalon_correction": {  <-- data
+            "pixel_corrections": {
+                "etalon_correction": {  <-- YOU ARE HERE
                     "mode": "default",
                     "factors": [ ... ]
                 },
-                "ingaas_even_odd": {
+                "ingaas_correction": {
                     "mode": "default",
                     "offsets": [ ... ],
                     "slopes": [ ... ]

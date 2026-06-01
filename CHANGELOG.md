@@ -2,6 +2,9 @@
 
 _Note: in the following, FID = wasatch.FeatureInterfaceDevice_
 
+- 2026-06-01 2.4.1 (enlighten-4.2.3)
+    - fixed missing pixel correction imports
+    - tweaked pixel correction JSON
 - 2026-05-27 2.4.0 (enlighten-4.2.2)
     - InterfaceDevice
         - This was a major change. The InterfaceDevice base class has existed for
