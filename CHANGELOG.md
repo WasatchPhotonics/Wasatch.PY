@@ -2,6 +2,10 @@
 
 _Note: in the following, FID = wasatch.FeatureInterfaceDevice_
 
+- 2026-06-01 2.4.2 (enlighten-4.2.4)
+    - BLE firmware version checks
+        - 5-byte BATTERY_STATE 
+        - EEPROM page 9
 - 2026-06-01 2.4.1 (enlighten-4.2.3)
     - fixed missing pixel correction imports
     - tweaked pixel correction JSON

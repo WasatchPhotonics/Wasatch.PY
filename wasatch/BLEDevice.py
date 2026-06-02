@@ -246,9 +246,6 @@ class BLEDevice(InterfaceDevice):
 
     CONNECT_TIMEOUT_SEC = 10
 
-    # separate from EEPROMFields, as XS BLE FW may not be in sync
-    MAX_EEPROM_PAGES = 8 
-
     # update Ambient temperature etc via acquire_data
     STATUS_UPDATE_PERIOD_SEC = 60 
 
@@ -791,7 +788,8 @@ class BLEDevice(InterfaceDevice):
         self.pages = []
 
         name = "EEPROM_DATA"
-        for page in range(self.MAX_EEPROM_PAGES):
+        max_eeprom_pages = 9 if self.settings.supports("ble_read_9th_eeprom_page") else 8
+        for page in range(max_eeprom_pages):
             buf = bytearray()
             while len(buf) < 64:
                 
@@ -863,22 +861,24 @@ class BLEDevice(InterfaceDevice):
         notifications until the next explicit read/write of a Characteristic 
         (any Chararacteristic? seemingly observed with ACQUIRE_CMD).
         """
+        length = 5 if self.settings.supports_feature("battery_state_length_5") else 3
         if buf is None:
-            log.debug("updating battery state")
-            buf = await self.read_char_async("BATTERY_STATE", 5)
+            log.debug(f"updating battery state (len {length})")
+            buf = await self.read_char_async("BATTERY_STATE", length)
         if buf is None:
             return
 
         state = self.settings.state
         state.battery_charging = buf[0] != 0
         state.battery_percentage = buf[1] + buf[2] / 256.0
-        state.battery_temperature_deg_c = buf[3]
-        state.battery_charger_temperature_deg_c = buf[4]
+        msg = f"updated battery state: chg {state.battery_charging}, perc {state.battery_percentage:.2f}"
 
-        log.debug(f"updated battery state: chg {state.battery_charging}, " +
-                  f"perc {state.battery_percentage:.2f}, " + 
-                  f"temp {state.battery_temperature_deg_c}C, " +
-                  f"chgTemp {state.battery_temperature_deg_c}C")
+        if length >= 5:
+            state.battery_temperature_deg_c = buf[3]
+            state.battery_charger_temperature_deg_c = buf[4]
+            msg += f", temp {state.battery_temperature_deg_c}C, chgTemp {state.battery_temperature_deg_c}C")
+
+        log.debug(msg)
 
     ############################################################################
     # LASER_STATE Characteristic

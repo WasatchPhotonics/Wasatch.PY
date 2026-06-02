@@ -610,8 +610,11 @@ class EEPROM:
             for name in [ "acc_cont_strobe_period_us", "acc_cont_strobe_width_us", 
                           "acc_cont_strobe_delay_us", "acc_cont_strobe_count" ]:
                 value = getattr(self, name)
-                clamped = min(value, 0x7fff)
-                setattr(self, name, clamped)
+                if value is None:
+                    setattr(self, name, 0)
+                else:
+                    clamped = min(value, 0x7fff)
+                    setattr(self, name, clamped)
 
             # parse FeatureMaskXS
             if self.format >= 19:
