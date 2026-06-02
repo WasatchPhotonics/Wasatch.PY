@@ -2,6 +2,8 @@
 
 _Note: in the following, FID = wasatch.FeatureInterfaceDevice_
 
+- 2026-06-01 2.4.3 (enlighten-4.2.5)
+    - only end 7-byte LASER_STATE on old BLE FW
 - 2026-06-01 2.4.2 (enlighten-4.2.4)
     - BLE firmware version checks
         - 5-byte BATTERY_STATE 

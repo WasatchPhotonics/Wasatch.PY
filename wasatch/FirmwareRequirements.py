@@ -25,6 +25,7 @@ class FirmwareRequirements:
             "xs_area_scan_offset_kludge":       { "fpga": { "min": "01_04_01", "max": "01_04_30", "includes": "_" } },
             "battery_state_length_5":           { "ble": { "min": "4.12.5" } }, # SiGFW-243
             "ble_read_9th_eeprom_page":         { "ble": { "min": "4.12.9" } }, # SiGFW-250
+            "ble_laser_pwm":                    { "ble": { "min": "4.12.9" } }, # SiGFW-251
         }
 
     def supports(self, feature):
