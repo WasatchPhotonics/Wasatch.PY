@@ -3691,50 +3691,68 @@ class FeatureIdentificationDevice(InterfaceDevice):
     def set_cont_strobe_period_us(self, us: float):
         us = int(round(us))
         
-        if us > 4260000000: #the max is 71 minutes, this is 71 minutes in microseconds(us)
-            us = 4260000000
+        if us > 0xffff_ffff: #the max is 71 minutes, this is 71 minutes in microseconds(us)
+            us = 0xffff_ffff
             log.debug("SET_CONT_STROBE_PERIOD_US max value exceeded, value set to 71 min")
         
         result = self._send_code(0xff, 0xac, us, label = "SET_CONT_STROBE_PERIOD_US")
+        
+        self.settings.state.acc_strobe_period = us        
         
         log.debug("SET_CONT_STROBE_PERIOD_US: now %d", us)
         
         return result        
         
     def get_cont_strobe_period_us(self):
-        return(self._get_code(0xff, 0x94, label = "GET_CONT_STROBE_PERIOD_US"))
+        return(self._get_code(0xff, 0x94, lsb_len = 4, label = "GET_CONT_STROBE_PERIOD_US"))
         
     def set_cont_strobe_width_us(self, us: float):
         us = int(round(us))
         
-        if us > 4260000000: #the max is 71 minutes, this is 71 minutes in microseconds(us)
-            us = 4260000000
+        if us > 0xffff_ffff: #the max is 71 minutes, this is 71 minutes in microseconds(us)
+            us = 0xffff_ffff
             log.debug("SET_CONT_STROBE_WIDTH_US max value exceeded, value set to 71 min")
         
         result = self._send_code(0xff, 0xad, us, label = "SET_CONT_STROBE_WIDTH_US")
+        
+        self.settings.state.acc_strobe_width = us     
         
         log.debug("SET_CONT_STROBE_PERIOD_US: now %d", us)
         
         return result
         
     def get_cont_strobe_width_us(self):
-        return(self._get_code(0xff, 0x95, label = "GET_CONT_STROBE_WIDTH_US"))
+        return(self._get_code(0xff, 0x95, lsb_len = 4, label = "GET_CONT_STROBE_WIDTH_US"))
         
     def set_cont_strobe_delay_us(self, us: float):
         us = int(round(us))
         
-        if us > 4260000000: #the max is 71 minutes, this is 71 minutes in microseconds(us)
-            us = 4260000000
+        if us > 0xffff_ffff: #the max is 71 minutes, this is 71 minutes in microseconds(us)
+            us = 0xffff_ffff
             log.debug("SET_CONT_STROBE_DELAY_US max value exceeded, value set to 71 min")
         
         result = self._send_code(0xff, 0xae, us, label = "SET_CONT_STROBE_DELAY_UD")
+        
+        self.settings.state.acc_strobe_delay = us     
         
         log.debug("SET_CONT_STROBE_DELAY_US: now %d", us)
         
         return result
     
     def get_cont_strobe_delay_us(self):
-        return(self._get_code(0xff, 0x96, label = "GET_CONT_STROBE_DELAY_US"))
+        return(self._get_code(0xff, 0x96, lsb_len = 4, label = "GET_CONT_STROBE_DELAY_US"))
+        
+    def set_cont_strobe_repeat_count(self, value: int):
+        result = self._send_code(0xff, 0xaf, value, label = "SET_CONT_STROBE_REPEAT_COUNT")
+        
+        log.debug("SET_CONT_STROBE_REPEAT_COUNT: now %d", value)
+        
+        self.settings.state.acc_strobe_repeat = us     
+        
+        return result
+        
+    def get_cont_strobe_repeat_count(self):
+        return(self._get_code(0xff, 0x97, lsb_len = 2, label = "GET_CONT_STROBE_REPEAT_COUNT")
     
     # ##########################################################################
     # Analog output
@@ -4010,7 +4028,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 "get_cont_strobe_period_us",
                 "get_cont_strobe_width_us",
                 "get_cont_strobe_delay_us",
-                "get_gpio_pin_state"
+                "get_gpio_pin_state",
+                "get_cont_strobe_repeat_count",
                 "is_laser_firing",
                 "queue_message",
                 "replace_session_eeprom",
@@ -4063,6 +4082,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 "set_cont_strobe_width_us",
                 "set_cont_strobe_delay_us",
                 "set_gpio_pin_state",
+                "set_cont_strobe_repeat_count",
                 "update_laser_watchdog",
                 "update_session_eeprom",
                 "write_eeprom",
