@@ -3752,7 +3752,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return result
         
     def get_cont_strobe_repeat_count(self):
-        return(self._get_code(0xff, 0x97, lsb_len = 2, label = "GET_CONT_STROBE_REPEAT_COUNT")
+        return(self._get_code(0xff, 0x97, lsb_len = 2, label = "GET_CONT_STROBE_REPEAT_COUNT"))
     
     # ##########################################################################
     # Analog output
