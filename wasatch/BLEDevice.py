@@ -876,7 +876,7 @@ class BLEDevice(InterfaceDevice):
         if length >= 5:
             state.battery_temperature_deg_c = buf[3]
             state.battery_charger_temperature_deg_c = buf[4]
-            msg += f", temp {state.battery_temperature_deg_c}C, chgTemp {state.battery_temperature_deg_c}C")
+            msg += f", temp {state.battery_temperature_deg_c}C, chgTemp {state.battery_temperature_deg_c}C"
 
         log.debug(msg)
 

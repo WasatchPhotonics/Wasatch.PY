@@ -3682,7 +3682,60 @@ class FeatureIdentificationDevice(InterfaceDevice):
             for line in lines:
                 log.debug(f"update_firmware_log: {line}")
             self.queue_message("firmware_log", lines)
-
+            
+            
+    ##########################################################################
+    #XS Accessory
+    ##########################################################################
+        
+    def set_cont_strobe_period_us(self, us: float):
+        us = int(round(us))
+        
+        if us > 4260000000: #the max is 71 minutes, this is 71 minutes in microseconds(us)
+            us = 4260000000
+            log.debug("SET_CONT_STROBE_PERIOD_US max value exceeded, value set to 71 min")
+        
+        result = self._send_code(0xff, 0xac, us, label = "SET_CONT_STROBE_PERIOD_US")
+        
+        log.debug("SET_CONT_STROBE_PERIOD_US: now %d", us)
+        
+        return result        
+        
+    def get_cont_strobe_period_us(self):
+        return(self._get_code(0xff, 0x94, label = "GET_CONT_STROBE_PERIOD_US"))
+        
+    def set_cont_strobe_width_us(self, us: float):
+        us = int(round(us))
+        
+        if us > 4260000000: #the max is 71 minutes, this is 71 minutes in microseconds(us)
+            us = 4260000000
+            log.debug("SET_CONT_STROBE_WIDTH_US max value exceeded, value set to 71 min")
+        
+        result = self._send_code(0xff, 0xad, us, label = "SET_CONT_STROBE_WIDTH_US")
+        
+        log.debug("SET_CONT_STROBE_PERIOD_US: now %d", us)
+        
+        return result
+        
+    def get_cont_strobe_width_us(self):
+        return(self._get_code(0xff, 0x95, label = "GET_CONT_STROBE_WIDTH_US"))
+        
+    def set_cont_strobe_delay_us(self, us: float):
+        us = int(round(us))
+        
+        if us > 4260000000: #the max is 71 minutes, this is 71 minutes in microseconds(us)
+            us = 4260000000
+            log.debug("SET_CONT_STROBE_DELAY_US max value exceeded, value set to 71 min")
+        
+        result = self._send_code(0xff, 0xae, us, label = "SET_CONT_STROBE_DELAY_UD")
+        
+        log.debug("SET_CONT_STROBE_DELAY_US: now %d", us)
+        
+        return result
+    
+    def get_cont_strobe_delay_us(self):
+        return(self._get_code(0xff, 0x96, label = "GET_CONT_STROBE_DELAY_US"))
+    
     # ##########################################################################
     # Analog output
     # ##########################################################################
@@ -3954,6 +4007,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 "get_trigger_source",
                 "get_vr_continuous_ccd",
                 "get_vr_num_frames",
+                "get_cont_strobe_period_us",
+                "get_cont_strobe_width_us",
+                "get_cont_strobe_delay_us",
+                "get_gpio_pin_state"
                 "is_laser_firing",
                 "queue_message",
                 "replace_session_eeprom",
@@ -4002,6 +4059,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 "set_trigger_delay",
                 "set_trigger_source",
                 "set_vertical_roi",
+                "set_cont_strobe_period_us",
+                "set_cont_strobe_width_us",
+                "set_cont_strobe_delay_us",
+                "set_gpio_pin_state",
                 "update_laser_watchdog",
                 "update_session_eeprom",
                 "write_eeprom",
