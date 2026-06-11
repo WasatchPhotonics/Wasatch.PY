@@ -3731,7 +3731,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
             us = 0xffff_ffff
             log.debug("SET_CONT_STROBE_DELAY_US max value exceeded, value set to 71 min")
         
-        result = self._send_code(0xff, 0xae, us, label = "SET_CONT_STROBE_DELAY_UD")
+        result = self._send_code(0xff, 0xae, us, label = "SET_CONT_STROBE_DELAY_US")
         
         self.settings.state.acc_strobe_delay = us     
         
@@ -3753,6 +3753,30 @@ class FeatureIdentificationDevice(InterfaceDevice):
         
     def get_cont_strobe_repeat_count(self):
         return(self._get_code(0xff, 0x97, lsb_len = 2, label = "GET_CONT_STROBE_REPEAT_COUNT"))
+        
+    def set_acc_state(self, value: str):  #I am not confident that acc_state and gpio_state will work properly as is.
+        result = self._send_code(0xff, 0xa8, value, label = "SET_ACC_STATE")
+        
+        log.debug("SET_ACC_STATE: now %d", value)
+        
+        self.settings.state.acc_state = value
+        
+        return result
+    
+    def get_acc_state(self):
+        return(self._get_code(0xff, 0xa9, lsb_len = 2, label = "GET_ACC_STATE"))
+        
+    def set_gpio_state(self, value:str):
+        result = self._send_code(0xff, 0xaa, value, label = "SET_GPIO_STATE")
+        
+        log.debug("SET_GPIO_STATE: now %d", value)
+        
+        self.settings.state.gpio_state = value
+        
+        return result
+        
+    def get_gpio_state(self):
+        return(self._get_code(0xff, 0xab, lsb_len = 1, label = "GET GPIO_STATE"))
     
     # ##########################################################################
     # Analog output

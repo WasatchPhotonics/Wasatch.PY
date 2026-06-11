@@ -116,6 +116,8 @@ class SpectrometerState:
         self.acc_strobe_width = 0
         self.acc_strobe_delay = 0
         self.acc_strobe_repeat = 0
+        self.acc_state = 0
+        self.gpio_state = 0
 
         # ######################################################################
         # What about "application state", which is never actually set in the
@@ -263,7 +265,9 @@ class SpectrometerState:
         log.debug("  Accessory Strobe Period:%d", self.acc_strobe_period)
         log.debug("  Accessory Strobe Width: %d", self.acc_strobe_width)
         log.debug("  Accessory Strobe Delay: %d", self.acc_strobe_delay)
-        log.debug("  Accessory Strobe Repeat: %d", self.acc_strobe_repeat)
+        log.debug("  Accessory Strobe Repeat:%d", self.acc_strobe_repeat)
+        log.debug("  Accessory State:        %d", self.acc_state)
+        log.debug("  GPIO State:             %d", self.gpio_state)
 
     def to_dict(self):
         d = self.__dict__
