@@ -68,9 +68,23 @@ class XSGPIOState:
         self.function = self.FUNC_DISABLED
 
     def serialize(self):
-        # TODO
-        return 0x00
+        mask = 0x00
+        
+        mask |= 0x01 if self.control == self.CONTROL_FUNCTION else 0
+        
+        mask |= 0x02 if self.direction == self.DIR_OUTPUT else 0
+        
+        if self.direction == self.DIR_OUTPUT:
+            mask |= 0x04 if self.value == self.VALUE_HIGH else 0
+        
+        mask |= (self.function << 4)        
 
     def deserialize(self, value):
-        # TODO
-        pass
+        self.control = mask & 0x01
+        
+        self.direction = mask & 0x02
+        
+        if self.dir == self.DIR_INPUT:
+            self.value = mask & 0x04
+        
+        self.function = (mask >> 4) & 0xf

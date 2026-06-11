@@ -3774,17 +3774,25 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         return acc_state
         
-    def set_gpio_state(self, value:str):
+    def set_gpio_state(self, gpio_state: XSGPIOState):
+        value = gpio_state.serialize()
         result = self._send_code(0xff, 0xaa, value, label = "SET_GPIO_STATE")
         
-        log.debug("SET_GPIO_STATE: now %d", value)
+        log.debug("SET_GPIO_STATE: now 0x{value:04x} ({gpio_state})")
         
-        self.settings.state.gpio_state = value
+        self.settings.state.gpio_state = gpio_state
         
-        return result
+        return result       
         
     def get_gpio_state(self):
-        return(self._get_code(0xff, 0xab, lsb_len = 1, label = "GET GPIO_STATE"))
+        value = self._get_code(0xff, 0xab, lsb_len = 1, label = "GET_GPIO_STATE")
+        gpio_state = XSGPIOState(value)
+        
+        log.debug("GET_GPIO_STATE: now 0x{value:04x} ({gpio_state})")
+        
+        self.settings.state.gpio_state = gpio_state
+        
+        return gpio_state
     
     # ##########################################################################
     # Analog output
@@ -4062,6 +4070,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 "get_cont_strobe_delay_us",
                 "get_gpio_pin_state",
                 "get_cont_strobe_repeat_count",
+                "get_acc_state",
                 "is_laser_firing",
                 "queue_message",
                 "replace_session_eeprom",
@@ -4115,6 +4124,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 "set_cont_strobe_delay_us",
                 "set_gpio_pin_state",
                 "set_cont_strobe_repeat_count",
+                "set_acc_state",
                 "update_laser_watchdog",
                 "update_session_eeprom",
                 "write_eeprom",
