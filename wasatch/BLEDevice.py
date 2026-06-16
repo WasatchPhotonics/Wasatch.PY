@@ -664,9 +664,14 @@ class BLEDevice(InterfaceDevice):
     async def set_stop_line_async(self, n):
         await self.write_generic_async("STOP_LINE", n)
 
-    def set_vertical_roi(self, pair):
-        start_line = pair[0]
-        stop_line = pair[1]
+    def set_vertical_roi(self, roi):
+        try:
+            start_line = roi.start
+            stop_line = roi.end
+        except:
+            start_line = roi[0]
+            stop_line = roi[1]
+        
         if stop_line <= start_line:
             log.debug("declining to set 1-line vertical ROI")
             return SpectrometerResponse(False)
@@ -788,7 +793,7 @@ class BLEDevice(InterfaceDevice):
         self.pages = []
 
         name = "EEPROM_DATA"
-        max_eeprom_pages = 9 if self.settings.supports("ble_read_9th_eeprom_page") else 8
+        max_eeprom_pages = 9 if self.settings.supports_feature("ble_read_9th_eeprom_page") else 8
         for page in range(max_eeprom_pages):
             buf = bytearray()
             while len(buf) < 64:
@@ -940,9 +945,11 @@ class BLEDevice(InterfaceDevice):
                  0xff,                    # 3: laser watchdog (NO CHANGE)
                  0xff,                    # 4: laser watchdog (NO CHANGE)
                  0x00,                    # 5: reserved (legacy laser_warning_delay_ms)
-                 0x00,                    # 6: reserved (legacy laser_warning_delay_ms)
+                 0x00 ]                   # 6: reserved (legacy laser_warning_delay_ms)
+        if self.settings.supports_feature("ble_laser_pwm"):
+             data.extend([
                  0xff,                    # 7: read-only status_mask (laser_can_fire, laser_is_firing etc)
-                 pwm_perc ]               # 8: laser PWM
+                 pwm_perc ])              # 8: laser PWM
 
         log.debug(f"sync_laser_state_to_device_async: calling write_char_async('LASER_STATE') with data {data}")
         await self.write_char_async("LASER_STATE", data)
