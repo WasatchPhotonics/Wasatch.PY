@@ -590,7 +590,7 @@ class AndorDevice(InterfaceDevice):
             self.set_tec_setpoint(self.settings.eeprom.startup_temp_degC)
 
         # pick up Pixel Corrections like EtalonCorrection, InGaAsCorrection etc
-        self.settings.augment_from_json_data(data)
+        self.settings.augment_from_json_data(self.config_values)
 
     def acquire_data(self):
         # handle TakeOneRequest.take_dark
