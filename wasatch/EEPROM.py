@@ -617,7 +617,7 @@ class EEPROM:
                     setattr(self, name, clamped)
 
             # parse FeatureMaskXS
-            if self.format >= 19:
+            if self.feature_mask_xs is not None:
                 self.ble_door_sensor            = 0 != self.feature_mask_xs & 0x0000_0001
                 self.ext_laser_control          = 0 != self.feature_mask_xs & 0x0000_0002
                 self.aux_button_laser_enable    = 0 != self.feature_mask_xs & 0x0000_0004
@@ -629,7 +629,6 @@ class EEPROM:
                 self.aux_button_laser_enable    = False
                 self.disable_laser_sub_sys      = False
                 self.leave_acc_5v_out_powered   = False
-
 
         self.dump_feature_masks()
 
