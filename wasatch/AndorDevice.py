@@ -780,6 +780,9 @@ class AndorDevice(InterfaceDevice):
         if self.settings.etalon_correction:
             self.settings.etalon_correction.enable = flag
 
+    def scans_to_average(self,value):
+        self.set_scans_to_average(value)
+    
     def set_scans_to_average(self, value):
         value = int(value)
 
