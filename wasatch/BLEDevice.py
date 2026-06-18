@@ -336,7 +336,7 @@ class BLEDevice(InterfaceDevice):
         self.last_status_update_time = None
         self.next_laser_enable = False
         self.next_laser_power_perc = 100
-        
+
         # ability to bridge sync-async
         self.run_loop = self.get_run_loop()
 
@@ -914,8 +914,8 @@ class BLEDevice(InterfaceDevice):
         # skip bytes 5 and 6 reserved (used to be laser_warning_delay_ms)
 
         if len(buf) >= 8: 
-            state.laser_can_fire  = buf[7] & 0x01
-            state.laser_is_firing = buf[7] & 0x02
+            state.laser_can_fire  = 0 != buf[7] & 0x01
+            state.laser_is_firing = 0 != buf[7] & 0x02
 
         if len(buf) >= 9: 
             state.laser_power_perc = buf[8]
@@ -970,14 +970,19 @@ class BLEDevice(InterfaceDevice):
     def acquire_data(self):
         """ Synchronous, because called by WrapperWorker """
 
+        state = self.settings.state
         auto_raman = self.take_one_request and self.take_one_request.auto_raman_request
+
+        if auto_raman:
+            last_integration_time_ms = state.integration_time_ms
+            last_gain_db = state.gain_db
+            last_scans_to_average = state.scans_to_average
 
         future = asyncio.run_coroutine_threadsafe(self.get_spectrum_async(), self.run_loop)
         spectrum = future.result()
 
         log.debug(f"acquire_data: received spectrum of length {len(spectrum)}: {spectrum[:10]}")
         reading = Reading(device_id=self.device_id)
-        state = self.settings.state
         now = datetime.now()
 
         if (self.last_status_update_time is None or (now - self.last_status_update_time).total_seconds() >= self.STATUS_UPDATE_PERIOD_SEC):
@@ -995,9 +1000,15 @@ class BLEDevice(InterfaceDevice):
         reading.timestamp_complete = datetime.now()
         reading.battery_percentage = state.battery_percentage
         reading.power_connection_state = state.power_connection_state
-        reading.ambient_temperature_degC = state.ambient_temperature_deg_c # deg_c -> degC :-(
+        reading.ambient_temperature_degC = state.ambient_temperature_deg_c
 
         self.take_one_request = None
+
+        if auto_raman:
+            # MZ: could we just use state.* versions here? have they been updated?
+            self.set_integration_time_ms(last_integration_time_ms)
+            self.set_gain_db(last_gain_db)
+            self.set_scans_to_average(last_scans_to_average)
 
         return SpectrometerResponse(data=reading)
 
@@ -1048,10 +1059,10 @@ class BLEDevice(InterfaceDevice):
                 self.queue_message("progress_bar", -1)
             elif short == "TAKING_RAMAN":
                 self.queue_message("marquee_info", "averaging Raman spectra")
-                self.queue_message("progress_bar", 100.0 * current_step / total_steps)
+                self.queue_message("progress_bar", round(100.0 * current_step / total_steps, 2))
             elif short == "TAKING_DARK":
                 self.queue_message("marquee_info", "averaging dark spectra")
-                self.queue_message("progress_bar", 100.0 * current_step / total_steps)
+                self.queue_message("progress_bar", round(100.0 * current_step / total_steps, 2))
 
         return msg
     

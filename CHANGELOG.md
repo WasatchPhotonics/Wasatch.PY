@@ -6,6 +6,7 @@ _Note: in the following, FID = wasatch.FeatureInterfaceDevice_
     - BLE
         - only end 7-byte LASER_STATE on old BLE FW
         - fix feature_mask_xs bug
+        - restore old acquisition params after Auto-Raman
     - XL
         - fix AndorDevice with iDus (PID 0x0001)
         - fix support for pixel corrections (etalon, InGaAs etc) in virtual EEPROM

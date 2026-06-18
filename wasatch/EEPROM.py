@@ -946,13 +946,13 @@ class EEPROM:
 
         if page + 1 > len(self.buffers):
             log.error("error unpacking EEPROM page %d, offset %d, len %d as %s: invalid page (label %s)", 
-                page, start_byte, length, data_type, label, exc_info=1)
+                page, start_byte, length, data_type, label)
             return
 
         buf = self.buffers[page]
         if buf is None or end_byte > len(buf):
             log.error("error unpacking EEPROM page %d, offset %d, len %d as %s: buf is %s (label %s)", 
-                page, start_byte, length, data_type, buf, label, exc_info=1)
+                page, start_byte, length, data_type, buf, label)
             return
 
         if data_type == "s":
@@ -1003,7 +1003,7 @@ class EEPROM:
 
         if page > len(self.write_buffers):
             log.error("error packing EEPROM page %d, offset %d, len %d as %s: invalid page (label %s)", 
-                page, start_byte, length, data_type, label, exc_info=1)
+                page, start_byte, length, data_type, label)
             return
 
         # don't try to write negatives to unsigned types
