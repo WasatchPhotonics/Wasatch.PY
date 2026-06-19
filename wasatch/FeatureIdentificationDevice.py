@@ -275,7 +275,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                         setpoint = self.settings.eeprom.startup_temp_degC # default to old
 
                     # sanity-check for reasonable setpoint range (raw 12-bit)
-                    if 700 <= setpoint <= 900:
+                    if 700 <= setpoint <= 1000:
                         log.debug("initializing XS laser TEC setpoint")
 
                         # kludge: for now, use the detector TEC startup setpoint for laser
