@@ -22,6 +22,7 @@ class FirmwareRequirements:
             "get_laser_warning_delay_sec":      { "microcontroller": { "min": "1.0.27.1", "unsupported": [ "11.3.0.37" ] } },
             "get_power_connection_state":       { "microcontroller": { "min": "1.0.63.5", "unsupported": [ "11.3.0.37" ] } },
             "hamamatsu_vertical_roi":           { "microcontroller": { "min": "10.0.0.47" } }, 
+            "xs_accessory_connector":           { "microcontroller": { "min": "1.0.67.3" } },
             "xs_area_scan_offset_kludge":       { "fpga": { "min": "01_04_01", "max": "01_04_30", "includes": "_" } },
             "battery_state_length_5":           { "ble": { "min": "4.12.5" } }, # SiGFW-243
             "ble_read_9th_eeprom_page":         { "ble": { "min": "4.12.9" } }, # SiGFW-250

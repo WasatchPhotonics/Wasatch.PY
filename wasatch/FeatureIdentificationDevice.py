@@ -14,7 +14,7 @@ from time   import sleep
 from . import utils
 
 from .USBCPowerConnectionState import USBCPowerConnectionState
-from .XSAccessoryConnector     import XSAccState, XSGPIOState
+from .XSAccessoryConnector     import XSAccessoryConnector, XSAccState, XSGPIOState
 from .SpectrometerSettings     import SpectrometerSettings
 from .SpectrometerResponse     import SpectrometerResponse, ErrorLevel
 from .SpectrometerRequest      import SpectrometerRequest
@@ -421,6 +421,13 @@ class FeatureIdentificationDevice(InterfaceDevice):
             self.settings.eeprom.actual_pixels_vertical = 70
 
         self.reset_area_scan_frame()
+
+        # ######################################################################
+        # Accessory Connector
+        # ######################################################################
+
+        if self.settings.supports_feature("xs_accessory_connector"):
+            self.settings.state.acc_connector = XSAccessoryConnector()
 
         # ######################################################################
         # Done

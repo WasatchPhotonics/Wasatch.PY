@@ -88,3 +88,10 @@ class XSGPIOState:
             self.value = mask & 0x04
         
         self.function = (mask >> 4) & 0xf
+
+class XSAccessoryConnector:
+
+    def __init__(self):
+        self.acc_state = XSAccState()
+        self.gpio1 = XSGPIOState(1)
+        self.gpio2 = XSGPIOState(2)
