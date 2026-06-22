@@ -3696,6 +3696,12 @@ class FeatureIdentificationDevice(InterfaceDevice):
     #XS Accessory
     ##########################################################################
         
+    def sync_acc(self, arg):
+        log.debug("sync_acc function")
+        self.set_acc_state(self.settings.state.acc_connector.acc_state)
+        self.set_gpio_state(self.settings.state.gpio_state)
+        
+        
     def set_cont_strobe_period_us(self, us: float):
         us = int(round(us))
         
@@ -3782,7 +3788,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return acc_state
         
     def set_gpio_state(self, gpio_state: XSGPIOState):
-        value = gpio_state.serialize()
+        #value = gpio_state.serialize()
+        value = gpio_state
         result = self._send_code(0xff, 0xaa, value, label = "SET_GPIO_STATE")
         
         log.debug("SET_GPIO_STATE: now 0x{value:04x} ({gpio_state})")
@@ -4135,6 +4142,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 "update_laser_watchdog",
                 "update_session_eeprom",
                 "write_eeprom",
+                "sync_acc",
             ]:
             process_f[fn_name] = getattr(self, fn_name)
     

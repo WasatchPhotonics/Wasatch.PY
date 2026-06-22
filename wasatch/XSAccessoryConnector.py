@@ -77,7 +77,7 @@ class XSGPIOState:
         if self.direction == self.DIR_OUTPUT:
             mask |= 0x04 if self.value == self.VALUE_HIGH else 0
         
-        mask |= (self.function << 4)        
+        mask |= (self.function << 4)    
 
     def deserialize(self, value):
         self.control = mask & 0x01
@@ -93,5 +93,6 @@ class XSAccessoryConnector:
 
     def __init__(self):
         self.acc_state = XSAccState()
-        self.gpio1 = XSGPIOState(1)
-        self.gpio2 = XSGPIOState(2)
+        # state_gpio1 and state_gpio2 added to fix calls from AccessoryControlXSFeature
+        self.state_gpio1 = XSGPIOState(1)
+        self.state_gpio2 = XSGPIOState(2)
