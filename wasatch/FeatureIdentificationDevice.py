@@ -3805,7 +3805,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         # MZ: these may be backwards, not sure
         lsb = gpio_state.num
+        log.debug(f"gpio_state.num: {lsb}")
         msb = gpio_state.serialize()
+        log.debug(f"gpio_state.serialize: {msb}")
 
         data = (msb << 8) | lsb
         result = self._send_code(0xff, 0xaa, data, label = "SET_GPIO_STATE")

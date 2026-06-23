@@ -78,6 +78,8 @@ class XSGPIOState:
             mask |= 0x04 if self.value == self.VALUE_HIGH else 0
         
         mask |= (self.function << 4)    
+        
+        return mask
 
     def deserialize(self, value):
         self.control = mask & 0x01

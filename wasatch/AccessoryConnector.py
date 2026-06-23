@@ -32,6 +32,9 @@ class GPIOState:
             mask |= 0x04 if self.value else 0
         # bit 3 reserved
         mask |= (self.function << 4)
+        log.debug(f"mask: {mask}")
+        
+        return mask
 
     def deserialize(self, mask):
         self.mode = mask & 0x01
