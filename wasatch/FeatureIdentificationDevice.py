@@ -3772,7 +3772,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         value = acc_state.serialize()
         result = self._send_code(0xff, 0xa8, value, label = "SET_ACC_STATE")
         
-        log.debug("SET_ACC_STATE: now 0x{value:04x} ({acc_state})")
+        log.debug(f"SET_ACC_STATE: now 0x{value:04x} ({acc_state})")
         
         self.settings.state.acc_state = acc_state
         
@@ -3782,7 +3782,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         value = self._get_code(0xff, 0xa9, lsb_len = 2, label = "GET_ACC_STATE")
         acc_state = XSAccState(value)
 
-        log.debug("GET_ACC_STATE: now 0x{value:04x} ({acc_state})")
+        log.debug(f"GET_ACC_STATE: now 0x{value:04x} ({acc_state})")
         self.settings.state.acc_state = acc_state
 
         return acc_state
@@ -3792,7 +3792,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         value = gpio_state
         result = self._send_code(0xff, 0xaa, value, label = "SET_GPIO_STATE")
         
-        log.debug("SET_GPIO_STATE: now 0x{value:04x} ({gpio_state})")
+        log.debug(f"SET_GPIO_STATE: now 0x{value:04x} ({gpio_state})")
         
         self.settings.state.gpio_state = gpio_state
         
@@ -3802,7 +3802,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         value = self._get_code(0xff, 0xab, lsb_len = 1, label = "GET_GPIO_STATE")
         gpio_state = XSGPIOState(value)
         
-        log.debug("GET_GPIO_STATE: now 0x{value:04x} ({gpio_state})")
+        log.debug(f"GET_GPIO_STATE: now 0x{value:04x} ({gpio_state})")
         
         self.settings.state.gpio_state = gpio_state
         
