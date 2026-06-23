@@ -14,7 +14,7 @@ from time   import sleep
 from . import utils
 
 from .USBCPowerConnectionState import USBCPowerConnectionState
-from .XSAccessoryConnector     import XSAccessoryConnector, XSAccState, XSGPIOState
+from .XSAccessoryConnector     import XSAccessoryConnector, XSAccState, XSGPIOState, XSContinuousStrobe
 from .SpectrometerSettings     import SpectrometerSettings
 from .SpectrometerResponse     import SpectrometerResponse, ErrorLevel
 from .SpectrometerRequest      import SpectrometerRequest
@@ -3693,14 +3693,24 @@ class FeatureIdentificationDevice(InterfaceDevice):
             
             
     ##########################################################################
-    #XS Accessory
+    # XS Accessory
     ##########################################################################
         
-    def sync_acc(self, arg):
-        log.debug("sync_acc function")
+    def sync_acc_to_device(self, arg):
+        log.debug("sync_acc_to_device function")
         self.set_acc_state(self.settings.state.acc_connector.acc_state)
-        self.set_gpio_state(self.settings.state.gpio_state)
-        
+        self.set_gpio_state(self.settings.state.acc_connector.state_gpio1)
+        self.set_gpio_state(self.settings.state.acc_connector.state_gpio2)
+
+        if self.settings.state.acc_connector.doing_continuous_strobe():
+            self.set_cont_strobe_settings(self.settings.state.acc_connector.cont_strobe)
+
+    def set_cont_strobe_settings(self, cont_strobe: XSContinuousStrobe):
+        log.debug(f"setting continuous strobe settings {cont_strobe}")
+        self.set_cont_strobe_period_us(cont_strobe.period_us)
+        self.set_cont_strobe_width_us(cont_strobe.width_us)
+        self.set_cont_strobe_delay_us(cont_strobe.delay_us)
+        self.set_cont_strobe_repeat_count(cont_strobe.repeat_count)
         
     def set_cont_strobe_period_us(self, us: float):
         us = int(round(us))
@@ -3711,14 +3721,16 @@ class FeatureIdentificationDevice(InterfaceDevice):
         
         result = self._send_code(0xff, 0xac, us, label = "SET_CONT_STROBE_PERIOD_US")
         
-        self.settings.state.acc_strobe_period = us        
+        self.settings.state.acc_state.cont_strobe.period_us = us        
         
         log.debug("SET_CONT_STROBE_PERIOD_US: now %d", us)
         
         return result        
         
     def get_cont_strobe_period_us(self):
-        return(self._get_code(0xff, 0x94, lsb_len = 4, label = "GET_CONT_STROBE_PERIOD_US"))
+        us = self._get_code(0xff, 0x94, lsb_len = 4, label = "GET_CONT_STROBE_PERIOD_US")
+        self.settings.state.acc_state.cont_strobe.period_us = us
+        return us
         
     def set_cont_strobe_width_us(self, us: float):
         us = int(round(us))
@@ -3729,14 +3741,15 @@ class FeatureIdentificationDevice(InterfaceDevice):
         
         result = self._send_code(0xff, 0xad, us, label = "SET_CONT_STROBE_WIDTH_US")
         
-        self.settings.state.acc_strobe_width = us     
-        
+        self.settings.state.acc_state.cont_strobe.width_us = us        
         log.debug("SET_CONT_STROBE_PERIOD_US: now %d", us)
         
         return result
         
     def get_cont_strobe_width_us(self):
-        return(self._get_code(0xff, 0x95, lsb_len = 4, label = "GET_CONT_STROBE_WIDTH_US"))
+        us = self._get_code(0xff, 0x95, lsb_len = 4, label = "GET_CONT_STROBE_WIDTH_US")
+        self.settings.state.acc_state.cont_strobe.width_us = us
+        return us
         
     def set_cont_strobe_delay_us(self, us: float):
         us = int(round(us))
@@ -3747,53 +3760,57 @@ class FeatureIdentificationDevice(InterfaceDevice):
         
         result = self._send_code(0xff, 0xae, us, label = "SET_CONT_STROBE_DELAY_US")
         
-        self.settings.state.acc_strobe_delay = us     
-        
+        self.settings.state.acc_state.cont_strobe.delay_us = us
         log.debug("SET_CONT_STROBE_DELAY_US: now %d", us)
         
         return result
     
     def get_cont_strobe_delay_us(self):
-        return(self._get_code(0xff, 0x96, lsb_len = 4, label = "GET_CONT_STROBE_DELAY_US"))
+        us = self._get_code(0xff, 0x96, lsb_len = 4, label = "GET_CONT_STROBE_DELAY_US")
+        self.settings.state.acc_state.cont_strobe.delay_us = us
+        return us
         
     def set_cont_strobe_repeat_count(self, value: int):
         result = self._send_code(0xff, 0xaf, value, label = "SET_CONT_STROBE_REPEAT_COUNT")
         
         log.debug("SET_CONT_STROBE_REPEAT_COUNT: now %d", value)
-        
-        self.settings.state.acc_strobe_repeat = us     
-        
+        self.settings.state.acc_state.cont_strobe.repeat_count = value
+
         return result
         
     def get_cont_strobe_repeat_count(self):
-        return(self._get_code(0xff, 0x97, lsb_len = 2, label = "GET_CONT_STROBE_REPEAT_COUNT"))
+        count = self._get_code(0xff, 0x97, lsb_len = 2, label = "GET_CONT_STROBE_REPEAT_COUNT")
+        self.settings.state.acc_connector.cont_strobe.repeat_count = count
+        return count
         
     def set_acc_state(self, acc_state: XSAccState):  
-        value = acc_state.serialize()
-        result = self._send_code(0xff, 0xa8, value, label = "SET_ACC_STATE")
+        serialized = acc_state.serialize()
+        result = self._send_code(0xff, 0xa8, serialized, label = "SET_ACC_STATE")
         
-        log.debug(f"SET_ACC_STATE: now 0x{value:04x} ({acc_state})")
-        
-        self.settings.state.acc_state = acc_state
+        log.debug(f"SET_ACC_STATE: now 0x{serialized:04x} ({acc_state})")
+        self.settings.state.acc_connector.acc_state = acc_state
         
         return result
     
     def get_acc_state(self):
-        value = self._get_code(0xff, 0xa9, lsb_len = 2, label = "GET_ACC_STATE")
-        acc_state = XSAccState(value)
+        serialized = self._get_code(0xff, 0xa9, lsb_len = 2, label = "GET_ACC_STATE")
+        acc_state = XSAccState(serialized)
 
-        log.debug(f"GET_ACC_STATE: now 0x{value:04x} ({acc_state})")
-        self.settings.state.acc_state = acc_state
+        log.debug(f"GET_ACC_STATE: now 0x{serialized:04x} ({acc_state})")
+        self.settings.state.acc_connector.acc_state = acc_state
 
         return acc_state
         
     def set_gpio_state(self, gpio_state: XSGPIOState):
-        #value = gpio_state.serialize()
-        value = gpio_state
-        result = self._send_code(0xff, 0xaa, value, label = "SET_GPIO_STATE")
-        
-        log.debug(f"SET_GPIO_STATE: now 0x{value:04x} ({gpio_state})")
-        
+
+        # MZ: these may be backwards, not sure
+        lsb = gpio_state.num
+        msb = gpio_state.serialize()
+
+        data = (msb << 8) | lsb
+        result = self._send_code(0xff, 0xaa, data, label = "SET_GPIO_STATE")
+
+        log.debug(f"SET_GPIO_STATE: now 0x{data:04x} ({gpio_state})")
         self.settings.state.gpio_state = gpio_state
         
         return result       
@@ -3803,7 +3820,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
         gpio_state = XSGPIOState(value)
         
         log.debug(f"GET_GPIO_STATE: now 0x{value:04x} ({gpio_state})")
-        
         self.settings.state.gpio_state = gpio_state
         
         return gpio_state
@@ -4142,7 +4158,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 "update_laser_watchdog",
                 "update_session_eeprom",
                 "write_eeprom",
-                "sync_acc",
+                "sync_acc_to_device",
             ]:
             process_f[fn_name] = getattr(self, fn_name)
     

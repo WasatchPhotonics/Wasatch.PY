@@ -89,10 +89,36 @@ class XSGPIOState:
         
         self.function = (mask >> 4) & 0xf
 
+    def doing_continuous_strobe(self):
+        return self.num == 2 and \
+               self.control == self.CONTROL_FUNCTION and \
+               self.function == self.GPIO2_FUNC_CONT_STROBE
+
+class XSContinuousStrobe:
+
+    def __init__(self):
+        self.period_us = 2
+        self.width_us = 1
+        self.delay_us = 0
+        self.repeat_count = 0
+
+    def __repr__(self):
+        return f"XSContinuousStrobe < period {self.period_us}us, width {self.width_us}us, delay {self.delay_us}us, repeat {self.repeat_count} >"
+
 class XSAccessoryConnector:
 
     def __init__(self):
         self.acc_state = XSAccState()
-        # state_gpio1 and state_gpio2 added to fix calls from AccessoryControlXSFeature
         self.state_gpio1 = XSGPIOState(1)
         self.state_gpio2 = XSGPIOState(2)
+        self.cont_strobe = XSContinuousStrobe()
+
+    def doing_continuous_strobe(self):
+        if self.acc_state is None or self.state_gpio2 is None:
+            return False
+        if not self.acc_state.gpio_enabled:
+            return False
+        return self.state_gpio2.doing_continuous_strobe()
+
+    def __repr__(self):
+        return f"XSAccessoryConnector < acc_state {self.acc_state}, GPIO1 {self.state_gpio1}, GPIO2 {self.state_gpio2}, strobe {self.cont_strobe} >"

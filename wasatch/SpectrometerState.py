@@ -109,17 +109,6 @@ class SpectrometerState:
         self.analog_out_value = 0 # decivolts or deci-mA
         
         # ######################################################################
-        # xs accessory
-        ########################################################################
-        
-        self.acc_strobe_period = 0
-        self.acc_strobe_width = 0
-        self.acc_strobe_delay = 0
-        self.acc_strobe_repeat = 0
-        self.acc_state = 0
-        self.gpio_state = 0
-
-        # ######################################################################
         # What about "application state", which is never actually set in the
         # hardware?  Move these later to ".software" or ".processing" or whatever?
         #
@@ -262,12 +251,7 @@ class SpectrometerState:
         log.debug("  Laser Watchdog Sec:     %d", self.laser_watchdog_sec)
         log.debug("  Laser TEC Mode:         %d", self.laser_tec_mode)
         log.debug("  Laser TEC Setpoint:     %d", self.laser_tec_setpoint)
-        log.debug("  Accessory Strobe Period:%d", self.acc_strobe_period)
-        log.debug("  Accessory Strobe Width: %d", self.acc_strobe_width)
-        log.debug("  Accessory Strobe Delay: %d", self.acc_strobe_delay)
-        log.debug("  Accessory Strobe Repeat:%d", self.acc_strobe_repeat)
-        log.debug("  Accessory State:        %d", self.acc_state)
-        log.debug("  GPIO State:             %d", self.gpio_state)
+        log.debug("  Accessory Connector:    %s", self.acc_connector)
 
     def to_dict(self):
         d = self.__dict__
