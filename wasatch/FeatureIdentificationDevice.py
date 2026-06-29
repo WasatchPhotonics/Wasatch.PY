@@ -3697,7 +3697,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
     ##########################################################################
         
     def sync_acc_to_device(self, arg):
-        log.debug("sync_acc_to_device function")
+        log.debug("sync_acc_to_device: start")
+        self.settings.state.acc_connector.dump()
+
         self.set_acc_state(self.settings.state.acc_connector.acc_state)
         self.set_gpio_state(self.settings.state.acc_connector.state_gpio1)
         self.set_gpio_state(self.settings.state.acc_connector.state_gpio2)
@@ -3803,10 +3805,9 @@ class FeatureIdentificationDevice(InterfaceDevice):
         
     def set_gpio_state(self, gpio_state: XSGPIOState):
 
-        # MZ: these may be backwards, not sure
         lsb = gpio_state.num
-        log.debug(f"gpio_state.num: {lsb}")
         msb = gpio_state.serialize()
+        log.debug(f"gpio_state.num: {lsb}")
         log.debug(f"gpio_state.serialize: {msb}")
 
         data = (msb << 8) | lsb

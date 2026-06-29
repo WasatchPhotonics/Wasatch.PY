@@ -1,3 +1,7 @@
+import logging
+
+log = logging.getLogger(__name__)
+
 """
 For additional information on these classes, see:
 
@@ -10,6 +14,8 @@ class XSAccState:
 
     def __init__(self):
         self.gpio_enabled = False
+
+        # these are only for ACC_5V_OUT...ACC_5V_IN is configured via HW
         self.acc_5V_enabled = False
         self.acc_5V_good = False
 
@@ -38,14 +44,17 @@ class XSAccState:
 
 class XSGPIOState:
 
+    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    # Note these are the OPPOSITE of FpgaRegisterMap.xml, but match ENG-0218
+    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     CONTROL_MANUAL = 0      # user can set GPIO direction (in, out) and value (hi, lo) manually
     CONTROL_FUNCTION = 1    # GPIO is configured to automatically execute a pre-program function implemented in the FPGA (supported values listed below)
 
     DIR_INPUT = 0
     DIR_OUTPUT = 1
 
-    VALUE_LO = 0
-    VALUE_HI = 1
+    VALUE_LOW = 0
+    VALUE_HIGH = 1
 
     FUNC_DISABLED = 0
 
@@ -64,20 +73,19 @@ class XSGPIOState:
 
         self.control = self.CONTROL_MANUAL
         self.direction = self.DIR_INPUT
-        self.value = self.VALUE_LO
+        self.value = self.VALUE_LOW
         self.function = self.FUNC_DISABLED
 
     def serialize(self):
         mask = 0x00
-        
+
         mask |= 0x01 if self.control == self.CONTROL_FUNCTION else 0
-        
         mask |= 0x02 if self.direction == self.DIR_OUTPUT else 0
-        
         if self.direction == self.DIR_OUTPUT:
             mask |= 0x04 if self.value == self.VALUE_HIGH else 0
-        
         mask |= (self.function << 4)    
+
+        log.debug(f"XSGPIOState.serialize: 0x{mask:02x} from {self}")
         
         return mask
 
@@ -95,6 +103,32 @@ class XSGPIOState:
         return self.num == 2 and \
                self.control == self.CONTROL_FUNCTION and \
                self.function == self.GPIO2_FUNC_CONT_STROBE
+
+    def get_control_str(self):
+        return "MANUAL" if self.control == self.CONTROL_MANUAL else "FUNCTION"
+
+    def get_value_str(self):
+        return "HIGH" if self.value == self.VALUE_HIGH else "LOW"
+
+    def get_direction_str(self):
+        return "OUTPUT" if self.direction == self.DIR_OUTPUT else "INPUT"
+
+    def get_function_str(self):
+        if self.num == 1:
+            if self.function == self.FUNC_DISABLED: return "DISABLED"
+            if self.function == self.GPIO1_FUNC_EXT_TRIGGER_RISING_EDGE: return "EXT_TRIGGER_RISING_EDGE"
+            if self.function == self.GPIO1_FUNC_LASER_OVERRIDE: return "LASER_OVERRIDE"
+        elif self.num == 2:
+            if self.function == self.FUNC_DISABLED: return "DISABLED"
+            if self.function == self.GPIO2_FUNC_CONT_STROBE: return "CONT_STROBE"
+            if self.function == self.GPIO2_FUNC_DATA_READY: return "DATA_READY"
+            if self.function == self.GPIO2_FUNC_LASER_MIRROR: return "LASER_MIRROR"
+
+        return f"INVALID (num {self.num}, func {self.function})"
+
+    def __repr__(self):
+        return f"XSGPIOState < num {self.num}, control {self.get_control_str()}, direction {self.get_direction_str()}, value {self.get_value_str()}, func {self.get_function_str()} >"
+
 
 class XSContinuousStrobe:
 
@@ -124,3 +158,10 @@ class XSAccessoryConnector:
 
     def __repr__(self):
         return f"XSAccessoryConnector < acc_state {self.acc_state}, GPIO1 {self.state_gpio1}, GPIO2 {self.state_gpio2}, strobe {self.cont_strobe} >"
+
+    def dump(self):
+        log.debug(f"XSAccessoryConnector:")
+        log.debug(f"  acc_state {self.acc_state}")
+        log.debug(f"  gpio1 {self.state_gpio1}")
+        log.debug(f"  gpio2 {self.state_gpio2}")
+        log.debug(f"  cont_strobe {self.cont_strobe}")
