@@ -3715,15 +3715,22 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.set_cont_strobe_repeat_count(cont_strobe.repeat_count)
         
     def set_cont_strobe_period_us(self, us: float):
+        """ MZ: untested """
         us = int(round(us))
         
         if us > 0xffff_ffff: #the max is 71 minutes, this is 71 minutes in microseconds(us)
             us = 0xffff_ffff
             log.debug("SET_CONT_STROBE_PERIOD_US max value exceeded, value set to 71 min")
         
-        result = self._send_code(0xff, 0xac, us, label = "SET_CONT_STROBE_PERIOD_US")
+        # marshall microseconds in little-endian order (FW will invert this back to MSB on receipt)
+        buf = [ 0, 0, 0, 0 ]
+        buf[3] = (us >> 24) & 0xff
+        buf[2] = (us >> 16) & 0xff
+        buf[1] = (us >>  8) & 0xff
+        buf[0] = (us >>  0) & 0xff
+
+        result = self._send_code(bRequest=0xff, wValue=0xac,  wIndex=0, data_or_wLength=buf, label="SET_CONT_STROBE_PERIOD_US")
         
-        #self.settings.state.acc_state.cont_strobe.period_us = us        
         self.settings.state.acc_connector.cont_strobe.period_us = us
         
         log.debug("SET_CONT_STROBE_PERIOD_US: now %d", us)
