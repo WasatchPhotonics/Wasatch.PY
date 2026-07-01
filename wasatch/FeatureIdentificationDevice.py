@@ -3739,7 +3739,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         
     def get_cont_strobe_period_us(self):
         us = self._get_code(0xff, 0x94, lsb_len = 4, label = "GET_CONT_STROBE_PERIOD_US")
-        self.settings.state.acc_state.cont_strobe.period_us = us
+        self.settings.state.acc_connector.cont_strobe.period_us = us
         return us
         
     def set_cont_strobe_width_us(self, us: float):
@@ -3749,17 +3749,26 @@ class FeatureIdentificationDevice(InterfaceDevice):
             us = 0xffff_ffff
             log.debug("SET_CONT_STROBE_WIDTH_US max value exceeded, value set to 71 min")
         
-        result = self._send_code(0xff, 0xad, us, label = "SET_CONT_STROBE_WIDTH_US")
-        
-        #self.settings.state.acc_state.cont_strobe.width_us = us        
+        buf = [ 0, 0, 0, 0 ]
+        buf[3] = (us >> 24) & 0xff
+        buf[2] = (us >> 16) & 0xff
+        buf[1] = (us >>  8) & 0xff
+        buf[0] = (us >>  0) & 0xff
+
+        result = self._send_code(bRequest=0xff, 
+                                    wValue=0xad,  
+                                    wIndex=0, 
+                                    data_or_wLength=buf, 
+                                    label="SET_CONT_STROBE_WIDTH_US")
+                       
         self.settings.state.acc_connector.cont_strobe.width_us = us
-        log.debug("SET_CONT_STROBE_PERIOD_US: now %d", us)
+        log.debug("SET_CONT_STROBE_WIDTH_US: now %d", us)
         
         return result
         
     def get_cont_strobe_width_us(self):
         us = self._get_code(0xff, 0x95, lsb_len = 4, label = "GET_CONT_STROBE_WIDTH_US")
-        self.settings.state.acc_state.cont_strobe.width_us = us
+        self.settings.state.acc_connector.cont_strobe.width_us = us
         return us
         
     def set_cont_strobe_delay_us(self, us: float):
@@ -3769,9 +3778,19 @@ class FeatureIdentificationDevice(InterfaceDevice):
             us = 0xffff_ffff
             log.debug("SET_CONT_STROBE_DELAY_US max value exceeded, value set to 71 min")
         
-        result = self._send_code(0xff, 0xae, us, label = "SET_CONT_STROBE_DELAY_US")
+        # CG: Needs more testing, no errors but I am unsure of what it should be doing
+        buf = [ 0, 0, 0, 0 ]
+        buf[3] = (us >> 24) & 0xff
+        buf[2] = (us >> 16) & 0xff
+        buf[1] = (us >>  8) & 0xff
+        buf[0] = (us >>  0) & 0xff
+
+        result = self._send_code(bRequest=0xff, 
+                                    wValue=0xae,  
+                                    wIndex=0, 
+                                    data_or_wLength=buf, 
+                                    label="SET_CONT_STROBE_DELAY_US")
         
-        #self.settings.state.acc_state.cont_strobe.delay_us = us
         self.settings.state.acc_connector.cont_strobe.delay_us = us
         log.debug("SET_CONT_STROBE_DELAY_US: now %d", us)
         
@@ -3779,14 +3798,25 @@ class FeatureIdentificationDevice(InterfaceDevice):
     
     def get_cont_strobe_delay_us(self):
         us = self._get_code(0xff, 0x96, lsb_len = 4, label = "GET_CONT_STROBE_DELAY_US")
-        self.settings.state.acc_state.cont_strobe.delay_us = us
+        self.settings.state.acc_connector.cont_strobe.delay_us = us
         return us
         
     def set_cont_strobe_repeat_count(self, value: int):
-        result = self._send_code(0xff, 0xaf, value, label = "SET_CONT_STROBE_REPEAT_COUNT")
+        
+        # CG: Needs more testing, no errors but I am unsure of what it should be doing
+        buf = [ 0, 0, 0, 0 ]
+        buf[3] = (value >> 24) & 0xff
+        buf[2] = (value >> 16) & 0xff
+        buf[1] = (value >>  8) & 0xff
+        buf[0] = (value >>  0) & 0xff
+
+        result = self._send_code(bRequest=0xff, 
+                                    wValue=0xaf,  
+                                    wIndex=0, 
+                                    data_or_wLength=buf, 
+                                    label="SET_CONT_STROBE_REPEAT_COUNT")
         
         log.debug("SET_CONT_STROBE_REPEAT_COUNT: now %d", value)
-        #self.settings.state.acc_state.cont_strobe.repeat_count = value
         self.settings.state.acc_connector.cont_strobe.repeat_count = value
 
         return result
