@@ -3723,7 +3723,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         
         result = self._send_code(0xff, 0xac, us, label = "SET_CONT_STROBE_PERIOD_US")
         
-        self.settings.state.acc_state.cont_strobe.period_us = us        
+        #self.settings.state.acc_state.cont_strobe.period_us = us        
+        self.settings.state.acc_connector.cont_strobe.period_us = us
         
         log.debug("SET_CONT_STROBE_PERIOD_US: now %d", us)
         
@@ -3743,7 +3744,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         
         result = self._send_code(0xff, 0xad, us, label = "SET_CONT_STROBE_WIDTH_US")
         
-        self.settings.state.acc_state.cont_strobe.width_us = us        
+        #self.settings.state.acc_state.cont_strobe.width_us = us        
+        self.settings.state.acc_connector.cont_strobe.width_us = us
         log.debug("SET_CONT_STROBE_PERIOD_US: now %d", us)
         
         return result
@@ -3762,7 +3764,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         
         result = self._send_code(0xff, 0xae, us, label = "SET_CONT_STROBE_DELAY_US")
         
-        self.settings.state.acc_state.cont_strobe.delay_us = us
+        #self.settings.state.acc_state.cont_strobe.delay_us = us
+        self.settings.state.acc_connector.cont_strobe.delay_us = us
         log.debug("SET_CONT_STROBE_DELAY_US: now %d", us)
         
         return result
@@ -3776,7 +3779,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
         result = self._send_code(0xff, 0xaf, value, label = "SET_CONT_STROBE_REPEAT_COUNT")
         
         log.debug("SET_CONT_STROBE_REPEAT_COUNT: now %d", value)
-        self.settings.state.acc_state.cont_strobe.repeat_count = value
+        #self.settings.state.acc_state.cont_strobe.repeat_count = value
+        self.settings.state.acc_connector.cont_strobe.repeat_count = value
 
         return result
         
