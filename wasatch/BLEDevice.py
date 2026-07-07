@@ -1010,15 +1010,20 @@ class BLEDevice(InterfaceDevice):
 
         if auto_raman:
             # MZ: could we just use state.* versions here? have they been updated?
+            log.debug(f"resetting integration_time_ms -> {last_integration_time_ms}")
             self.set_integration_time_ms(last_integration_time_ms)
+
+            log.debug(f"resetting gain_db -> {last_gain_db}")
             self.set_gain_db(last_gain_db)
+
+            log.debug(f"resetting scans_to_average -> {last_scans_to_average}")
             self.set_scans_to_average(last_scans_to_average)
 
         reading.timestamp_complete = datetime.now()
 
         elapsed_acquire_sec = (time_received - time_start).total_seconds()
         elapsed_total_sec = (reading.timestamp_complete - time_start).total_seconds()
-        log.debug(f"acquire_data: done (acquire {elapsed_acquire_sec:.2f}sec, total {elapsed_total_sec:.2f}sec")
+        log.debug(f"acquire_data: done (acquire {elapsed_acquire_sec:.2f}sec, total {elapsed_total_sec:.2f}sec)")
 
         return SpectrometerResponse(data=reading) # keep_alive=(spectrum is None)
 
@@ -1126,16 +1131,31 @@ class BLEDevice(InterfaceDevice):
         log.debug(f"get_spectrum_async: sending ACQUIRE with type {spectrum_type}")
         await self.write_char_async("ACQUIRE", [spectrum_type])
 
+        ########################################################################
         # compute timeout
+        ########################################################################
+
         if auto_raman_request:
-            timeout_ms = auto_raman_request.max_ms + 6000
+            # This is a little tricky, because max_ms defines the maximum 
+            # averaged(Raman + dark) measurement time, and was not intended to
+            # include optimization time. Optimization time can vary for 
+            # different sampling environments and compounds, so it's difficult
+            # to predict how long it might be allowed to take (especially within
+            # firmware). For now, allow a full 30sec of potential optimization.
+            # Other options would be to adjust the 'wait' loop below to internally
+            # check on auto-raman progress (optimization, collection etc) and
+            # apply different timeouts to different stages of the procedure.
+            timeout_ms = auto_raman_request.max_ms + 30_000
         else:
             timeout_ms = ( 4 
                          * max(self.settings.state.prev_integration_time_ms, self.settings.state.integration_time_ms) 
                          * self.settings.state.scans_to_average 
                          + 6000) # 4sec latency + 2sec buffer
 
+        ########################################################################
         # wait for spectral data to arrive
+        ########################################################################
+
         start_time = datetime.now()
         while self.pixels_read < self.settings.pixels():
             if (datetime.now() - start_time).total_seconds() * 1000 > timeout_ms:
