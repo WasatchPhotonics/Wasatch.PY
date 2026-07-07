@@ -3,11 +3,27 @@ import logging
 log = logging.getLogger(__name__)
 
 """
+An XSAccessoryConnector encapsulates the 10-pin OEM Accessory Connector on a 
+220250 Rev5 XS V2 Main Board.
+
+This object is normally accessed via SpectrometerState.acc_connector.
+
+An XSAccessoryConnector itself is made of four sub-objects formed from three
+classes:
+
+- self.acc_state is an XSAccState, encapsulating gpio_enable and acc_5V_enable 
+- self.state_gpio1 and state_gpio2 are both instances of XSGPIOState, 
+  encapsulating the state of the two GPIO pins (note there is no GPIO 0)
+- self.cont_strobe encapsulates the four parameters used by GPIO2's Continuous 
+  Strobe function. This object is only relevant if the Continuous Strobe
+  function is configured on GPIO2.
+
 For additional information on these classes, see:
 
 - ENG-0034 EEPROM Format (see ACC_STATE, ACC_GPIO1_STATE and ACC_GPIO2_STATE)
 - ENG-0218 XS V2 OEM Accessory Connector
-- 170132 FPGA Register Map (authoritative definition of supported values and functions)
+- 170132 FPGA Register Map (note that external USB/BLE enums may not match 
+  internal FPGA register definitions)
 """
 
 class XSAccState:
@@ -90,14 +106,14 @@ class XSGPIOState:
         return mask
 
     def deserialize(self, value):
-        self.control = mask & 0x01
-        
-        self.direction = mask & 0x02
-        
-        if self.dir == self.DIR_INPUT:
-            self.value = mask & 0x04
-        
-        self.function = (mask >> 4) & 0xf
+        self.control   = self.CONTROL_FUNCTION if value & 0x01 else self.CONTROL_MANUAL
+        self.direction = self.DIR_OUTPUT if value & 0x02 else self.DIR_INPUT
+        self.function  = (value >> 4) & 0xf
+
+        if self.direction == self.DIR_INPUT:
+            self.value = self.VALUE_HIGH if value & 0x04 else self.VALUE_LOW
+
+        log.debug(f"XSGPIOState.deserialize: 0x{value:02x} -> {self}")
 
     def doing_continuous_strobe(self):
         return self.num == 2 and \
@@ -128,7 +144,6 @@ class XSGPIOState:
 
     def __repr__(self):
         return f"XSGPIOState < num {self.num}, control {self.get_control_str()}, direction {self.get_direction_str()}, value {self.get_value_str()}, func {self.get_function_str()} >"
-
 
 class XSContinuousStrobe:
 

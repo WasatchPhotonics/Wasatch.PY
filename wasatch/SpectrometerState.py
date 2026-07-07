@@ -90,13 +90,13 @@ class SpectrometerState:
         # accessory connector
         # ######################################################################
 
+        # used by Andor and early non-Raman designs
         self.fan_enabled = False
         self.lamp_enabled = False
        #self.strobe_enabled = False  # this is not a thing -- the proper field is self.laser_enabled
         self.shutter_open = True
 
-        # XS V2 OEM Accessory Connector
-        self.acc_connector = None
+        self.acc_connector = None # an XSAccessoryConnector (used in XS V2)
 
         # these are NOT currently used by laser power settings, though they could be
         self.mod_enabled = False
