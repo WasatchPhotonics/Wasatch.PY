@@ -154,7 +154,8 @@ class InterfaceDevice:
                     responses.append(proc_func(*request.args, **request.kwargs))
             except Exception as e:
                 log.error(f"error in handling request {request} of {e}", exc_info=1)
-                responses.append(SpectrometerResponse(error_msg="error processing cmd", error_lvl=ErrorLevel.medium))
+                self.queue_message("marquee_error", str(e))
+                responses.append(SpectrometerResponse(error_msg=str(e), error_lvl=ErrorLevel.medium))
         return responses
 
     ############################################################################
