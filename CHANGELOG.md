@@ -1,17 +1,20 @@
 # Changelog
 
-_Note: in the following, FID = wasatch.FeatureInterfaceDevice_
+Note: in the following, FID = wasatch.FeatureInterfaceDevice
 
-- 2026-06-01 2.4.3 (enlighten-4.2.5)
-    - BLE
-        - only end 7-byte LASER_STATE on old BLE FW
-        - fix feature_mask_xs bug
-        - restore old acquisition params after Auto-Raman
+- 2026-07-07 2.4.3 (enlighten-4.2.5)
+    - XS
         - added XSAccessoryConnector class
         - widen startup_laser_tec_setpoint sanity-check from 700-900 to 700-1000 for BRL
+    - BLE
+        - only send 9-byte LASER_STATE on newer supporting FW
+        - fix feature_mask_xs bug
+        - restore old acquisition params after Auto-Raman
+        - only read 9th EEPROM page on supported FW
     - XL
         - fix AndorDevice with iDus (PID 0x0001)
         - fix support for pixel corrections (etalon, InGaAs etc) in virtual EEPROM
+        - fix setting vertical ROI
 - 2026-06-01 2.4.2 (enlighten-4.2.4)
     - BLE firmware version checks
         - 5-byte BATTERY_STATE 

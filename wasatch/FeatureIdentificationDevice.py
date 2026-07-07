@@ -3804,6 +3804,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
     def set_cont_strobe_repeat_count(self, value: int):
         
         # CG: Needs more testing, no errors but I am unsure of what it should be doing
+        # MZ: this is a uint16 parameter, so technically bytes 2 and 3 aren't doing 
+        #     anything (shouldn't matter, as bytes 0 and 1 are being correctly set)
         buf = [ 0, 0, 0, 0 ]
         buf[3] = (value >> 24) & 0xff
         buf[2] = (value >> 16) & 0xff
