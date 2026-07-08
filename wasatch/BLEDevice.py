@@ -336,7 +336,7 @@ class BLEDevice(InterfaceDevice):
         self.last_status_update_time = None
         self.next_laser_enable = False
         self.next_laser_power_perc = 100
-        
+
         # ability to bridge sync-async
         self.run_loop = self.get_run_loop()
 
@@ -664,9 +664,14 @@ class BLEDevice(InterfaceDevice):
     async def set_stop_line_async(self, n):
         await self.write_generic_async("STOP_LINE", n)
 
-    def set_vertical_roi(self, pair):
-        start_line = pair[0]
-        stop_line = pair[1]
+    def set_vertical_roi(self, roi):
+        try:
+            start_line = roi.start
+            stop_line = roi.end
+        except:
+            start_line = roi[0]
+            stop_line = roi[1]
+        
         if stop_line <= start_line:
             log.debug("declining to set 1-line vertical ROI")
             return SpectrometerResponse(False)
@@ -788,7 +793,7 @@ class BLEDevice(InterfaceDevice):
         self.pages = []
 
         name = "EEPROM_DATA"
-        max_eeprom_pages = 9 if self.settings.supports("ble_read_9th_eeprom_page") else 8
+        max_eeprom_pages = 9 if self.settings.supports_feature("ble_read_9th_eeprom_page") else 8
         for page in range(max_eeprom_pages):
             buf = bytearray()
             while len(buf) < 64:
@@ -876,7 +881,7 @@ class BLEDevice(InterfaceDevice):
         if length >= 5:
             state.battery_temperature_deg_c = buf[3]
             state.battery_charger_temperature_deg_c = buf[4]
-            msg += f", temp {state.battery_temperature_deg_c}C, chgTemp {state.battery_temperature_deg_c}C")
+            msg += f", temp {state.battery_temperature_deg_c}C, chgTemp {state.battery_temperature_deg_c}C"
 
         log.debug(msg)
 
@@ -909,8 +914,8 @@ class BLEDevice(InterfaceDevice):
         # skip bytes 5 and 6 reserved (used to be laser_warning_delay_ms)
 
         if len(buf) >= 8: 
-            state.laser_can_fire  = buf[7] & 0x01
-            state.laser_is_firing = buf[7] & 0x02
+            state.laser_can_fire  = 0 != buf[7] & 0x01
+            state.laser_is_firing = 0 != buf[7] & 0x02
 
         if len(buf) >= 9: 
             state.laser_power_perc = buf[8]
@@ -940,9 +945,11 @@ class BLEDevice(InterfaceDevice):
                  0xff,                    # 3: laser watchdog (NO CHANGE)
                  0xff,                    # 4: laser watchdog (NO CHANGE)
                  0x00,                    # 5: reserved (legacy laser_warning_delay_ms)
-                 0x00,                    # 6: reserved (legacy laser_warning_delay_ms)
+                 0x00 ]                   # 6: reserved (legacy laser_warning_delay_ms)
+        if self.settings.supports_feature("ble_laser_pwm"):
+             data.extend([
                  0xff,                    # 7: read-only status_mask (laser_can_fire, laser_is_firing etc)
-                 pwm_perc ]               # 8: laser PWM
+                 pwm_perc ])              # 8: laser PWM
 
         log.debug(f"sync_laser_state_to_device_async: calling write_char_async('LASER_STATE') with data {data}")
         await self.write_char_async("LASER_STATE", data)
@@ -963,17 +970,27 @@ class BLEDevice(InterfaceDevice):
     def acquire_data(self):
         """ Synchronous, because called by WrapperWorker """
 
-        auto_raman = self.take_one_request and self.take_one_request.auto_raman_request
+        state = self.settings.state
+        auto_raman = self.take_one_request is not None and self.take_one_request.auto_raman_request is not None
+        time_start = datetime.now()
+        log.debug(f"acquire_data: start (auto_raman {auto_raman})")
+
+        if auto_raman:
+            last_integration_time_ms = state.integration_time_ms
+            last_gain_db = state.gain_db
+            last_scans_to_average = state.scans_to_average
 
         future = asyncio.run_coroutine_threadsafe(self.get_spectrum_async(), self.run_loop)
         spectrum = future.result()
 
-        log.debug(f"acquire_data: received spectrum of length {len(spectrum)}: {spectrum[:10]}")
-        reading = Reading(device_id=self.device_id)
-        state = self.settings.state
-        now = datetime.now()
+        log.debug(f"acquire_data: received {'Auto-Raman' if auto_raman else 'standard'} spectrum of length {len(spectrum)}: {spectrum[:10]}")
+        self.session_reading_count += 1
 
-        if (self.last_status_update_time is None or (now - self.last_status_update_time).total_seconds() >= self.STATUS_UPDATE_PERIOD_SEC):
+        reading = Reading(device_id=self.device_id)
+        time_received = datetime.now()
+
+        if (self.last_status_update_time is None or (time_received - self.last_status_update_time).total_seconds() >= self.STATUS_UPDATE_PERIOD_SEC):
+            log.debug("acquire_data: updating status")
             self.update_status()
 
         reading.spectrum = spectrum
@@ -985,14 +1002,30 @@ class BLEDevice(InterfaceDevice):
         reading.laser_is_firing = state.laser_is_firing
         reading.battery_charging = state.battery_charging
         reading.take_one_request = self.take_one_request
-        reading.timestamp_complete = datetime.now()
         reading.battery_percentage = state.battery_percentage
         reading.power_connection_state = state.power_connection_state
-        reading.ambient_temperature_degC = state.ambient_temperature_deg_c # deg_c -> degC :-(
+        reading.ambient_temperature_degC = state.ambient_temperature_deg_c
 
         self.take_one_request = None
 
-        return SpectrometerResponse(data=reading)
+        if auto_raman:
+            # MZ: could we just use state.* versions here? have they been updated?
+            log.debug(f"resetting integration_time_ms -> {last_integration_time_ms}")
+            self.set_integration_time_ms(last_integration_time_ms)
+
+            log.debug(f"resetting gain_db -> {last_gain_db}")
+            self.set_gain_db(last_gain_db)
+
+            log.debug(f"resetting scans_to_average -> {last_scans_to_average}")
+            self.set_scans_to_average(last_scans_to_average)
+
+        reading.timestamp_complete = datetime.now()
+
+        elapsed_acquire_sec = (time_received - time_start).total_seconds()
+        elapsed_total_sec = (reading.timestamp_complete - time_start).total_seconds()
+        log.debug(f"acquire_data: done (acquire {elapsed_acquire_sec:.2f}sec, total {elapsed_total_sec:.2f}sec)")
+
+        return SpectrometerResponse(data=reading) # keep_alive=(spectrum is None)
 
     def acquire_notification(self, sender, data):
         if (len(data) < 3):
@@ -1041,10 +1074,10 @@ class BLEDevice(InterfaceDevice):
                 self.queue_message("progress_bar", -1)
             elif short == "TAKING_RAMAN":
                 self.queue_message("marquee_info", "averaging Raman spectra")
-                self.queue_message("progress_bar", 100.0 * current_step / total_steps)
+                self.queue_message("progress_bar", round(100.0 * current_step / total_steps, 2))
             elif short == "TAKING_DARK":
                 self.queue_message("marquee_info", "averaging dark spectra")
-                self.queue_message("progress_bar", 100.0 * current_step / total_steps)
+                self.queue_message("progress_bar", round(100.0 * current_step / total_steps, 2))
 
         return msg
     
@@ -1075,6 +1108,8 @@ class BLEDevice(InterfaceDevice):
             self.spectrum[self.pixels_read] = intensity
             self.pixels_read += 1
 
+        log.debug(f"spectra_notification: received {pixels_in_packet} pixels ({self.pixels_read} read)")
+
     def get_spectrum(self, arg=None):
         future = asyncio.run_coroutine_threadsafe(self.get_spectrum_async(), self.run_loop)
         return SpectrometerResponse(future.result())
@@ -1093,25 +1128,40 @@ class BLEDevice(InterfaceDevice):
 
         # send the ACQUIRE
         spectrum_type = 2 if auto_raman_request else 0
-        log.debug(f"sending ACQUIRE with type {spectrum_type}")
+        log.debug(f"get_spectrum_async: sending ACQUIRE with type {spectrum_type}")
         await self.write_char_async("ACQUIRE", [spectrum_type])
 
+        ########################################################################
         # compute timeout
+        ########################################################################
+
         if auto_raman_request:
-            timeout_ms = auto_raman_request.max_ms + 6000
+            # This is a little tricky, because max_ms defines the maximum 
+            # averaged(Raman + dark) measurement time, and was not intended to
+            # include optimization time. Optimization time can vary for 
+            # different sampling environments and compounds, so it's difficult
+            # to predict how long it might be allowed to take (especially within
+            # firmware). For now, allow a full 30sec of potential optimization.
+            # Other options would be to adjust the 'wait' loop below to internally
+            # check on auto-raman progress (optimization, collection etc) and
+            # apply different timeouts to different stages of the procedure.
+            timeout_ms = auto_raman_request.max_ms + 30_000
         else:
             timeout_ms = ( 4 
                          * max(self.settings.state.prev_integration_time_ms, self.settings.state.integration_time_ms) 
                          * self.settings.state.scans_to_average 
                          + 6000) # 4sec latency + 2sec buffer
 
+        ########################################################################
         # wait for spectral data to arrive
+        ########################################################################
+
         start_time = datetime.now()
         while self.pixels_read < self.settings.pixels():
             if (datetime.now() - start_time).total_seconds() * 1000 > timeout_ms:
-                raise RuntimeError(f"failed to read spectrum within timeout {timeout_ms}ms")
+                raise RuntimeError(f"get_spectrum_async: failed to read spectrum within timeout {timeout_ms}ms")
 
-            # log.debug(f"still waiting for spectra ({self.pixels_read}/{self.settings.pixels()} read)")
+            log.debug(f"still waiting for spectra ({self.pixels_read}/{self.settings.pixels()} read)")
             await asyncio.sleep(0.2)
 
         ########################################################################

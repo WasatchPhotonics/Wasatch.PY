@@ -14,6 +14,7 @@ from time   import sleep
 from . import utils
 
 from .USBCPowerConnectionState import USBCPowerConnectionState
+from .XSAccessoryConnector     import XSAccessoryConnector, XSAccState, XSGPIOState, XSContinuousStrobe
 from .SpectrometerSettings     import SpectrometerSettings
 from .SpectrometerResponse     import SpectrometerResponse, ErrorLevel
 from .SpectrometerRequest      import SpectrometerRequest
@@ -274,7 +275,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                         setpoint = self.settings.eeprom.startup_temp_degC # default to old
 
                     # sanity-check for reasonable setpoint range (raw 12-bit)
-                    if 700 <= setpoint <= 900:
+                    if 700 <= setpoint <= 1000:
                         log.debug("initializing XS laser TEC setpoint")
 
                         # kludge: for now, use the detector TEC startup setpoint for laser
@@ -420,6 +421,13 @@ class FeatureIdentificationDevice(InterfaceDevice):
             self.settings.eeprom.actual_pixels_vertical = 70
 
         self.reset_area_scan_frame()
+
+        # ######################################################################
+        # Accessory Connector
+        # ######################################################################
+
+        if self.settings.supports_feature("xs_accessory_connector"):
+            self.settings.state.acc_connector = XSAccessoryConnector()
 
         # ######################################################################
         # Done
@@ -1868,11 +1876,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
         this function does not have a concept of "stopping" or "finishing" a frame;
         subsequent calls will just keep sending out additional lines, until the
         spectrometer is taken out of area scan mode.
-
-        Note that in current XS firmware, only a single ACQUIRE needs to be sent
-        after enabling area scan mode; after that, the microcontroller will
-        internally trigger the FPGA after each line is read. In the event of a
-        rare timeout, simply send another ACQUIRE to restart the process.
         """
         if self.settings.is_ingaas():
             return None
@@ -1896,8 +1899,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         # read a line (might be the "next" line, might be the "first" or "last" 
         # line, might have skipped a few, who knows)
-        #
-        # self._send_code(0xad, label="ACQUIRE_SPECTRUM") # XS FW does this automatically when in Area Scan mode
+        self._send_code(0xad, label="ACQUIRE_SPECTRUM") # XS FW no longer does this automatically in Area Scan mode
 
         # start with any extra data we might have picked up on the last read
         # data = self.extra_area_scan_data 
@@ -3682,7 +3684,186 @@ class FeatureIdentificationDevice(InterfaceDevice):
             for line in lines:
                 log.debug(f"update_firmware_log: {line}")
             self.queue_message("firmware_log", lines)
+            
+            
+    ##########################################################################
+    # XS Accessory
+    ##########################################################################
+        
+    def sync_acc_to_device(self, arg):
+        log.debug("sync_acc_to_device: start")
+        self.settings.state.acc_connector.dump()
 
+        self.set_acc_state(self.settings.state.acc_connector.acc_state)
+        self.set_gpio_state(self.settings.state.acc_connector.state_gpio1)
+        self.set_gpio_state(self.settings.state.acc_connector.state_gpio2)
+
+        if self.settings.state.acc_connector.doing_continuous_strobe():
+            self.set_cont_strobe_settings(self.settings.state.acc_connector.cont_strobe)
+
+    def set_cont_strobe_settings(self, cont_strobe: XSContinuousStrobe):
+        log.debug(f"setting continuous strobe settings {cont_strobe}")
+        self.set_cont_strobe_period_us(cont_strobe.period_us)
+        self.set_cont_strobe_width_us(cont_strobe.width_us)
+        self.set_cont_strobe_delay_us(cont_strobe.delay_us)
+        self.set_cont_strobe_repeat_count(cont_strobe.repeat_count)
+        
+    def set_cont_strobe_period_us(self, us: float):
+        """ MZ: untested """
+        us = int(round(us))
+        
+        if us > 0xffff_ffff: #the max is 71 minutes, this is 71 minutes in microseconds(us)
+            us = 0xffff_ffff
+            log.debug("SET_CONT_STROBE_PERIOD_US max value exceeded, value set to 71 min")
+        
+        # marshall microseconds in little-endian order (FW will invert this back to MSB on receipt)
+        buf = [ 0, 0, 0, 0 ]
+        buf[3] = (us >> 24) & 0xff
+        buf[2] = (us >> 16) & 0xff
+        buf[1] = (us >>  8) & 0xff
+        buf[0] = (us >>  0) & 0xff
+
+        result = self._send_code(bRequest=0xff, wValue=0xac,  wIndex=0, data_or_wLength=buf, label="SET_CONT_STROBE_PERIOD_US")
+        
+        self.settings.state.acc_connector.cont_strobe.period_us = us
+        
+        log.debug("SET_CONT_STROBE_PERIOD_US: now %d", us)
+        
+        return result        
+        
+    def get_cont_strobe_period_us(self):
+        us = self._get_code(0xff, 0x94, lsb_len = 4, label = "GET_CONT_STROBE_PERIOD_US")
+        self.settings.state.acc_connector.cont_strobe.period_us = us
+        return us
+        
+    def set_cont_strobe_width_us(self, us: float):
+        us = int(round(us))
+        
+        if us > 0xffff_ffff: #the max is 71 minutes, this is 71 minutes in microseconds(us)
+            us = 0xffff_ffff
+            log.debug("SET_CONT_STROBE_WIDTH_US max value exceeded, value set to 71 min")
+        
+        buf = [ 0, 0, 0, 0 ]
+        buf[3] = (us >> 24) & 0xff
+        buf[2] = (us >> 16) & 0xff
+        buf[1] = (us >>  8) & 0xff
+        buf[0] = (us >>  0) & 0xff
+
+        result = self._send_code(bRequest=0xff, 
+                                    wValue=0xad,  
+                                    wIndex=0, 
+                                    data_or_wLength=buf, 
+                                    label="SET_CONT_STROBE_WIDTH_US")
+                       
+        self.settings.state.acc_connector.cont_strobe.width_us = us
+        log.debug("SET_CONT_STROBE_WIDTH_US: now %d", us)
+        
+        return result
+        
+    def get_cont_strobe_width_us(self):
+        us = self._get_code(0xff, 0x95, lsb_len = 4, label = "GET_CONT_STROBE_WIDTH_US")
+        self.settings.state.acc_connector.cont_strobe.width_us = us
+        return us
+        
+    def set_cont_strobe_delay_us(self, us: float):
+        us = int(round(us))
+        
+        if us > 0xffff_ffff: #the max is 71 minutes, this is 71 minutes in microseconds(us)
+            us = 0xffff_ffff
+            log.debug("SET_CONT_STROBE_DELAY_US max value exceeded, value set to 71 min")
+        
+        # CG: Needs more testing, no errors but I am unsure of what it should be doing
+        buf = [ 0, 0, 0, 0 ]
+        buf[3] = (us >> 24) & 0xff
+        buf[2] = (us >> 16) & 0xff
+        buf[1] = (us >>  8) & 0xff
+        buf[0] = (us >>  0) & 0xff
+
+        result = self._send_code(bRequest=0xff, 
+                                    wValue=0xae,  
+                                    wIndex=0, 
+                                    data_or_wLength=buf, 
+                                    label="SET_CONT_STROBE_DELAY_US")
+        
+        self.settings.state.acc_connector.cont_strobe.delay_us = us
+        log.debug("SET_CONT_STROBE_DELAY_US: now %d", us)
+        
+        return result
+    
+    def get_cont_strobe_delay_us(self):
+        us = self._get_code(0xff, 0x96, lsb_len = 4, label = "GET_CONT_STROBE_DELAY_US")
+        self.settings.state.acc_connector.cont_strobe.delay_us = us
+        return us
+        
+    def set_cont_strobe_repeat_count(self, value: int):
+        
+        # CG: Needs more testing, no errors but I am unsure of what it should be doing
+        # MZ: this is a uint16 parameter, so technically bytes 2 and 3 aren't doing 
+        #     anything (shouldn't matter, as bytes 0 and 1 are being correctly set)
+        buf = [ 0, 0, 0, 0 ]
+        buf[3] = (value >> 24) & 0xff
+        buf[2] = (value >> 16) & 0xff
+        buf[1] = (value >>  8) & 0xff
+        buf[0] = (value >>  0) & 0xff
+
+        result = self._send_code(bRequest=0xff, 
+                                    wValue=0xaf,  
+                                    wIndex=0, 
+                                    data_or_wLength=buf, 
+                                    label="SET_CONT_STROBE_REPEAT_COUNT")
+        
+        log.debug("SET_CONT_STROBE_REPEAT_COUNT: now %d", value)
+        self.settings.state.acc_connector.cont_strobe.repeat_count = value
+
+        return result
+        
+    def get_cont_strobe_repeat_count(self):
+        count = self._get_code(0xff, 0x97, lsb_len = 2, label = "GET_CONT_STROBE_REPEAT_COUNT")
+        self.settings.state.acc_connector.cont_strobe.repeat_count = count
+        return count
+        
+    def set_acc_state(self, acc_state: XSAccState):  
+        serialized = acc_state.serialize()
+        result = self._send_code(0xff, 0xa8, serialized, label = "SET_ACC_STATE")
+        
+        log.debug(f"SET_ACC_STATE: now 0x{serialized:04x} ({acc_state})")
+        self.settings.state.acc_connector.acc_state = acc_state
+        
+        return result
+    
+    def get_acc_state(self):
+        serialized = self._get_code(0xff, 0xa9, lsb_len = 2, label = "GET_ACC_STATE")
+        acc_state = XSAccState(serialized)
+
+        log.debug(f"GET_ACC_STATE: now 0x{serialized:04x} ({acc_state})")
+        self.settings.state.acc_connector.acc_state = acc_state
+
+        return acc_state
+        
+    def set_gpio_state(self, gpio_state: XSGPIOState):
+
+        lsb = gpio_state.num
+        msb = gpio_state.serialize()
+        log.debug(f"gpio_state.num: {lsb}")
+        log.debug(f"gpio_state.serialize: {msb}")
+
+        data = (msb << 8) | lsb
+        result = self._send_code(0xff, 0xaa, data, label = "SET_GPIO_STATE")
+
+        log.debug(f"SET_GPIO_STATE: now 0x{data:04x} ({gpio_state})")
+        self.settings.state.gpio_state = gpio_state
+        
+        return result       
+        
+    def get_gpio_state(self):
+        value = self._get_code(0xff, 0xab, lsb_len = 1, label = "GET_GPIO_STATE")
+        gpio_state = XSGPIOState(value)
+        
+        log.debug(f"GET_GPIO_STATE: now 0x{value:04x} ({gpio_state})")
+        self.settings.state.gpio_state = gpio_state
+        
+        return gpio_state
+    
     # ##########################################################################
     # Analog output
     # ##########################################################################
@@ -3791,58 +3972,32 @@ class FeatureIdentificationDevice(InterfaceDevice):
     # ##########################################################################
     # EEPROM Cruft
     # ##########################################################################
-
-    def update_session_eeprom(self, pair: tuple[str, EEPROM]):
-        """
-        Given a (serial_number, EEPROM) pair, update this process's "session"
-        EEPROM with just the EDITABLE fields of the passed EEPROM.
-        """
-        log.debug("fid.update_session_eeprom: %s updating EEPROM instance", self.settings.eeprom.serial_number)
-
-        if not self.settings.eeprom_backup:
-            self.settings.eeprom_backup = copy.deepcopy(self.settings.eeprom)
-
-        self.settings.eeprom.update_editable(pair[1])
-        return SpectrometerResponse(data=True)
-
-    def replace_session_eeprom(self, pair: tuple[str, EEPROM]):
-        """
-        Given a (serial_number, EEPROM) pair, replace this process's "session"
-        EEPROM with the passed EEPROM.
-        """
-        log.debug("fid.replace_session_eeprom: %s replacing EEPROM instance", self.settings.eeprom.serial_number)
-
-        if not self.settings.eeprom_backup:
-            self.settings.eeprom_backup = copy.deepcopy(self.settings.eeprom)
-
-        self.settings.eeprom = pair[1]
-        self.settings.eeprom.dump()
-        return SpectrometerResponse()
-
-    ## Actually store the current session EEPROM fields to the spectrometer.
-    def write_eeprom(self):
+    
+    # store the current session EEPROM fields to the spectrometer
+    def write_eeprom(self, arg):
         if not self.settings.eeprom_backup:
             log.critical("expected to update or replace EEPROM object before write command")
             self.queue_message("marquee_error", "Failed to write EEPROM")
             return SpectrometerResponse(data=False, error_msg="failed to write eeprom")
 
         # backup contents of previous EEPROM in log
-        log.debug("Original EEPROM contents")
+        log.debug("write_eeprom: original EEPROM contents")
         self.settings.eeprom_backup.dump()
-        log.debug("Original EEPROM buffers: %s", self.settings.eeprom_backup.buffers)
+        log.debug("write_eeprom: original EEPROM buffers: %s", self.settings.eeprom_backup.buffers)
 
         try:
+            log.debug("write_eeprom: generating new write buffers")
             self.settings.eeprom.generate_write_buffers()
         except:
             log.critical("failed to render EEPROM write buffers", exc_info=1)
             self.queue_message("marquee_error", "Failed to write EEPROM")
             return SpectrometerResponse(data=False, error_msg="failed to generate eeprom")
 
-        log.debug("Would write new buffers: %s", self.settings.eeprom.write_buffers)
+        log.debug("write_eeprom: would write new buffers: %s", self.settings.eeprom.write_buffers)
 
         for page in range(EEPROM.MAX_PAGES):
             if self.settings.is_arm():
-                log.debug("writing page %d: %s", page, self.settings.eeprom.write_buffers[page])
+                log.debug("write_eeprom: writing page %d: %s", page, self.settings.eeprom.write_buffers[page])
                 self._send_code(bRequest        = 0xff, # second-tier
                                wValue          = 0x02,
                                wIndex          = page,
@@ -3851,7 +4006,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
             else:
                 DATA_START = 0x3c00
                 offset = DATA_START + page * 64
-                log.debug("writing page %d at offset 0x%04x: %s", page, offset, self.settings.eeprom.write_buffers[page])
+                log.debug("write_eeprom: writing page %d at offset 0x%04x: %s", page, offset, self.settings.eeprom.write_buffers[page])
                 self._send_code(bRequest        = 0xa2,   # dangerous
                                wValue          = offset, # arguably an index but hey
                                wIndex          = 0,
@@ -3954,9 +4109,14 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 "get_trigger_source",
                 "get_vr_continuous_ccd",
                 "get_vr_num_frames",
+                "get_cont_strobe_period_us",
+                "get_cont_strobe_width_us",
+                "get_cont_strobe_delay_us",
+                "get_gpio_state",
+                "get_cont_strobe_repeat_count",
+                "get_acc_state",
                 "is_laser_firing",
                 "queue_message",
-                "replace_session_eeprom",
                 "reset_fpga",
                 "select_adc",
                 "set_accessory_enable",
@@ -4002,9 +4162,15 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 "set_trigger_delay",
                 "set_trigger_source",
                 "set_vertical_roi",
+                "set_cont_strobe_period_us",
+                "set_cont_strobe_width_us",
+                "set_cont_strobe_delay_us",
+                "set_gpio_state",
+                "set_cont_strobe_repeat_count",
+                "set_acc_state",
                 "update_laser_watchdog",
-                "update_session_eeprom",
                 "write_eeprom",
+                "sync_acc_to_device",
             ]:
             process_f[fn_name] = getattr(self, fn_name)
     
@@ -4068,11 +4234,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
         process_f["clear_regions"]                      = lambda x: self.clear_regions()
         process_f["detector_roi"]                       = lambda x: self.set_detector_roi(x)
         process_f["pixel_mode"]                         = lambda x: self.set_pixel_mode(x)
-
-        # EEPROM updates
-        process_f["update_eeprom"]                      = lambda x: self.update_session_eeprom(x)
-        process_f["replace_eeprom"]                     = lambda x: self.replace_session_eeprom(x)
-        process_f["write_eeprom"]                       = lambda x: self.write_eeprom()
 
         # manufacturing
         process_f["reset_fpga"]                         = lambda x: self.reset_fpga()

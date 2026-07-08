@@ -90,13 +90,13 @@ class SpectrometerState:
         # accessory connector
         # ######################################################################
 
+        # used by Andor and early non-Raman designs
         self.fan_enabled = False
         self.lamp_enabled = False
        #self.strobe_enabled = False  # this is not a thing -- the proper field is self.laser_enabled
         self.shutter_open = True
 
-        # XS V2 OEM Accessory Connector
-        self.acc_connector = None
+        self.acc_connector = None # an XSAccessoryConnector (used in XS V2)
 
         # these are NOT currently used by laser power settings, though they could be
         self.mod_enabled = False
@@ -107,7 +107,7 @@ class SpectrometerState:
         self.analog_out_enabled = False
         self.analog_out_mode = 0 # 0 = voltage, 1 = current
         self.analog_out_value = 0 # decivolts or deci-mA
-
+        
         # ######################################################################
         # What about "application state", which is never actually set in the
         # hardware?  Move these later to ".software" or ".processing" or whatever?
@@ -251,6 +251,7 @@ class SpectrometerState:
         log.debug("  Laser Watchdog Sec:     %d", self.laser_watchdog_sec)
         log.debug("  Laser TEC Mode:         %d", self.laser_tec_mode)
         log.debug("  Laser TEC Setpoint:     %d", self.laser_tec_setpoint)
+        log.debug("  Accessory Connector:    %s", self.acc_connector)
 
     def to_dict(self):
         d = self.__dict__

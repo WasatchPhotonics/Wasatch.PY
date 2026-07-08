@@ -179,8 +179,9 @@ class WasatchDeviceWrapper:
         self.connected    = False
         self.closing      = False   # Don't permit new acquires during close
         self.poller       = None    # a handle to the child thread
+        self.class_name   = None
 
-        if   '0x136e'  in str(device_id) and '0x0001' not in str(device_id): self.class_name = "AndorDevice"
+        if   '0x136e'  in str(device_id): self.class_name = "AndorDevice" # and '0x0001' not in str(device_id)
         elif '0x24aa'  in str(device_id): self.class_name = "WasatchDevice"
         elif '0x2457'  in str(device_id): self.class_name = "OceanDevice"
         elif '0x0403'  in str(device_id): self.class_name = "SPIDevice"
@@ -188,7 +189,10 @@ class WasatchDeviceWrapper:
         elif 'MOCK'    in str(device_id).upper(): self.class_name = "MockDevice"
         elif 'BLE'     in str(device_id): self.class_name = "BLEDevice"
         elif 'TCP'     in str(device_id): self.class_name = "TCPDevice"
-        else: self.class_name = "UnknownDevice"
+        else: 
+            # this is never going to work, but I don't want to raise an exception
+            # from a constructor
+            log.critical(f"init: unsupported DeviceID {device_id}")
 
         self.wrapper_worker = None
         self.connect_start_time = datetime.datetime(year=datetime.MAXYEAR, month=1, day=1)
@@ -244,6 +248,9 @@ class WasatchDeviceWrapper:
     # (detector and laser temperature, secondary ADC).
     #
     def connect(self):
+        if not self.class_name:
+            log.critical(f"connect: no class_name")
+            return False
 
         # instantiate thread
         self.closing = False # needed if doing reset and closing previously was True

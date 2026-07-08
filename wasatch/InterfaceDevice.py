@@ -154,7 +154,8 @@ class InterfaceDevice:
                     responses.append(proc_func(*request.args, **request.kwargs))
             except Exception as e:
                 log.error(f"error in handling request {request} of {e}", exc_info=1)
-                responses.append(SpectrometerResponse(error_msg="error processing cmd", error_lvl=ErrorLevel.medium))
+                self.queue_message("marquee_error", str(e))
+                responses.append(SpectrometerResponse(error_msg=str(e), error_lvl=ErrorLevel.medium))
         return responses
 
     ############################################################################
@@ -188,7 +189,7 @@ class InterfaceDevice:
         msg = StatusMessage(setting, value)
         try:
             self.message_queue.put(msg) 
-            log.debug("queued: {msg}")
+            log.debug(f"queued: {msg}")
         except:
             log.error("failed to enqueue StatusMessage (%s, %s)", setting, value, exc_info=1)
 
