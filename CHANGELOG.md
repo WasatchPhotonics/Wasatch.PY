@@ -2,7 +2,7 @@
 
 Note: in the following, FID = wasatch.FeatureInterfaceDevice
 
-- 2026-07-07 2.4.3 (enlighten-4.2.5)
+- 2026-07-08 2.4.3 (enlighten-4.2.5)
     - XS
         - added XSAccessoryConnector class
         - widen startup_laser_tec_setpoint sanity-check from 700-900 to 700-1000 for BRL
