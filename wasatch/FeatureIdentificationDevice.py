@@ -1876,11 +1876,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
         this function does not have a concept of "stopping" or "finishing" a frame;
         subsequent calls will just keep sending out additional lines, until the
         spectrometer is taken out of area scan mode.
-
-        Note that in current XS firmware, only a single ACQUIRE needs to be sent
-        after enabling area scan mode; after that, the microcontroller will
-        internally trigger the FPGA after each line is read. In the event of a
-        rare timeout, simply send another ACQUIRE to restart the process.
         """
         if self.settings.is_ingaas():
             return None
@@ -1904,8 +1899,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
         # read a line (might be the "next" line, might be the "first" or "last" 
         # line, might have skipped a few, who knows)
-        #
-        # self._send_code(0xad, label="ACQUIRE_SPECTRUM") # XS FW does this automatically when in Area Scan mode
+        self._send_code(0xad, label="ACQUIRE_SPECTRUM") # XS FW no longer does this automatically in Area Scan mode
 
         # start with any extra data we might have picked up on the last read
         # data = self.extra_area_scan_data 

@@ -6,11 +6,13 @@ Note: in the following, FID = wasatch.FeatureInterfaceDevice
     - XS
         - added XSAccessoryConnector class
         - widen startup_laser_tec_setpoint sanity-check from 700-900 to 700-1000 for BRL
+        - switch Area Scan to requiring one ACQUIRE per line
     - BLE
         - only send 9-byte LASER_STATE on newer supporting FW
         - fix feature_mask_xs bug
         - restore old acquisition params after Auto-Raman
         - only read 9th EEPROM page on supported FW
+        - extend Auto-Raman timeout to cover optimization
     - XL
         - fix AndorDevice with iDus (PID 0x0001)
         - fix support for pixel corrections (etalon, InGaAs etc) in virtual EEPROM
