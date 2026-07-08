@@ -189,7 +189,7 @@ class InterfaceDevice:
         msg = StatusMessage(setting, value)
         try:
             self.message_queue.put(msg) 
-            log.debug("queued: {msg}")
+            log.debug(f"queued: {msg}")
         except:
             log.error("failed to enqueue StatusMessage (%s, %s)", setting, value, exc_info=1)
 

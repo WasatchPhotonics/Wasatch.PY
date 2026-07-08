@@ -17,6 +17,8 @@ Note: in the following, FID = wasatch.FeatureInterfaceDevice
         - fix AndorDevice with iDus (PID 0x0001)
         - fix support for pixel corrections (etalon, InGaAs etc) in virtual EEPROM
         - fix setting vertical ROI
+    - EEPROM
+        - restored ability to write horiz ROI
 - 2026-06-01 2.4.2 (enlighten-4.2.4)
     - BLE firmware version checks
         - 5-byte BATTERY_STATE 

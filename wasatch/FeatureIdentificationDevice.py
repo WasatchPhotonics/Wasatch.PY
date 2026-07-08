@@ -3972,58 +3972,32 @@ class FeatureIdentificationDevice(InterfaceDevice):
     # ##########################################################################
     # EEPROM Cruft
     # ##########################################################################
-
-    def update_session_eeprom(self, pair: tuple[str, EEPROM]):
-        """
-        Given a (serial_number, EEPROM) pair, update this process's "session"
-        EEPROM with just the EDITABLE fields of the passed EEPROM.
-        """
-        log.debug("fid.update_session_eeprom: %s updating EEPROM instance", self.settings.eeprom.serial_number)
-
-        if not self.settings.eeprom_backup:
-            self.settings.eeprom_backup = copy.deepcopy(self.settings.eeprom)
-
-        self.settings.eeprom.update_editable(pair[1])
-        return SpectrometerResponse(data=True)
-
-    def replace_session_eeprom(self, pair: tuple[str, EEPROM]):
-        """
-        Given a (serial_number, EEPROM) pair, replace this process's "session"
-        EEPROM with the passed EEPROM.
-        """
-        log.debug("fid.replace_session_eeprom: %s replacing EEPROM instance", self.settings.eeprom.serial_number)
-
-        if not self.settings.eeprom_backup:
-            self.settings.eeprom_backup = copy.deepcopy(self.settings.eeprom)
-
-        self.settings.eeprom = pair[1]
-        self.settings.eeprom.dump()
-        return SpectrometerResponse()
-
-    ## Actually store the current session EEPROM fields to the spectrometer.
-    def write_eeprom(self):
+    
+    # store the current session EEPROM fields to the spectrometer
+    def write_eeprom(self, arg):
         if not self.settings.eeprom_backup:
             log.critical("expected to update or replace EEPROM object before write command")
             self.queue_message("marquee_error", "Failed to write EEPROM")
             return SpectrometerResponse(data=False, error_msg="failed to write eeprom")
 
         # backup contents of previous EEPROM in log
-        log.debug("Original EEPROM contents")
+        log.debug("write_eeprom: original EEPROM contents")
         self.settings.eeprom_backup.dump()
-        log.debug("Original EEPROM buffers: %s", self.settings.eeprom_backup.buffers)
+        log.debug("write_eeprom: original EEPROM buffers: %s", self.settings.eeprom_backup.buffers)
 
         try:
+            log.debug("write_eeprom: generating new write buffers")
             self.settings.eeprom.generate_write_buffers()
         except:
             log.critical("failed to render EEPROM write buffers", exc_info=1)
             self.queue_message("marquee_error", "Failed to write EEPROM")
             return SpectrometerResponse(data=False, error_msg="failed to generate eeprom")
 
-        log.debug("Would write new buffers: %s", self.settings.eeprom.write_buffers)
+        log.debug("write_eeprom: would write new buffers: %s", self.settings.eeprom.write_buffers)
 
         for page in range(EEPROM.MAX_PAGES):
             if self.settings.is_arm():
-                log.debug("writing page %d: %s", page, self.settings.eeprom.write_buffers[page])
+                log.debug("write_eeprom: writing page %d: %s", page, self.settings.eeprom.write_buffers[page])
                 self._send_code(bRequest        = 0xff, # second-tier
                                wValue          = 0x02,
                                wIndex          = page,
@@ -4032,7 +4006,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
             else:
                 DATA_START = 0x3c00
                 offset = DATA_START + page * 64
-                log.debug("writing page %d at offset 0x%04x: %s", page, offset, self.settings.eeprom.write_buffers[page])
+                log.debug("write_eeprom: writing page %d at offset 0x%04x: %s", page, offset, self.settings.eeprom.write_buffers[page])
                 self._send_code(bRequest        = 0xa2,   # dangerous
                                wValue          = offset, # arguably an index but hey
                                wIndex          = 0,
@@ -4143,7 +4117,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 "get_acc_state",
                 "is_laser_firing",
                 "queue_message",
-                "replace_session_eeprom",
                 "reset_fpga",
                 "select_adc",
                 "set_accessory_enable",
@@ -4196,7 +4169,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 "set_cont_strobe_repeat_count",
                 "set_acc_state",
                 "update_laser_watchdog",
-                "update_session_eeprom",
                 "write_eeprom",
                 "sync_acc_to_device",
             ]:
@@ -4262,11 +4234,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
         process_f["clear_regions"]                      = lambda x: self.clear_regions()
         process_f["detector_roi"]                       = lambda x: self.set_detector_roi(x)
         process_f["pixel_mode"]                         = lambda x: self.set_pixel_mode(x)
-
-        # EEPROM updates
-        process_f["update_eeprom"]                      = lambda x: self.update_session_eeprom(x)
-        process_f["replace_eeprom"]                     = lambda x: self.replace_session_eeprom(x)
-        process_f["write_eeprom"]                       = lambda x: self.write_eeprom()
 
         # manufacturing
         process_f["reset_fpga"]                         = lambda x: self.reset_fpga()

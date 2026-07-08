@@ -398,8 +398,13 @@ class EEPROM:
         #       EEPROM until we start bumping production spectrometers to
         #       EEPROM Page 0 Revision 3!
         if self.format >= 3:
-            for name in [ "startup_integration_time_ms", "startup_temp_degC", "startup_triggering_scheme",
-                          "detector_gain", "detector_offset", "detector_gain_odd", "detector_offset_odd" ]:
+            for name in [ "startup_integration_time_ms", 
+                          "startup_temp_degC", 
+                          "startup_triggering_scheme",
+                          "detector_gain", 
+                          "detector_offset", 
+                          "detector_gain_odd", 
+                          "detector_offset_odd" ]:
                 self.unpack_field(name)
 
         if self.format >= 16:
@@ -434,7 +439,8 @@ class EEPROM:
         # Page 2                    
         # ######################################################################
 
-        for name in [ "detector", "active_pixels_horizontal" ]:
+        for name in [ "detector", 
+                      "active_pixels_horizontal" ]:
             self.unpack_field(name)
 
         if self.format >= 10:
@@ -597,18 +603,28 @@ class EEPROM:
                 log.debug("no valid laser password found")
                 self.laser_password = None
 
-            for name in [ "feature_mask_xs", "acc_state", 
-                          "acc_state_gpio1", "acc_state_gpio2", 
-                          "acc_cont_strobe_period_us", "acc_cont_strobe_width_us", 
-                          "acc_cont_strobe_delay_us", "acc_cont_strobe_count", 
-                          "max_battery_temp_deg_c", "pixel_correction_type", "usb_manufacturer_name", 
-                          "aux_button_function", "aux_button_param", "latched_hardware_failures" ]:
+            for name in [ "feature_mask_xs", 
+                          "acc_state", 
+                          "acc_state_gpio1", 
+                          "acc_state_gpio2", 
+                          "acc_cont_strobe_period_us", 
+                          "acc_cont_strobe_width_us", 
+                          "acc_cont_strobe_delay_us", 
+                          "acc_cont_strobe_count", 
+                          "max_battery_temp_deg_c", 
+                          "pixel_correction_type", 
+                          "usb_manufacturer_name", 
+                          "aux_button_function", 
+                          "aux_button_param", 
+                          "latched_hardware_failures" ]:
                 self.unpack_field(name)
 
             # clamp strobe at int32.max until enlighten.device.EEPROMEditor 
             # handles uint32 (mainly a problem on EEPROMs < format 18)
-            for name in [ "acc_cont_strobe_period_us", "acc_cont_strobe_width_us", 
-                          "acc_cont_strobe_delay_us", "acc_cont_strobe_count" ]:
+            for name in [ "acc_cont_strobe_period_us", 
+                          "acc_cont_strobe_width_us", 
+                          "acc_cont_strobe_delay_us", 
+                          "acc_cont_strobe_count" ]:
                 value = getattr(self, name)
                 if value is None:
                     setattr(self, name, 0)
@@ -722,11 +738,19 @@ class EEPROM:
         # Page 0
         # ######################################################################
 
-        for name in [ "model", "serial_number", 
-                      "has_cooling", "has_battery", "has_laser", 
-                      "slit_size_um", "startup_integration_time_ms",
-                      "startup_temp_degC", "startup_triggering_scheme", 
-                      "detector_gain", "detector_offset", "detector_gain_odd", "detector_offset_odd", 
+        for name in [ "model", 
+                      "serial_number", 
+                      "has_cooling", 
+                      "has_battery", 
+                      "has_laser", 
+                      "slit_size_um", 
+                      "startup_integration_time_ms",
+                      "startup_temp_degC", 
+                      "startup_triggering_scheme", 
+                      "detector_gain", 
+                      "detector_offset", 
+                      "detector_gain_odd", 
+                      "detector_offset_odd", 
                       "startup_laser_tec_setpoint"]:
             self.pack_field(name)
 
@@ -749,15 +773,21 @@ class EEPROM:
             for i in range(min(3, len(self.adc_to_degC_coeffs))):
                 self.pack((1, 32 + i * 4,  4), "f", self.adc_to_degC_coeffs[i])
 
-        for name in [ "max_temp_degC", "min_temp_degC", "tec_r298", "tec_beta",
-                      "calibration_date", "calibrated_by" ]:
+        for name in [ "max_temp_degC", 
+                      "min_temp_degC", 
+                      "tec_r298", 
+                      "tec_beta",
+                      "calibration_date", 
+                      "calibrated_by" ]:
             self.pack_field(name)
                                     
         # ######################################################################
         # Page 2                    
         # ######################################################################
 
-        for name in [ "detector", "active_pixels_horizontal", "laser_warmup_sec",
+        for name in [ "detector", 
+                      "active_pixels_horizontal", 
+                      "laser_warmup_sec",
                       "active_pixels_vertical" ]:
             self.pack_field(name)
 
@@ -771,9 +801,14 @@ class EEPROM:
             self.pack((2, 21,  4), "f", coeff)
 
         for name in [ "actual_pixels_horizontal", 
-                      "roi_vertical_region_1_start", "roi_vertical_region_1_end",
-                      "roi_vertical_region_2_start", "roi_vertical_region_2_end",
-                      "roi_vertical_region_3_start", "roi_vertical_region_3_end" ]:
+                      "roi_horizontal_start",
+                      "roi_horizontal_end",
+                      "roi_vertical_region_1_start", 
+                      "roi_vertical_region_1_end",
+                      "roi_vertical_region_2_start", 
+                      "roi_vertical_region_2_end",
+                      "roi_vertical_region_3_start", 
+                      "roi_vertical_region_3_end" ]:
             self.pack_field(name)
             
         # ######################################################################
@@ -785,16 +820,20 @@ class EEPROM:
             for i in range(min(4, len(self.laser_power_coeffs))):
                 self.pack((3, 12 + i * 4,  4), "f", self.laser_power_coeffs[i])
 
-        for name in [ "max_laser_power_mW", "min_laser_power_mW",
-                      "min_integration_time_ms", "max_integration_time_ms",
-                      "laser_watchdog_sec", "light_source_type",
-                      "power_timeout_sec", "detector_timeout_sec", 
-                      "startup_scans_to_average", "laser_attenuator" ]:
+        for name in [ "max_laser_power_mW", 
+                      "min_laser_power_mW",
+                      "excitation_nm_float",
+                      "min_integration_time_ms", 
+                      "max_integration_time_ms",
+                      "avg_resolution",
+                      "laser_watchdog_sec", 
+                      "light_source_type",
+                      "power_timeout_sec", 
+                      "detector_timeout_sec", 
+                      "horiz_binning_mode",
+                      "startup_scans_to_average", 
+                      "laser_attenuator" ]:
             self.pack_field(name)
-
-        self.pack((3, 36,  4), "f", self.multi_wavelength_calibration.get("excitation_nm_float"))
-        self.pack((3, 48,  4), "f", self.multi_wavelength_calibration.get("avg_resolution"))
-        self.pack((3, 59,  1), "B", self.multi_wavelength_calibration.get("horiz_binning_mode"))
 
         # ######################################################################
         # Page 4
@@ -865,12 +904,19 @@ class EEPROM:
 
             self.feature_mask_xs = self.generate_feature_mask_xs()
 
-            for name in [ "feature_mask_xs", "acc_state", 
-                          "acc_state_gpio1", "acc_state_gpio2", 
-                          "acc_cont_strobe_period_us", "acc_cont_strobe_width_us", 
-                          "acc_cont_strobe_delay_us", "acc_cont_strobe_count", 
-                          "max_battery_temp_deg_c", "pixel_correction_type", 
-                          "usb_manufacturer_name", "aux_button_function", "aux_button_param" ]:
+            for name in [ "feature_mask_xs", 
+                          "acc_state", 
+                          "acc_state_gpio1", 
+                          "acc_state_gpio2", 
+                          "acc_cont_strobe_period_us", 
+                          "acc_cont_strobe_width_us", 
+                          "acc_cont_strobe_delay_us", 
+                          "acc_cont_strobe_count", 
+                          "max_battery_temp_deg_c", 
+                          "pixel_correction_type", 
+                          "usb_manufacturer_name", 
+                          "aux_button_function", 
+                          "aux_button_param" ]:
                 self.pack_field(name)
 
         self.dump_write_buffers("end of generate_write_buffers")
@@ -985,8 +1031,13 @@ class EEPROM:
             log.error(f"unable to pack unknown field {name}")
             return
 
+        if name in self.multi_wavelength_calibration.attributes:
+            value = self.multi_wavelength_calibration.get(name)
+        else:
+            value = getattr(self, name)
+
         field = self.fields[name]
-        value = getattr(self, name)
+
         self.pack(field.pos, field.data_type, value, label=name, quiet=quiet)
 
     ## 
@@ -1026,7 +1077,7 @@ class EEPROM:
                     buf[start_byte + i] = 0
         elif data_type == "*":
             for i in range(start_byte, end_byte):
-                log.debug(f"pack: clearing buf {page}, byte {i}")
+                # log.debug(f"pack: clearing buf {page}, byte {i}")
                 buf[i] = 0
             if isinstance(value, str):
                 value = utils.hex_string_to_data(value)
@@ -1501,9 +1552,12 @@ class MultiWavelengthCalibration:
     def __init__(self, eeprom):
         self.eeprom = eeprom
 
-        self.attributes = [ 'excitation_nm_float', 'wavelength_coeffs', 
-                            'roi_horizontal_start', 'roi_horizontal_end', 
-                            'avg_resolution', 'raman_intensity_coeffs', 
+        self.attributes = [ 'excitation_nm_float', 
+                            'wavelength_coeffs', 
+                            'roi_horizontal_start', 
+                            'roi_horizontal_end', 
+                            'avg_resolution', 
+                            'raman_intensity_coeffs', 
                             'horiz_binning_mode' ]
         self.values = {}
         self.calibrations = 1
@@ -1603,6 +1657,7 @@ class MultiWavelengthCalibration:
                     setattr(self.eeprom, name, a[calibration])
 
             log.debug(f"MultiWavelengthCalibration.set: set {label} = {value}")
+            # log.debug(f"MultiWavelengthCalibration.set: checked value {getattr(self.eeprom, name)}")
         except:
             log.error(f"MultiWavelengthCalibration.set: failed to set name {name}, calibration {calibration}, index {index}, value {value}", exc_info=1)
 
