@@ -1120,6 +1120,8 @@ class EEPROM:
         d = {}
         for k, v in self.__dict__.items():
             if k not in ["user_data", "buffers", "write_buffers", "editable"]:
+                if isinstance(v, array.array):
+                    v = v.tolist()
                 d[k] = v
         return d
 
@@ -1131,16 +1133,18 @@ class EEPROM:
         tmp_data   = self.user_data
         tmp_fields = self.fields
         tmp_mwc    = self.multi_wavelength_calibration
+        tmp_write_buffers = self.write_buffers
 
         self.buffers   = str(self.buffers)
         self.user_data = str(self.user_data)
         self.fields    = None
-        self.multi_wavelength_calibration = self.multi_wavelength_calibration.toJSON()
+        self.multi_wavelength_calibration = self.multi_wavelength_calibration.to_json()
+        self.write_buffers = None
 
         # this does take an allow_nan argument, but it throws an exception on NaN, 
         # rather than replacing with null :-(
         # https://stackoverflow.com/questions/6601812/sending-nan-in-json
-        s = json.dumps(self.__dict__, indent=2, sort_keys=True, default=lambda x: x.tolist() if isinstance(x, np.ndarray) else None)
+        s = json.dumps(self.__dict__, indent=2, sort_keys=True, default=lambda x: x.tolist() if isinstance(x, (np.ndarray, array.array)) else None)
         if not allow_nan:
             s = re.sub(r"\bNaN\b", "null", s)
 
@@ -1148,8 +1152,12 @@ class EEPROM:
         self.buffers   = tmp_buf
         self.user_data = tmp_data
         self.multi_wavelength_calibration = tmp_mwc
+        self.write_buffers = tmp_write_buffers
 
         return s
+
+    def to_json(self):
+        return self.json()
 
     def dump_write_buffers(self, label=None):
         log.debug(f"EEPROM.write_buffers: {label}")
@@ -1702,7 +1710,7 @@ class MultiWavelengthCalibration:
             for name in self.attributes:
                 log.debug(f"    {name} = {self.get(name, calibration=i)}")
 
-    def toJSON(self): 
+    def to_json(self): 
         return str(self.__dict__)
         # return json.dumps(self, default=lambda o: o.__dict__, sort_keys=True, indent=4)
 
@@ -1719,5 +1727,5 @@ class EEPROMField:
     def __repr__(self): 
         return str(self.__dict__)
     
-    def toJSON(self): 
+    def to_json(self): 
         return str(self.__dict__)

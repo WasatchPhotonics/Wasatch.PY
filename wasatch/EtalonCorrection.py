@@ -17,6 +17,9 @@ class EtalonCorrection:
         self.mode = None
         self.factors = None 
 
+    def to_json(self): 
+        return str(self.__dict__)
+
     def parse_json_data(self, data):
         """
         {

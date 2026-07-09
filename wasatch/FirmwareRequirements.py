@@ -96,3 +96,6 @@ class FirmwareRequirements:
 
     def __repr__(self):
         return "Firmware Requirements"
+
+    def to_json(self): 
+        return str(self.__dict__)

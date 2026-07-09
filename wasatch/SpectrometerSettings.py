@@ -1,5 +1,6 @@
 import logging
 import numpy as np
+import array
 import json
 import math
 import re
@@ -415,7 +416,7 @@ class SpectrometerSettings:
 
             if isinstance(v, (DeviceID, EEPROM, FPGAOptions, SpectrometerState, HardwareInfo, RealUSBDevice, MockUSBDevice, datetime)):
                 o = v.to_dict()
-            elif isinstance(v, np.ndarray):
+            elif isinstance(v, (np.ndarray, array.array)):
                 o = v.tolist()
             else:
                 o = v
