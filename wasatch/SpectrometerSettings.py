@@ -99,7 +99,7 @@ class SpectrometerSettings:
 
         # set by enlighten.factory.DiagnosticFeature, allows code to output 
         # messages or whatever that users wouldn't normally see
-        self.diagnostic_mdoe = False
+        self.diagnostic_mode = False
 
     def set_num_connected_devices(self, n):
         self.num_connected_devices = n
