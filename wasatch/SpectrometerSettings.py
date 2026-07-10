@@ -460,6 +460,11 @@ class SpectrometerSettings:
         return os.path.join(os.environ["HOME"], "EnlightenSpectra")
 
     def augment_from_json_file(self, basename=None, pathname=None):
+        """ basename should look like "WP-03173", pathname would be "/path/to/config/WP-03173.json" """
+        if pathname is None and basename is None:
+            if self.eeprom.serial_number is not None:
+                basename = self.eeprom.serial_number
+
         if not basename and not pathname:
             log.error("augment_from_json_file requires basename or pathname")
             return
@@ -469,6 +474,7 @@ class SpectrometerSettings:
             return
 
         if basename:
+            log.debug(f"augment_from_json_file: searching for basename {basename}")
             search_dirs = [ ".", os.path.join(self.default_data_dir(), "config") ]
             for dir_ in search_dirs:
                 testname = os.path.join(dir_, f"{basename}.json")
@@ -476,14 +482,17 @@ class SpectrometerSettings:
                     pathname = testname
                     break
             if not pathname:
-                log.debug(f"unable to find {basename}.json in search_dirs {search_dirs}")
+                log.debug(f"augment_from_json_file: unable to find {basename}.json in search_dirs {search_dirs}")
                 return
 
-        with open(pathname) as f:
-            data = json.load(f)
-            self.augment_from_json_data(data)
+        if os.path.exists(pathname):
+            log.debug(f"augment_from_json_file: loading {pathname}")
+            with open(pathname) as f:
+                data = json.load(f)
+                self.augment_from_json_data(data)
 
     def augment_from_json_data(self, data):
+        log.debug(f"augment_from_json_data: start")
         if data is None:
             return
 

@@ -4,6 +4,7 @@ Note: in the following, FID = wasatch.FeatureInterfaceDevice
 
 - 2026-??-?? 2.4.4 (enlighten-4.2.6)
     - updated JSON conversions
+    - fixed EtalonCorrection
 - 2026-07-08 2.4.3 (enlighten-4.2.5)
     - XS
         - added XSAccessoryConnector class
