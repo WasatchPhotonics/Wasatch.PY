@@ -187,7 +187,7 @@ class SpectrometerSettings:
             return False
 
         height = self.eeprom.active_pixels_vertical
-        return roi.start < roi.stop and roi.start >= 0 and roi.stop < height
+        return roi.start < roi.end and roi.start >= 0 and roi.end < height
 
     def get_vertical_roi(self):
         calibration = self.eeprom.multi_wavelength_calibration.selected_calibration
