@@ -17,7 +17,7 @@ class InGaAsCorrection:
         self.slopes = None 
 
     def to_json(self): 
-        return str(self.__dict__)
+        return vars(self)
 
     def parse_json_data(self, data):
         """

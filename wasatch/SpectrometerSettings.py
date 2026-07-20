@@ -425,8 +425,7 @@ class SpectrometerSettings:
         return d
 
     def to_json(self):
-        d = dict(self)
-        return json.dumps(d, indent=4, sort_keys=True, default=str)
+        return json.dumps(self.__dict__, sort_keys=True, indent=2, default=lambda o: o.to_json())
 
     def dump(self):
         log.debug("SpectrometerSettings:")

@@ -1,4 +1,5 @@
 import logging
+import json
 
 log = logging.getLogger(__name__)
 
@@ -59,7 +60,7 @@ class XSAccState:
         return f"XSAccState < gpio enabled {self.gpio_enabled}, 5V enabled {self.acc_5V_enabled}, 5V good {self.acc_5V_good} >"
 
     def to_json(self): 
-        return str(self.__dict__)
+        return vars(self)
 
 class XSGPIOState:
 
@@ -149,7 +150,7 @@ class XSGPIOState:
         return f"XSGPIOState < num {self.num}, control {self.get_control_str()}, direction {self.get_direction_str()}, value {self.get_value_str()}, func {self.get_function_str()} >"
 
     def to_json(self): 
-        return str(self.__dict__)
+        return vars(self)
 
 class XSContinuousStrobe:
 
@@ -163,7 +164,7 @@ class XSContinuousStrobe:
         return f"XSContinuousStrobe < period {self.period_us}us, width {self.width_us}us, delay {self.delay_us}us, repeat {self.repeat_count} >"
 
     def to_json(self): 
-        return str(self.__dict__)
+        return vars(self)
 
 class XSAccessoryConnector:
 
@@ -184,7 +185,7 @@ class XSAccessoryConnector:
         return f"XSAccessoryConnector < acc_state {self.acc_state}, GPIO1 {self.state_gpio1}, GPIO2 {self.state_gpio2}, strobe {self.cont_strobe} >"
 
     def to_json(self): 
-        return str(self.__dict__)
+        return vars(self)
 
     def dump(self):
         log.debug(f"XSAccessoryConnector:")
