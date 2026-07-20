@@ -2,7 +2,7 @@
 
 Note: in the following, FID = wasatch.FeatureInterfaceDevice
 
-- 2026-??-?? 2.4.4 (enlighten-4.2.6)
+- 2026-07-20 2.4.4 (enlighten-4.2.6)
     - updated JSON conversions
     - fixed EtalonCorrection
     - save laser temperature on XS Auto-Raman
