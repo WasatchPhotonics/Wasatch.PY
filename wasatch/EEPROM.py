@@ -602,6 +602,8 @@ class EEPROM:
             elif len(s) < 4 or any([not (31 < ord(c) < 128) for c in s]):
                 log.debug("no valid laser password found")
                 self.laser_password = None
+            if s.lower() == "none":
+                self.laser_password = None
 
             for name in [ "feature_mask_xs", 
                           "acc_state", 
@@ -975,7 +977,8 @@ class EEPROM:
 
         field = self.fields[name]
         value = self.unpack(field.pos, field.data_type, label=name, quiet=quiet)
-        setattr(self, name, value)
+        if value is not None:
+            setattr(self, name, value)
         return value
 
     ## 
