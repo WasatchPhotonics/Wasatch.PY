@@ -454,8 +454,13 @@ class BLEDevice(InterfaceDevice):
 
         # copy firmware revisions to SpectrometerSettings
         self.settings.microcontroller_firmware_version = self.device_info["Firmware Revision String"]
+        log.debug(f"Microcontroller firmware version: {self.settings.microcontroller_firmware_version}")
+        
         self.settings.fpga_firmware_version = self.device_info["Hardware Revision String"]
+        log.debug(f"FPGA firmware version: {self.settings.fpga_firmware_version}")
+        
         self.settings.ble_firmware_version = self.device_info["Software Revision String"]
+        log.debug(f"BLE firmware version: {self.settings.ble_firmware_version}")
 
     async def init_characteristics_async(self):
         # find the primary service
