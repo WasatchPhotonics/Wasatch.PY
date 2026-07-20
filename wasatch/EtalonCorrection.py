@@ -13,9 +13,11 @@ class EtalonCorrection:
     def __init__(self, pixels):
         self.pixels = pixels
 
-        self.enabled = False
         self.mode = None
         self.factors = None 
+
+    def to_json(self): 
+        return vars(self)
 
     def parse_json_data(self, data):
         """
@@ -37,6 +39,7 @@ class EtalonCorrection:
         self.factors = data["factors"]
 
     def eeprom_page_range(self):
+        """ called by FeatureIdentificationDevice._read_pixel_correction_from_eeprom """
         first = 10
         count = self.pixels * self.BYTES_PER_FLOAT // self.BYTES_PER_PAGE
         return (first, count)
@@ -60,9 +63,6 @@ class EtalonCorrection:
         return True
 
     def apply(self, spectrum):
-        if not self.enabled:
-            return spectrum
-
         if self.mode != "default":
             log.error("unimplemented mode {self.mode}")
             return spectrum

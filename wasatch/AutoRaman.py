@@ -154,7 +154,8 @@ class AutoRaman:
                             ('is_laser_firing',   'laser_is_firing') ]
         if self.settings.is_xs() and self.settings.eeprom.sig_laser_tec:
             setting_to_attr.extend( [ ('get_laser_tec_mode', 'laser_tec_enabled'),
-                                      ('get_ambient_temperature_degC', 'ambient_temperature_degC') ] )
+                                      ('get_ambient_temperature_degC', 'ambient_temperature_degC'),
+                                      ('get_laser_temperature_degC', 'laser_temperature_degC') ] )
         for (setting, attr_name) in setting_to_attr:
             result = self.self.idevice.handle_cmd(setting)
             if result is not None:
@@ -541,7 +542,8 @@ class AutoRaman:
                             ('is_laser_firing',   'laser_is_firing') ]
         if self.settings.is_xs() and self.settings.eeprom.sig_laser_tec:
             setting_to_attr.extend( [ ('get_laser_tec_mode', 'laser_tec_enabled'),
-                                      ('get_ambient_temperature_degC', 'ambient_temperature_degC') ] )
+                                      ('get_ambient_temperature_degC', 'ambient_temperature_degC'),
+                                      ('get_laser_temperature_degC', 'laser_temperature_degC') ] )
         for (setting, attr_name) in setting_to_attr:
             result = self.idevice.handle_cmd(setting)
             if result is not None and not result.error_msg:

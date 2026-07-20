@@ -602,6 +602,8 @@ class EEPROM:
             elif len(s) < 4 or any([not (31 < ord(c) < 128) for c in s]):
                 log.debug("no valid laser password found")
                 self.laser_password = None
+            if s.lower() == "none":
+                self.laser_password = None
 
             for name in [ "feature_mask_xs", 
                           "acc_state", 
@@ -975,7 +977,8 @@ class EEPROM:
 
         field = self.fields[name]
         value = self.unpack(field.pos, field.data_type, label=name, quiet=quiet)
-        setattr(self, name, value)
+        if value is not None:
+            setattr(self, name, value)
         return value
 
     ## 
@@ -1120,36 +1123,38 @@ class EEPROM:
         d = {}
         for k, v in self.__dict__.items():
             if k not in ["user_data", "buffers", "write_buffers", "editable"]:
+                if isinstance(v, array.array):
+                    v = v.tolist()
                 d[k] = v
         return d
 
     ## render the attributes of this object as a JSON string
     #
-    # @note some callers may prefer SpectrometerSettings.to_dict() or to_json()
+    # @note some callers may prefer SpectrometerSettings.to_dict()
     def json(self, allow_nan=True):
         tmp_buf    = self.buffers
         tmp_data   = self.user_data
-        tmp_fields = self.fields
-        tmp_mwc    = self.multi_wavelength_calibration
+        tmp_write_buffers = self.write_buffers
 
         self.buffers   = str(self.buffers)
         self.user_data = str(self.user_data)
-        self.fields    = None
-        self.multi_wavelength_calibration = self.multi_wavelength_calibration.toJSON()
+        self.write_buffers = None
 
         # this does take an allow_nan argument, but it throws an exception on NaN, 
         # rather than replacing with null :-(
         # https://stackoverflow.com/questions/6601812/sending-nan-in-json
-        s = json.dumps(self.__dict__, indent=2, sort_keys=True, default=lambda x: x.tolist() if isinstance(x, np.ndarray) else None)
+        s = json.dumps(self.__dict__, sort_keys=True, indent=2, default=lambda o: o.tolist() if isinstance(o, (array.array)) else o.to_json())
         if not allow_nan:
             s = re.sub(r"\bNaN\b", "null", s)
 
-        self.fields    = tmp_fields
         self.buffers   = tmp_buf
         self.user_data = tmp_data
-        self.multi_wavelength_calibration = tmp_mwc
+        self.write_buffers = tmp_write_buffers
 
         return s
+
+    def to_json(self):
+        return self.json()
 
     def dump_write_buffers(self, label=None):
         log.debug(f"EEPROM.write_buffers: {label}")
@@ -1702,9 +1707,13 @@ class MultiWavelengthCalibration:
             for name in self.attributes:
                 log.debug(f"    {name} = {self.get(name, calibration=i)}")
 
-    def toJSON(self): 
-        return str(self.__dict__)
-        # return json.dumps(self, default=lambda o: o.__dict__, sort_keys=True, indent=4)
+    def to_json(self): 
+        eeprom_tmp  = self.eeprom
+        self.eeprom = None
+
+        return vars(self)
+
+        self.eeprom = eeprom_tmp
 
 class EEPROMField:
     def __init__(self, pos, data_type, name):
@@ -1719,5 +1728,5 @@ class EEPROMField:
     def __repr__(self): 
         return str(self.__dict__)
     
-    def toJSON(self): 
-        return str(self.__dict__)
+    def to_json(self): 
+        return vars(self)

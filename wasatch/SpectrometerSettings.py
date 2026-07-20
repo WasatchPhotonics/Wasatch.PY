@@ -1,5 +1,6 @@
 import logging
 import numpy as np
+import array
 import json
 import math
 import re
@@ -98,7 +99,7 @@ class SpectrometerSettings:
 
         # set by enlighten.factory.DiagnosticFeature, allows code to output 
         # messages or whatever that users wouldn't normally see
-        self.diagnostic_mdoe = False
+        self.diagnostic_mode = False
 
     def set_num_connected_devices(self, n):
         self.num_connected_devices = n
@@ -186,7 +187,7 @@ class SpectrometerSettings:
             return False
 
         height = self.eeprom.active_pixels_vertical
-        return roi.start < roi.stop and roi.start >= 0 and roi.stop < height
+        return roi.start < roi.end and roi.start >= 0 and roi.end < height
 
     def get_vertical_roi(self):
         calibration = self.eeprom.multi_wavelength_calibration.selected_calibration
@@ -415,7 +416,7 @@ class SpectrometerSettings:
 
             if isinstance(v, (DeviceID, EEPROM, FPGAOptions, SpectrometerState, HardwareInfo, RealUSBDevice, MockUSBDevice, datetime)):
                 o = v.to_dict()
-            elif isinstance(v, np.ndarray):
+            elif isinstance(v, (np.ndarray, array.array)):
                 o = v.tolist()
             else:
                 o = v
@@ -424,8 +425,7 @@ class SpectrometerSettings:
         return d
 
     def to_json(self):
-        d = dict(self)
-        return json.dumps(d, indent=4, sort_keys=True, default=str)
+        return json.dumps(self.__dict__, sort_keys=True, indent=2, default=lambda o: o.to_json())
 
     def dump(self):
         log.debug("SpectrometerSettings:")
@@ -459,6 +459,11 @@ class SpectrometerSettings:
         return os.path.join(os.environ["HOME"], "EnlightenSpectra")
 
     def augment_from_json_file(self, basename=None, pathname=None):
+        """ basename should look like "WP-03173", pathname would be "/path/to/config/WP-03173.json" """
+        if pathname is None and basename is None:
+            if self.eeprom.serial_number is not None:
+                basename = self.eeprom.serial_number
+
         if not basename and not pathname:
             log.error("augment_from_json_file requires basename or pathname")
             return
@@ -468,6 +473,7 @@ class SpectrometerSettings:
             return
 
         if basename:
+            log.debug(f"augment_from_json_file: searching for basename {basename}")
             search_dirs = [ ".", os.path.join(self.default_data_dir(), "config") ]
             for dir_ in search_dirs:
                 testname = os.path.join(dir_, f"{basename}.json")
@@ -475,14 +481,17 @@ class SpectrometerSettings:
                     pathname = testname
                     break
             if not pathname:
-                log.debug(f"unable to find {basename}.json in search_dirs {search_dirs}")
+                log.debug(f"augment_from_json_file: unable to find {basename}.json in search_dirs {search_dirs}")
                 return
 
-        with open(pathname) as f:
-            data = json.load(f)
-            self.augment_from_json_data(data)
+        if os.path.exists(pathname):
+            log.debug(f"augment_from_json_file: loading {pathname}")
+            with open(pathname) as f:
+                data = json.load(f)
+                self.augment_from_json_data(data)
 
     def augment_from_json_data(self, data):
+        log.debug(f"augment_from_json_data: start")
         if data is None:
             return
 

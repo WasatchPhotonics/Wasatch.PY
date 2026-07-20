@@ -1,4 +1,5 @@
 import logging
+from copy import copy
 
 from .utils import vercmp
 
@@ -96,3 +97,12 @@ class FirmwareRequirements:
 
     def __repr__(self):
         return "Firmware Requirements"
+
+    def to_json(self): 
+        settings_tmp = self.settings
+        self.settings = None
+
+        d = copy(vars(self))
+
+        self.settings = settings_tmp
+        return d

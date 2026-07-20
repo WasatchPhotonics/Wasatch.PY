@@ -184,7 +184,9 @@ class ProcessedReading:
                 if hasattr(obj, name):
                     v = getattr(obj, name)
                     if v is not None:
-                        return v
+                        # use this opportunity to convert any Numpy arrays to 
+                        # Python lists to simplify JSON exports and the like
+                        return list(v)
         # log.debug(f"_get_array: could not find {name} in {sources}")
         # self.dump()
 
@@ -218,6 +220,8 @@ class ProcessedReading:
 
         This never updates .interpolated, so all calls to this should definitely
         occur BEFORE .interpolated is created by enlighten.post_processing.InterpolationFeature.
+
+        Convert any Numpy arrays to Python lists to simplify JSON exports and the like.
         """
 
         if self.interpolated:
@@ -226,10 +230,10 @@ class ProcessedReading:
 
         if self.cropped:
             log.debug(f"set_processed: updating cropped to {len(spectrum)} px {spectrum[:5]}")
-            self.cropped.processed = spectrum
+            self.cropped.processed = list(spectrum)
         else:
             log.debug(f"set_processed: updating non-cropped to {len(spectrum)} px {spectrum[:5]}")
-            self.processed = spectrum
+            self.processed = list(spectrum)
 
     # should be done before .cropped created
     def correct_dark(self, dark):
