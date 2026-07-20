@@ -891,17 +891,21 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
     def _read_pixel_correction_from_eeprom(self):
         ee = self.settings.eeprom
+        log.debug(f"In _read_pixel_correction_from_eeprom")
 
         # Load a pixel correction from the EEPROM if one is present. It is 
         # assumed that if pixel_calibration_type is set, then the indicated 
         # calibration is present on the EEPROM (not in an external JSON file).
         if self.settings.eeprom.pixel_correction_type == ee.PIXEL_CORRECTION_NONE:
+            log.debug(f"Pixel Correction None")
             return
 
         if self.settings.eeprom.pixel_correction_type == ee.PIXEL_CORRECTION_USER_DATA:
+            log.debug(f"Pixel Correction User")
             return
 
         if self.settings.eeprom.pixel_correction_type == ee.PIXEL_CORRECTION_ETALON:
+            log.debug(f"Pixel Correction Etalon")
             corr = EtalonCorrection(self.settings.pixels())
             first, count = corr.eeprom_page_range()
 
