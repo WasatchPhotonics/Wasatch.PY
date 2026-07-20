@@ -2270,11 +2270,13 @@ class FeatureIdentificationDevice(InterfaceDevice):
             raw = raw.data
         if raw is None:
             raw = self.get_laser_temperature_raw()
-
+        
         if raw is None:
             msg="get_laser_temperature_degC: error reading raw laser temperature"
             log.error(msg)
             return SpectrometerResponse(error_lvl=ErrorLevel.low, error_msg=msg)
+        elif isinstance(raw, SpectrometerResponse):
+            raw = raw.data
 
         if raw > 0xfff:
             msg = f"get_laser_temperature_degC: raw value 0x{raw:x} exceeds 12 bits"
@@ -2313,6 +2315,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 degC       = 3977.0 / insideMain - 273.0
 
             log.debug("Laser temperature: %.2f deg C (0x%04x raw)" % (degC, raw))
+            self.settings.state.laser_temperature_deg_c = degC
         except:
             msg = "exception computing laser temperature"
             log.error(msg, exc_info=1)
