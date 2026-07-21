@@ -2,6 +2,16 @@
 
 Note: in the following, FID = wasatch.FeatureInterfaceDevice
 
+- 2026-07-21 2.4.5
+    - added InterfaceDevice.change_setting, providing "hopefully transparent" 
+      support for legacy code which had been using WasatchDevice.change_setting.
+      The older function was deliberately removed as part of 
+      https://github.com/WasatchPhotonics/Wasatch.PY/pull/149, as the older 
+      command interface had grown unneccessarily convoluted and difficult to
+      follow, even for maintainers. The new "convenience function" now flows
+      directly into InterfaceDevice's standard request handler pipeline, and
+      is therefore evenly supported across all InterfaceDevice subtypes
+      (instead of "just" WasatchDevice).
 - 2026-07-20 2.4.4 (enlighten-4.2.6)
     - updated JSON conversions
     - fixed EtalonCorrection

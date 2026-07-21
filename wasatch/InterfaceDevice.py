@@ -107,6 +107,13 @@ class InterfaceDevice:
     # Request Handlers
     ############################################################################
 
+    def change_setting(self, setting, value=None):
+        """ 
+        Convenience shortcut for old function name. Also, allows WasatchDevice
+        to mimic WasatchDeviceWrapper interface.
+        """ 
+        return self.handle_cmd(setting, value)
+
     def handle_cmd(self, cmd, arg=None, force=False):
         """ 
         handle_cmd("get_laser_temperature_deg_c") 

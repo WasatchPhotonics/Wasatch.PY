@@ -298,12 +298,12 @@ class SPIDevice(InterfaceDevice):
         self.settings.state.gain_db = value
         return SpectrometerResponse()
 
-    def change_setting(self,setting,value):
-        log.info(f"spi being told to change setting {setting} to {value}")
-        f = self.lambdas.get(setting,None)
-        if f is not None:
-            f(value)
-        return True
+    # def change_setting(self,setting,value):
+    #     log.info(f"spi being told to change setting {setting} to {value}")
+    #     f = self.lambdas.get(setting,None)
+    #     if f is not None:
+    #         f(value)
+    #     return True
 
     def _init_process_funcs(self): # -> dict[str, Callable[..., Any]] 
         process_f = {}
