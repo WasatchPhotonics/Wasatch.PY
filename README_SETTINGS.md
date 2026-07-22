@@ -1,34 +1,65 @@
-# WasatchDeviceWrapper Settings
+# (Name, Value) Settings
 
 ## History
 
 Unlike the more "functional" and "property-based" Wasatch.NET, for historical
 reasons much of Wasatch.PY functionality is exposed through (name, value) key-value
-pairs which can be sent through WasatchDevice.change\_setting().  
+pairs which can be sent through the change\_setting() method of InterfaceDevice
+subclasses (including WasatchDevice, FeatureInterfaceDevice, BLEDevice, TCPDevice, 
+AndorDevice, SPIDevice etc).
 
-Essentially, this is because Wasatch.PY started as the hardware-facing "back-end"
+Historically, this is because Wasatch.PY started as the hardware-facing "back-end"
 to ENLIGHTEN, running in a separate process, and so ENLIGHTEN would send 
 "commands" and "settings" to the subprocess via easily-pickled string objects
-passed through a multiprocessing.Pipe.  (That's still how it happens today, using
-WasatchDeviceWrapper).
+passed through a multiprocessing.Queue. That fundamental messaging architecture
+still persists today, even though the "multi-process" design has been replaced
+by "multi-threaded". (Given the necessarily serial and synchronous nature of 
+most spectrometer communications, there is some benefit to retaining a queued
+message list which can only be executed in serial by a single owning thread.)
 
-What this means to you as a third-party developer is that the Wasatch.PY 
+WHAT THIS MEANS TO YOU as a third-party developer is that the Wasatch.PY 
 interface may feel a little weird, bloated and inelegant, because it was 
-designed for a specific use-case that you may not share.
+designed for a specific use-case that you may not share, and indeed no longer
+exists :-(
 
-As you can see in wasatch.FeatureIdentificationDevice.init\_lambdas(), most
-of these settings tuples are simply pass-throughs to more traditional method
-calls on FeatureIdentificationDevice.  You may well find it simpler simply
+As you can see in wasatch.FeatureIdentificationDevice._init_process_funcs,
+most of these "settings tuples" are simply pass-throughs to more traditional 
+method calls on FeatureIdentificationDevice.  YOU MAY WELL FIND IT SIMPLER simply
 to instantiate a FeatureIdentificationDevice directly and interact with the
 spectrometer at that level.
 
 However, some of the functionality provided by the driver, such as scan 
 averaging, is only available through the key-value settings described below.
 
-## Supported Settings
+## Messaging Architecture
 
-At writing, these are the string keys which can be passed to 
-wasatch.WasatchDevice.change_setting():
+Whether you are controlling an X, XM, or XS series Wasatch Photonics spectrometer
+using our own USB electronics (via WasatchDevice), or an Wasatch XL spectrometer 
+using a 3rd-party camera (AndorDevice), or an XS spectrometer over Bluetooth LE®
+(BLEDevice), you would normally use the messaging interface provided by the 
+Abstract Base Class (ABC) wasatch.InterfaceDevice.
+
+At writing, that class exposes the following methods:
+
+- `change_setting(name, value)` -- this is the most similar interface to the 
+  original "change_setting" approach, and is still supported.
+
+- `handle_request(SpectrometerRequest)` -- this is the "new" approach, but
+  honestly it provides no advantages that I can see and so I can't really
+  recommend it.
+
+The alternative of course is to call directly into the functional API of
+the InterfaceDevice subclass itself (for instance, FeatureInterfaceDevice,
+BLEDevice etc). This is perfectly reasonable and will probably provide you
+with the best understanding of exactly how your spectrometer works and what
+features it provides.
+
+## Sample Settings
+
+These are some of the most common settings which can be passed to 
+wasatch.WasatchDevice.change_setting(). The list in this file is not rigorously
+maintained and the authoritative source should be the _init_process_funcs 
+method found in FeatureInterfaceDevice and similar classes.
 
 - acquire 
     - (value ignored) triggers an acquisition

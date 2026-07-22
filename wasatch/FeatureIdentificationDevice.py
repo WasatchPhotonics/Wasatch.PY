@@ -191,6 +191,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                 log.critical(msg, exc_info=1)
                 return SpectrometerResponse(False, error_msg=msg)
 
+        # a usb.core.Device from pyusb
         self.device = device
 
         return self._post_connect()

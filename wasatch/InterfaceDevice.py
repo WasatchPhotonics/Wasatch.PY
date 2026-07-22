@@ -107,6 +107,13 @@ class InterfaceDevice:
     # Request Handlers
     ############################################################################
 
+    def change_setting(self, setting, value=None):
+        """ 
+        Convenience shortcut for old function name. Also, allows WasatchDevice
+        to mimic WasatchDeviceWrapper interface.
+        """ 
+        return self.handle_cmd(setting, value)
+
     def handle_cmd(self, cmd, arg=None, force=False):
         """ 
         handle_cmd("get_laser_temperature_deg_c") 
@@ -120,6 +127,8 @@ class InterfaceDevice:
         handle_cmd("take_one_request", None, force=True) 
             is a shortcut to
         handle_request(SpectrometerRequest("select_adc", args=[None]))
+
+        @param force is just there to allow users to forcibly pass None as an argument
         """
         if arg is None and not force:
             return self.handle_request(SpectrometerRequest(cmd))
