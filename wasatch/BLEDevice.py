@@ -15,6 +15,7 @@ from wasatch.SpectrometerRequest      import SpectrometerRequest
 from wasatch.SpectrometerSettings     import SpectrometerSettings
 from wasatch.SpectrometerResponse     import SpectrometerResponse, ErrorLevel
 from wasatch.USBCPowerConnectionState import USBCPowerConnectionState
+from .EtalonCorrection                import EtalonCorrection
 
 from . import utils
 
@@ -410,7 +411,10 @@ class BLEDevice(InterfaceDevice):
 
         log.debug(f"connect_async: initializing scan averaging")
         await self.set_scans_to_average_async(1)
-
+        
+        await self._read_pixel_correction_from_eeprom()
+        log.debug(f"connect_async: reading etalon correction")
+        
         # learn more about the device
         self.settings.microcontroller_serial_number = await self.get_cpu_unique_id_async()
         log.debug(f"connect_async: cpu_unique_id = {self.settings.microcontroller_serial_number}")
@@ -826,6 +830,53 @@ class BLEDevice(InterfaceDevice):
         log.debug(f"reading eeprom took {elapsed_sec:.2f} sec")
 
     # getter helper ############################################################
+    
+    def _read_eeprom_pages(self, first, count):
+        buffers = []
+        name = "EEPROM_DATA"
+        
+        for page in range(first, first + count):
+            buf = bytearray()
+            
+            offset = len(buf)
+            request = self.generics.generate_read_request(name)
+            request.append(0) # page is big-endian uint16, update this for pages > 255
+            request.append(page)
+            request.append(offset)
+
+            log.debug(f"_read_eeprom_pages for Etalon Correction: querying {name} ({utils.to_hex(request)})")
+            self.write_char_async("GENERIC", request, callback=lambda data: self.generics.process_response_async(name, data))
+
+            log.debug(f"_read_eeprom_pages for Etalon Correction: waiting on {name}")
+            self.generics.wait_async(name)
+
+            data = self.generics.get_value(name)
+            log.debug(f"_read_eeprom_pages for Etalon Correction: received page {page}, offset {offset}: {data}")
+
+            for byte in data:
+                buf.append(byte)
+            self.pages.append(buf)
+            
+            #try:
+                #response = self.get_upper_code(0x01, page, label="GET_MODEL_CONFIG(%d)" % page)
+                #buf = response.data
+                #if response.error_lvl != ErrorLevel.ok:
+                    #log.error("unable to read EEPROM page {page}")
+                    #return 
+            #except:
+                #log.error("exception reading upper_code 0x01 with page %d", page, exc_info=1)
+                #return
+
+            #if buf is None:
+                #log.error("unable to read EEPROM (null buf)")
+                #return
+
+            #if len(buf) < 64:
+                #log.error(f"unable to read EEPROM received buf of {buf} and len {len(buf)}")
+                #return
+
+            #buffers.append(buf)
+        return buf
 
     async def get_generic_value_async(self, name):
         """
@@ -1293,6 +1344,44 @@ class BLEDevice(InterfaceDevice):
         if code is None:
             return
         return self.wrap_uuid(code)
+        
+    ############################################################################
+    # Etalon
+    ############################################################################
+    
+    def _read_pixel_correction_from_eeprom(self):
+        ee = self.settings.eeprom
+        log.debug(f"In _read_pixel_correction_from_eeprom")
+
+        # Load a pixel correction from the EEPROM if one is present. It is 
+        # assumed that if pixel_calibration_type is set, then the indicated 
+        # calibration is present on the EEPROM (not in an external JSON file).
+        if self.settings.eeprom.pixel_correction_type == ee.PIXEL_CORRECTION_NONE:
+            log.debug(f"Pixel Correction None")
+            return
+
+        if self.settings.eeprom.pixel_correction_type == ee.PIXEL_CORRECTION_USER_DATA:
+            log.debug(f"Pixel Correction User")
+            return
+
+        if self.settings.eeprom.pixel_correction_type == ee.PIXEL_CORRECTION_ETALON:
+            log.debug(f"Pixel Correction Etalon")
+            corr = EtalonCorrection(self.settings.pixels())
+            first, count = corr.eeprom_page_range()
+
+            log.debug(f"EtalonCorrection spans {count} pages starting at {first}")
+            if count:
+                log.debug(f"loading extra EEPROM pages")
+                buffers = self._read_eeprom_pages(first, count)
+                log.debug(f"length of buffers: {len(buffers)}")
+
+                log.debug(f"parsing extra buffers")
+                if corr.parse_eeprom_buffers(buffers):
+                    log.debug(f"storing successful EtalonCorrection")
+                    self.settings.etalon_correction = corr
+                else:
+                    log.error("unable to parse EtalonCorrection")
+            return
 
 ################################################################################
 #                                                                              #
