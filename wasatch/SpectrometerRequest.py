@@ -21,7 +21,7 @@ class SpectrometerRequest:
     It prompts one to wonder whether we could obviate this architecture entirely,
     however...
 
-    We honestly don't WANT ENLIGHTEN calling directly into InterfaceObjects, 
+    We honestly don't WANT ENLIGHTEN calling directly into InterfaceDevices,
     because that could create all manner of multi-threaded contention on the USB
     _serial_ bus. The fact that these requests can be neatly queued, dedupped and
     serviced in order is a feature, not a bug.

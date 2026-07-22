@@ -127,6 +127,8 @@ class InterfaceDevice:
         handle_cmd("take_one_request", None, force=True) 
             is a shortcut to
         handle_request(SpectrometerRequest("select_adc", args=[None]))
+
+        @param force is just there to allow users to forcibly pass None as an argument
         """
         if arg is None and not force:
             return self.handle_request(SpectrometerRequest(cmd))
