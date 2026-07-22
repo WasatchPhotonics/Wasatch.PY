@@ -2,6 +2,10 @@
 
 Note: in the following, FID = wasatch.FeatureInterfaceDevice
 
+- 2026-??-?? 2.4.6
+    - updated markdown docs
+    - unpack raw EEPROM fields to list rather than bytearray to simplify
+      JSON exports
 - 2026-07-21 2.4.5
     - added InterfaceDevice.change_setting, providing "hopefully transparent" 
       support for legacy code which had been using WasatchDevice.change_setting.

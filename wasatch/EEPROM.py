@@ -1022,6 +1022,9 @@ class EEPROM:
             except:
                 log.error("error unpacking EEPROM page %d, offset %d, len %d as %s", page, start_byte, length, data_type, exc_info=1)
 
+        if isinstance(unpack_result, bytearray):
+            unpack_result = list(unpack_result)
+
         if not quiet:
             if label is None:
                 log.debug("Unpacked [%s]: %s", data_type, unpack_result)
