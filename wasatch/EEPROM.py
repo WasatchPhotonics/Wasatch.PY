@@ -367,8 +367,6 @@ class EEPROM:
     # unpack (deserialize / unmarshall) the binary data into the appropriate
     # fields and datatypes.
     # 
-    # @todo update to use self.fields
-    #
     # @see https://docs.python.org/2/library/struct.html#format-characters
     # (capitals are unsigned)
     def read_eeprom(self):

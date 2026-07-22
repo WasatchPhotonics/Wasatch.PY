@@ -392,6 +392,9 @@ class BLEDevice(InterfaceDevice):
         log.debug(f"connect_async: reading EEPROM")
         await self.read_eeprom_async()
 
+        log.debug(f"connect_async: augmenting loaded EEPROM with cached JSON data")
+        self.settings.augment_from_json_file(basename=self.settings.eeprom.serial_number)
+
         ########################################################################
         # post-EEPROM connection tasks
         ########################################################################
@@ -412,8 +415,8 @@ class BLEDevice(InterfaceDevice):
         log.debug(f"connect_async: initializing scan averaging")
         await self.set_scans_to_average_async(1)
         
-        await self._read_pixel_correction_from_eeprom()
-        log.debug(f"connect_async: reading etalon correction")
+        log.debug(f"connect_async: reading pixel correction")
+        await self._read_pixel_correction_from_eeprom_async()
         
         # learn more about the device
         self.settings.microcontroller_serial_number = await self.get_cpu_unique_id_async()
@@ -795,18 +798,24 @@ class BLEDevice(InterfaceDevice):
         await self.read_eeprom_pages_async()
         self.settings.eeprom.parse(self.pages)
 
-    async def read_eeprom_pages_async(self):
+    async def read_eeprom_pages_async(self, first=None, count=None):
         start_time = datetime.now()
 
-        self.eeprom = {}
-        self.pages = []
+        if first is None:
+            # assume we're loading the "base" EEPROM, so reset everything
+            self.eeprom = {}
+            self.pages = []
+
+            first = 0
+            count = 9 if self.settings.supports_feature("ble_read_9th_eeprom_page") else 8
 
         name = "EEPROM_DATA"
-        max_eeprom_pages = 9 if self.settings.supports_feature("ble_read_9th_eeprom_page") else 8
-        for page in range(max_eeprom_pages):
+        for page in range(first, first + count):
             buf = bytearray()
             while len(buf) < 64:
                 
+                log.debug(f"read_eeprom_pages_async: generating read request for page {page} (first {first}, count {count})")
+
                 offset = len(buf)
                 request = self.generics.generate_read_request(name)
                 request.append(0) # page is big-endian uint16, update this for pages > 255
@@ -824,59 +833,17 @@ class BLEDevice(InterfaceDevice):
 
                 for byte in data:
                     buf.append(byte)
+
+            # we now have all 64 bytes of this page
+            while len(self.pages) < page:
+                log.debug(f"read_eeprom_pages_async: stubbing empty EEPROM page {len(self.pages)}")
+                self.pages.append([])
             self.pages.append(buf)
+            log.debug(f"read_eeprom_pages_async: finished reading EEPROM page {page} of {len(self.pages)}")
 
         elapsed_sec = (datetime.now() - start_time).total_seconds()
         log.debug(f"reading eeprom took {elapsed_sec:.2f} sec")
         
-    def _read_eeprom_pages(self, first, count):
-        buffers = []
-        name = "EEPROM_DATA"
-        
-        for page in range(first, first + count):
-            buf = []
-            while len(buf) <64:
-                offset = len(buf)
-                request = self.generics.generate_read_request(name)
-                request.append(0) # page is big-endian uint16, update this for pages > 255
-                request.append(page)
-                request.append(offset)
-
-                log.debug(f"_read_eeprom_pages for Etalon Correction: querying {name} ({utils.to_hex(request)})")
-                self.write_char_async("GENERIC", request, callback=lambda data: self.generics.process_response_async(name, data))
-
-                log.debug(f"_read_eeprom_pages for Etalon Correction: waiting on {name}")
-                self.generics.wait_async(name)
-
-                data = self.generics.get_value(name)
-                log.debug(f"_read_eeprom_pages for Etalon Correction: received page {page}, offset {offset}: {data}")
-
-                for byte in data:
-                    buf.append(byte)
-                    
-            self.pages.append(buf)
-            
-            #try:
-                #response = self.get_upper_code(0x01, page, label="GET_MODEL_CONFIG(%d)" % page)
-                #buf = response.data
-                #if response.error_lvl != ErrorLevel.ok:
-                    #log.error("unable to read EEPROM page {page}")
-                    #return 
-            #except:
-                #log.error("exception reading upper_code 0x01 with page %d", page, exc_info=1)
-                #return
-
-            #if buf is None:
-                #log.error("unable to read EEPROM (null buf)")
-                #return
-
-            #if len(buf) < 64:
-                #log.error(f"unable to read EEPROM received buf of {buf} and len {len(buf)}")
-                #return
-
-            #buffers.append(buf)
-        return buf
-
     # getter helper ############################################################
 
     async def get_generic_value_async(self, name):
@@ -1350,9 +1317,9 @@ class BLEDevice(InterfaceDevice):
     # Etalon
     ############################################################################
     
-    def _read_pixel_correction_from_eeprom(self):
+    async def _read_pixel_correction_from_eeprom_async(self):
         ee = self.settings.eeprom
-        log.debug(f"In _read_pixel_correction_from_eeprom")
+        log.debug(f"In _read_pixel_correction_from_eeprom_async")
 
         # Load a pixel correction from the EEPROM if one is present. It is 
         # assumed that if pixel_calibration_type is set, then the indicated 
@@ -1367,24 +1334,32 @@ class BLEDevice(InterfaceDevice):
 
         if self.settings.eeprom.pixel_correction_type == ee.PIXEL_CORRECTION_ETALON:
             log.debug(f"Pixel Correction Etalon")
+
+            if self.settings.etalon_correction:
+                log.debug("appear to have already loaded EtalonCorrection from JSON cache")
+                return
+
             corr = EtalonCorrection(self.settings.pixels())
             first, count = corr.eeprom_page_range()
 
             log.debug(f"EtalonCorrection spans {count} pages starting at {first}")
-            if count:
-                log.debug(f"loading extra EEPROM pages")
-                buffers = self._read_eeprom_pages(first, count)
-                log.debug(f"length of buffers: {len(buffers)}")
+            if count < 1:
+                return
 
-                log.debug(f"parsing extra buffers")
-                if corr.parse_eeprom_buffers(buffers):
-                    log.debug(f"storing successful EtalonCorrection")
-                    self.settings.etalon_correction = corr
-                else:
-                    log.error("unable to parse EtalonCorrection")
-            return
-            
-    
+            log.debug(f"loading extra {count} EEPROM pages")
+            await self.read_eeprom_pages_async(first, count)
+
+            buffers = self.pages[first : first + count]
+            log.debug(f"parsing extra {count} buffers")
+            if corr.parse_eeprom_buffers(buffers):
+                log.debug(f"storing successful EtalonCorrection")
+                self.settings.etalon_correction = corr
+
+                # TODO: cache Etalon Correction to JSON so we don't have to re-
+                # load over BLE on every connection
+                corr.cache_json_data()
+            else:
+                log.error("unable to parse EtalonCorrection")
 
 ################################################################################
 #                                                                              #
