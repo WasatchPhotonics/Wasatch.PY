@@ -828,33 +828,32 @@ class BLEDevice(InterfaceDevice):
 
         elapsed_sec = (datetime.now() - start_time).total_seconds()
         log.debug(f"reading eeprom took {elapsed_sec:.2f} sec")
-
-    # getter helper ############################################################
-    
+        
     def _read_eeprom_pages(self, first, count):
         buffers = []
         name = "EEPROM_DATA"
         
         for page in range(first, first + count):
-            buf = bytearray()
-            
-            offset = len(buf)
-            request = self.generics.generate_read_request(name)
-            request.append(0) # page is big-endian uint16, update this for pages > 255
-            request.append(page)
-            request.append(offset)
+            buf = []
+            while len(buf) <64:
+                offset = len(buf)
+                request = self.generics.generate_read_request(name)
+                request.append(0) # page is big-endian uint16, update this for pages > 255
+                request.append(page)
+                request.append(offset)
 
-            log.debug(f"_read_eeprom_pages for Etalon Correction: querying {name} ({utils.to_hex(request)})")
-            self.write_char_async("GENERIC", request, callback=lambda data: self.generics.process_response_async(name, data))
+                log.debug(f"_read_eeprom_pages for Etalon Correction: querying {name} ({utils.to_hex(request)})")
+                self.write_char_async("GENERIC", request, callback=lambda data: self.generics.process_response_async(name, data))
 
-            log.debug(f"_read_eeprom_pages for Etalon Correction: waiting on {name}")
-            self.generics.wait_async(name)
+                log.debug(f"_read_eeprom_pages for Etalon Correction: waiting on {name}")
+                self.generics.wait_async(name)
 
-            data = self.generics.get_value(name)
-            log.debug(f"_read_eeprom_pages for Etalon Correction: received page {page}, offset {offset}: {data}")
+                data = self.generics.get_value(name)
+                log.debug(f"_read_eeprom_pages for Etalon Correction: received page {page}, offset {offset}: {data}")
 
-            for byte in data:
-                buf.append(byte)
+                for byte in data:
+                    buf.append(byte)
+                    
             self.pages.append(buf)
             
             #try:
@@ -877,6 +876,8 @@ class BLEDevice(InterfaceDevice):
 
             #buffers.append(buf)
         return buf
+
+    # getter helper ############################################################
 
     async def get_generic_value_async(self, name):
         """
@@ -1382,6 +1383,8 @@ class BLEDevice(InterfaceDevice):
                 else:
                     log.error("unable to parse EtalonCorrection")
             return
+            
+    
 
 ################################################################################
 #                                                                              #
