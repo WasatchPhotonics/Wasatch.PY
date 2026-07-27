@@ -5,7 +5,7 @@ import logging
 import json
 import os
 
-from datetime import date
+from . import utils
 
 log = logging.getLogger(__name__)
 
@@ -42,57 +42,56 @@ class EtalonCorrection:
         self.mode = data["mode"]
         self.factors = data["factors"]
 
-    def cache_json_data(self, data, serial_number, pathname=None):
+    def cache_json_data(self, serial_number, pathname=None):
         """
-        ToDo:
+        @param (input) serial_number e.g. "WP-12345"
+        @pathname (input) /path/to/WP-12345.json
+
+        This function saves the EtalonCorrection data in JSON format to disk so 
+        we don't have to load it over BLE / USB / whatever again.
+
+        If the JSON file already exists, we ADD this to the file. If the JSON
+        file doesn't already exist, we CREATE it with this data.
+
+        In short:
+
         - if pathname is None, create as [path to]/EnlightenSpectra/config/[SN].json
         - if pathname does not exist, create it as {}
         - load the JSON file to a dict as 'data'
         - add new data["pixel_corrections"]["etalon_correction"]["mode"] and ["factors"] as above
         - re-save updated dict back to pathname
         """
-        # Check for the pathname and update if needed
         if pathname is None:
-            pathname = ('~/EnlightenSpectra/config/') # I feel like this is wrong, double check
-            
-        pathname = os.path.join(pathname, "%s.json" % serial_number)
+            dirname = os.path.join(utils.get_default_data_dir(), "config")
+            if not os.path.isdir(dirname):
+                log.debug(f"cache_json_data: creating {dirname}")
+                os.makedirs(dirname)
+            pathname = os.path.join(dirname, f"{serial_number}.json")
+
+        # load file if it exists
+        if os.path.exists(pathname):
+            log.debug(f"cache_json_data: importing existing {pathname}")
+            with open(pathname, encoding='utf-8') as infile:
+                existing_data = json.load(infile)
+        else:
+            log.debug(f"cache_json_data: {pathname} not found, creating")
+            existing_data = {}
         
-        # Takes the etalon data and dictonaries it for JSON creation
-        m = {
-            "pixel_corrections":{}#,
-            #"etalon_corrections": {}
+        # create pixel corrections if doesn't exist
+        if "pixel_corrections" not in existing_data:
+            existing_data["pixel_corrections"] = {}
+
+        # add/overwrite etalon correction to pixel corrections
+        existing_data["pixel_corrections"]["etalon_correction"] = {
+            "mode": self.mode,
+            "factors": self.factors
         }
-        m["pixel_corrections"]["etalon_correction"] = data
         
-# This is stuff to add back in once it works proper        
-        #if self.mode is not None:
-            #m["pixel_corrections"]["etalon_correction"]["mode"] = self.mode
-        #else:
-            #log.debug("etalon_correction mode not found")
-        
-        #if self.factors is not None:
-            #m["pixel_corrections"]["etalon_correction"]["factors"] = self.factors
-        #else:
-            #log.debug("etalon_correction factors not found")
-            
-        #m["pixel_corrections"]["etalon_correction"]["creation_date"] = date.today()
-        
-        # Create the JSON
-        s = self.to_json(data = m)
-        
-        # Write the JSON to file, should save to the config folder of EnlightenSpectra/config/
-        with open(pathname, "w", encoding = 'utf-8') as f:
-            f.write(s)
+        # create or overwrite the JSON file
+        with open(pathname, "w", encoding = 'utf-8') as outfile:
+            json.dump(existing_data, outfile, sort_keys=True)
 
-        log.error("cache_json_data({pathname}): NOT IMPLEMENTED")
-
-    def to_json(self, data):
-        
-        s = json.dumps(data, sort_keys = True, indent = 4, default=lambda o: o.to_json())
-        
-        return util.clean_json(s)   
-
-        
+        log.debug(f"cache_json_data: wrote {pathname}")
 
     def eeprom_page_range(self):
         """ called by FeatureIdentificationDevice._read_pixel_correction_from_eeprom """
@@ -104,10 +103,12 @@ class EtalonCorrection:
         log.debug("parsing EEPROM factors")
         self.mode = "default" # save your funky stuff for JSON
         self.factors = []
-        for buf in buffers:
+        for buf_index, buf in enumerate(buffers):
             for index in range(self.BYTES_PER_PAGE // self.BYTES_PER_FLOAT):
                 offset = index * 4
-                value = struct.unpack("f", buf[offset:offset+4])[0]
+                float_buf = buf[offset:offset+4]
+                value = struct.unpack("f", float_buf)[0]
+                # log.debug(f"parse_eeprom_buffers: buf_index {buf_index}, pixel index {index}, offset {offset}, float_buf {float_buf}, value {value}")
                 self.factors.append(value)
 
         hi = max(self.factors)

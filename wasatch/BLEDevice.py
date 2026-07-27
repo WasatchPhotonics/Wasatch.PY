@@ -816,7 +816,7 @@ class BLEDevice(InterfaceDevice):
         for page in range(first, first + count):
 
             if use_progress_bar:
-                self.queue_message("progress_bar", round(100.0 * page / (first + count), 2))
+                self.queue_message("progress_bar", round(100.0 * (page - first) / count, 2))
 
             buf = bytearray()
             while len(buf) < 64:
@@ -1368,7 +1368,7 @@ class BLEDevice(InterfaceDevice):
 
                 # TODO: cache Etalon Correction to JSON so we don't have to re-
                 # load over BLE on every connection
-                corr.cache_json_data(self, corr, self.settings.eeprom.serial_number)
+                corr.cache_json_data(serial_number=self.settings.eeprom.serial_number)
             else:
                 log.error("unable to parse EtalonCorrection")
 
