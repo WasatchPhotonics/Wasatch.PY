@@ -2,6 +2,10 @@ import math
 import numpy as np
 import struct
 import logging
+import json
+import os
+
+from datetime import date
 
 log = logging.getLogger(__name__)
 
@@ -38,7 +42,7 @@ class EtalonCorrection:
         self.mode = data["mode"]
         self.factors = data["factors"]
 
-    def cache_json_data(self, pathname=None):
+    def cache_json_data(self, data, serial_number, pathname=None):
         """
         ToDo:
         - if pathname is None, create as [path to]/EnlightenSpectra/config/[SN].json
@@ -47,7 +51,48 @@ class EtalonCorrection:
         - add new data["pixel_corrections"]["etalon_correction"]["mode"] and ["factors"] as above
         - re-save updated dict back to pathname
         """
+        # Check for the pathname and update if needed
+        if pathname is None:
+            pathname = ('~/EnlightenSpectra/config/') # I feel like this is wrong, double check
+            
+        pathname = os.path.join(pathname, "%s.json" % serial_number)
+        
+        # Takes the etalon data and dictonaries it for JSON creation
+        m = {
+            "pixel_corrections":{}#,
+            #"etalon_corrections": {}
+        }
+        m["pixel_corrections"]["etalon_correction"] = data
+        
+# This is stuff to add back in once it works proper        
+        #if self.mode is not None:
+            #m["pixel_corrections"]["etalon_correction"]["mode"] = self.mode
+        #else:
+            #log.debug("etalon_correction mode not found")
+        
+        #if self.factors is not None:
+            #m["pixel_corrections"]["etalon_correction"]["factors"] = self.factors
+        #else:
+            #log.debug("etalon_correction factors not found")
+            
+        #m["pixel_corrections"]["etalon_correction"]["creation_date"] = date.today()
+        
+        # Create the JSON
+        s = self.to_json(data = m)
+        
+        # Write the JSON to file, should save to the config folder of EnlightenSpectra/config/
+        with open(pathname, "w", encoding = 'utf-8') as f:
+            f.write(s)
+
         log.error("cache_json_data({pathname}): NOT IMPLEMENTED")
+
+    def to_json(self, data):
+        
+        s = json.dumps(data, sort_keys = True, indent = 4, default=lambda o: o.to_json())
+        
+        return util.clean_json(s)   
+
+        
 
     def eeprom_page_range(self):
         """ called by FeatureIdentificationDevice._read_pixel_correction_from_eeprom """

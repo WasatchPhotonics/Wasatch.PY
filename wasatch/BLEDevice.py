@@ -1357,7 +1357,7 @@ class BLEDevice(InterfaceDevice):
 
                 # TODO: cache Etalon Correction to JSON so we don't have to re-
                 # load over BLE on every connection
-                corr.cache_json_data()
+                corr.cache_json_data(self, corr, self.settings.eeprom.serial_number)
             else:
                 log.error("unable to parse EtalonCorrection")
 
