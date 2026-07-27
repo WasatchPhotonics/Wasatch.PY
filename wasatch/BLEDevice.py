@@ -803,14 +803,21 @@ class BLEDevice(InterfaceDevice):
 
         if first is None:
             # assume we're loading the "base" EEPROM, so reset everything
+            use_progress_bar = False
             self.eeprom = {}
             self.pages = []
 
             first = 0
             count = 9 if self.settings.supports_feature("ble_read_9th_eeprom_page") else 8
+        else:
+            use_progress_bar = True
 
         name = "EEPROM_DATA"
         for page in range(first, first + count):
+
+            if use_progress_bar:
+                self.queue_message("progress_bar", round(100.0 * page / (first + count), 2))
+
             buf = bytearray()
             while len(buf) < 64:
                 
@@ -843,6 +850,9 @@ class BLEDevice(InterfaceDevice):
 
         elapsed_sec = (datetime.now() - start_time).total_seconds()
         log.debug(f"reading eeprom took {elapsed_sec:.2f} sec")
+
+        if use_progress_bar:
+            self.queue_message("progress_bar", 100)
         
     # getter helper ############################################################
 
@@ -1347,6 +1357,7 @@ class BLEDevice(InterfaceDevice):
                 return
 
             log.debug(f"loading extra {count} EEPROM pages")
+            # self.queue_message("marquee_info", "loading EtalonCorrection over BLE")
             await self.read_eeprom_pages_async(first, count)
 
             buffers = self.pages[first : first + count]

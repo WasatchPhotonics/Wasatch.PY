@@ -205,6 +205,12 @@ class WasatchDeviceWrapper:
 
         self.reset_tries = 0
 
+    def get_connection_timeout_sec(self):
+        if self.class_name == "BLEDevice":
+            return 60
+        else:
+            return 30
+
     ##
     # Create a low level device object with the specified identifier, kick off
     # the child thread to attempt to read from it.
@@ -378,7 +384,7 @@ class WasatchDeviceWrapper:
     # MainProcess to dequeue a StatusMessage from the spectrometer child
     # thread, if one is available.
     def acquire_status_message(self):
-        if self.closing or not self.connected:
+        if self.closing: # or not self.connected:
             return None
 
         if not self.message_queue.empty():
