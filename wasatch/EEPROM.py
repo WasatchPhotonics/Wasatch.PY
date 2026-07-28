@@ -238,9 +238,9 @@ class EEPROM:
         self.pixel_correction_type       = 0
 
         self.usb_manufacturer_name       = None
-        self.aux_button_function         = None
-        self.aux_button_param            = None
-        self.latched_hardware_failures   = None
+        self.aux_button_function         = 0
+        self.aux_button_param            = 0
+        self.latched_hardware_failures   = 0
 
         self.format                      = EEPROM.LATEST_REV
         self.subformat                   = 0 # determines format of pages 6-7
@@ -1071,6 +1071,9 @@ class EEPROM:
             raise Exception("error packing EEPROM page %d, offset %2d, len %2d as %s: buf is %s" % (
                 page, start_byte, length, data_type, buf))
 
+        extra = "" if label is None else (" (%s)" % label)
+        # log.debug("Packing (%d, %2d, %2d) '%s' %s", page, start_byte, length, data_type, extra)
+
         if data_type == "s":
             if value is None:
                 value = ""
@@ -1095,7 +1098,6 @@ class EEPROM:
             struct.pack_into(data_type, buf, start_byte, value)
 
         if False and not quiet:
-            extra = "" if label is None else (" (%s)" % label)
             log.debug("Packed (%d, %2d, %2d) '%s' value %s -> %s%s", 
                 page, start_byte, length, data_type, value, buf[start_byte:end_byte], extra)
 
