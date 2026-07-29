@@ -6,6 +6,7 @@ Note: in the following, FID = wasatch.FeatureInterfaceDevice
     - updated markdown docs
     - unpack raw EEPROM fields to list rather than bytearray to simplify
       JSON exports
+	- JSON files are now created properly
     - EtalonCorrection
         - progress bar during BLE load
         - cache BLE data to JSON for fast subsequent connections
