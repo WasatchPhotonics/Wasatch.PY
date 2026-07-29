@@ -2,10 +2,13 @@
 
 Note: in the following, FID = wasatch.FeatureInterfaceDevice
 
-- 2026-??-?? 2.4.6
+- 2026-??-?? 2.4.6 (enlighten-4.2.7?)
     - updated markdown docs
     - unpack raw EEPROM fields to list rather than bytearray to simplify
       JSON exports
+    - EtalonCorrection
+        - progress bar during BLE load
+        - cache BLE data to JSON for fast subsequent connections
 - 2026-07-21 2.4.5
     - added InterfaceDevice.change_setting, providing "hopefully transparent" 
       support for legacy code which had been using WasatchDevice.change_setting.
