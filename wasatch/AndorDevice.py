@@ -321,6 +321,8 @@ class AndorDevice(InterfaceDevice):
 
         # have we completed the averaged reading?
         reading.spectrum = self.summed_spectrum / self.sum_count if self.sum_count > 1 else spectrum
+        if isinstance(reading.spectrum, np.ndarray):
+            reading.spectrum = reading.spectrum.tolist()
 
         log.debug(f"take_one_averaged_reading: {'averaged' if self.sum_count > 1 else 'non-averaged'} spectrum : %s ...", reading.spectrum[0:9])
         reading.averaged = True

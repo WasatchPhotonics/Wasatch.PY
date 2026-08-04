@@ -421,7 +421,8 @@ class SpectrometerSettings:
             else:
                 o = v
 
-            d[k] = str(o)
+            # DO NOT stringify this, i.e. str(o)
+            d[k] = o
         return d
 
     def to_json(self):
@@ -502,11 +503,11 @@ class SpectrometerSettings:
             if "etalon_correction" in pc:
                 if self.etalon_correction:
                     log.error("stomping EtalonCorrection from JSON")
-                self.etalon_correction = EtalonCorrection(self.pixels)
+                self.etalon_correction = EtalonCorrection(self.pixels())
                 self.etalon_correction.parse_json_data(pc["etalon_correction"])
 
             if "ingaas_correction" in pc:
                 if self.ingaas_correction:
                     log.error("stomping InGaAsCorrection from JSON")
-                self.ingaas_correction = InGaAsCorrection(self.pixels)
+                self.ingaas_correction = InGaAsCorrection(self.pixels())
                 self.ingaas_correction.parse_json_data(pc["ingaas_correction"])
