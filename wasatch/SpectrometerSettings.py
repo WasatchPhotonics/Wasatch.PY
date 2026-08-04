@@ -421,7 +421,7 @@ class SpectrometerSettings:
             else:
                 o = v
 
-            d[k] = o
+            d[k] = str(o)
         return d
 
     def to_json(self):
