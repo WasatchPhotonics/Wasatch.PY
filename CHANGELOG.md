@@ -7,6 +7,9 @@ Note: in the following, FID = wasatch.FeatureInterfaceDevice
     - unpack raw EEPROM fields to list rather than bytearray to simplify
       JSON exports
 	- JSON files are now created properly
+    - add "fast" accessors for ProcessedReading arrays, which default to slow 
+      "Python lists" for JSON, but allow native-Numpy access when needed for 
+      speed (large exports)
     - EtalonCorrection
         - progress bar during BLE load
         - cache BLE data to JSON for fast subsequent connections

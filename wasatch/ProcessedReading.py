@@ -151,7 +151,7 @@ class ProcessedReading:
     def has_processed(self): 
         return self.processed is not None 
 
-    def _get_array(self, name, stage):
+    def _get_array(self, name, stage, fast=False):
         # by default, return the requested array from the first-available of 
         # these "stages" of historical processing: take it from interpolated
         # if available, otherwise from cropped if that's available, otherwise
@@ -186,27 +186,29 @@ class ProcessedReading:
                     if v is not None:
                         # use this opportunity to convert any Numpy arrays to 
                         # Python lists to simplify JSON exports and the like
-                        return list(v)
+                        if not fast:
+                            v = list(v)
+                        return v
         # log.debug(f"_get_array: could not find {name} in {sources}")
         # self.dump()
 
-    def get_processed(self, stage=None):
-        return self._get_array("processed", stage)
+    def get_processed(self, stage=None, fast=False):
+        return self._get_array("processed", stage, fast)
         
-    def get_raw(self, stage=None):
-        return self._get_array("raw", stage)
+    def get_raw(self, stage=None, fast=False):
+        return self._get_array("raw", stage, fast)
 
-    def get_dark(self, stage=None):
-        return self._get_array("dark", stage)
+    def get_dark(self, stage=None, fast=False):
+        return self._get_array("dark", stage, fast)
 
-    def get_reference(self, stage=None):
-        return self._get_array("reference", stage)
+    def get_reference(self, stage=None, fast=False):
+        return self._get_array("reference", stage, fast)
 
-    def get_wavelengths(self, stage=None):
-        return self._get_array("wavelengths", stage)
+    def get_wavelengths(self, stage=None, fast=False):
+        return self._get_array("wavelengths", stage, fast)
 
-    def get_wavenumbers(self, stage=None):
-        return self._get_array("wavenumbers", stage)
+    def get_wavenumbers(self, stage=None, fast=False):
+        return self._get_array("wavenumbers", stage, fast)
 
     def get_pixel_axis(self):
         if self.is_cropped() and not self.is_interpolated() and self.cropped.first_pixel >= 0:
