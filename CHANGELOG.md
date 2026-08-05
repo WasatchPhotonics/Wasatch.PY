@@ -4,9 +4,11 @@ Note: in the following, FID = wasatch.FeatureInterfaceDevice
 
 - 2026-??-?? 2.4.6 (enlighten-4.2.7?)
     - updated markdown docs
-    - unpack raw EEPROM fields to list rather than bytearray to simplify
-      JSON exports
-	- JSON files are now created properly
+    - JSON
+        - unpack raw EEPROM fields to list rather than bytearray 
+        - added wasatch.WasatchJSONEncoder
+        - eliminated all to_json() methods except for EEPROM (used by ENLIGHTEN's
+          backup feature)
     - add "fast" accessors for ProcessedReading arrays, which default to slow 
       "Python lists" for JSON, but allow native-Numpy access when needed for 
       speed (large exports)

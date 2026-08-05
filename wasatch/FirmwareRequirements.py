@@ -98,7 +98,7 @@ class FirmwareRequirements:
     def __repr__(self):
         return "Firmware Requirements"
 
-    def to_json(self): 
+    def to_dict(self): 
         settings_tmp = self.settings
         self.settings = None
 

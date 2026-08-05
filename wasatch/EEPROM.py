@@ -1,7 +1,6 @@
 import hashlib
 import logging
 import struct
-import numpy as np
 import array
 import copy
 import json
@@ -9,8 +8,9 @@ import re
 
 from . import utils
 
-from .AssemblyRevision import AssemblyRevision
-from .ROI              import ROI
+from .WasatchJSONEncoder import WasatchJSONEncoder
+from .AssemblyRevision   import AssemblyRevision
+from .ROI                import ROI
 
 log = logging.getLogger(__name__)
 
@@ -1123,42 +1123,38 @@ class EEPROM:
         return digest
 
     def to_dict(self):
+        """ Note that this is not used by EEPROM.to_json...see below.  """
         d = {}
         for k, v in self.__dict__.items():
-            if k not in ["user_data", "buffers", "write_buffers", "editable"]:
+            if k not in ["user_data", "buffers", "write_buffers", "editable", "fields"]:
                 if isinstance(v, array.array):
                     v = v.tolist()
                 d[k] = v
         return d
 
-    ## render the attributes of this object as a JSON string
-    #
-    # @note some callers may prefer SpectrometerSettings.to_dict()
-    def json(self, allow_nan=True):
-        tmp_buf    = self.buffers
-        tmp_data   = self.user_data
-        tmp_write_buffers = self.write_buffers
+    def to_json(self, allow_nan=True):
+        """
+        Render the attributes of this object as a JSON string.
 
-        self.buffers   = str(self.buffers)
-        self.user_data = str(self.user_data)
-        self.write_buffers = None
+        This is NOT used by higher-level JSON renderings of 
+        wasatch.SpectrometerSettings or enlighten.Measurement classes, which call
+        to_dict, but rather application features which are deliberately serializing
+        just the EEPROM itself (such as ENLIGHTEN's eeprom_backups feature).
 
-        # this does take an allow_nan argument, but it throws an exception on NaN, 
-        # rather than replacing with null :-(
-        # https://stackoverflow.com/questions/6601812/sending-nan-in-json
-        s = json.dumps(self.__dict__, sort_keys=True, indent=2, default=lambda o: o.tolist() if isinstance(o, (array.array)) else o.to_json())
+        Also note that this function outputs MORE of the EEPROM than to_dict,
+        to make them as useable as possible for potential backup restorations and
+        to show deltas across time and versions.
+        """
+        d = vars(self)
+        #for attr in ['buffers', 'user_data', 'write_buffers']:
+        #    d[attr] = str(d[attr]
+    
+        s = json.dumps(d, cls=WasatchJSONEncoder, sort_keys=True, indent=2)
         if not allow_nan:
             s = re.sub(r"\bNaN\b", "null", s)
-
-        self.buffers   = tmp_buf
-        self.user_data = tmp_data
-        self.write_buffers = tmp_write_buffers
-
+    
         return s
-
-    def to_json(self):
-        return self.json()
-
+    
     def dump_write_buffers(self, label=None):
         log.debug(f"EEPROM.write_buffers: {label}")
         for i in range(len(self.write_buffers)):
@@ -1710,13 +1706,10 @@ class MultiWavelengthCalibration:
             for name in self.attributes:
                 log.debug(f"    {name} = {self.get(name, calibration=i)}")
 
-    def to_json(self): 
-        eeprom_tmp  = self.eeprom
-        self.eeprom = None
-
-        return vars(self)
-
-        self.eeprom = eeprom_tmp
+    def to_dict(self): 
+        d = vars(self)
+        d.pop("eeprom", None)
+        return d
 
 class EEPROMField:
     def __init__(self, pos, data_type, name):
@@ -1731,5 +1724,5 @@ class EEPROMField:
     def __repr__(self): 
         return str(self.__dict__)
     
-    def to_json(self): 
+    def to_dict(self): 
         return vars(self)

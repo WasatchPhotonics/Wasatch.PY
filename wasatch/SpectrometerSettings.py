@@ -407,14 +407,13 @@ class SpectrometerSettings:
     # serialization
     # ##########################################################################
 
-    # probably a simpler way to do this...
     def to_dict(self):
         d = {}
         for k, v in self.__dict__.items():
             if k in ["eeprom_backup"]:
                 continue # skip these
 
-            if isinstance(v, (DeviceID, EEPROM, FPGAOptions, SpectrometerState, HardwareInfo, RealUSBDevice, MockUSBDevice, datetime)):
+            if hasattr(v, "to_dict"):
                 o = v.to_dict()
             elif isinstance(v, (np.ndarray, array.array)):
                 o = v.tolist()
@@ -424,9 +423,6 @@ class SpectrometerSettings:
             # DO NOT stringify this, i.e. str(o)
             d[k] = o
         return d
-
-    def to_json(self):
-        return json.dumps(self.__dict__, sort_keys=True, indent=2, default=lambda o: o.to_json())
 
     def dump(self):
         log.debug("SpectrometerSettings:")

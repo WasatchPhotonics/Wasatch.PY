@@ -254,16 +254,13 @@ class SpectrometerState:
         log.debug("  Accessory Connector:    %s", self.acc_connector)
 
     def to_dict(self):
-        d = self.__dict__
+        d = vars(self)
 
-        # stringify some
         for k in ["battery_timestamp"]:
-            d[k] = str(d[k])
+            if d[k] is not None:
+                d[k] = str(d[k])
 
         return d
-
-    def to_json(self):
-        return json.dumps(self.__dict__, sort_keys=True, indent=2, default=lambda o: o.to_json())
 
     def set(self, name, value):
         setattr(self, name, value)
