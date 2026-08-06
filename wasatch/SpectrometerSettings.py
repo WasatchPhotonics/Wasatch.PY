@@ -410,7 +410,7 @@ class SpectrometerSettings:
     def to_dict(self):
         d = {}
         for k, v in self.__dict__.items():
-            if k in ["eeprom_backup"]:
+            if k in ["eeprom_backup", "firmware_requirements"]:
                 continue # skip these
 
             if hasattr(v, "to_dict"):
