@@ -2335,13 +2335,14 @@ class FeatureIdentificationDevice(InterfaceDevice):
         now = datetime.datetime.now()
         if last is not None and (now - last).total_seconds() < 0.1:
             raw = self.settings.state.detector_temperature_raw
-            log.debug("get_detector_temperature_raw: using cached {raw}")
-            return raw
-        raw = self._get_code(0xd7, wLength=2, label="GET_CCD_TEMP", msb_len=2)
+            log.debug(f"get_detector_temperature_raw: using cached {raw}")
+            return SpectrometerResponse(data=raw)
+        response = self._get_code(0xd7, wLength=2, label="GET_CCD_TEMP", msb_len=2)
+        raw = response.data
         self.settings.state.detector_temperature_raw = raw
         self.settings.state.detector_temperature_raw_last_refreshed = now
-        log.debug("get_detector_temperature_raw: storing {raw}")
-        return raw
+        log.debug(f"get_detector_temperature_raw: storing {raw}")
+        return response
 
     def get_detector_temperature_degC(self, raw: float = None):
         if raw is None:

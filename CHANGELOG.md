@@ -2,6 +2,8 @@
 
 Note: in the following, FID = wasatch.FeatureInterfaceDevice
 
+- 2026-??-?? 2.4.7 (enlighten-4.2.8?)
+    - more JSON fixes
 - 2026-08-06 2.4.6 (enlighten-4.2.7)
     - updated markdown docs
     - JSON

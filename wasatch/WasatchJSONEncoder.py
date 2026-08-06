@@ -3,6 +3,8 @@ import array
 import numpy as np
 import logging
 
+from datetime import datetime, date
+
 log = logging.getLogger(__name__)
 
 class WasatchJSONEncoder(json.JSONEncoder):
@@ -28,9 +30,16 @@ class WasatchJSONEncoder(json.JSONEncoder):
 
         super().__init__(*args, **kwargs)
 
+    def canonical_name(self, obj):
+        cls = obj if isinstance(obj, type) else obj.__class__
+        if cls.__module__ == 'builtins':
+            return cls.__name__
+        return f"{cls.__module__}.{cls.__name__}"
+
     def iterencode(self, o, _one_shot=False):
 
-        # log.debug(f"iterencode: o = {o}")
+        # classname = self.canonical_name(o)
+        # log.debug(f"iterencode: o = {classname} {o}")
 
         # handle lists and tuples
         if isinstance(o, (list, tuple, set)):
@@ -38,9 +47,17 @@ class WasatchJSONEncoder(json.JSONEncoder):
             if len(o) == 0:
                 yield "[]" 
 
-            elif all(isinstance(v, (int, float, str, bool, np.float32, np.float64)) for v in o):
-                # if they're all simple scalars, flatten them onto one line
-                yield '[' + ', '.join([json.dumps(v) for v in o]) + ']'
+            # list of numbers are fine
+            elif all(isinstance(v, (int, float, np.float32, np.float64, np.int32, np.int64)) for v in o):
+                yield '[' + ', '.join([str(v) for v in o]) + ']'
+
+            # list of strings need quotes
+            elif all(isinstance(v, str) for v in o):
+                yield '[' + ', '.join([f'"{v}"' for v in o]) + ']'
+
+            # list of bools need case conversion
+            elif all(isinstance(v, bool) for v in o):
+                yield '[' + ', '.join([str(v).lower() for v in o]) + ']'
 
             else:
                 # apparently this is a non-empty list with one or more complicated values, so 
@@ -70,10 +87,21 @@ class WasatchJSONEncoder(json.JSONEncoder):
                 closing_space = ' ' * (self.indent_per_level * self.indentation_level)
                 yield f'\n{closing_space}]'
 
-        elif isinstance(o, (bytearray, array.array)):
-            yield json.dumps(str(o))
-            # o = list(o)
-            # yield '[' + ', '.join([json.dumps(x) for x in o]) + ']'
+        elif isinstance(o, (bytearray)):
+            # not sure this has been fully validated
+            o = list(o)
+            s = '[' + ', '.join([str(v) for v in o]) + ']' 
+            # log.debug(f"converting bytearray {o} into {s}")
+            yield s
+
+        elif isinstance(o, (array.array)):
+            o = list(o)
+            s = '[' + ', '.join([str(v) for v in o]) + ']' 
+            # log.debug(f"converting array.array {o} into {s}")
+            yield s
+
+        elif isinstance(o, (datetime, date)):
+            yield f'"{o.isoformat()}"'
 
         # always recurse dictionaries
         elif isinstance(o, dict):
@@ -86,7 +114,7 @@ class WasatchJSONEncoder(json.JSONEncoder):
                 
                 for i, (k, v) in enumerate(sorted(o.items())):
                     # display the item key
-                    yield f"{space}{json.dumps(k)}: "
+                    yield f'{space}"{k}": '
 
                     # recurse into the item value
                     yield from self.iterencode(v)
@@ -98,7 +126,7 @@ class WasatchJSONEncoder(json.JSONEncoder):
                 yield f'\n{closing_space}}}'
 
         else:
-            # it's not a list, tuple, set, or dict
+            # it's not a list, tuple, set, dict, bytearray, array.array, np.whatever, datetime, or date...
 
             # classname = type(o).__name__
             # if classname not in self.seen_types:

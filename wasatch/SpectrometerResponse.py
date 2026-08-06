@@ -33,6 +33,10 @@ class SpectrometerResponse:
             s = s[:10] + "..."
         return f"SpectrometerResponse <data {s}, err_lvl {self.error_lvl.value}, keepalive {self.keep_alive}, poison {self.poison_pill}, err_msg {self.error_msg}>"
 
+    def to_dict(self):
+        """ This should not be needed, but added to help debugging. """
+        return vars(self)
+
     def clear(self):
         self.data = None
         self.error_msg = ''
