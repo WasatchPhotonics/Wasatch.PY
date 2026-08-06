@@ -467,7 +467,8 @@ class AndorDevice(InterfaceDevice):
         # step 18 (WasatchNET doesn't do this)
         roi = ROI(self.settings.eeprom.roi_vertical_region_1_start, 
                   self.settings.eeprom.roi_vertical_region_1_end)
-        if roi.start != 0 and roi.end != 0:
+        #if roi.start != 0 and roi.end != 0:
+        if roi.end != 0 and roi.start < roi.end:
             # although camera can probably support the (0, 0) case, it's 
             # convenient to treat as unconfigured defaults
             self.set_vertical_binning(roi)
