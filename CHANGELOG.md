@@ -2,7 +2,7 @@
 
 Note: in the following, FID = wasatch.FeatureInterfaceDevice
 
-- 2026-??-?? 2.4.6 (enlighten-4.2.7?)
+- 2026-08-06 2.4.6 (enlighten-4.2.7)
     - updated markdown docs
     - JSON
         - unpack raw EEPROM fields to list rather than bytearray 
