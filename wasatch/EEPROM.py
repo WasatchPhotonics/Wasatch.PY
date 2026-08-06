@@ -1074,32 +1074,34 @@ class EEPROM:
         extra = "" if label is None else (" (%s)" % label)
         # log.debug("Packing (%d, %2d, %2d) '%s' %s", page, start_byte, length, data_type, extra)
 
-        if data_type == "s":
-            if value is None:
-                value = ""
-            for i in range(min(length, len(value))):
-                if i < len(value):
-                    buf[start_byte + i] = ord(value[i])
-                else:
-                    buf[start_byte + i] = 0
-        elif data_type == "*":
-            for i in range(start_byte, end_byte):
-                # log.debug(f"pack: clearing buf {page}, byte {i}")
-                buf[i] = 0
-            if isinstance(value, str):
-                value = utils.hex_string_to_data(value)
-                log.debug(f"pack: preparing to pack value {value}")
-            for i in range(min(length, len(value))):
-                offset = start_byte + i
-                buf[offset] = value[i]
-        else:
-            if data_type == "f":
-                value = float(value)
-            struct.pack_into(data_type, buf, start_byte, value)
+        try:
+            if data_type == "s":
+                if value is None:
+                    value = ""
+                for i in range(min(length, len(value))):
+                    if i < len(value):
+                        buf[start_byte + i] = ord(value[i])
+                    else:
+                        buf[start_byte + i] = 0
+            elif data_type == "*":
+                for i in range(start_byte, end_byte):
+                    # log.debug(f"pack: clearing buf {page}, byte {i}")
+                    buf[i] = 0
+                if isinstance(value, str):
+                    value = utils.hex_string_to_data(value)
+                    log.debug(f"pack: preparing to pack value {value}")
+                for i in range(min(length, len(value))):
+                    offset = start_byte + i
+                    buf[offset] = value[i]
+            else:
+                if data_type == "f":
+                    value = float(value)
+                struct.pack_into(data_type, buf, start_byte, value)
 
-        if False and not quiet:
-            log.debug("Packed (%d, %2d, %2d) '%s' value %s -> %s%s", 
-                page, start_byte, length, data_type, value, buf[start_byte:end_byte], extra)
+            if False and not quiet:
+                log.debug(f"packed ({page}, {start_byte}, {length}) {data_type} value {value} -> {buf[start_byte:end_byte]}{extra}")
+        except:
+            log.error(f"Failed to pack ({page}, {start_byte}, {length}) {data_type} value {value} -> {buf[start_byte:end_byte]}{extra}", exc_info=1)
 
     ##
     # If asked to regenerate, return a digest of the contents that WOULD BE 
