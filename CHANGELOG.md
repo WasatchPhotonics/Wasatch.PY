@@ -15,6 +15,9 @@ Note: in the following, FID = wasatch.FeatureInterfaceDevice
     - EtalonCorrection
         - progress bar during BLE load
         - cache BLE data to JSON for fast subsequent connections
+    - Andor
+        - fixed high-gain mode
+        - fixed Raman Intensity Correction
 - 2026-07-21 2.4.5
     - added InterfaceDevice.change_setting, providing "hopefully transparent" 
       support for legacy code which had been using WasatchDevice.change_setting.

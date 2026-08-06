@@ -107,7 +107,7 @@ class AndorDevice(InterfaceDevice):
 
         # Andor API doesn't(?) seem to have access to detector info.
         # Note that we use non-iDus cameras, including the Newton and iVac.
-        self.settings.eeprom.detector = "iDus" 
+        self.settings.eeprom.detector = "iDus" # default should probably now be iVac
         self.settings.eeprom.model = "WP-XL" 
 
         self.settings.eeprom.has_cooling = True
@@ -180,12 +180,14 @@ class AndorDevice(InterfaceDevice):
 
     def high_gain_mode_enable(self, enabled):
         if enabled:
-            result = self.driver.SetPreAmpGain(self.gain_idx[-1])
+            # high gain mode is enabled, so pick the HIGHEST gain, which since we inverted the list is the FIRST gain
+            result = self.driver.SetPreAmpGain(self.gain_idx[0])
             assert(self.SUCCESS == result), f"unable to set detector gain, got value of {result}"
             log.debug(f"for {enabled} setting gain to {self.gain_options[-1]}")
             return
         else:
-            result = self.driver.SetPreAmpGain(self.gain_idx[0])
+            # high gain mode is disnabled, so pick the LOWEST gain, which since we inverted the list is the LAST gain
+            result = self.driver.SetPreAmpGain(self.gain_idx[-1])
             assert(self.SUCCESS == result), f"unable to set detector gain, got value of {result}"
             log.debug(f"for {enabled} setting gain to {self.gain_options[0]}")
             return
@@ -470,12 +472,16 @@ class AndorDevice(InterfaceDevice):
             # convenient to treat as unconfigured defaults
             self.set_vertical_binning(roi)
 
+        self.settings.eeprom.active_pixels_horizontal = self.pixels 
+        self.settings.eeprom.has_cooling = True
+
+        # now that we have the pixel count, expand Raman Intensity Correction
+        self.settings.update_raman_intensity_factors()
+
         # success!
         log.info("AndorDevice successfully connected")
 
         self.connected = True
-        self.settings.eeprom.active_pixels_horizontal = self.pixels 
-        self.settings.eeprom.has_cooling = True
         return SpectrometerResponse(data=True)
 
     def set_take_one_request(self, tor):
@@ -739,15 +745,18 @@ class AndorDevice(InterfaceDevice):
         num_gains = c_int()
         result = self.driver.GetNumberPreAmpGains(byref(num_gains))
         assert(self.SUCCESS == result), f"unable to get number of gains. Got result {result}"
-        log.debug(f"got number of gains is {num_gains.value}")
+        log.debug(f"_obtain_gain_info: got number of gains is {num_gains.value}")
         self.gain_options = []
         self.gain_idx = []
         spec_gain_opt = c_float()
         for i in range(num_gains.value):
             result = self.driver.GetPreAmpGain(i, byref(spec_gain_opt))
             assert(self.SUCCESS == result), f"unable to get gains index {i}. Got result {result}"
+            log.debug(f"_obtain_gain_info:   gain index {i} is {spec_gain_opt.value}")
             self.gain_options.append(spec_gain_opt.value)
             self.gain_idx.append(i)
+
+        # invert both lists (had been low-to-high, make high-to-low)
         self.gain_idx = self.gain_idx[::-1]
         self.gain_options = self.gain_options[::-1]
         log.debug(f"obtained gain options for spec, values were {self.gain_options}")
