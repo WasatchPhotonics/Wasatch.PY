@@ -6,7 +6,7 @@ import struct
 import logging
 from datetime import datetime
 
-from ctypes import *
+from ctypes import sizeof, byref, c_ulong, c_float, c_int, c_long, Structure, cdll, create_string_buffer
 
 from .SpectrometerSettings        import SpectrometerSettings
 from .SpectrometerResponse        import SpectrometerResponse
@@ -18,12 +18,31 @@ from .ROI                         import ROI
 
 log = logging.getLogger(__name__)
 
+class AndorCapabilities(Structure):
+    """
+    This is a C 'struct' which will be filled-in by the GetCapabilities SDK call
+    in AndorDevice.get_capabilities().
+    """
+    _fields_ = [ ("ulSize",          c_ulong),
+                 ("ulAcqModes",      c_ulong),
+                 ("ulReadModes",     c_ulong),
+                 ("ulTriggerModes",  c_ulong),
+                 ("ulCameraType",    c_ulong),
+                 ("ulPixelMode",     c_ulong),
+                 ("ulSetFunctions",  c_ulong),
+                 ("ulGetFunctions",  c_ulong),
+                 ("ulFeatures",      c_ulong),
+                 ("ulPCIChance",     c_ulong),
+                 ("ulEMGain",        c_ulong),
+                 ("ulFrameTransfer", c_ulong) ]
+
 class AndorDevice(InterfaceDevice):
     """
     This is the basic implementation of our interface with Andor cameras     
 
     @todo have check_result return a SpectrometerResponse 
     @todo try to auto-detect whether x-axis needs inverted via DLL.GetImageFlip()
+    @todo consider https://pylablib.readthedocs.io/en/stable/.apidoc/pylablib.devices.Andor.html
     """
 
     SUCCESS = 20002             #!< see load_error_codes()
@@ -184,13 +203,14 @@ class AndorDevice(InterfaceDevice):
             result = self.driver.SetPreAmpGain(self.gain_idx[0])
             assert(self.SUCCESS == result), f"unable to set detector gain, got value of {result}"
             log.debug(f"for {enabled} setting gain to {self.gain_options[-1]}")
-            return
         else:
-            # high gain mode is disnabled, so pick the LOWEST gain, which since we inverted the list is the LAST gain
+            # high gain mode is disabled, so pick the LOWEST gain, which since we inverted the list is the LAST gain
             result = self.driver.SetPreAmpGain(self.gain_idx[-1])
             assert(self.SUCCESS == result), f"unable to set detector gain, got value of {result}"
             log.debug(f"for {enabled} setting gain to {self.gain_options[0]}")
-            return
+
+        self.settings.state.high_gain_mode_enabled = enabled
+        return
 
     def set_fan_enable(self, flag):
         flag = True if flag else False
@@ -198,6 +218,7 @@ class AndorDevice(InterfaceDevice):
             self.check_result(self.driver.SetFanMode(int(x)), f"Andor Fan On {x}")
         except:
             return SpectrometerResponse(False)
+        self.settings.state.fan_enabled = flag
         return SpectrometerResponse(True)
 
     def _get_default_data_dir(self):
@@ -418,7 +439,8 @@ class AndorDevice(InterfaceDevice):
             log.error("Andor.Initialize failed", exc_info=1)
             return SpectrometerResponse(False, error_msg="Andor initialization failed")
 
-        # @todo missing: step 4 capabilities
+        # step 4: get Andor camera capabilities
+        self.get_capabilities()
 
         self.get_serial_number() # step 16
         self.init_tec_setpoint() # step 5+6
@@ -478,6 +500,9 @@ class AndorDevice(InterfaceDevice):
 
         # now that we have the pixel count, expand Raman Intensity Correction
         self.settings.update_raman_intensity_factors()
+
+        # stomp EEPROM detector with whatever we find in Capabilities
+        self.settings.eeprom.detector = self.get_detector()
 
         # success!
         log.info("AndorDevice successfully connected")
@@ -678,6 +703,7 @@ class AndorDevice(InterfaceDevice):
         self.check_result(self.driver.SetExposureTime(c_float(sec)), f"SetExposureTime({sec})")
         self.check_result(self.driver.GetAcquisitionTimings(byref(exposure), byref(accumulate), byref(kinetic)), "GetAcquisitionTimings")
         log.debug(f"read integration time of {exposure.value:.3f}sec (expected {ms}ms)")
+        self.settings.state.integration_time_ms = ms
         return SpectrometerResponse(data=True)
 
     def get_serial_number(self): # -> SpectrometerResponse 
@@ -705,6 +731,7 @@ class AndorDevice(InterfaceDevice):
         # however the startup temperature was set (hardcode, JSON, clamped to min)...apply it
         self.setpoint_deg_c = self.settings.eeprom.startup_temp_degC 
         self.check_result(self.driver.SetTemperature(self.setpoint_deg_c), f"SetTemperature({self.setpoint_deg_c})") # step 6
+        self.settings.state.tec_setpoint_degC = self.setpoint_deg_c
         log.debug(f"set TEC to {self.setpoint_deg_c}°C (range {self.settings.eeprom.min_temp_degC}, {self.settings.eeprom.max_temp_degC})")
 
         return SpectrometerResponse(True)
@@ -716,6 +743,7 @@ class AndorDevice(InterfaceDevice):
             self.check_result(self.driver.CoolerON(), "CoolerON")
         else:
             self.check_result(self.driver.CoolerOFF(), "CoolerOFF")
+        self.settings.state.tec_enabled = flag
         return SpectrometerResponse(True)
 
     def set_tec_setpoint(self, set_temp):
@@ -731,7 +759,40 @@ class AndorDevice(InterfaceDevice):
         # when it is not present here.
         self.check_result(self.driver.CoolerON(), "CoolerON")
         self.check_result(self.driver.SetTemperature(self.setpoint_deg_c), f"SetTemperature({self.setpoint_deg_c})")
+        self.settings.state.tec_setpoint_degC = self.setpoint_deg_c
         return SpectrometerResponse(True)
+
+    def get_capabilities(self):
+        self.capabilities = AndorCapabilities()
+        self.capabilities.ulSize = sizeof(AndorCapabilities)
+        self.check_result(self.driver.GetCapabilities(byref(self.capabilities)), "GetCapabilities")
+
+        log.debug(f"ulAcqModes      0x{self.capabilities.ulAcqModes     :08x}")
+        log.debug(f"ulTriggerModes  0x{self.capabilities.ulTriggerModes :08x}")
+        log.debug(f"ulReadModes     0x{self.capabilities.ulReadModes    :08x}")
+        log.debug(f"ulCameraType    0x{self.capabilities.ulCameraType   :08x}")
+        log.debug(f"ulPixelMode     0x{self.capabilities.ulPixelMode    :08x}")
+        log.debug(f"ulSetFunctions  0x{self.capabilities.ulSetFunctions :08x}")
+        log.debug(f"ulGetFunctions  0x{self.capabilities.ulGetFunctions :08x}")
+        log.debug(f"ulFeatures      0x{self.capabilities.ulFeatures     :08x}")
+        log.debug(f"ulPCIChance     0x{self.capabilities.ulPCIChance    :08x}")
+        log.debug(f"ulEMGain        0x{self.capabilities.ulEMGain       :08x}")
+        log.debug(f"ulFrameTransfer 0x{self.capabilities.ulFrameTransfer:08x}")
+
+    def get_detector(self):
+        camera = self.capabilities.ulCameraType
+        if   camera ==  7: return "iDus"
+        elif camera ==  8: return "Newton"
+        elif camera == 15: return "iVac"
+        elif camera == 23: return "iVac CCD"
+        else: return f"unknown ({camera})"
+        
+    def get_head_model(self):
+        s = create_string_buffer(256)
+        self.check_result(self.driver.GetHeadModel(s), "GetHeadModel")
+        model = s.value.decode("utf-8").strip()
+        log.debug(f"get_head_model: model {model}")
+        return SpectrometerResponse(model)
 
     def init_detector_area(self):
         xPixels = c_int()
