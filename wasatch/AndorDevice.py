@@ -1,3 +1,4 @@
+import re
 import os
 import usb
 import json
@@ -502,7 +503,7 @@ class AndorDevice(InterfaceDevice):
         self.settings.update_raman_intensity_factors()
 
         # stomp EEPROM detector with whatever we find in Capabilities
-        self.settings.eeprom.detector = self.get_detector()
+        self.settings.eeprom.detector = self.get_simplified_detector_name()
 
         # success!
         log.info("AndorDevice successfully connected")
@@ -779,20 +780,35 @@ class AndorDevice(InterfaceDevice):
         log.debug(f"ulEMGain        0x{self.capabilities.ulEMGain       :08x}")
         log.debug(f"ulFrameTransfer 0x{self.capabilities.ulFrameTransfer:08x}")
 
-    def get_detector(self):
+    def get_simplified_detector_name(self):
+        # get camera type
         camera = self.capabilities.ulCameraType
-        if   camera ==  7: return "iDus"
-        elif camera ==  8: return "Newton"
-        elif camera == 15: return "iVac"
-        elif camera == 23: return "iVac CCD"
-        else: return f"unknown ({camera})"
+        camera_type = f"unknown ({camera})"
+        if   camera ==  7: camera_type = "iDus"
+        elif camera ==  8: camera_type = "Newton"
+        elif camera == 15: camera_type = "iVac"
+        elif camera == 23: camera_type = "iVac CCD"
+        log.debug(f"camera_type orig {camera_type}")
+        # strip "CCD"
+        camera_type = re.sub(r" *CCD", "", camera_type)
+        log.debug(f"camera_type now {camera_type}")
         
-    def get_head_model(self):
+        # get head model
         s = create_string_buffer(256)
         self.check_result(self.driver.GetHeadModel(s), "GetHeadModel")
-        model = s.value.decode("utf-8").strip()
-        log.debug(f"get_head_model: model {model}")
-        return SpectrometerResponse(model)
+        head_model = s.value.decode("utf-8").strip()
+        log.debug(f"head model orig {head_model}")
+
+        # strip anything after comma
+        head_model = re.sub(r",.*", "", head_model)
+        # strip anything after underbar
+        head_model = re.sub(r"_.*", "", head_model)
+
+        log.debug(f"head model now {head_model}")
+
+        combined = f"{camera_type} {head_model}"
+        log.debug(f"combined {combined}")
+        return combined
 
     def init_detector_area(self):
         xPixels = c_int()
