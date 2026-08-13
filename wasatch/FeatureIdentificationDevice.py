@@ -633,77 +633,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.error("invalid horizontal binning mode {mode}...defaulting to bin_2x2")
             return self.imx385.bin_2x2(spectrum)
 
-    def _correct_bad_pixels(self, spectrum):
-        """
-        If a spectrometer has bad_pixels configured in the EEPROM, then average
-        over them in the driver.
-        Note this function modifies the passed array in-place, rather than
-        returning a modified copy.
-        @note assumes bad_pixels is previously sorted
-        """
-
-        if self.settings is None or \
-                self.settings.eeprom is None or \
-                self.settings.eeprom.bad_pixels is None or \
-                len(self.settings.eeprom.bad_pixels) == 0 or \
-                self.settings.state.detector_regions is not None:
-            return False
-
-        if spectrum is None or len(spectrum) == 0:
-            return False
-
-        pixels = len(spectrum)
-        bad_pixels = self.settings.eeprom.bad_pixels
-
-        # iterate over each bad pixel
-        i = 0
-        while i < len(bad_pixels):
-
-            bad_pix = bad_pixels[i]
-
-            if bad_pix == 0:
-                # handle the left edge
-                next_good = bad_pix + 1
-                while next_good in bad_pixels and next_good < pixels:
-                    next_good += 1
-                    i += 1
-                if next_good < pixels:
-                    for j in range(next_good):
-                        spectrum[j] = spectrum[next_good]
-            else:
-
-                # find previous good pixel
-                prev_good = bad_pix - 1
-                while prev_good in bad_pixels and prev_good >= 0:
-                    prev_good -= 1
-
-                if prev_good >= 0:
-                    # find next good pixel
-                    next_good = bad_pix + 1
-                    while next_good in bad_pixels and next_good < pixels:
-                        next_good += 1
-                        i += 1
-
-                    if next_good < pixels:
-                        # for now, draw a line between previous and next_good pixels
-                        # TODO: consider some kind of curve-fit
-                        delta = float(spectrum[next_good] - spectrum[prev_good])
-                        rng   = next_good - prev_good 
-                        step  = delta / rng
-                        # log.debug(f"correct_bad_pixels: bad_pix {bad_pix}, prev_good {prev_good} ({spectrum[prev_good]}), next_good {next_good} ({spectrum[next_good]}), delta {delta:.2f}, rng {rng}, step {step:.2f}")
-                        for j in range(rng - 1):
-                            new = spectrum[prev_good] + step * (j + 1)
-                            spectrum[prev_good + j + 1] = new
-                            # log.debug(f"correct_bad_pixels: stomping pix {prev_good + j + 1} with {new}")
-                    else:
-                        # we ran off the high end, so copy-right
-                        for j in range(bad_pix, pixels):
-                            spectrum[j] = spectrum[prev_good]
-
-            # advance to next bad pixel
-            i += 1
-        return True
-
     def _send_code(self, 
                    bRequest: int, 
                    wValue: int = 0, 
@@ -1669,7 +1598,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # Note these are pre-horizontal binning...
         if not self.settings.state.area_scan_enabled:
             if self.settings.state.bad_pixel_mode == SpectrometerState.BAD_PIXEL_MODE_AVERAGE:
-                self._correct_bad_pixels(spectrum)
+                self.correct_bad_pixels(spectrum)
 
         ########################################################################
         # horizontal binning

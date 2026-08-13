@@ -9,8 +9,9 @@ from datetime import datetime
 
 from ctypes import sizeof, byref, c_ulong, c_float, c_int, c_long, Structure, cdll, create_string_buffer
 
-from .SpectrometerSettings        import SpectrometerSettings
 from .SpectrometerResponse        import SpectrometerResponse
+from .SpectrometerSettings        import SpectrometerSettings
+from .SpectrometerState           import SpectrometerState
 from .InterfaceDevice             import InterfaceDevice, InterfaceDeviceClassUnavailable
 from .StatusMessage               import StatusMessage
 from .DeviceID                    import DeviceID
@@ -236,7 +237,7 @@ class AndorDevice(InterfaceDevice):
 
     def _get_spectrum_raw(self):
         """
-        @todo missing bad-pixel correction
+        Note: this says "raw," but...it's really "get_spectrum" (it obviously applies basic post-processing).
         """
         spec_arr = c_long * self.pixels
         spec_init_vals = [0] * self.pixels
@@ -255,12 +256,16 @@ class AndorDevice(InterfaceDevice):
         spectrum = np.array(spectrum, dtype=np.float32) # [x for x in spectrum]
 
         if (self.settings.eeprom.invert_x_axis):
-            # spectrum.reverse()
             spectrum = spectrum[::-1]
 
         # Andor cameras can return all zeros when saturated
         if not spectrum.any():
             self._queue_message("marquee_error", "Andor camera is saturated")
+
+        # bad-pixel correction (must be AFTER inversion)
+        if not self.settings.state.area_scan_enabled:
+            if self.settings.state.bad_pixel_mode == SpectrometerState.BAD_PIXEL_MODE_AVERAGE:
+                self.correct_bad_pixels(spectrum)
 
         if self.settings.ingaas_correction:
             spectrum = self.settings.ingaas_correction.apply(spectrum)
@@ -600,6 +605,7 @@ class AndorDevice(InterfaceDevice):
         for k in [ 'model', 
                    'stubbed', 
                    'detector', 
+                   'bad_pixels',
                    'serial_number', 
                    'invert_x_axis',
                    'wavelength_coeffs', 
@@ -712,7 +718,7 @@ class AndorDevice(InterfaceDevice):
         self.check_result(self.driver.GetCameraSerialNumber(byref(sn)), "GetCameraSerialNumber")
         self.serial = f"CCD-{sn.value}"
         self.settings.eeprom.serial_number = self.serial # temporary
-        self.settings.eeprom.detector_serial_number = self.serial
+        self.settings.detector_serial_number = self.serial
         log.debug(f"get_serial_number: connected to {self.serial}")
         return SpectrometerResponse(True)
 

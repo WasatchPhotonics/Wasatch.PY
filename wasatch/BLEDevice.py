@@ -11,6 +11,7 @@ from wasatch.EEPROM                   import EEPROM
 from wasatch.Reading                  import Reading
 from wasatch.StatusMessage            import StatusMessage
 from wasatch.InterfaceDevice          import InterfaceDevice
+from wasatch.SpectrometerState        import SpectrometerState
 from wasatch.SpectrometerRequest      import SpectrometerRequest
 from wasatch.SpectrometerSettings     import SpectrometerSettings
 from wasatch.SpectrometerResponse     import SpectrometerResponse, ErrorLevel
@@ -1210,10 +1211,12 @@ class BLEDevice(InterfaceDevice):
         binned.append(self.spectrum[-1])
         self.spectrum = binned
 
-        # @todo add bad-pixel correction
-        # @todo add invert_detector
-        # @todo add many things...
-            
+        if (self.settings.eeprom.invert_x_axis):
+            spectrum = spectrum[::-1]
+        
+        if self.settings.state.bad_pixel_mode == SpectrometerState.BAD_PIXEL_MODE_AVERAGE:
+            self.correct_bad_pixels(spectrum)
+
         if auto_raman_request:
             self.queue_message("progress_bar", 100)
 

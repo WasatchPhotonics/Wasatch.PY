@@ -1624,7 +1624,8 @@ class MultiWavelengthCalibration:
         # apply some quick validation based on datatype
         eeprom_field = self.eeprom.fields.get(name, None)
         if eeprom_field is None:
-            log.debug(f"MWC.set: {name} not in eeprom.fields?")
+            #log.debug(f"MWC.set: {name} not in eeprom.fields?")
+            pass
         else:
             # enforce integers
             if eeprom_field.data_type.lower() in ["i", "h", "b"]:
