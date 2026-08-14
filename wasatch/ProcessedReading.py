@@ -51,6 +51,8 @@ class ProcessedReading:
         self.raman_intensity_corrected = False
         self.used_reference = False
         self.deconvolved = False
+        self.etalon_corrected = False
+        self.ingaas_corrected = False
 
         self.recordable_reference = None
         self.recordable_dark = None

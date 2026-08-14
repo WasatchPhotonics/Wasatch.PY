@@ -10,6 +10,7 @@ Note: in the following, FID = wasatch.FeatureInterfaceDevice
         - support bad_pixels in BLEDevice
     - AndorDevice
         - read capabilities (including camera type)
+    - add ingaas_ and etalon_corrected to ProcessedReading
 - 2026-08-06 2.4.6 (enlighten-4.2.7)
     - updated markdown docs
     - JSON
