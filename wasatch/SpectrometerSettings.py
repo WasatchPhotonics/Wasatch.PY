@@ -155,6 +155,11 @@ class SpectrometerSettings:
     def pixels(self):
         return self.eeprom.active_pixels_horizontal
 
+    def post_interpolation_reset(self, pixels):
+        self.eeprom.active_pixels_horizontal = pixels
+        self.eeprom.roi_horizontal_start = 0
+        self.eeprom.roi_horizontal_end = 0
+
     def excitation(self):
         return self.eeprom.multi_wavelength_calibration.get("excitation_nm_float", default=0.0)
 
