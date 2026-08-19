@@ -2,7 +2,7 @@
 
 Note: in the following, FID = wasatch.FeatureInterfaceDevice
 
-- 2026-??-?? 2.4.7 (enlighten-4.2.8?)
+- 2026-08-19 2.4.7 (enlighten-4.2.9)
     - more JSON fixes
     - bad pixel correction
         - promote correct_bad_pixels from FeatureIdentificationDevice to InterfaceDevice
