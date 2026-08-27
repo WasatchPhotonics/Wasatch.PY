@@ -1153,7 +1153,6 @@ class BLEDevice(InterfaceDevice):
         This is an asynchronous high-level function which wraps the mechanical 
         steps of sending an ACQUIRE and receiving the full SPECTRA in response.
         """
-
         auto_raman_request = self.take_one_request.auto_raman_request if self.take_one_request else None
         if auto_raman_request:
             await self.set_auto_raman_params_async(auto_raman_request.serialize())
@@ -1212,10 +1211,10 @@ class BLEDevice(InterfaceDevice):
         self.spectrum = binned
 
         if (self.settings.eeprom.invert_x_axis):
-            spectrum = spectrum[::-1]
+            self.spectrum = self.spectrum[::-1]
         
         if self.settings.state.bad_pixel_mode == SpectrometerState.BAD_PIXEL_MODE_AVERAGE:
-            self.correct_bad_pixels(spectrum)
+            self.correct_bad_pixels(self.spectrum)
 
         if auto_raman_request:
             self.queue_message("progress_bar", 100)
