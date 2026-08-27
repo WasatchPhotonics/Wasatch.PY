@@ -1153,7 +1153,7 @@ class BLEDevice(InterfaceDevice):
         This is an asynchronous high-level function which wraps the mechanical 
         steps of sending an ACQUIRE and receiving the full SPECTRA in response.
         """
-
+        spectrum = []
         auto_raman_request = self.take_one_request.auto_raman_request if self.take_one_request else None
         if auto_raman_request:
             await self.set_auto_raman_params_async(auto_raman_request.serialize())
