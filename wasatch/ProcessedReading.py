@@ -178,7 +178,7 @@ class ProcessedReading:
                 sources = [self.cropped, self]
             elif stage == "orig":
                 sources = [self]
-            elif stage == "XD": 
+            elif stage == "xd": 
                 sources = [self.XD]
 
         for obj in sources:
