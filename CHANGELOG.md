@@ -2,7 +2,9 @@
 
 Note: in the following, FID = wasatch.FeatureInterfaceDevice
 
-- 2026-?-? 2.4.8 (enlighten-4.2.11)
+- 2026-09-22 2.4.9 (enlighten-4.2.12)
+    - add EEPROM.disable_detector (FeatureMaskXS)
+- 2026-08-31 2.4.8 (enlighten-4.2.11)
 	- BLE fix for unit connection
 - 2026-08-19 2.4.7 (enlighten-4.2.9)
     - more JSON fixes
