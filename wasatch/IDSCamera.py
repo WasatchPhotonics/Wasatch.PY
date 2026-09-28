@@ -505,7 +505,7 @@ class IDSCamera:
         factor = max(factor, node.Minimum())
         factor = min(factor, node.Maximum())
 
-        log.debug(f"set_gain: factor {factor:.1f}")
+        log.debug(f"set_gain_factor: factor {factor:.1f}")
         self.node_map.FindNode("Gain").SetValue(factor)
         return factor
 

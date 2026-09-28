@@ -199,9 +199,10 @@ class IDSDevice(InterfaceDevice):
         def stomp(k, attr=None):
             if attr is None:
                 attr = k
-                log.debug(f"attempting to stomp {k}")
+                # log.debug(f"attempting to stomp {k}")
             else:
-                log.debug(f"attempting to stomp {k} --> {attr}")
+                # log.debug(f"attempting to stomp {k} --> {attr}")
+                pass
 
             if k in data:
                 value = data[k]
@@ -216,6 +217,9 @@ class IDSDevice(InterfaceDevice):
         for k, attr in [ [ "wp_model",         "model" ],
                          [ "wp_serial_number", "serial_number" ] ]:
             stomp(k, attr)
+
+        # all-important wavecal (doesn't appear in 'fields')
+        stomp("wavelength_coeffs")
 
         # pick up Pixel Corrections like EtalonCorrection
         self.settings.augment_from_json_data(data)
@@ -530,6 +534,7 @@ class IDSDevice(InterfaceDevice):
 
         # setting and function have different names
         process_f["gain_db"]             = lambda x: self.set_gain_db(float(x)) 
+        process_f["detector_gain"]       = lambda x: self.set_gain_db(float(x)) 
         process_f["integration_time_ms"] = lambda x: self.set_integration_time_ms(int(x))
         process_f["scans_to_average"]    = lambda x: self.set_scans_to_average(int(x))
         process_f["vertical_binning"]    = lambda x: self.set_vertical_roi(x)

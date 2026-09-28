@@ -48,7 +48,7 @@ class WasatchJSONEncoder(json.JSONEncoder):
                 yield "[]" 
 
             # list of numbers are fine
-            elif all(isinstance(v, (int, float, np.float32, np.float64, np.int32, np.int64)) for v in o):
+            elif all(isinstance(v, (int, float, np.float32, np.float64, np.int32, np.int64, np.uint32)) for v in o):
                 yield '[' + ', '.join([str(v) for v in o]) + ']'
 
             # list of strings need quotes

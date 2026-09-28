@@ -508,7 +508,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         log.debug(f"In reset and restart trying to reset instance id {device_instance_id}")
         subprocess.run(["pnputil", r"/reboot", r"/disable-device", device_instance_id])
         subprocess.run(["pnputil", r"/reboot", r"/enable-device", device_instance_id])
-'''
+        '''
     # ##########################################################################
     # Utility Methods
     # ##########################################################################
@@ -2103,7 +2103,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
             return SpectrometerResponse(data=None, error_lvl=ErrorLevel.low, error_msg=msg)
 
         result = self._get_code(0x85, wLength=1, label="GET_LASER_TEC_MODE", lsb_len=1)
-        if result is None or result.data < 0 or result.data > 3:
+        if result is None or result.data is None or result.data < 0 or result.data > 3:
             msg = f"get_laser_tec_mode: invalid mode {result}"
             log.error(msg)
             return SpectrometerResponse(data=None, error_lvl=ErrorLevel.low, error_msg=msg)
@@ -2864,6 +2864,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
             # log.debug("CAN_LASER_FIRE requires has_interlock_feedback or XS (defaulting True)")
             return SpectrometerResponse(data=True)
 
+        # if not self.settings.supports_feature("can_laser_fire"):
+        #     log.debug("CAN_LASER_FIRE not supported (defaultng True)")
+        #     return SpectrometerResponse(data=True)
+
         res = self._get_code(0xef, label="CAN_LASER_FIRE", msb_len=1)
         res.data = 0 != res.data
         return res
@@ -2888,7 +2892,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
     ############################################################################
 
     def reset_fpga(self):
-        log.debug("reset_Fpga: start")
+        log.debug("reset_fpga: start")
         result = self._send_code(0xb5, label="RESET_FPGA")
 
         self.queue_message("marquee_error", "resetting FPGA")
