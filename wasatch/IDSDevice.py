@@ -461,6 +461,12 @@ class IDSDevice(InterfaceDevice):
             return SpectrometerResponse(False)
         self.laser_device.handle_cmd('set_laser_enable', flag)
 
+    def set_laser_power_perc(self, perc):
+        log.debug(f"set_laser_enable_perc: perc {perc}")
+        if not self.laser_device:
+            return SpectrometerResponse(False)
+        self.laser_device.handle_cmd('set_laser_power_perc', perc)
+
     def get_laser_tec_mode(self):
         if not self.laser_device:
             return SpectrometerResponse(None)
@@ -543,6 +549,7 @@ class IDSDevice(InterfaceDevice):
         process_f["area_scan_enable"]    = lambda x: self.set_area_scan_enable(bool(x))
         process_f["output_format_name"]  = lambda x: self.set_output_format_name(x)
         process_f["laser_enable"]        = lambda x: self.set_laser_enable(x)
+        process_f["laser_power_perc"]    = lambda x: self.set_laser_power_perc(x)
         process_f["take_one_request"]    = lambda x: self.set_take_one_request(x)
 
         return process_f
