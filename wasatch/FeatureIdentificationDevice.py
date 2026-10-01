@@ -2821,7 +2821,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
     def set_laser_power_attenuator(self, value):
         cmd = "SET_LASER_ATTENUATOR"
         if not self.settings.is_xs():
-            msg = f"{cmd} is only available on XS-Series with 220250 Rev4A+"
+            msg = f"{cmd} is only available on XS-Series with 220250 Rev5+"
             log.debug(msg)
             return SpectrometerResponse(data=None, error_msg=msg)
 
@@ -2833,11 +2833,27 @@ class FeatureIdentificationDevice(InterfaceDevice):
     def get_laser_power_attenuator(self):
         cmd = "GET_LASER_ATTENUATOR"
         if not self.settings.is_xs():
-            msg = f"{cmd} is only available on XS-Series with 220250 Rev4A+"
+            msg = f"{cmd} is only available on XS-Series with 220250 Rev5+"
             log.debug(msg)
             return SpectrometerResponse(data=None, error_msg=msg)
 
         return self._get_code(0x83, msb_len=1, label=cmd)
+
+    def set_laser_attenuation_perc(self, perc):
+        """ @param perc (Input) range 0-100 (not 0.0 - 1.0) """
+        if not self.settings.is_xs():
+            msg = f"laser attenuation is only available on XS-Series with 220250 Rev5+"
+            log.debug(msg)
+        
+        lo = self.settings.eeprom.laser_attenuator
+        hi = 255
+        rng = (hi - lo)
+        value = int(round(rng * perc / 100.0 + lo))
+        value = max(value, lo)
+        value = min(value, hi)
+
+        log.debug(f"scaling laser power attenuation to {perc}% (EEPROM {lo}, value {value})")
+        self.set_laser_power_attenuator(value)
 
     ############################################################################
     # laser interlock
@@ -4140,6 +4156,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         process_f["laser_power_mW"]                     = lambda x: self.set_laser_power_mW(x)
         process_f["laser_temperature_setpoint_raw"]     = lambda x: self.set_laser_temperature_setpoint_raw(int(round(x)))
         process_f["laser_power_attenuator"]             = lambda x: self.set_laser_power_attenuator(int(round(x)))
+        process_f["laser_attenuation_perc"]             = lambda x: self.set_laser_attenuation_perc(x)
         process_f["laser_power_high_resolution"]        = lambda x: self.set_laser_power_high_resolution(x)
         process_f["laser_power_require_modulation"]     = lambda x: self.set_laser_power_require_modulation(x)
         process_f["selected_laser"]                     = lambda x: self.set_selected_laser(int(x))

@@ -1264,6 +1264,7 @@ class EEPROM:
         log.debug("  Bad Pixels:       %s", self.bad_pixels)
         log.debug("  Product Config:   %s", self.product_configuration)
         log.debug("  Assembly Rev:     %s", self.assembly_revision)
+        log.debug("  Laser Attenuator: %d", self.laser_attenuator)
 
         if self.subformat == 1:
             self.dump_raman_intensity_calibration()
