@@ -339,11 +339,11 @@ class SpectrometerSettings:
         return self.hardware_info is not None and self.hardware_info.is_arm()
 
     def is_ingaas(self): 
-        if self.hardware_info is not None and self.hardware_info.is_ingaas(): # checks for PID 0x2000
+        if re.match(r'ingaas|g9214|g9206|g14237|du490', self.eeprom.detector.lower()):
             return True
         elif self.eeprom is None or self.eeprom.detector is None:
             return False
-        elif re.match(r'ingaas|g9214|g9206|g14237|du490', self.eeprom.detector.lower()):
+        elif self.hardware_info is not None and self.hardware_info.is_ingaas(): # checks for PID 0x2000
             return True
         elif not self.is_arm() and (self.fpga_options is not None and self.fpga_options.has_cf_select):
             # new SiG ARM code removes GET_FPGA_COMPILATION_OPTIONS and therefore returns all 0xff for unsupported register

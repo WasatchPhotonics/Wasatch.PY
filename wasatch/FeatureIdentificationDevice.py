@@ -341,8 +341,8 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.debug("sending gain/offset to FPGA")
             self.set_detector_gain      (self.settings.eeprom.detector_gain)
             self.set_detector_offset    (self.settings.eeprom.detector_offset)
-            # This is for bypassing the gain and offset even/odd values on ingass detectors
-            if self.settings.fpga_firmware_version != "35_26_0":
+
+            if self.settings.is_ingaas() and self.settings.supports_feature("fpga_odd_params"):
                 self.set_detector_gain_odd  (self.settings.eeprom.detector_gain_odd) 
                 self.set_detector_offset_odd(self.settings.eeprom.detector_offset_odd)
 
