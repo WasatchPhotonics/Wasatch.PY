@@ -2,7 +2,7 @@
 
 Note: in the following, FID = wasatch.FeatureInterfaceDevice
 
-- 2026-??-?? 2.4.10
+- 2026-10-02 2.4.10 (enlighten-4.2.13)
     - make SeaBreeze optional
     - add laser attenuator control
     - support 110008-based InGaAs
