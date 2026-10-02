@@ -350,7 +350,7 @@ class SpectrometerSettings:
         return self.hardware_info is not None and self.hardware_info.is_arm()
 
     def is_ingaas(self): 
-        if re.match(r'ingaas|g9214|g9206|g14237|du490', self.eeprom.detector.lower()):
+        if self.eeprom.detector is not None and re.match(r'ingaas|g9214|g9206|g14237|du490', self.eeprom.detector.lower()):
             return True
         elif self.eeprom is None or self.eeprom.detector is None:
             return False
