@@ -438,6 +438,9 @@ class IDSDevice(InterfaceDevice):
         # track image format
         reading.image_format = self.camera.output_format_name
 
+        # add detector temperature
+        reading.detector_temperature_degC = self.camera.get_detector_temperature_deg_c()
+
         # log.debug(f"acquire_data: returning {reading}")
         return SpectrometerResponse(data=reading)
 
