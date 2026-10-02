@@ -3,14 +3,18 @@ import usb
 import logging
 import datetime
 
-import seabreeze
-seabreeze.use("pyseabreeze")
-import seabreeze.spectrometers as sb
-from seabreeze.spectrometers import Spectrometer, list_devices
+SEABREEZE_AVAILABLE = True
+try:
+    import seabreeze
+    seabreeze.use("pyseabreeze")
+    import seabreeze.spectrometers as sb
+    from seabreeze.spectrometers import Spectrometer, list_devices
+except:
+    SEABREEZE_AVAILABLE = False
 
 from .SpectrometerSettings        import SpectrometerSettings
 from .SpectrometerResponse        import SpectrometerResponse
-from .InterfaceDevice             import InterfaceDevice
+from .InterfaceDevice             import InterfaceDevice, InterfaceDeviceClassUnavailable
 from .DeviceID                    import DeviceID
 from .Reading                     import Reading
 
@@ -23,6 +27,9 @@ class OceanDevice(InterfaceDevice):
 
     def __init__(self, device_id, message_queue=None, alert_queue=None):
         super().__init__(device_id=device_id, message_queue=message_queue, alert_queue=alert_queue)
+
+        if not SEABREEZE_AVAILABLE:
+            raise InterfaceDeviceClassUnavailable("SeaBreeze driver not installed")
 
         self.connected = False
 

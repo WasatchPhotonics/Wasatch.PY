@@ -24,6 +24,7 @@ class FirmwareRequirements:
             "get_power_connection_state":       { "microcontroller": { "min": "1.0.63.5", "unsupported": [ "11.3.0.37" ] } },
             "hamamatsu_vertical_roi":           { "microcontroller": { "min": "10.0.0.47" } }, 
             "xs_accessory_connector":           { "microcontroller": { "min": "1.0.67.3" } },
+           #"can_laser_fire":                   { "microcontroller": { "unsupported": [ "1.0.67.4" ] } },
             "xs_area_scan_offset_kludge":       { "fpga": { "min": "01_04_01", "max": "01_04_30", "includes": "_" } },
             "ingaas_odd_params":                { "fpga": { "unsupported": "35_26_0" } },
             "battery_state_length_5":           { "ble": { "min": "4.12.5" } }, # SiGFW-243

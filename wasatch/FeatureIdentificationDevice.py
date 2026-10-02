@@ -510,7 +510,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         log.debug(f"In reset and restart trying to reset instance id {device_instance_id}")
         subprocess.run(["pnputil", r"/reboot", r"/disable-device", device_instance_id])
         subprocess.run(["pnputil", r"/reboot", r"/enable-device", device_instance_id])
-'''
+        '''
     # ##########################################################################
     # Utility Methods
     # ##########################################################################
@@ -634,77 +634,6 @@ class FeatureIdentificationDevice(InterfaceDevice):
             # uninitialized to 0xff...treat as 0x00 for now
             log.error("invalid horizontal binning mode {mode}...defaulting to bin_2x2")
             return self.imx385.bin_2x2(spectrum)
-
-    def _correct_bad_pixels(self, spectrum):
-        """
-        If a spectrometer has bad_pixels configured in the EEPROM, then average
-        over them in the driver.
-        Note this function modifies the passed array in-place, rather than
-        returning a modified copy.
-        @note assumes bad_pixels is previously sorted
-        """
-
-        if self.settings is None or \
-                self.settings.eeprom is None or \
-                self.settings.eeprom.bad_pixels is None or \
-                len(self.settings.eeprom.bad_pixels) == 0 or \
-                self.settings.state.detector_regions is not None:
-            return False
-
-        if spectrum is None or len(spectrum) == 0:
-            return False
-
-        pixels = len(spectrum)
-        bad_pixels = self.settings.eeprom.bad_pixels
-
-        # iterate over each bad pixel
-        i = 0
-        while i < len(bad_pixels):
-
-            bad_pix = bad_pixels[i]
-
-            if bad_pix == 0:
-                # handle the left edge
-                next_good = bad_pix + 1
-                while next_good in bad_pixels and next_good < pixels:
-                    next_good += 1
-                    i += 1
-                if next_good < pixels:
-                    for j in range(next_good):
-                        spectrum[j] = spectrum[next_good]
-            else:
-
-                # find previous good pixel
-                prev_good = bad_pix - 1
-                while prev_good in bad_pixels and prev_good >= 0:
-                    prev_good -= 1
-
-                if prev_good >= 0:
-                    # find next good pixel
-                    next_good = bad_pix + 1
-                    while next_good in bad_pixels and next_good < pixels:
-                        next_good += 1
-                        i += 1
-
-                    if next_good < pixels:
-                        # for now, draw a line between previous and next_good pixels
-                        # TODO: consider some kind of curve-fit
-                        delta = float(spectrum[next_good] - spectrum[prev_good])
-                        rng   = next_good - prev_good 
-                        step  = delta / rng
-                        # log.debug(f"correct_bad_pixels: bad_pix {bad_pix}, prev_good {prev_good} ({spectrum[prev_good]}), next_good {next_good} ({spectrum[next_good]}), delta {delta:.2f}, rng {rng}, step {step:.2f}")
-                        for j in range(rng - 1):
-                            new = spectrum[prev_good] + step * (j + 1)
-                            spectrum[prev_good + j + 1] = new
-                            # log.debug(f"correct_bad_pixels: stomping pix {prev_good + j + 1} with {new}")
-                    else:
-                        # we ran off the high end, so copy-right
-                        for j in range(bad_pix, pixels):
-                            spectrum[j] = spectrum[prev_good]
-
-            # advance to next bad pixel
-            i += 1
-        return True
 
     def _send_code(self, 
                    bRequest: int, 
@@ -1671,7 +1600,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # Note these are pre-horizontal binning...
         if not self.settings.state.area_scan_enabled:
             if self.settings.state.bad_pixel_mode == SpectrometerState.BAD_PIXEL_MODE_AVERAGE:
-                self._correct_bad_pixels(spectrum)
+                self.correct_bad_pixels(spectrum)
 
         ########################################################################
         # horizontal binning
@@ -2176,7 +2105,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
             return SpectrometerResponse(data=None, error_lvl=ErrorLevel.low, error_msg=msg)
 
         result = self._get_code(0x85, wLength=1, label="GET_LASER_TEC_MODE", lsb_len=1)
-        if result is None or result.data < 0 or result.data > 3:
+        if result is None or result.data is None or result.data < 0 or result.data > 3:
             msg = f"get_laser_tec_mode: invalid mode {result}"
             log.error(msg)
             return SpectrometerResponse(data=None, error_lvl=ErrorLevel.low, error_msg=msg)
@@ -2894,7 +2823,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
     def set_laser_power_attenuator(self, value):
         cmd = "SET_LASER_ATTENUATOR"
         if not self.settings.is_xs():
-            msg = f"{cmd} is only available on XS-Series with 220250 Rev4A+"
+            msg = f"{cmd} is only available on XS-Series with 220250 Rev5+"
             log.debug(msg)
             return SpectrometerResponse(data=None, error_msg=msg)
 
@@ -2906,11 +2835,27 @@ class FeatureIdentificationDevice(InterfaceDevice):
     def get_laser_power_attenuator(self):
         cmd = "GET_LASER_ATTENUATOR"
         if not self.settings.is_xs():
-            msg = f"{cmd} is only available on XS-Series with 220250 Rev4A+"
+            msg = f"{cmd} is only available on XS-Series with 220250 Rev5+"
             log.debug(msg)
             return SpectrometerResponse(data=None, error_msg=msg)
 
         return self._get_code(0x83, msb_len=1, label=cmd)
+
+    def set_laser_attenuation_perc(self, perc):
+        """ @param perc (Input) range 0-100 (not 0.0 - 1.0) """
+        if not self.settings.is_xs():
+            msg = f"laser attenuation is only available on XS-Series with 220250 Rev5+"
+            log.debug(msg)
+        
+        lo = self.settings.eeprom.laser_attenuator
+        hi = 255
+        rng = (hi - lo)
+        value = int(round(rng * perc / 100.0 + lo))
+        value = max(value, lo)
+        value = min(value, hi)
+
+        log.debug(f"scaling laser power attenuation to {perc}% (EEPROM {lo}, value {value})")
+        self.set_laser_power_attenuator(value)
 
     ############################################################################
     # laser interlock
@@ -2937,6 +2882,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
             # log.debug("CAN_LASER_FIRE requires has_interlock_feedback or XS (defaulting True)")
             return SpectrometerResponse(data=True)
 
+        # if not self.settings.supports_feature("can_laser_fire"):
+        #     log.debug("CAN_LASER_FIRE not supported (defaultng True)")
+        #     return SpectrometerResponse(data=True)
+
         res = self._get_code(0xef, label="CAN_LASER_FIRE", msb_len=1)
         res.data = 0 != res.data
         return res
@@ -2961,7 +2910,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
     ############################################################################
 
     def reset_fpga(self):
-        log.debug("reset_Fpga: start")
+        log.debug("reset_fpga: start")
         result = self._send_code(0xb5, label="RESET_FPGA")
 
         self.queue_message("marquee_error", "resetting FPGA")
@@ -4209,6 +4158,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         process_f["laser_power_mW"]                     = lambda x: self.set_laser_power_mW(x)
         process_f["laser_temperature_setpoint_raw"]     = lambda x: self.set_laser_temperature_setpoint_raw(int(round(x)))
         process_f["laser_power_attenuator"]             = lambda x: self.set_laser_power_attenuator(int(round(x)))
+        process_f["laser_attenuation_perc"]             = lambda x: self.set_laser_attenuation_perc(x)
         process_f["laser_power_high_resolution"]        = lambda x: self.set_laser_power_high_resolution(x)
         process_f["laser_power_require_modulation"]     = lambda x: self.set_laser_power_require_modulation(x)
         process_f["selected_laser"]                     = lambda x: self.set_selected_laser(int(x))

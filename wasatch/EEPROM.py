@@ -163,6 +163,7 @@ class EEPROM:
         self.aux_button_laser_enable     = False
         self.disable_laser_sub_sys       = False
         self.leave_acc_5v_out_powered    = False
+        self.disable_detector            = False
         self.excitation_nm               = 0.0
         self.excitation_nm_float         = 0.0
         self.slit_size_um                = 0
@@ -639,12 +640,14 @@ class EEPROM:
                 self.aux_button_laser_enable    = 0 != self.feature_mask_xs & 0x0000_0004
                 self.disable_laser_sub_sys      = 0 != self.feature_mask_xs & 0x0000_0008
                 self.leave_acc_5v_out_powered   = 0 != self.feature_mask_xs & 0x0000_0010
+                self.disable_detector           = 0 != self.feature_mask_xs & 0x0000_0020
             else:
                 self.ble_door_sensor            = False
                 self.ext_laser_control          = False
                 self.aux_button_laser_enable    = False
                 self.disable_laser_sub_sys      = False
                 self.leave_acc_5v_out_powered   = False
+                self.disable_detector           = False
 
         self.dump_feature_masks()
 
@@ -704,6 +707,7 @@ class EEPROM:
         mask |= 0x0000_0004 if self.aux_button_laser_enable  else 0
         mask |= 0x0000_0008 if self.disable_laser_sub_sys    else 0
         mask |= 0x0000_0010 if self.leave_acc_5v_out_powered else 0
+        mask |= 0x0000_0020 if self.disable_detector         else 0
         return mask
 
     ##
@@ -1184,6 +1188,7 @@ class EEPROM:
         log.debug(f"  aux_button_laser_enable       = {self.aux_button_laser_enable}")
         log.debug(f"  disable_laser_sub_sys         = {self.disable_laser_sub_sys}")
         log.debug(f"  leave_acc_5v_out_powered      = {self.leave_acc_5v_out_powered}")
+        log.debug(f"  disable_detector              = {self.disable_detector}")
 
     ## log this object
     def dump(self):
@@ -1259,6 +1264,7 @@ class EEPROM:
         log.debug("  Bad Pixels:       %s", self.bad_pixels)
         log.debug("  Product Config:   %s", self.product_configuration)
         log.debug("  Assembly Rev:     %s", self.assembly_revision)
+        log.debug("  Laser Attenuator: %d", self.laser_attenuator)
 
         if self.subformat == 1:
             self.dump_raman_intensity_calibration()
@@ -1624,7 +1630,8 @@ class MultiWavelengthCalibration:
         # apply some quick validation based on datatype
         eeprom_field = self.eeprom.fields.get(name, None)
         if eeprom_field is None:
-            log.debug(f"MWC.set: {name} not in eeprom.fields?")
+            #log.debug(f"MWC.set: {name} not in eeprom.fields?")
+            pass
         else:
             # enforce integers
             if eeprom_field.data_type.lower() in ["i", "h", "b"]:

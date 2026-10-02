@@ -155,6 +155,11 @@ class SpectrometerSettings:
     def pixels(self):
         return self.eeprom.active_pixels_horizontal
 
+    def post_interpolation_reset(self, pixels):
+        self.eeprom.active_pixels_horizontal = pixels
+        self.eeprom.roi_horizontal_start = 0
+        self.eeprom.roi_horizontal_end = 0
+
     def excitation(self):
         return self.eeprom.multi_wavelength_calibration.get("excitation_nm_float", default=0.0)
 
@@ -175,8 +180,14 @@ class SpectrometerSettings:
             return False
 
     def has_detector(self):
+        if self.eeprom.disable_detector:
+            return False
+
         det = self.eeprom.detector
-        return det is not None and len(det) > 0 and det.lower() != "none"
+        if det is not None and det.lower() == "none":
+            return False
+
+        return True
 
     def has_excitation(self):
         return self.excitation() > 0

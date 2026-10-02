@@ -1,3 +1,4 @@
+import re
 import os
 import usb
 import json
@@ -8,8 +9,9 @@ from datetime import datetime
 
 from ctypes import sizeof, byref, c_ulong, c_float, c_int, c_long, Structure, cdll, create_string_buffer
 
-from .SpectrometerSettings        import SpectrometerSettings
 from .SpectrometerResponse        import SpectrometerResponse
+from .SpectrometerSettings        import SpectrometerSettings
+from .SpectrometerState           import SpectrometerState
 from .InterfaceDevice             import InterfaceDevice, InterfaceDeviceClassUnavailable
 from .StatusMessage               import StatusMessage
 from .DeviceID                    import DeviceID
@@ -235,7 +237,7 @@ class AndorDevice(InterfaceDevice):
 
     def _get_spectrum_raw(self):
         """
-        @todo missing bad-pixel correction
+        Note: this says "raw," but...it's really "get_spectrum" (it obviously applies basic post-processing).
         """
         spec_arr = c_long * self.pixels
         spec_init_vals = [0] * self.pixels
@@ -254,12 +256,16 @@ class AndorDevice(InterfaceDevice):
         spectrum = np.array(spectrum, dtype=np.float32) # [x for x in spectrum]
 
         if (self.settings.eeprom.invert_x_axis):
-            # spectrum.reverse()
             spectrum = spectrum[::-1]
 
         # Andor cameras can return all zeros when saturated
         if not spectrum.any():
             self._queue_message("marquee_error", "Andor camera is saturated")
+
+        # bad-pixel correction (must be AFTER inversion)
+        if not self.settings.state.area_scan_enabled:
+            if self.settings.state.bad_pixel_mode == SpectrometerState.BAD_PIXEL_MODE_AVERAGE:
+                self.correct_bad_pixels(spectrum)
 
         if self.settings.ingaas_correction:
             spectrum = self.settings.ingaas_correction.apply(spectrum)
@@ -502,7 +508,7 @@ class AndorDevice(InterfaceDevice):
         self.settings.update_raman_intensity_factors()
 
         # stomp EEPROM detector with whatever we find in Capabilities
-        self.settings.eeprom.detector = self.get_detector()
+        self.settings.eeprom.detector = self.get_simplified_detector_name()
 
         # success!
         log.info("AndorDevice successfully connected")
@@ -599,6 +605,7 @@ class AndorDevice(InterfaceDevice):
         for k in [ 'model', 
                    'stubbed', 
                    'detector', 
+                   'bad_pixels',
                    'serial_number', 
                    'invert_x_axis',
                    'wavelength_coeffs', 
@@ -711,7 +718,7 @@ class AndorDevice(InterfaceDevice):
         self.check_result(self.driver.GetCameraSerialNumber(byref(sn)), "GetCameraSerialNumber")
         self.serial = f"CCD-{sn.value}"
         self.settings.eeprom.serial_number = self.serial # temporary
-        self.settings.eeprom.detector_serial_number = self.serial
+        self.settings.detector_serial_number = self.serial
         log.debug(f"get_serial_number: connected to {self.serial}")
         return SpectrometerResponse(True)
 
@@ -779,20 +786,35 @@ class AndorDevice(InterfaceDevice):
         log.debug(f"ulEMGain        0x{self.capabilities.ulEMGain       :08x}")
         log.debug(f"ulFrameTransfer 0x{self.capabilities.ulFrameTransfer:08x}")
 
-    def get_detector(self):
+    def get_simplified_detector_name(self):
+        # get camera type
         camera = self.capabilities.ulCameraType
-        if   camera ==  7: return "iDus"
-        elif camera ==  8: return "Newton"
-        elif camera == 15: return "iVac"
-        elif camera == 23: return "iVac CCD"
-        else: return f"unknown ({camera})"
+        camera_type = f"unknown ({camera})"
+        if   camera ==  7: camera_type = "iDus"
+        elif camera ==  8: camera_type = "Newton"
+        elif camera == 15: camera_type = "iVac"
+        elif camera == 23: camera_type = "iVac CCD"
+        log.debug(f"camera_type orig {camera_type}")
+        # strip "CCD"
+        camera_type = re.sub(r" *CCD", "", camera_type)
+        log.debug(f"camera_type now {camera_type}")
         
-    def get_head_model(self):
+        # get head model
         s = create_string_buffer(256)
         self.check_result(self.driver.GetHeadModel(s), "GetHeadModel")
-        model = s.value.decode("utf-8").strip()
-        log.debug(f"get_head_model: model {model}")
-        return SpectrometerResponse(model)
+        head_model = s.value.decode("utf-8").strip()
+        log.debug(f"head model orig {head_model}")
+
+        # strip anything after comma
+        head_model = re.sub(r",.*", "", head_model)
+        # strip anything after underbar
+        head_model = re.sub(r"_.*", "", head_model)
+
+        log.debug(f"head model now {head_model}")
+
+        combined = f"{camera_type} {head_model}"
+        log.debug(f"combined {combined}")
+        return combined
 
     def init_detector_area(self):
         xPixels = c_int()

@@ -2,9 +2,27 @@
 
 Note: in the following, FID = wasatch.FeatureInterfaceDevice
 
-- 2026-??-?? 2.4.7 (enlighten-4.2.8?)
+- 2026-??-?? 2.4.10
+    - make SeaBreeze optional
+    - add laser attenuator control
+    - add IDS temperature (untested)
+- 2026-09-28 2.4.9 (enlighten-4.2.12)
+    - add EEPROM.disable_detector (FeatureMaskXS)
+    - IDS STARVIS
+        - fix loading wavecal from JSON
+        - fix saving measurements to JSON
+        - fix setting laser PWM
+- 2026-08-31 2.4.8 (enlighten-4.2.11)
+	- BLE fix for unit connection
+- 2026-08-19 2.4.7 (enlighten-4.2.9)
     - more JSON fixes
-    - read Andor capabilities (including camera type)
+    - bad pixel correction
+        - promote correct_bad_pixels from FeatureIdentificationDevice to InterfaceDevice
+        - support bad_pixels in AndorDevice
+        - support bad_pixels in BLEDevice
+    - AndorDevice
+        - read capabilities (including camera type)
+    - add ingaas_ and etalon_corrected to ProcessedReading
 - 2026-08-06 2.4.6 (enlighten-4.2.7)
     - updated markdown docs
     - JSON
