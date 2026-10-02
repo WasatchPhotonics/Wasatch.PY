@@ -341,8 +341,10 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.debug("sending gain/offset to FPGA")
             self.set_detector_gain      (self.settings.eeprom.detector_gain)
             self.set_detector_offset    (self.settings.eeprom.detector_offset)
-            self.set_detector_gain_odd  (self.settings.eeprom.detector_gain_odd) 
-            self.set_detector_offset_odd(self.settings.eeprom.detector_offset_odd)
+
+            if self.settings.is_ingaas() and self.settings.supports_feature("fpga_odd_params"):
+                self.set_detector_gain_odd  (self.settings.eeprom.detector_gain_odd) 
+                self.set_detector_offset_odd(self.settings.eeprom.detector_offset_odd)
 
         # initialize state.gain_db from EEPROM startup value
         self.settings.state.gain_db = self.settings.eeprom.detector_gain
