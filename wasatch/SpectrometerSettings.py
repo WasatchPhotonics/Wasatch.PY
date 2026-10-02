@@ -180,13 +180,16 @@ class SpectrometerSettings:
             return False
 
     def has_detector(self):
-        if self.eeprom.disable_detector:
+        if self.eeprom.disable_detector and not self.is_ids():
+            # log.debug("has_detector False because disable_detector on non-IDS")
             return False
 
         det = self.eeprom.detector
         if det is not None and det.lower() == "none":
+            # log.debug(f"has_detector False because detector {det}")
             return False
 
+        # log.debug(f"has_detector True")
         return True
 
     def has_excitation(self):

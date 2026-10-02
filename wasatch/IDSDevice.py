@@ -116,7 +116,7 @@ class IDSDevice(InterfaceDevice):
         self.settings.eeprom.invert_x_axis = True
 
         # stomp from camera
-        self.settings.eeprom.model = self.camera.model_name
+        # self.settings.eeprom.model = self.camera.model_name # don't do this; preserve WP-785XSB-etc
         self.settings.eeprom.detector = self.camera.sensor_name
         self.settings.eeprom.detector_serial_number = self.camera.serial_number
         self.settings.eeprom.active_pixels_horizontal = self.camera.width
