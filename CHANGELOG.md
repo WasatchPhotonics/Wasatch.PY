@@ -5,7 +5,6 @@ Note: in the following, FID = wasatch.FeatureInterfaceDevice
 - 2026-??-?? 2.4.10
     - make SeaBreeze optional
     - add laser attenuator control
-    - add IDS temperature (untested)
     - support 110008-based InGaAs
 - 2026-09-28 2.4.9 (enlighten-4.2.12)
     - add EEPROM.disable_detector (FeatureMaskXS)

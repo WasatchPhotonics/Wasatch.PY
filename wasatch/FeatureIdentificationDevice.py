@@ -570,10 +570,11 @@ class FeatureIdentificationDevice(InterfaceDevice):
             return True
         return False
 
-    ##
-    # Until support for even/odd InGaAs gain and offset have been added to the
-    # firmware, apply the correction in software.
     def _correct_ingaas_gain_and_offset(self, spectrum: list[float]):
+        """
+        Until support for even/odd InGaAs gain and offset have been added to the
+        firmware, apply the correction in software.
+        """
         if not self.settings.is_ingaas() or self.settings.eeprom.hardware_even_odd:
             return False
 

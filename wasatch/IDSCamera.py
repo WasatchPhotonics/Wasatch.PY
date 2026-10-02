@@ -392,8 +392,9 @@ class IDSCamera:
         log.debug(f"connect: successfully connected to {self.long_name}")
         return True
 
-    def get_detector_temperature_deg_c(self):
-        return self.node_map.FindNode("DeviceTemperature").Value()
+    # not supported by current camera
+    # def get_detector_temperature_deg_c(self):
+    #     return self.node_map.FindNode("DeviceTemperature").Value()
 
     def doing_default(self):
         selector = self.node_map.FindNode("UserSetSelector")
