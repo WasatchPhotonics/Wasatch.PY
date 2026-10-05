@@ -2,6 +2,10 @@
 
 Note: in the following, FID = wasatch.FeatureInterfaceDevice
 
+- 2026-10-05 2.4.12 (enlighten-4.2.15)
+    - testing wp-enlighten
+- 2026-10-05 2.4.11 
+    - internal testing
 - 2026-10-02 2.4.10 (enlighten-4.2.13)
     - make SeaBreeze optional
     - add laser attenuator control
