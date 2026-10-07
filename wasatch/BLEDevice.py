@@ -544,6 +544,21 @@ class BLEDevice(InterfaceDevice):
         for uuid in self.notifications:
             await self.client.stop_notify(uuid)
 
+    def prepare_for_shutdown(self):
+        if self.run_loop is None:
+            return
+
+        pending = asyncio.all_tasks(loop=self.run_loop)
+        for task in pending:
+            task.cancel()
+        
+        try:
+            self.run_loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+        finally:
+            self.run_loop.close()
+        
+        self.run_loop = None
+
     ############################################################################
     # Characteristic utilities
     ############################################################################
