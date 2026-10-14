@@ -1,23 +1,25 @@
 [project]
 name = "wasatch"
-version = "2.4.13"
+version = "2.5.0"
 description= "Application-level driver for Wasatch Photonics spectrometers"
 requires-python = ">=3.9"
 readme = "README.md"
 dependencies = [
-    "numpy",
-    "six",
-    "psutil",
+    "bleak",
+    "build",
+    "crcmod",
     "future",
+    "numpy",
+    "pexpect",
+    "psutil",
+    "pyftdi",
     "pygtail",
+    "pyudev",
     "pyusb",
     "requests",
-    "pexpect",
     "seabreeze",
-    "pyudev",
-    "pyftdi",
-    "crcmod",
-    "bleak",
+    "six",
+    "twine",
 
     "pywin32; platform_system=='Windows'",
     "ids_peak; platform_system=='Windows'",
