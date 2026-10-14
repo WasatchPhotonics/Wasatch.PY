@@ -592,7 +592,7 @@ class EEPROM:
         # Page 8
         # ######################################################################
 
-        if "XS" in self.model.upper(): 
+        if "XS" in self.model.upper() and self.format > 17: 
 
             s = self.unpack_field("laser_password", quiet=True)
             if s is None:
@@ -1098,6 +1098,8 @@ class EEPROM:
                     offset = start_byte + i
                     buf[offset] = value[i]
             else:
+                if value is None:
+                    value = 0
                 if data_type == "f":
                     value = float(value)
                 struct.pack_into(data_type, buf, start_byte, value)

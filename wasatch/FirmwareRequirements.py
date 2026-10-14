@@ -21,7 +21,7 @@ class FirmwareRequirements:
             "microcontroller_serial_number":    { "microcontroller": { "min": "1.0.4.5",  "unsupported": [ "11.3.0.37" ] } },
             "get_ble_firmware_version":         { "microcontroller": { "min": "1.0.4.5",  "unsupported": [ "11.3.0.37", "1.0.33.7" ] } },
             "get_laser_warning_delay_sec":      { "microcontroller": { "min": "1.0.27.1", "unsupported": [ "11.3.0.37" ] } },
-            "get_power_connection_state":       { "microcontroller": { "min": "1.0.63.5", "unsupported": [ "11.3.0.37" ] } },
+            "get_power_connection_state":       { "microcontroller": { "min": "1.0.63.5", "unsupported": [ "11.3.0.37" ] } }, # "1.0.79.5"
             "hamamatsu_vertical_roi":           { "microcontroller": { "min": "10.0.0.47" } }, 
             "xs_accessory_connector":           { "microcontroller": { "min": "1.0.67.3" } },
            #"can_laser_fire":                   { "microcontroller": { "unsupported": [ "1.0.67.4" ] } },
