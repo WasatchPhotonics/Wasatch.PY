@@ -1,34 +1,58 @@
+[build-system]
+requires = ["hatchling >= 1.26"]
+build-backend = "hatchling.build"
+
 [project]
 name = "wasatch"
-version = "2.4.13"
+version = "2.5.0"
+
 description= "Application-level driver for Wasatch Photonics spectrometers"
+keywords = [ "wasatch", "wasatchphotonics", "spectrometer", "raman" ]
+
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+
+license = "MIT"
+license-files = [ "LICEN[CS]E*" ]
+
 requires-python = ">=3.9"
 readme = "README.md"
+
 dependencies = [
-    "numpy",
-    "six",
-    "psutil",
+    "bleak",
+    "build",        # for maintainers
+    "crcmod",
     "future",
+    "numpy",
+    "pexpect",
+    "psutil",
+    "pyftdi",
     "pygtail",
+    "pyudev",
     "pyusb",
     "requests",
-    "pexpect",
     "seabreeze",
-    "pyudev",
-    "pyftdi",
-    "crcmod",
-    "bleak",
+    "six",
+    "twine",        # for PyPi
 
     "pywin32; platform_system=='Windows'",
     "ids_peak; platform_system=='Windows'",
 ]
 
-[project.urls]
-Homepage = "https://github.com/WasatchPhotonics/wasatch.py"
+authors = [
+  { name="Mark Zieg", email="mzieg@wasatchphotonics.com" },
+  { name="Chris Grainger", email="cgrainger@wasatchphotonics.com" },
+]
 
-[build-system]
-requires=["setuptools"]
-build-backend="setuptools.build_meta"
+[project.urls]
+Issues = "https://github.com/WasatchPhotonics/Wasatch.PY/issues"
+Homepage = "https://github.com/WasatchPhotonics/Wasatach.PY"
+Changelog = "https://github.com/WasatchPhotonics/Wasatch.PY/blob/master/CHANGELOG.md"
+Repository = "https://github.com/WasatchPhotonics/Wasatch.PY.git"
+Documentation = "https://wasatchphotonics.com/enlighten"
 
 [tool.setuptools.packages.find]
 where=["."]

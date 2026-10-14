@@ -7,7 +7,7 @@ help:
 	@echo "  publish-test      (flit --> testpypi)"
 	@echo "  pip-install-local"                
 
-.PHONY: doc docs clean cloc publish publish-test pip-install-local
+.PHONY: doc docs clean cloc publish publish-test 
 
 cloc:
 	@cloc --include-lang=Python .
@@ -24,15 +24,19 @@ clean:
             doxygen.err
 	@find . -name \*.pyc -exec rm {} \;
 
-pip-install-local:
-	pip install $$PWD
-
+# run after "python -m build"
 publish-test:
-	@echo REMINDER to keep .toml in sync with __init__.py!
-	@echo 
-	flit publish --repository testpypi
+	python -m twine upload --repository testpypi dist/wasatch*
 
+# run after "python -m build"
 publish:
-	@echo REMINDER to keep .toml in sync with __init__.py!
-	@echo 
-	flit publish
+	python -m twine upload dist/wasatch*
+
+pylint:
+	@pylint wasatch
+
+flake8:
+	@find wasatch -name \*.py | sort | xargs flake8 | tee flake8.out 
+	@echo && echo Counts:
+	@awk -F": " '{print $$2}' < flake8.out | sort | uniq -c | sort -n
+	@rm -f flake8.out

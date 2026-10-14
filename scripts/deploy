@@ -22,6 +22,15 @@ else
     exit 1
 fi
 
+# verify version number matches .toml
+if egrep -q "$VERSION" pyproject.toml
+then
+    echo "Correct version in .toml"
+else
+    echo "Can't find $VERSION in .toml"
+    exit 1
+fi
+
 # verify version number is tagged
 if git tag | egrep -q $VERSION
 then
@@ -34,9 +43,6 @@ fi
 # render documentation 
 export VERSION
 make doc
-
-# echo
-# read -p "Press return to continue..." FOO
 
 # upload documentation
 rsync --archive doxygen/html/ ${USERNAME}@wasatchphotonics.com:www/api/Wasatch.PY/

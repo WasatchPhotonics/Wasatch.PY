@@ -20,7 +20,6 @@ import argparse
 
 import wasatch
 from wasatch import utils
-from wasatch import applog
 from wasatch.WasatchBus           import WasatchBus
 from wasatch.WasatchDevice        import WasatchDevice
 from wasatch.WasatchDeviceWrapper import WasatchDeviceWrapper
@@ -38,15 +37,12 @@ class WasatchDemo:
     def __init__(self):
         self.bus     = None
         self.devices = {}
-        self.logger  = None
         self.outfile = None
         self.exiting = False
         self.reading_count = 0
 
         self.args = self.parse_args()
 
-        if self.args.log_level != "NEVER":
-            self.logger = applog.MainLogger(self.args.log_level)
         log.info("Wasatch.PY version %s", wasatch.__version__)
 
     ############################################################################
@@ -73,7 +69,10 @@ class WasatchDemo:
             print("Wasatch.PY %s" % wasatch.__version__)
             sys.exit(0)
 
-        args.log_level = args.log_level.upper()
+        level = logging.INFO
+        if hasattr(logging, args.log_level):
+            level = getattr(logging, args.log_level)
+        logging.basicConfig(level=level)
 
         return args
         
@@ -123,11 +122,19 @@ class WasatchDemo:
                 log.error("can't have device without SpectrometerSettings")
                 continue
 
-            print(f"connected to {device.settings.full_model()} {device.settings.eeprom.serial_number} with {device.settings.pixels()} pixels " +
-                  f"from ({device.settings.wavelengths[0]:.2f}, {device.settings.wavelengths[-1]:.2f}nm)" +
-                  (   f" ({device.settings.wavenumbers[0]:.2f}, {device.settings.wavenumbers[-1]:.2f}cm⁻¹)" if device.settings.has_excitation() else "") +
-                  f" (Microcontroller {device.settings.microcontroller_firmware_version}," +
-                  f" FPGA {device.settings.fpga_firmware_version})")
+            full_model      = device.settings.full_model()
+            sn              = device.settings.eeprom.serial_number
+            pixels          = device.settings.pixels()
+            wavelengths     = device.settings.wavelengths
+            has_excitation  = device.settings.has_excitation()
+            wavenumbers     = device.settings.wavenumbers if has_excitation else None
+            fw_ver          = device.settings.microcontroller_firmware_version
+            fpga_ver        = device.settings.fpga_firmware_version
+
+            print(f"connected to {full_model} {sn} with {pixels} pixels " +
+                  f"from ({wavelengths[0]:.2f}, {wavelengths[-1]:.2f}nm)" +
+                  (   f" ({wavenumbers[0]:.2f}, {wavenumbers[-1]:.2f}cm-1)" if has_excitation else "") +
+                  f" (microcontroller {fw_ver}, FPGA {fpga_ver})")
 
             self.devices[str(device.device_id)] = device
 
@@ -300,13 +307,6 @@ def clean_shutdown():
                 log.debug(f"closing {device_id}")
                 device.disconnect()
                 time.sleep(1)
-
-        if demo.logger:
-            log.debug("closing logger")
-            log.debug(None)
-            demo.logger.close()
-            time.sleep(1)
-            applog.explicit_log_close()
     sys.exit()
 
 demo = None

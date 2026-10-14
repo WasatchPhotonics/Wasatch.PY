@@ -10,7 +10,6 @@ import argparse
 
 import wasatch
 from wasatch import utils
-from wasatch import applog
 from wasatch.WasatchBus           import WasatchBus
 from wasatch.WasatchDevice        import WasatchDevice
 from wasatch.WasatchDeviceWrapper import WasatchDeviceWrapper
@@ -29,27 +28,30 @@ class Fixture:
 
         self.parse_args()
 
-        self.logger = applog.MainLogger("DEBUG" if self.args.debug else "INFO")
-
     def parse_args(self):
         parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-        parser.add_argument("--debug",          action="store_true",          help="logging level")
-        parser.add_argument("--outfile",        type=str,      default=None,  help="output filename (e.g. path/to/spectra.csv)")
-        parser.add_argument("--max-ms",         type=int,      default=10000, help="maximum measurement time (ms)")
-        parser.add_argument("--start-integ-ms", type=int,      default=100,   help="initial integration time (ms)")
-        parser.add_argument("--start-gain-db",  type=float,    default=0,     help="initial gain (dB)")
-        parser.add_argument("--max-integ-ms",   type=int,      default=2000,  help="maximum integration time (ms)")
-        parser.add_argument("--min-integ-ms",   type=int,      default=10,    help="minimum integration time (ms)")
-        parser.add_argument("--max-gain-db",    type=float,    default=32,    help="maximum gain (dB)")
-        parser.add_argument("--min-gain-db",    type=float,    default=0,     help="minimum gain (dB)")
-        parser.add_argument("--target-counts",  type=int,      default=45000, help="target counts")
-        parser.add_argument("--max-counts",     type=int,      default=50000, help="max counts")
-        parser.add_argument("--min-counts",     type=int,      default=40000, help="min counts")
-        parser.add_argument("--max-factor",     type=float,    default=5,     help="max scaling factor")
-        parser.add_argument("--drop-factor",    type=float,    default=0.5,   help="factor when scaling down")
-        parser.add_argument("--saturation",     type=int,      default=65000, help="counts")
+        parser.add_argument("--log-level",      type=str,      default="INFO", help="logging level", choices=["DEBUG","INFO","WARNING","ERROR","CRITICAL","NEVER"])
+        parser.add_argument("--outfile",        type=str,      default=None,   help="output filename (e.g. path/to/spectra.csv)")
+        parser.add_argument("--max-ms",         type=int,      default=10000,  help="maximum measurement time (ms)")
+        parser.add_argument("--start-integ-ms", type=int,      default=100,    help="initial integration time (ms)")
+        parser.add_argument("--start-gain-db",  type=float,    default=0,      help="initial gain (dB)")
+        parser.add_argument("--max-integ-ms",   type=int,      default=2000,   help="maximum integration time (ms)")
+        parser.add_argument("--min-integ-ms",   type=int,      default=10,     help="minimum integration time (ms)")
+        parser.add_argument("--max-gain-db",    type=float,    default=32,     help="maximum gain (dB)")
+        parser.add_argument("--min-gain-db",    type=float,    default=0,      help="minimum gain (dB)")
+        parser.add_argument("--target-counts",  type=int,      default=45000,  help="target counts")
+        parser.add_argument("--max-counts",     type=int,      default=50000,  help="max counts")
+        parser.add_argument("--min-counts",     type=int,      default=40000,  help="min counts")
+        parser.add_argument("--max-factor",     type=float,    default=5,      help="max scaling factor")
+        parser.add_argument("--drop-factor",    type=float,    default=0.5,    help="factor when scaling down")
+        parser.add_argument("--saturation",     type=int,      default=65000,  help="counts")
 
         self.args = parser.parse_args()
+
+        level = logging.INFO
+        if hasattr(logging, self.args.log_level):
+            level = getattr(logging, self.args.log_level)
+        logging.basicConfig(level=level)
         
     def connect(self):
         """ Connect to all discoverable Wasatch spectrometers.  """
@@ -68,7 +70,7 @@ class Fixture:
             settings = device.settings
             print(f"connected to {settings.full_model()} {settings.eeprom.serial_number} with {settings.pixels()} pixels " +
                   f"from ({settings.wavelengths[0]:.2f}, {settings.wavelengths[-1]:.2f}nm)" +
-                  (   f" ({settings.wavenumbers[0]:.2f}, {settings.wavenumbers[-1]:.2f}cm⁻¹)" if settings.has_excitation() else "") +
+                  (   f" ({settings.wavenumbers[0]:.2f}, {settings.wavenumbers[-1]:.2f}cm-1)" if settings.has_excitation() else "") +
                   f" (Microcontroller {device.settings.microcontroller_firmware_version}," +
                   f" FPGA {settings.fpga_firmware_version})")
 
@@ -119,7 +121,7 @@ class Fixture:
         settings = self.device.settings
 
         # ASCII-Art
-        print("\n".join(wasatch.utils.ascii_spectrum(reading.spectrum, rows=20, cols=80, x_axis=settings.wavenumbers, x_unit="cm⁻¹")))
+        print("\n".join(wasatch.utils.ascii_spectrum(reading.spectrum, rows=20, cols=80, x_axis=settings.wavenumbers, x_unit="cm-1")))
 
         if self.outfile:
             self.outfile.write("{datetime.datetime.now()}, {aar}, {', '.join([f'.2f' for x in reading.spectrum])}\n")
