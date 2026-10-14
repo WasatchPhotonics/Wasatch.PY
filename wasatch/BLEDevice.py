@@ -23,7 +23,7 @@ from . import utils
 log = logging.getLogger(__name__)
 
 """
-This file contains all classes used in communicating with the Wasatch Photonics 
+This file contains all classes used in communicating with the Wasatch Photonics
 XS spectrometer over Bluetooth® LE (BLE).
 
 These three classes are defined:
@@ -32,10 +32,10 @@ These three classes are defined:
 - Generics
 - Generic
 
-The BLEDevice class provides similar functionality for BLE spectrometers as the 
+The BLEDevice class provides similar functionality for BLE spectrometers as the
 WasatchDevice + FeatureIdentificationDevice classes do for USB spectrometers.
 
-This is a rough Entity Relationship diagram showing how these classes are used 
+This is a rough Entity Relationship diagram showing how these classes are used
 from ENLIGHTEN™:
                          ____________
                         |_Controller_|
@@ -46,20 +46,20 @@ from ENLIGHTEN™:
    _______|_________    ________|_____________       Wasatch.PY repo
   |_DeviceFinderBLE_|  |_WasatchDeviceWrapper_|
                                 |                    Main Thread
-       = = = = = = = = = = = = =|= = = = = = = = = = = = = = = =
+   = = = = = = = = = = = = = = =|= = = = = = = = = = = = = = = =
     _________________     ______|________    Spectrometer Thread
    |_InterfaceDevice_|   |_WrapperWorker_|
-                /_\             |     
-                 |         _____|_____         
+                /_\\            |
+                 |         _____|_____
  WasatchDevice <-+------->|_BLEDevice_|
    AndorDevice <-+              |
-     SPIDevice <-+         _____|____       _________  
+     SPIDevice <-+         _____|____       _________
      TCPDevice <-+        |_Generics_|<>---|_Generic_|
-     IDSDevice <-+        
-           etc           
+     IDSDevice <-+
+           etc
 
-Naratively, ENLIGHTEN's Controller has a BLEManager class to manage BLE affairs 
-at the GUI level, including connection and search buttons, visual tables of 
+Naratively, ENLIGHTEN's Controller has a BLEManager class to manage BLE affairs
+at the GUI level, including connection and search buttons, visual tables of
 discovered devices etc.
 
 ENLIGHTEN's BLEManager in turn uses Wasatch.PY's DeviceFinderBLE to scan for and
@@ -75,31 +75,31 @@ InterfaceDevice type, WasatchDevice for USB, BLEDevice for Bluetooth, etc.
 
 BLEDevice is responsible for pairing and controlling one Bluetooth spectrometer.
 Like any BLE product, the device is accessed through a Service comprising several
-Characteristics. 
+Characteristics.
 
-Naively, each Characteristic might be expected to map to a particular 
+Naively, each Characteristic might be expected to map to a particular
 spectrometer feature, such as IntegrationTime, GainDB, LaserEnable etc. However,
 each Characteristic has a memory footprint, and the Ezurio BL652 module only has
 room for a sparse handful.
 
 Therefore, we compromised on a minimal set of Characteristics where only the most
 performance-critical or problematic spectrometer features received their own
-Characteristic, and every other feature gets rolled into a slower "Generic" 
+Characteristic, and every other feature gets rolled into a slower "Generic"
 Characteristic which can handle arbitrary low-rate data exchanges.
 
 These are the current Characteristics:
 
-- LASER_STATE: gets its own characteristic so nothing can slow or confuse the 
-  setting or reading of laser configuration. Exchanges a marshalled record 
+- LASER_STATE: gets its own characteristic so nothing can slow or confuse the
+  setting or reading of laser configuration. Exchanges a marshalled record
   including enable state, interlock state, power level etc.
 
 - BATTERY_STATE: again gets its own characteristic because battery management
   is a surprisingly complicated yet critical aspect of handheld system design.
 
 - ACQUIRE and SPECTRA: currently used to "request" measurements with the ACQUIRE
-  characteristic, and to receive the responses via SPECTRA. This was done to 
+  characteristic, and to receive the responses via SPECTRA. This was done to
   separate the performance-critical spectral bulk data response (which requires
-  multiple exchanges to complete) from higher-level measurement "status" 
+  multiple exchanges to complete) from higher-level measurement "status"
   responses (returned over ACQUIRE).
 
 - GENERIC: everything else (EEPROM, integration time, gain, ROI, TEC,  etc)
@@ -107,37 +107,37 @@ These are the current Characteristics:
 # Concurrency
 
 Legacy ENLIGHTEN WrapperWorker.run <--> wasatch.InterfaceDevice communication
-normally occurs within a threading.Thread, using what we would now call 
-"traditional" (synchronous) Python function calls. That works fine for USB 
-and even TCP/IP devices, as both pyusb.ctrl_transfer and socket.recv/send 
+normally occurs within a threading.Thread, using what we would now call
+"traditional" (synchronous) Python function calls. That works fine for USB
+and even TCP/IP devices, as both pyusb.ctrl_transfer and socket.recv/send
 expose typical "blocking" procedural APIs. (Python didn't even get an async
 keyword until 2015.)
 
 However, BLE is all about asynchronous communication, and the Bleak package
-only offers an async API. Therefore we need to wrap calls to the Bleak 
+only offers an async API. Therefore we need to wrap calls to the Bleak
 objects using asyncio, so we can call async functions from synchronous code.
 
-With regard to BLEManager <--> DeviceFinderBLE, BLEManager creates the 
-asyncio scan_loop, allowing DeviceFinderBLE to expose an asynchronous API 
+With regard to BLEManager <--> DeviceFinderBLE, BLEManager creates the
+asyncio scan_loop, allowing DeviceFinderBLE to expose an asynchronous API
 (public async methods).
 
-That begs the question of how we should handle WrapperWorker <--> 
+That begs the question of how we should handle WrapperWorker <-->
 wasatch.BLEDevice communication. Should wasatch.BLEDevice likewise expose
-an asynchronous API, similar to what DeviceFinderBLE does, and let 
+an asynchronous API, similar to what DeviceFinderBLE does, and let
 WrapperWorker manage the asyncio run-loop?
 
-After reflection, I think not. Right now we have a reasonably robust 
+After reflection, I think not. Right now we have a reasonably robust
 WrapperWorker which is successfully talking to WP USB (WasatchDevice),
-Andor USB (AndorDevice), TCP/IP (TCPDevice), and historically even SPI 
-(SPIDevice) and 3rd-party (OceanDevice) products. I don't want to "screw" 
+Andor USB (AndorDevice), TCP/IP (TCPDevice), and historically even SPI
+(SPIDevice) and 3rd-party (OceanDevice) products. I don't want to "screw"
 with WrapperWorker to make it friendly for BLE, and maybe break something
 else.
 
-So WrapperWorker is going to stay "synchronous", and we will let 
-wasatch.BLEDevice manage its own asyncio.run_loop for turning WrapperWorker 
+So WrapperWorker is going to stay "synchronous", and we will let
+wasatch.BLEDevice manage its own asyncio.run_loop for turning WrapperWorker
 requests into await-able async calls.
 
-I am unclear whether it is safe / recommended to have multiple asyncio 
+I am unclear whether it is safe / recommended to have multiple asyncio
 run_loops in a single application (especially when that application is built
 atop PySide6, which has run-loops of its own). I don't know if this helps or
 hurts, but currently I'm making the BLEDevice run-loop a public singleton so
@@ -146,7 +146,7 @@ it can be shared across BLEDevice instances, as well as with BLEManager.
 # nomenclature
 
 For consistency with other InterfaceDevice classes, getters and setters
-are assumed to be synchronous unless the method name explicitly ends in 
+are assumed to be synchronous unless the method name explicitly ends in
 "_async".
 
 Going a step further, all async methods in this file explicitly end in
@@ -155,24 +155,24 @@ this convention.
 
 # wasatch.DeviceID
 
-The bleak.BLEDevice is attached to the wasatch.DeviceID because we have 
-existing infrastructure in enlighten.Controller to maintain a set of 
+The bleak.BLEDevice is attached to the wasatch.DeviceID because we have
+existing infrastructure in enlighten.Controller to maintain a set of
 .other_device_ids (DeviceID objects) it can check to connect to "non-self-
 discovery" spectrometers. Currently those include WISP TCP/IP spectrometers
 and BLE spectrometers, both of which require some level of user-interaction
-to detect/find. 
+to detect/find.
 
 Controller then passes the wasatch.DeviceID into wasatch.WasatchDeviceWrapper
-(and wasatch.WrapperWorker) to properly conenct to the requested device. 
+(and wasatch.WrapperWorker) to properly conenct to the requested device.
 
 By way of comparison, WISP needs IP addr:port, so those go into DeviceID;
-in like manner BLE needs bleak.BLEDevice, hence the extra attributes in 
+in like manner BLE needs bleak.BLEDevice, hence the extra attributes in
 DeviceID.
 
 # BLE Discovery
 
-In wasatch.DeviceFinderBLE, bleak.BleakScanner issues a series of 
-notifications including (bleak.backends.device.BLEDevice, 
+In wasatch.DeviceFinderBLE, bleak.BleakScanner issues a series of
+notifications including (bleak.backends.device.BLEDevice,
 bleak.backends.scanner.AdvertisementData).
 
 AdvertisementData contains these useful attributes:
@@ -188,23 +188,23 @@ DeviceFinderBLE generates a wasatch.DeviceID with both displayable
 (serial_number and rssi) and hidden (bleak_ble_device) attributes.
 
 To generate a bleak.BleakClient, we need the bleak.backends.device.BLEDevice
-from BleakScanner. Therefore, that handle needs to be be available in 
-wasatch.BLEDevice. The easiest way to get it there is for 
+from BleakScanner. Therefore, that handle needs to be be available in
+wasatch.BLEDevice. The easiest way to get it there is for
 wasatch.DeviceFinderBLE to embed it in the wasatch.DeviceID it writes to the
 wasatch.DiscoveredBLEDevice that it sends back to enlighten.BLEManager, so
 BLEManager can write the selected DeviceID to Controller.other_device_ids.
 
 # Issues
 
-Bleak Notifications don't seem to work on Windows under Parallels (using a 
+Bleak Notifications don't seem to work on Windows under Parallels (using a
 MacOS host). They work fine from a "real" Dell laptop, so this is probably
 a Parallels bug.
 
 # TODO
 
-- consider registering callback with StatusIndicators, BatteryFeature, 
+- consider registering callback with StatusIndicators, BatteryFeature,
   LaserControlFeature etc for BATTERY_STATE and LASER_STATE notifications
-- add HardwareStripCharts for all the XS bits, like AmbientTemperature, 
+- add HardwareStripCharts for all the XS bits, like AmbientTemperature,
   LaserChargerTemperature, MicrocontrollerTemperature etc
 
 # Misc
@@ -249,12 +249,12 @@ class BLEDevice(InterfaceDevice):
     CONNECT_TIMEOUT_SEC = 10
 
     # update Ambient temperature etc via acquire_data
-    STATUS_UPDATE_PERIOD_SEC = 60 
+    STATUS_UPDATE_PERIOD_SEC = 60
 
     LASER_TEC_MODES = {
-        0: 'OFF', 
-        1: 'ON', 
-        2: 'AUTO', 
+        0: 'OFF',
+        1: 'ON',
+        2: 'AUTO',
         3: 'AUTO_ON'
     }
 
@@ -295,7 +295,7 @@ class BLEDevice(InterfaceDevice):
         super().__init__(device_id=device_id, message_queue=message_queue, alert_queue=alert_queue)
 
         # all Characteristics to which we're subscribed for notifications
-        self.notifications = set() 
+        self.notifications = set()
 
         # Characteristics
         self.code_by_name = { "LASER_STATE":             0xff03,
@@ -315,8 +315,8 @@ class BLEDevice(InterfaceDevice):
         self.generics.add("AUTO_RAMAN_PARAMS",         0, 0x95, 0x98, 23, data_type="raw_data") # TEST [w]
         self.generics.add("IMAGE_SENSOR_STATE",        0, None, 0x97,  1) # TEST [passed]
         self.generics.add("INTEGRATION_TIME_MS",       0, 0xb2, 0xbf,  3) # TEST [passed]
-        self.generics.add("GAIN_DB",                   0, 0xb7, 0xc5,  2, data_type="funky_float", epsilon=0.01) 
-                                                       
+        self.generics.add("GAIN_DB",                   0, 0xb7, 0xc5,  2, data_type="funky_float", epsilon=0.01)
+
         self.generics.add("EEPROM_DATA",               1, None, 0x01, 64, data_type="raw_data")
         self.generics.add("START_LINE",                1, 0x21, 0x22,  2) # TEST [w]
         self.generics.add("STOP_LINE",                 1, 0x23, 0x24,  2) # TEST [w]
@@ -369,7 +369,7 @@ class BLEDevice(InterfaceDevice):
             return SpectrometerResponse(False, error_msg=msg)
 
         log.debug(f"connect_async: instantiating BleakClient")
-        self.client = BleakClient(address_or_ble_device = bleak_ble_device, 
+        self.client = BleakClient(address_or_ble_device = bleak_ble_device,
                                   disconnected_callback = self.disconnected_callback,
                                   timeout               = self.CONNECT_TIMEOUT_SEC)
         log.debug(f"connect_async: BleakClient instantiated: {self.client}")
@@ -415,10 +415,10 @@ class BLEDevice(InterfaceDevice):
 
         log.debug(f"connect_async: initializing scan averaging")
         await self.set_scans_to_average_async(1)
-        
+
         log.debug(f"connect_async: reading pixel correction")
         await self._read_pixel_correction_from_eeprom_async()
-        
+
         # learn more about the device
         self.settings.microcontroller_serial_number = await self.get_cpu_unique_id_async()
         log.debug(f"connect_async: cpu_unique_id = {self.settings.microcontroller_serial_number}")
@@ -463,10 +463,10 @@ class BLEDevice(InterfaceDevice):
         # copy firmware revisions to SpectrometerSettings
         self.settings.microcontroller_firmware_version = self.device_info["Firmware Revision String"]
         log.debug(f"Microcontroller firmware version: {self.settings.microcontroller_firmware_version}")
-        
+
         self.settings.fpga_firmware_version = self.device_info["Hardware Revision String"]
         log.debug(f"FPGA firmware version: {self.settings.fpga_firmware_version}")
-        
+
         self.settings.ble_firmware_version = self.device_info["Software Revision String"]
         log.debug(f"BLE firmware version: {self.settings.ble_firmware_version}")
 
@@ -476,7 +476,7 @@ class BLEDevice(InterfaceDevice):
         for service in self.client.services:
             if service.uuid.lower() == self.WASATCH_SERVICE.lower():
                 primary_service = service
-                
+
         if primary_service is None:
             return
 
@@ -496,7 +496,7 @@ class BLEDevice(InterfaceDevice):
             # reminder: INDICATE is acknowledged (i.e. TCP),
             #           NOTIFY is unacknowledged (i.e. UDP).
             if "notify" in char.properties or "indicate" in char.properties:
-                if name == "BATTERY_STATE":  
+                if name == "BATTERY_STATE":
                     log.debug(f"starting {name} notifications")
                     await self.client.start_notify(char.uuid, self.battery_notification_async)
                     self.notifications.add(char.uuid)
@@ -551,12 +551,12 @@ class BLEDevice(InterfaceDevice):
         pending = asyncio.all_tasks(loop=self.run_loop)
         for task in pending:
             task.cancel()
-        
+
         try:
             self.run_loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
         finally:
             self.run_loop.close()
-        
+
         self.run_loop = None
 
     ############################################################################
@@ -594,7 +594,7 @@ class BLEDevice(InterfaceDevice):
         if name == "GENERIC":
             # STEP FIVE: allocate a new sequence number, and associate it with the passed callback
             if callback is None and ack_name is not None:
-                # we weren't given an explicit callback, but this GENERIC opcode 
+                # we weren't given an explicit callback, but this GENERIC opcode
                 # generates an acknowledgement, so setup a lambda to catch it (so
                 # we can block on it before returning)
                 callback = partial(self.generics.process_acknowledgement_async, name=ack_name)
@@ -612,8 +612,8 @@ class BLEDevice(InterfaceDevice):
         if isinstance(data, list):
             data = bytearray(data)
 
-        # MZ: I'm not sure why all writes require a response, but empirical 
-        # testing indicates we reliably get randomly scrambled EEPROM contents 
+        # MZ: I'm not sure why all writes require a response, but empirical
+        # testing indicates we reliably get randomly scrambled EEPROM contents
         # without this.
 
         # STEP SEVEN: actually write the cmd (or for Generic reads, "read request") to the Peripheral
@@ -699,7 +699,7 @@ class BLEDevice(InterfaceDevice):
         except:
             start_line = roi[0]
             stop_line = roi[1]
-        
+
         if stop_line <= start_line:
             log.debug("declining to set 1-line vertical ROI")
             return SpectrometerResponse(False)
@@ -756,11 +756,11 @@ class BLEDevice(InterfaceDevice):
             # in the right order, but it doesn't really matter. In this method,
             # 0x1234 would yields decimal 1234, which I think is the intention.
             x = ( ((data[0] >> 0) & 0xf) *    1 +
-                  ((data[0] >> 4) & 0xf) *   10 + 
+                  ((data[0] >> 4) & 0xf) *   10 +
                   ((data[1] >> 0) & 0xf) *  100 +
                   ((data[1] >> 4) & 0xf) * 1000 )
             y = ( ((data[2] >> 0) & 0xf) *    1 +
-                  ((data[2] >> 4) & 0xf) *   10 + 
+                  ((data[2] >> 4) & 0xf) *   10 +
                   ((data[3] >> 0) & 0xf) *  100 +
                   ((data[3] >> 4) & 0xf) * 1000 )
             wafer = data[4]
@@ -836,7 +836,7 @@ class BLEDevice(InterfaceDevice):
 
             buf = bytearray()
             while len(buf) < 64:
-                
+
                 log.debug(f"read_eeprom_pages_async: generating read request for page {page} (first {first}, count {count})")
 
                 offset = len(buf)
@@ -869,7 +869,7 @@ class BLEDevice(InterfaceDevice):
 
         if use_progress_bar:
             self.queue_message("progress_bar", 100)
-        
+
     # getter helper ############################################################
 
     async def get_generic_value_async(self, name):
@@ -913,7 +913,7 @@ class BLEDevice(InterfaceDevice):
         These will be pushed automatically 2/min from Central, if-and-only-if
         no acquisition is occuring at the time of the scheduled event. However,
         at least some(?) clients (Bleak on MacOS) don't seem to receive the
-        notifications until the next explicit read/write of a Characteristic 
+        notifications until the next explicit read/write of a Characteristic
         (any Chararacteristic? seemingly observed with ACQUIRE_CMD).
         """
         length = 5 if self.settings.supports_feature("battery_state_length_5") else 3
@@ -963,17 +963,17 @@ class BLEDevice(InterfaceDevice):
 
         # skip bytes 5 and 6 reserved (used to be laser_warning_delay_ms)
 
-        if len(buf) >= 8: 
+        if len(buf) >= 8:
             state.laser_can_fire  = 0 != buf[7] & 0x01
             state.laser_is_firing = 0 != buf[7] & 0x02
 
-        if len(buf) >= 9: 
+        if len(buf) >= 9:
             state.laser_power_perc = buf[8]
 
         log.debug(f"updated laser state: enabled {state.laser_enabled}, " +
                   f"watchdog {state.laser_watchdog_sec}sec, " +
                   f"can_fire {state.laser_can_fire}, " +
-                  f"is_firing {state.laser_is_firing}, " + 
+                  f"is_firing {state.laser_is_firing}, " +
                   f"PWM {state.laser_power_perc}")
 
     def set_laser_enable(self, flag):
@@ -1010,7 +1010,7 @@ class BLEDevice(InterfaceDevice):
         return SpectrometerResponse(future.result())
     async def set_laser_power_perc_async(self, perc):
         log.debug(f"setting laser power perc {perc}")
-        self.next_laser_power_perc = perc 
+        self.next_laser_power_perc = perc
         await self.sync_laser_state_to_device_async()
 
     ############################################################################
@@ -1081,19 +1081,19 @@ class BLEDevice(InterfaceDevice):
         if (len(data) < 3):
             raise RuntimeError(f"received invalid ACQUIRE notification of {len(data)} bytes: {data}")
 
-        # first two bytes declare whether it's a status message (all we should be 
+        # first two bytes declare whether it's a status message (all we should be
         # getting now under API9) or spectral data (deprecated after API6)
         #
         # MZ: these are now wasted bytes in API9, which could be deprecated in API10
         first_pixel = int((data[0] << 8) | data[1]) # big-endian int16
         if first_pixel != 0xffff:
             raise RuntimeError(f"received invalid SPECTRA data (API6) on API9 ACQUIRE characteristic!")
-            
+
         status = data[2]
         payload = data[3:]
         msg = self.parse_acquire_status(status, payload)
         log.debug(f"acquire_notification: {msg}")
-        
+
     def parse_acquire_status(self, status, payload):
         if status not in self.ACQUIRE_STATUS_CODES:
             raise RuntimeError("ACQUIRE notification included unsupported status code 0x{status:02x}, payload {payload}")
@@ -1102,7 +1102,7 @@ class BLEDevice(InterfaceDevice):
         msg = f"{short}: {long}"
 
         # special handling for status codes including payload
-        if status == 32: 
+        if status == 32:
             target_ratio = int(payload[0])
             msg += f" (target ratio {target_ratio}%)"
         elif status in [33, 34, 35, 36]:
@@ -1111,7 +1111,7 @@ class BLEDevice(InterfaceDevice):
 
             step_msg = ""
             if total_steps > 1:
-                step_msg = f" ({current_step + 1}/{total_steps})" 
+                step_msg = f" ({current_step + 1}/{total_steps})"
                 msg += step_msg
 
         # Auto-Raman takes awhile, so flow up some status indications
@@ -1130,12 +1130,12 @@ class BLEDevice(InterfaceDevice):
                 self.queue_message("progress_bar", round(100.0 * current_step / total_steps, 2))
 
         return msg
-    
+
     def spectra_notification(self, sender, data):
         if len(data) < 4:
             raise RuntimeError(f"received invalid SPECTRA notification of {len(data)} bytes: {data}")
 
-        # first two bytes declare whether it's spectral data (all we should be 
+        # first two bytes declare whether it's spectral data (all we should be
         # getting now under API9) or a status message (deprecated after API6)
         first_pixel = int((data[0] << 8) | data[1]) # big-endian int16
 
@@ -1154,7 +1154,7 @@ class BLEDevice(InterfaceDevice):
         for i in range(pixels_in_packet):
             # pixel intensities are little-endian uint16
             offset = i * 2
-            intensity = int((spectral_data[offset+1] << 8) | spectral_data[offset]) 
+            intensity = int((spectral_data[offset+1] << 8) | spectral_data[offset])
             self.spectrum[self.pixels_read] = intensity
             self.pixels_read += 1
 
@@ -1165,7 +1165,7 @@ class BLEDevice(InterfaceDevice):
         return SpectrometerResponse(future.result())
     async def get_spectrum_async(self):
         """
-        This is an asynchronous high-level function which wraps the mechanical 
+        This is an asynchronous high-level function which wraps the mechanical
         steps of sending an ACQUIRE and receiving the full SPECTRA in response.
         """
         auto_raman_request = self.take_one_request.auto_raman_request if self.take_one_request else None
@@ -1185,9 +1185,9 @@ class BLEDevice(InterfaceDevice):
         ########################################################################
 
         if auto_raman_request:
-            # This is a little tricky, because max_ms defines the maximum 
+            # This is a little tricky, because max_ms defines the maximum
             # averaged(Raman + dark) measurement time, and was not intended to
-            # include optimization time. Optimization time can vary for 
+            # include optimization time. Optimization time can vary for
             # different sampling environments and compounds, so it's difficult
             # to predict how long it might be allowed to take (especially within
             # firmware). For now, allow a full 30sec of potential optimization.
@@ -1196,9 +1196,9 @@ class BLEDevice(InterfaceDevice):
             # apply different timeouts to different stages of the procedure.
             timeout_ms = auto_raman_request.max_ms + 30_000
         else:
-            timeout_ms = ( 4 
-                         * max(self.settings.state.prev_integration_time_ms, self.settings.state.integration_time_ms) 
-                         * self.settings.state.scans_to_average 
+            timeout_ms = ( 4
+                         * max(self.settings.state.prev_integration_time_ms, self.settings.state.integration_time_ms)
+                         * self.settings.state.scans_to_average
                          + 6000) # 4sec latency + 2sec buffer
 
         ########################################################################
@@ -1227,7 +1227,7 @@ class BLEDevice(InterfaceDevice):
 
         if (self.settings.eeprom.invert_x_axis):
             self.spectrum = self.spectrum[::-1]
-        
+
         if self.settings.state.bad_pixel_mode == SpectrometerState.BAD_PIXEL_MODE_AVERAGE:
             self.correct_bad_pixels(self.spectrum)
 
@@ -1241,12 +1241,12 @@ class BLEDevice(InterfaceDevice):
         return SpectrometerResponse(future.result())
     async def update_status_async(self):
         """
-        Low-rate function to update miscellaneous status attributes to flow up 
+        Low-rate function to update miscellaneous status attributes to flow up
         to ENLIGHTEN in Readings.
 
         BATTERY_STATE should automatically update on its own firmware schedule,
         and LASER_STATE should update on every change in the device. However,
-        this lets software drive (and initialize) that loop directly. Also, we 
+        this lets software drive (and initialize) that loop directly. Also, we
         can add non-"urgent" attributes like ambient temperature, etc.
         """
         await self.update_battery_state_from_device_async()
@@ -1268,7 +1268,7 @@ class BLEDevice(InterfaceDevice):
     ############################################################################
 
     def heartbeat(self, value):
-        pass 
+        pass
 
     def set_testing(self, flag):
         self.testing = True if flag else False
@@ -1285,11 +1285,11 @@ class BLEDevice(InterfaceDevice):
             msg = StatusMessage(setting, value)
             log.debug(f"queue_message: {msg}")
             try:
-                self.message_queue.put(msg) 
+                self.message_queue.put(msg)
             except:
                 log.error("failed to enqueue StatusMessage (%s, %s)", setting, value, exc_info=1)
 
-    def init_process_funcs(self): # -> dict[str, Callable[..., Any]] 
+    def init_process_funcs(self): # -> dict[str, Callable[..., Any]]
         f = {}
         f["acquire_data"]            = self.acquire_data
         f["close"]                   = self.disconnect
@@ -1333,23 +1333,23 @@ class BLEDevice(InterfaceDevice):
 
     def get_name_by_uuid(self, uuid):
         return self.name_by_uuid.get(uuid.lower(), None)
-        
+
     def get_uuid_by_name(self, name):
         code = self.code_by_name.get(name.upper(), None)
         if code is None:
             return
         return self.wrap_uuid(code)
-        
+
     ############################################################################
     # Etalon
     ############################################################################
-    
+
     async def _read_pixel_correction_from_eeprom_async(self):
         ee = self.settings.eeprom
         log.debug(f"In _read_pixel_correction_from_eeprom_async")
 
-        # Load a pixel correction from the EEPROM if one is present. It is 
-        # assumed that if pixel_calibration_type is set, then the indicated 
+        # Load a pixel correction from the EEPROM if one is present. It is
+        # assumed that if pixel_calibration_type is set, then the indicated
         # calibration is present on the EEPROM (not in an external JSON file).
         if self.settings.eeprom.pixel_correction_type == ee.PIXEL_CORRECTION_NONE:
             log.debug(f"Pixel Correction None")
@@ -1396,7 +1396,7 @@ class BLEDevice(InterfaceDevice):
 ################################################################################
 
 class Generic:
-    """ 
+    """
     Encapsulates paired setter and getter accessors for a single attribute.
     """
 
@@ -1411,7 +1411,7 @@ class Generic:
 
         self.value = None
         self.event = asyncio.Event()
-    
+
     def serialize(self, value):
         data = []
         if value is None:
@@ -1421,14 +1421,14 @@ class Generic:
             data.append(int((value - int(value)) * 256) & 0xff)
         elif self.data_type == "raw_data":
             data = value # for writing EEPROM, AUTO_RAMAN_PARAMS etc
-        else: 
-            # assume big-endian uint[size]            
+        else:
+            # assume big-endian uint[size]
             for i in range(self.size):
                 data.append((value >> (8 * (self.size - (i+1)))) & 0xff)
         return data
 
     def deserialize(self, data):
-        # STEP SIXTEEN: deserialize the returned Generic response payload 
+        # STEP SIXTEEN: deserialize the returned Generic response payload
         #               according to the attribute type
         if self.data_type == "funky_float":
             return data[0] + data[1] / 256.0
@@ -1461,10 +1461,10 @@ class Generic:
 class Generics:
     """ Façade to access all Generic attributes in the BLE interface """
 
-    RESPONSE_ERRORS = [ 'OK', 
-                        'NO_RESPONSE_FROM_HOST', 
-                        'FPGA_READ_FAILURE', 
-                        'INVALID_PARAMETER', 
+    RESPONSE_ERRORS = [ 'OK',
+                        'NO_RESPONSE_FROM_HOST',
+                        'FPGA_READ_FAILURE',
+                        'INVALID_PARAMETER',
                         'UNSUPPORTED_COMMAND' ]
     def __init__(self):
         self.seq = 0
@@ -1488,8 +1488,8 @@ class Generics:
         # probably an uncaught acknowledgement from a generic setter like SET_INTEGRATION_TIME_MS
         log.debug(f"get_callback: seq {seq} not found in callbacks")
 
-        # @todo: we're getting these from SET_START_LINE / SET_STOP_LINE, where 
-        # the response notification doesn't seem to include the request's SEQ 
+        # @todo: we're getting these from SET_START_LINE / SET_STOP_LINE, where
+        # the response notification doesn't seem to include the request's SEQ
         # number
 
     def add(self, name, tier, setter, getter, size, epsilon=0, data_type=None):
@@ -1524,7 +1524,7 @@ class Generics:
         # STEP FIFTEEN: parse the response payload according to the attribute
         generic.value = generic.deserialize(data)
 
-        # STEP SEVENTEEN: raise the asynchronous "event" flag to tell the 
+        # STEP SEVENTEEN: raise the asynchronous "event" flag to tell the
         # await'ing requester that the response value is now available and stored
         # in the Generic object
         generic.event.set()
@@ -1551,14 +1551,14 @@ class Generics:
 
         # STEP TEN: lookup the stored callback for this sequence number
         #
-        # pass the response data, minus the sequence and error-code header, to 
+        # pass the response data, minus the sequence and error-code header, to
         # the registered callback function for that sequence ID
         callback = self.get_callback(seq)
 
         # STEP TWELVE: actually call the callback
         if callback:
             await callback(result)
-        
+
     def get_name(self, code):
         if code == 0xff:
             return "NEXT_TIER"
