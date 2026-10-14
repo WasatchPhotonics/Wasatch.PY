@@ -4,6 +4,7 @@ Note: in the following, FID = wasatch.FeatureInterfaceDevice
 
 - 2026-10-14 2.4.13 
     - don't read EEPROM page 8 on XS unless format >17
+    - fix ascii-art warning
 - 2026-10-05 2.4.12 (enlighten-4.2.15)
     - testing wp-enlighten
 - 2026-10-05 2.4.11 
