@@ -2,7 +2,7 @@
 
 Note: in the following, FID = wasatch.FeatureInterfaceDevice
 
-- 2026-??-?? 2.5.0
+- 2026-10-16 2.5.0 (enlighten-4.3.0)
     - refreshing all PyPi, scripts, etc
     - moved to hatchling
     - moved demos under scripts/
