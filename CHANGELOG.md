@@ -2,8 +2,10 @@
 
 Note: in the following, FID = wasatch.FeatureInterfaceDevice
 
-- 2026-10-20 2.5.1
-    - simplified has_detector logic
+- 2026-10-20 2.5.2 (enlighten-4.3.3)
+    - simplified has_detector logic, fixed IDS bug?
+- 2026-10-20 2.5.1 (enlighten-4.3.2)
+    - internal build (failed to fix IDS bug)
 - 2026-10-16 2.5.0 (enlighten-4.3.0)
     - refreshing all PyPi, scripts, etc
     - moved to hatchling
