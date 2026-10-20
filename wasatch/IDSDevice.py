@@ -93,8 +93,9 @@ class IDSDevice(InterfaceDevice):
         log.debug("connect: searching for available laser partner")
 
         for interface_device in WasatchDeviceWrapper.get_interface_devices():
-            if not interface_device.settings.eeprom.detector or "none" in interface_device.settings.eeprom.detector.lower():
+            if interface_device.settings.eeprom.disable_detector:
                 if interface_device.settings.eeprom.has_laser:
+                    # MZ: could add additional checks, for instance that "IMX662" in detector
                     log.debug(f"connect: linked to laser-only InterfaceDevice {interface_device.device_id}")
                     self.laser_device = interface_device
 

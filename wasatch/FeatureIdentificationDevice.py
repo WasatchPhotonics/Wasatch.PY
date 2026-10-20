@@ -1352,6 +1352,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         """
 
         if not self.settings.has_detector():
+            self.remaining_throwaways = 0
             return SpectrometerResponse(keep_alive=True)
 
         response = SpectrometerResponse()
@@ -1452,13 +1453,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                     else:
                         errors += 1
                         log.error(f"Encountered error {errors} on read of {exc}", exc_info=1)
-
-                        # Don't loop on errors on XS, so we can experimentally 
-                        # use an XS board as a detector-less laser/TEC driver 
-                        # board. 
-                        if not self.settings.has_detector():
-                            pass
-                        elif errors < 3:
+                        if errors < 3:
                             log.error(f"ignoring error number {errors}")
                         else:
                             response.error_msg = "Encountered error on read"
@@ -1658,7 +1653,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return response
 
     def require_throwaway(self, flag):
-        if flag and self.settings.is_xs() and self.remaining_throwaways < 1 and self.settings.has_detector():
+        if flag and self.settings.is_xs() and self.remaining_throwaways < 1:
             log.debug("queuing throwaways")
             self.remaining_throwaways += 1
 

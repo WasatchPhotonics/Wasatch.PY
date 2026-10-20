@@ -180,16 +180,13 @@ class SpectrometerSettings:
             return False
 
     def has_detector(self):
-        if self.eeprom.disable_detector and not self.is_ids():
-            # log.debug("has_detector False because disable_detector on non-IDS")
+        if self.eeprom.disable_detector:
             return False
 
         det = self.eeprom.detector
         if det is not None and det.lower() == "none":
-            # log.debug(f"has_detector False because detector {det}")
             return False
 
-        # log.debug(f"has_detector True")
         return True
 
     def has_excitation(self):
@@ -401,7 +398,7 @@ class SpectrometerSettings:
         return '0x136e' in str(self.device_id)
 
     def is_ids(self): 
-        return 'IDSPeak' in str(self.device_id) or "IMX662-AAMR-C" in self.eeprom.detector
+        return 'IDSPeak' in str(self.device_id) or "IMX662" in self.eeprom.detector
 
     def is_sig(self):
         return self.is_xs()
