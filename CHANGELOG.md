@@ -2,6 +2,12 @@
 
 Note: in the following, FID = wasatch.FeatureInterfaceDevice
 
+- 2026-10-20 2.5.1
+    - simplified has_detector logic
+- 2026-10-16 2.5.0 (enlighten-4.3.0)
+    - refreshing all PyPi, scripts, etc
+    - moved to hatchling
+    - moved demos under scripts/
 - 2026-10-14 2.4.13 
     - don't read EEPROM page 8 on XS unless format >17
     - fix ascii-art warning

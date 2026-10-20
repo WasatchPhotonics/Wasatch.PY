@@ -378,7 +378,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # startup integration time
         # ######################################################################
 
-        # first check what the device's current integration time is
+        # first request the device's current integration time
         existing_ms = 0
         res = self.get_integration_time_ms()
         if res:
@@ -942,7 +942,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
             log.debug(f"GET_INTEGRATION_TIME_MS: now {ms}")
             self.settings.state.integration_time_ms = ms
         else:
-            log.debug("declining to initialize session integration_time_ms from spectrometer")
+            log.debug("declining to initialize session integration_time_ms from spectrometer, as state.integration_time_ms {self.settings.state.integration_time_ms}")
 
         return SpectrometerResponse(data=ms)
 
@@ -1313,20 +1313,25 @@ class FeatureIdentificationDevice(InterfaceDevice):
 
     def generate_timeout_ms(self):
         max_integ_ms = max(self.settings.state.integration_time_ms, self.settings.state.prev_integration_time_ms)
+        # log.debug(f"generate_timeout_ms: max_integ_ms {max_integ_ms}, state {self.settings.state.integration_time_ms}, prev {self.settings.state.prev_integration_time_ms}")
         if self.settings.is_xs():
+            # log.debug(f"generate_timeout_ms: is xs")
             # we have no idea if XS has to "wake up" the sensor, so wait
             # long enough for 20ms + 8 throwaway frames if need be (IMX385 datasheet p69)
             if self.settings.state.onboard_averaging:
                 timeout_ms = max_integ_ms * (self.settings.state.scans_to_average + 7) + 500 * self.settings.num_connected_devices + 20
+                # log.debug(f"generate_timeout_ms: timeout_ms {timeout_ms} (onboard averaging enabled)")
             else:
                 timeout_ms = max_integ_ms * 8 + 500 * self.settings.num_connected_devices + 20
-            if not self.has_received_spectrum:
-                timeout_ms += 10_000
+                # log.debug(f"generate_timeout_ms: timeout_ms {timeout_ms} (no onboard averaging)")
 
-            # kludge while testing Auto-Raman oddities
-            timeout_ms *= 5
+            if not self.has_received_spectrum:
+                # log.debug(f"generate_timeout_ms: has not yet received spectrum, so adding 10sec")
+                timeout_ms += 10_000
         else:
             timeout_ms = max_integ_ms * 2 + 1_000 * self.settings.num_connected_devices
+            # log.debug(f"generate_timeout_ms: not xs, so timeout_ms {timeout_ms}")
+
         return int(timeout_ms)
 
     def get_spectrum(self, trigger=True, auto_raman_params=None):
@@ -1347,6 +1352,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         """
 
         if not self.settings.has_detector():
+            self.remaining_throwaways = 0
             return SpectrometerResponse(keep_alive=True)
 
         response = SpectrometerResponse()
@@ -1447,13 +1453,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
                     else:
                         errors += 1
                         log.error(f"Encountered error {errors} on read of {exc}", exc_info=1)
-
-                        # Don't loop on errors on XS, so we can experimentally 
-                        # use an XS board as a detector-less laser/TEC driver 
-                        # board. 
-                        if not self.settings.has_detector():
-                            pass
-                        elif errors < 3:
+                        if errors < 3:
                             log.error(f"ignoring error number {errors}")
                         else:
                             response.error_msg = "Encountered error on read"
@@ -1653,7 +1653,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return response
 
     def require_throwaway(self, flag):
-        if flag and self.settings.is_xs() and self.remaining_throwaways < 1 and self.settings.has_detector():
+        if flag and self.settings.is_xs() and self.remaining_throwaways < 1:
             log.debug("queuing throwaways")
             self.remaining_throwaways += 1
 

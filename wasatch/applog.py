@@ -94,7 +94,7 @@ def explicit_log_close():
     root_log.debug("applog.explicit_log_close: closing and removing all handlers")
     handlers = root_log.handlers[:]
     for handler in handlers:
-        handler.close()
+        handler.close() # note this closes stdout as well, if MainLogger.enable_stdout
         root_log.removeHandler(handler)
 
 # ##############################################################################

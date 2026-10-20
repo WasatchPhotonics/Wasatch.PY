@@ -86,7 +86,8 @@ class WrapperWorker(threading.Thread):
 
         # enforce debug logging around ENLIGHTEN connections
         if not self.callback:
-            logging.getLogger().setLevel("DEBUG") 
+            if "Windows" in platform.platform():
+                logging.getLogger().setLevel("DEBUG") 
 
     ##
     # This is essentially the main() loop in a thread.
