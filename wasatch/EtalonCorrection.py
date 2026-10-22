@@ -2,6 +2,7 @@ import math
 import numpy as np
 import struct
 import logging
+import array
 import json
 import os
 
@@ -41,6 +42,7 @@ class EtalonCorrection:
         """
         self.mode = data["mode"]
         self.factors = data["factors"]
+        log.debug(f"parse_json_data: parsed {len(self.factors)} factors")
 
     def cache_json_data(self, serial_number, pathname=None):
         """
@@ -100,6 +102,7 @@ class EtalonCorrection:
         return (first, count)
 
     def parse_eeprom_buffers(self, buffers):
+        """ called by FeatureIdentificationDevice._read_pixel_correction_from_eeprom """
         log.debug("parsing EEPROM factors")
         self.mode = "default" # save your funky stuff for JSON
         self.factors = []
@@ -117,6 +120,52 @@ class EtalonCorrection:
 
         log.debug(f"parsed {len(self.factors)} factors from {len(buffers)} pages (lo {lo}, hi {hi}, mean {mean})")
 
+        return True
+
+    def populate_eeprom_buffers(self, eeprom):
+        """ 
+        Called by Analysis.FlashEtalonCorr plugin.
+        Could maybe go in EEPROM?
+
+        Assumes self.factors has already been loaded from JSON, and 
+        len(self.factors) == self.pixels.
+        """
+        if self.factors is None:
+            log.error("populate_eeprom_buffers: factors is None")
+            return False
+        
+        if len(self.factors) != self.pixels:
+            log.error(f"populate_eeprom_buffers: len(factors) {len(self.factors)} != pixels {self.pixels}")
+            return False
+
+        log.debug(f"populate_eeprom_buffers: setting pixel_correction")
+        eeprom.pixel_correction_type = eeprom.PIXEL_CORRECTION_ETALON
+
+        log.debug("populate_eeprom_buffers: calling standard generate_write_buffers")
+        eeprom.generate_write_buffers()
+        log.debug(f"populate_eeprom_buffers: generated {len(eeprom.write_buffers)} pages")
+
+        first_page, page_count = self.eeprom_page_range()
+        last_page = first_page + page_count
+
+        log.debug(f"populate_eeprom_buffers: padding write_buffers out to page {last_page}")
+        while len(eeprom.write_buffers) < last_page:
+            eeprom.write_buffers.append(array.array('B', [0] * 64))
+            
+        FACTORS_PER_PAGE = self.BYTES_PER_PAGE // self.BYTES_PER_FLOAT
+
+        log.debug(f"populate_eeprom_buffers: rendering pixel correction pages")
+        for pixel in range(self.pixels):
+            page = first_page + pixel // FACTORS_PER_PAGE
+            offset = 4 * (pixel % FACTORS_PER_PAGE)
+            buf = eeprom.write_buffers[page]
+            value = self.factors[pixel]
+            log.debug(f"populate_eeprom_buffers: packing page {page}, offset {offset} -> {value}")
+            struct.pack_into("f", buf, offset, value)
+
+        # so at this point, eeprom.write_buffers should be fully populated, and 
+        # we or the caller (FlashEtalonCorr plugin) should feel comfortable 
+        # calling fid.write_eeprom(generate_write_buffers=False)
         return True
 
     def apply(self, spectrum):

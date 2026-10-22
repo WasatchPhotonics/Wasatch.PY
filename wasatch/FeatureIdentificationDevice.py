@@ -3934,8 +3934,12 @@ class FeatureIdentificationDevice(InterfaceDevice):
     # EEPROM Cruft
     # ##########################################################################
     
-    # store the current session EEPROM fields to the spectrometer
-    def write_eeprom(self, arg):
+    def write_eeprom(self, arg=None, generate_write_buffers=True):
+        """
+        Store the current session EEPROM fields to the spectrometer.
+
+        MZ: not actually sure what 'arg' was originally...maybe serial number?
+        """
         if not self.settings.eeprom_backup:
             log.critical("expected to update or replace EEPROM object before write command")
             self.queue_message("marquee_error", "Failed to write EEPROM")
@@ -3946,33 +3950,37 @@ class FeatureIdentificationDevice(InterfaceDevice):
         self.settings.eeprom_backup.dump()
         log.debug("write_eeprom: original EEPROM buffers: %s", self.settings.eeprom_backup.buffers)
 
-        try:
-            log.debug("write_eeprom: generating new write buffers")
-            self.settings.eeprom.generate_write_buffers()
-        except:
-            log.critical("failed to render EEPROM write buffers", exc_info=1)
-            self.queue_message("marquee_error", "Failed to write EEPROM")
-            return SpectrometerResponse(data=False, error_msg="failed to generate eeprom")
+        if generate_write_buffers:
+            try:
+                log.debug("write_eeprom: generating new write buffers")
+                self.settings.eeprom.generate_write_buffers()
+            except:
+                log.critical("failed to render EEPROM write buffers", exc_info=1)
+                self.queue_message("marquee_error", "Failed to write EEPROM")
+                return SpectrometerResponse(data=False, error_msg="failed to generate eeprom")
 
-        log.debug("write_eeprom: would write new buffers: %s", self.settings.eeprom.write_buffers)
+        # log.debug(f"write_eeprom: would write new buffers: {self.settings.eeprom.write_buffers}")
 
-        for page in range(EEPROM.MAX_PAGES):
+        for page in range(len(self.settings.eeprom.write_buffers)):
             if self.settings.is_arm():
                 log.debug("write_eeprom: writing page %d: %s", page, self.settings.eeprom.write_buffers[page])
+                self.queue_message("marquee_info", f"writing page {page}")
                 self._send_code(bRequest        = 0xff, # second-tier
-                               wValue          = 0x02,
-                               wIndex          = page,
-                               data_or_wLength = self.settings.eeprom.write_buffers[page],
-                               label           = "WRITE_EEPROM")
+                                wValue          = 0x02,
+                                wIndex          = page,
+                                data_or_wLength = self.settings.eeprom.write_buffers[page],
+                                label           = "WRITE_EEPROM")
+                # we may have a race condition here in the FW, consider sleeping 10ms or so
+                sleep(0.05)
             else:
                 DATA_START = 0x3c00
-                offset = DATA_START + page * 64
+                offset = DATA_START + page * 64 # note uint16
                 log.debug("write_eeprom: writing page %d at offset 0x%04x: %s", page, offset, self.settings.eeprom.write_buffers[page])
                 self._send_code(bRequest        = 0xa2,   # dangerous
-                               wValue          = offset, # arguably an index but hey
-                               wIndex          = 0,
-                               data_or_wLength = self.settings.eeprom.write_buffers[page],
-                               label           = "WRITE_EEPROM")
+                                wValue          = offset, # arguably an index but hey
+                                wIndex          = 0,
+                                data_or_wLength = self.settings.eeprom.write_buffers[page],
+                                label           = "WRITE_EEPROM")
 
         self.queue_message("marquee_info", "EEPROM successfully updated")
 
@@ -4187,6 +4195,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         # XS
         process_f["raman_delay_ms"]                     = lambda x: self.set_raman_delay_ms(int(round(x)))
         process_f["laser_watchdog_sec"]                 = lambda x: self.set_laser_watchdog_sec(int(round(x)))
+        process_f["write_eeprom_no_generate"]           = lambda x: self.write_eeprom(generate_write_buffers=False)
 
         # regions
         process_f["vertical_binning"]                   = lambda x: self.set_vertical_roi(x) # legacy alias

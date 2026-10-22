@@ -35,9 +35,20 @@ class InGaAsCorrection:
             }
         }
         """
-        self.mode = data["mode"]
+        self.mode    = data["mode"]
         self.offsets = data["offsets"]
-        self.slopes = data["slopes"]
+        self.slopes  = data["slopes"]
+
+        offsets_len  = len(self.offsets)
+        slopes_len   = len(self.slopes)
+
+        if offsets_len != slopes_len:
+            log.error("parse_json_data: found {offsets_len} offsets but {slopes_len} slopes")
+            self.offsets = None
+            self.slopes  = None
+            return
+
+        log.debug(f"parse_json_data: parsed {offsets_len} offsets and slopes")
 
     def eeprom_page_range(self):
         first = 10

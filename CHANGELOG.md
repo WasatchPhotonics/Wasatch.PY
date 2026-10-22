@@ -2,6 +2,8 @@
 
 Note: in the following, FID = wasatch.FeatureInterfaceDevice
 
+- 2026-??-?? 2.5.3
+    - added EtalonCorrection.populate_eeprom_buffers
 - 2026-10-20 2.5.2 (enlighten-4.3.3)
     - simplified has_detector logic, fixed IDS bug?
 - 2026-10-20 2.5.1 (enlighten-4.3.2)

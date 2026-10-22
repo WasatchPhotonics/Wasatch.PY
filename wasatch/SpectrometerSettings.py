@@ -501,19 +501,23 @@ class SpectrometerSettings:
     def augment_from_json_data(self, data):
         log.debug(f"augment_from_json_data: start")
         if data is None:
+            log.debug(f"augment_from_json_data: data is None")
             return
 
         # stomp any pixel calibrations found on the EEPROM with external JSON versiosn
         if "pixel_corrections" in data:
+            log.debug(f"augment_from_json_data: found pixel_corrections")
             pc = data["pixel_corrections"]
 
             if "etalon_correction" in pc:
+                log.debug(f"augment_from_json_data: found etalon_correction")
                 if self.etalon_correction:
                     log.error("stomping EtalonCorrection from JSON")
                 self.etalon_correction = EtalonCorrection(self.pixels())
                 self.etalon_correction.parse_json_data(pc["etalon_correction"])
 
             if "ingaas_correction" in pc:
+                log.debug(f"augment_from_json_data: found ingaas_correction")
                 if self.ingaas_correction:
                     log.error("stomping InGaAsCorrection from JSON")
                 self.ingaas_correction = InGaAsCorrection(self.pixels())
