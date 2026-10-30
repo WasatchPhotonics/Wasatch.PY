@@ -320,9 +320,6 @@ class IDSDevice(InterfaceDevice):
 
         spectrum = self.apply_horizontal_binning(spectrum)
 
-        if self.settings.etalon_correction:
-            spectrum = self.settings.etalon_correction.apply(spectrum)
-
         return SpectrometerResponse(spectrum)
 
     def apply_horizontal_binning(self, spectrum):
