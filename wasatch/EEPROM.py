@@ -1020,6 +1020,8 @@ class EEPROM:
         else:
             unpack_result = 0
             try:
+                if isinstance(buf, list):
+                    buf = bytes(buf)
                 unpack_result = struct.unpack(data_type, buf[start_byte:end_byte])[0]
             except:
                 log.error("error unpacking EEPROM page %d, offset %d, len %d as %s", page, start_byte, length, data_type, exc_info=1)

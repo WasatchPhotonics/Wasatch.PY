@@ -109,7 +109,7 @@ class EtalonCorrection:
         for buf_index, buf in enumerate(buffers):
             for index in range(self.BYTES_PER_PAGE // self.BYTES_PER_FLOAT):
                 offset = index * 4
-                float_buf = buf[offset:offset+4]
+                float_buf = bytes(buf[offset:offset+4])
                 value = struct.unpack("f", float_buf)[0]
                 # log.debug(f"parse_eeprom_buffers: buf_index {buf_index}, pixel index {index}, offset {offset}, float_buf {float_buf}, value {value}")
                 self.factors.append(value)
