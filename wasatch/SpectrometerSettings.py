@@ -522,3 +522,10 @@ class SpectrometerSettings:
                     log.error("stomping InGaAsCorrection from JSON")
                 self.ingaas_correction = InGaAsCorrection(self.pixels())
                 self.ingaas_correction.parse_json_data(pc["ingaas_correction"])
+
+    def configure_etalon_correction(self, eeprom_pages):
+        corr = EtalonCorrection(self.pixels())
+        first, count = corr.eeprom_page_range()
+        etalon_pages = eeprom_pages[first:first + count]
+        corr.parse_eeprom_buffers(etalon_pages)
+        self.etalon_correction = corr
