@@ -21,6 +21,9 @@ class EtalonCorrection:
         self.mode = None
         self.factors = None 
 
+    def __repr__(self):
+        return f"EtalonCorrection < pixels {self.pixels}, mode {self.mode}, factors {self.factors} >"
+
     def to_dict(self): 
         return vars(self)
 

@@ -526,6 +526,12 @@ class SpectrometerSettings:
     def configure_etalon_correction(self, eeprom_pages):
         corr = EtalonCorrection(self.pixels())
         first, count = corr.eeprom_page_range()
-        etalon_pages = eeprom_pages[first:first + count]
+        last_plus_one = first + count
+        etalon_pages = eeprom_pages[first:last_plus_one]
         corr.parse_eeprom_buffers(etalon_pages)
+
+        if max(corr.factors) == 0.0:
+            log.critical("configure_etalon_correction: ignoring blank correction of all zeros")
+            return
+            
         self.etalon_correction = corr

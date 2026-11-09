@@ -1665,7 +1665,7 @@ class FeatureIdentificationDevice(InterfaceDevice):
         return retval
 
     def get_scans_to_average(self):
-        return self._get_upper_code(0x63, lsb_len=2)
+        return self.get_upper_code(0x63, lsb_len=2)
 
     def set_scans_to_average(self, n):
         self.settings.scans_to_average = int(n)
